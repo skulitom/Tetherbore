@@ -1,20 +1,22 @@
-// The world: a square grid of cells round a fixed core. This module owns what each cell is, how the ground is laid
-// out, what the tether can reach, and which pieces of ground have been cut free. It draws nothing.
+// The world: a vast grid of cells round a fixed core, far too large to hold whole. It is made a 64 x 64 piece at
+// a time, the first time anything looks there, from the seed alone; only pieces that have been changed or seen are
+// kept. This module owns what each cell is and how the ground is laid out. It draws nothing.
 
-export const N = 129, C = 64, SIZE = N * N;
+export const N = 16384, C = 8192, CH = 64, CW = N / CH;      // a cell is y * N + x; the core's middle cell is (C, C)
 export const K = { EMPTY: 0, CORE: 1, BEDROCK: 2, SOFT: 3, DENSE: 4, ORE_A: 5, ORE_B: 6, SLATE: 7, VAULT: 8, HAZARD: 9, RELIC: 10, ICE: 11, BASALT: 12 };
 export const B = { CRUST: 0, FROST: 1, EMBER: 2, MIRE: 3, LODE: 4 };
 // Far out, the ground to either side of each direction's middle turns into a richer, meaner kind of the same.
 export const BIOME_NAMES = ['crust', 'frost', 'ember', 'mire', 'lode', 'rime', 'magma', 'bloom', 'gilt'];
 export const base = b => b > 4 ? b - 4 : b;
-export const DEEP_R = 31, HOME_R = 13;
-// What bit a cell needs (99: no bit cuts it), and what a hauled cell pays in grit and in its biome's gem.
+// What can be cut (99: nothing cuts it), and what a hauled cell pays in grit and in its direction's gem.
 export const HARD = [0, 99, 99, 1, 1, 1, 1, 1, 1, 1, 99, 1, 1];
 export const GRIT = [0, 0, 0, 1, 2, 2, 4, 4, 10, 3, 0, 0, 1];
 export const GEMS = [0, 0, 0, 0, 0, 1, 5, 0, 0, 2, 0, 0, 0];
-export const onCore = (x, y) => Math.abs(x - C) <= 1 && Math.abs(y - C) <= 1;
 export const DX = [1, 0, -1, 0], DY = [0, 1, 0, -1];
-export const RELIC_R = 36, WORLD_R = 61;
+// Plain home ground runs out to HOME_R before any direction's ground begins; the flanks turn strange past DEEP_R;
+// what each direction hides lies RELIC_R out; the world ends at WORLD_R.
+export const HOME_R = 130, DEEP_R = 900, RELIC_R = 2000, WORLD_R = 4700;
+export const onCore = (x, y) => Math.abs(x - C) <= 1 && Math.abs(y - C) <= 1;
 
 const hash = (x, y, s) => {
   let h = Math.imul(x, 374761393) ^ Math.imul(y, 668265263) ^ Math.imul(s, 1442695041);
@@ -31,174 +33,128 @@ const noise = (x, y, s) => {
 
 export class World {
   constructor() {
-    this.kind = new Uint8Array(SIZE);
-    this.biome = new Uint8Array(SIZE);
-    this.seen = new Uint8Array(SIZE);
-    this.dist = new Int16Array(SIZE);      // steps of tether from the core, -1 where it cannot go
-    this.parent = new Int32Array(SIZE);
-    this.reached = new Uint8Array(SIZE);   // cells already revealed round
-    this.onPath = new Uint8Array(SIZE);    // cells the tether lies in
-    this.lava = new Float32Array(SIZE);    // seconds of lava left in an empty cell
-    this.dugAt = new Float32Array(SIZE);   // when the drill emptied a frost cell (0: never)
-    this.mark = new Uint8Array(SIZE);
-    this.queue = new Int32Array(SIZE);
+    this.chunks = new Array(CW * CW);      // each { kind, biome, seen }, made when first looked at
+    this.touched = new Set();              // pieces changed since the last save
+    this.lava = new Map();                 // seconds of lava left in an open cell
+    this.dug = new Map();                  // when the drill opened a cell of the north (for the ice to close it)
     this.seed = 1;
+    this.relicAt = [0, 1, 2, 3].map(d => (C + DY[d] * RELIC_R) * N + C + DX[d] * RELIC_R);
   }
-
-  generate(seed) {
+  reset(seed) {
     this.seed = seed;
-    const { kind, biome } = this;
-    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
-      const i = y * N + x, dx = x - C, dy = y - C, r = Math.sqrt(dx * dx + dy * dy);
-      // Which direction's ground this is: the larger of the two distances, on a wandering border.
-      const sway = Math.min(12, r * 0.45);
-      const wx = (noise(x / 9, y / 9, seed + 1) - 0.5) * sway, wy = (noise(x / 9, y / 9, seed + 2) - 0.5) * sway;
-      const ax = Math.abs(dx) + wx, ay = Math.abs(dy) + wy;
-      let b = ax > ay ? (dx > 0 ? B.LODE : B.MIRE) : (dy < 0 ? B.FROST : B.EMBER);
-      if (r < HOME_R + (noise(x / 4, y / 4, seed + 3) - 0.5) * 5) b = B.CRUST;
-      const deep = b !== B.CRUST && r > DEEP_R + (noise(x / 6, y / 6, seed + 14) - 0.5) * 6
-        && Math.min(Math.abs(dx), Math.abs(dy)) > Math.max(Math.abs(dx), Math.abs(dy)) * 0.36 + (noise(x / 7, y / 7, seed + 15) - 0.5) * 5;
-      biome[i] = deep ? b + 4 : b;
-      if (r > WORLD_R + (noise(x / 5, y / 5, seed + 4) - 0.5) * 3) { kind[i] = K.BEDROCK; continue; }
-      let k = K.SOFT;
-      if (b === B.CRUST) {
-        // Home ground: soft, with stones to go round and nuggets worth lassoing.
-        const h = hash(x, y, seed + 9);
-        if (r > 5 && noise(x / 4, y / 4, seed + 5) > 0.7) k = K.DENSE;
-        if (r > 4.5 && noise(x / 3, y / 3, seed + 6) > 0.64 && h < 0.6) k = K.ORE_A;
-      } else {
-        const h = hash(x, y, seed + 9);
-        if (r > 7 && noise(x / 4, y / 4, seed + 5) > (b === B.EMBER ? 0.64 : 0.68)) k = K.DENSE;
-        if (r > 6.5 && noise(x / 3, y / 3, seed + 6) > (deep ? 0.6 : 0.66) && h < 0.62) k = K.ORE_A;
-        if (r > 20 && noise(x / 3.5, y / 3.5, seed + 7) > (deep ? 0.66 : 0.74) && h < 0.5) k = K.ORE_B;
-        if (r > 17) {
-          const more = deep ? 1.8 : 1;
-          if (b === B.EMBER && noise(x / 2.5, y / 2.5, seed + 8) > (deep ? 0.72 : 0.78) && h > 0.45) k = K.HAZARD;
-          if (b === B.MIRE && hash(x, y, seed + 10) < 0.022 * more) k = K.HAZARD;
-          if (b === B.LODE && hash(x, y, seed + 10) < 0.026 * more) k = K.HAZARD;
-        }
-        const vein = Math.abs(noise(x / 9, y / 9, seed + 11) - 0.5);
-        if (r > 16 && vein < (b === B.LODE ? 0.05 : 0.03)) k = K.SLATE;
-        if (r > 30 && Math.abs(noise(x / 8, y / 8, seed + 12) - 0.5) < 0.028) k = K.VAULT;
-        if (r > 15 && noise(x / 5, y / 5, seed + 13) > (b === B.MIRE ? 0.68 : 0.8)) k = K.EMPTY;
-      }
-      kind[i] = k;
-    }
-    // What each direction hides: a relic sealed in ancient stone.
-    this.relicAt = [];
-    for (let d = 0; d < 4; d++) {
-      const cx = C + DX[d] * RELIC_R, cy = C + DY[d] * RELIC_R;
-      for (let y = -3; y <= 3; y++) for (let x = -3; x <= 3; x++) {
-        const i = (cy + y) * N + cx + x, edge = Math.max(Math.abs(x), Math.abs(y));
-        kind[i] = edge === 0 ? K.RELIC : edge <= 2 ? K.VAULT : (kind[i] === K.EMPTY || kind[i] === K.HAZARD ? K.SOFT : kind[i]);
-      }
-      this.relicAt.push(cy * N + cx);
-    }
-    // The core, the gap round it, and a first piece all but cut free, to show what a cut does.
-    // The core is a platform: the drill rides onto it. Its nine cells and the gap round them are open ground.
-    for (let y = -2; y <= 2; y++) for (let x = -2; x <= 2; x++) kind[(C + y) * N + C + x] = K.EMPTY;
-    // A first piece already cut loose beside the core, to show what drawing the tether round something does.
-    for (let y = -2; y <= 1; y++) for (let x = 3; x <= 6; x++) kind[(C + y) * N + C + x] = K.EMPTY;
-    kind[(C - 1) * N + C + 4] = K.ORE_A; kind[(C - 1) * N + C + 5] = K.SOFT;
-    kind[C * N + C + 4] = K.SOFT; kind[C * N + C + 5] = K.ORE_A;
-    this.lava.fill(0); this.dugAt.fill(0); this.seen.fill(0); this.reached.fill(0);
+    this.chunks = new Array(CW * CW);
+    this.touched.clear(); this.lava.clear(); this.dug.clear();
   }
 
-  solid(x, y) { return x < 0 || y < 0 || x >= N || y >= N || this.kind[y * N + x] !== K.EMPTY; }
-  at(x, y) { return x < 0 || y < 0 || x >= N || y >= N ? K.BEDROCK : this.kind[y * N + x]; }
-
-  // Where the tether can go and how much of it each cell takes. `radius` is how far round an open cell the
-  // scanner shows the ground. Returns how many cells were seen for the first time.
-  reach(radius) {
-    const { kind, dist, parent, queue, reached, seen } = this;
-    dist.fill(-1);
-    let head = 0, tail = 0, fresh = 0;
-    { const i = C * N + C; dist[i] = 0; parent[i] = -1; queue[tail++] = i; }
-    while (head < tail) {
-      const i = queue[head++], x = i % N, d = dist[i] + 1;
-      if (!reached[i]) {
-        reached[i] = 1;
-        const y = (i - x) / N;
-        for (let v = -radius; v <= radius; v++) for (let u = -radius; u <= radius; u++) {
-          const px = x + u, py = y + v;
-          if (px >= 0 && py >= 0 && px < N && py < N && !seen[py * N + px]) { seen[py * N + px] = 1; fresh++; }
-        }
-      }
-      if (x + 1 < N && kind[i + 1] === K.EMPTY && dist[i + 1] < 0) { dist[i + 1] = d; parent[i + 1] = i; queue[tail++] = i + 1; }
-      if (i + N < SIZE && kind[i + N] === K.EMPTY && dist[i + N] < 0) { dist[i + N] = d; parent[i + N] = i; queue[tail++] = i + N; }
-      if (x > 0 && kind[i - 1] === K.EMPTY && dist[i - 1] < 0) { dist[i - 1] = d; parent[i - 1] = i; queue[tail++] = i - 1; }
-      if (i >= N && kind[i - N] === K.EMPTY && dist[i - N] < 0) { dist[i - N] = d; parent[i - N] = i; queue[tail++] = i - N; }
+  // Whose ground a cell is, from the seed alone.
+  biomeAt(x, y) {
+    const seed = this.seed, dx = x - C, dy = y - C, r = Math.sqrt(dx * dx + dy * dy);
+    if (r < HOME_R + (noise(x / 30, y / 30, seed + 3) - 0.5) * 50) return B.CRUST;
+    // The larger of the two distances, on a border that wanders in long sweeps and small wobbles.
+    const far = Math.min(90, r * 0.2), near = Math.min(8, r * 0.1);
+    const ax = Math.abs(dx) + (noise(x / 61, y / 61, seed + 1) - 0.5) * far + (noise(x / 9, y / 9, seed + 16) - 0.5) * near;
+    const ay = Math.abs(dy) + (noise(x / 61, y / 61, seed + 2) - 0.5) * far + (noise(x / 9, y / 9, seed + 17) - 0.5) * near;
+    const b = ax > ay ? (dx > 0 ? B.LODE : B.MIRE) : (dy < 0 ? B.FROST : B.EMBER);
+    const deep = r > DEEP_R + (noise(x / 50, y / 50, seed + 14) - 0.5) * 200
+      && Math.min(Math.abs(dx), Math.abs(dy)) > Math.max(Math.abs(dx), Math.abs(dy)) * 0.36 + (noise(x / 37, y / 37, seed + 15) - 0.5) * 60;
+    return deep ? b + 4 : b;
+  }
+  // What a cell is before anything has touched it, from the seed alone.
+  kindAt(x, y, b) {
+    const seed = this.seed, dx = x - C, dy = y - C, r = Math.sqrt(dx * dx + dy * dy);
+    if (r > WORLD_R + (noise(x / 5, y / 5, seed + 4) - 0.5) * 3) return K.BEDROCK;
+    // The core is a platform: its nine cells and the gap round them are open. Beside it lies a first piece already
+    // cut loose, to show what drawing the tether round something does.
+    if (Math.abs(dx) <= 2 && Math.abs(dy) <= 2) return K.EMPTY;
+    if (dx >= 3 && dx <= 6 && dy >= -2 && dy <= 1) return dx === 3 || dx === 6 || dy === -2 || dy === 1 ? K.EMPTY : (dx + dy) % 2 ? K.ORE_A : K.SOFT;
+    // What each direction hides: a relic sealed in ancient stone.
+    for (let d = 0; d < 4; d++) {
+      const edge = Math.max(Math.abs(dx - DX[d] * RELIC_R), Math.abs(dy - DY[d] * RELIC_R));
+      if (edge === 0) return K.RELIC;
+      if (edge <= 3) return K.VAULT;
+      if (edge <= 5) return K.SOFT;
+    }
+    const h = hash(x, y, seed + 9), deep = b > 4, kin = base(b);
+    let k = K.SOFT;
+    if (b === B.CRUST) {
+      // Home ground: soft, with stones to go round, nuggets worth lassoing, and further out seams of slate.
+      if (r > 5 && noise(x / 4, y / 4, seed + 5) > 0.7) k = K.DENSE;
+      if (r > 4.5 && noise(x / 3, y / 3, seed + 6) > 0.64 && h < 0.6) k = K.ORE_A;
+      if (r > 55 && noise(x / 3.5, y / 3.5, seed + 7) > 0.78 && h < 0.5) k = K.ORE_B;
+      if (r > 35 && Math.abs(noise(x / 9, y / 9, seed + 11) - 0.5) < 0.022) k = K.SLATE;
+      if (r > 22 && noise(x / 5, y / 5, seed + 13) > 0.8) k = K.EMPTY;
+      if (r > 60 && noise(x / 19, y / 19, seed + 18) > 0.76) k = K.EMPTY;      // great open caverns
+      return k;
+    }
+    if (noise(x / 4, y / 4, seed + 5) > (kin === B.EMBER ? 0.64 : 0.68)) k = K.DENSE;
+    if (noise(x / 3, y / 3, seed + 6) > (deep ? 0.6 : 0.66) && h < 0.62) k = K.ORE_A;
+    if (noise(x / 3.5, y / 3.5, seed + 7) > (deep ? 0.66 : 0.74) && h < 0.5) k = K.ORE_B;
+    const more = deep ? 1.8 : 1;
+    if (kin === B.EMBER && noise(x / 2.5, y / 2.5, seed + 8) > (deep ? 0.72 : 0.78) && h > 0.45) k = K.HAZARD;
+    if (kin === B.MIRE && hash(x, y, seed + 10) < 0.022 * more) k = K.HAZARD;
+    if (kin === B.LODE && hash(x, y, seed + 10) < 0.026 * more) k = K.HAZARD;
+    if (Math.abs(noise(x / 9, y / 9, seed + 11) - 0.5) < (kin === B.LODE ? 0.05 : 0.03)) k = K.SLATE;
+    if (r > 600 && Math.abs(noise(x / 8, y / 8, seed + 12) - 0.5) < 0.028) k = K.VAULT;
+    if (noise(x / 5, y / 5, seed + 13) > (kin === B.MIRE ? 0.68 : 0.8)) k = K.EMPTY;
+    if (noise(x / 19, y / 19, seed + 18) > (kin === B.MIRE ? 0.7 : 0.78)) k = K.EMPTY;
+    return k;
+  }
+  // The piece of world holding a cell, made now if nothing has looked there before.
+  piece(id) {
+    let p = this.chunks[id];
+    if (p) return p;
+    p = this.chunks[id] = { kind: new Uint8Array(CH * CH), biome: new Uint8Array(CH * CH), seen: new Uint8Array(CH * CH) };
+    const x0 = (id % CW) * CH, y0 = ((id / CW) | 0) * CH;
+    for (let v = 0; v < CH; v++) for (let u = 0; u < CH; u++) {
+      const b = this.biomeAt(x0 + u, y0 + v);
+      p.biome[v * CH + u] = b; p.kind[v * CH + u] = this.kindAt(x0 + u, y0 + v, b);
+    }
+    return p;
+  }
+  k(i) { return this.piece(((i >>> 20) << 8) | ((i >>> 6) & 255)).kind[(((i >>> 14) & 63) << 6) | (i & 63)]; }
+  b(i) { return this.piece(((i >>> 20) << 8) | ((i >>> 6) & 255)).biome[(((i >>> 14) & 63) << 6) | (i & 63)]; }
+  s(i) { return this.piece(((i >>> 20) << 8) | ((i >>> 6) & 255)).seen[(((i >>> 14) & 63) << 6) | (i & 63)]; }
+  setK(i, v) { const id = ((i >>> 20) << 8) | ((i >>> 6) & 255); this.piece(id).kind[(((i >>> 14) & 63) << 6) | (i & 63)] = v; this.touched.add(id); }
+  setB(i, v) { const id = ((i >>> 20) << 8) | ((i >>> 6) & 255); this.piece(id).biome[(((i >>> 14) & 63) << 6) | (i & 63)] = v; this.touched.add(id); }
+  // Show the ground within `radius` cells of a cell. Returns whether anything new was seen.
+  see(cx, cy, radius) {
+    let fresh = false;
+    for (let y = cy - radius; y <= cy + radius; y++) for (let x = cx - radius; x <= cx + radius; x++) {
+      const id = ((y >> 6) << 8) | (x >> 6), p = this.piece(id), at = ((y & 63) << 6) | (x & 63);
+      if (!p.seen[at]) { p.seen[at] = 1; this.touched.add(id); fresh = true; }
     }
     return fresh;
   }
+  // What a cell is, without making its piece of the world: -1 where nothing has been seen yet.
+  peek(x, y) { const p = this.chunks[((y >> 6) << 8) | (x >> 6)]; return p && p.seen[((y & 63) << 6) | (x & 63)] ? p.kind[((y & 63) << 6) | (x & 63)] : -1; }
+  at(x, y) { return this.k(y * N + x); }
+  solid(x, y) { return this.k(y * N + x) !== K.EMPTY; }
+  lavaAt(i) { return this.lava.get(i) ?? 0; }
 
-  // The cells from `i` back to the core, and the cells the tether lies in.
-  path(i) {
-    const cells = [];
-    this.onPath.fill(0);
-    while (i >= 0 && this.dist[i] >= 0) { cells.push(i); this.onPath[i] = 1; i = this.parent[i]; }
-    return cells;
-  }
-
-  // Ground that no longer hangs on the world: every connected piece that touches neither the bedrock nor the core
-  // and has open, reached ground beside it. Each is a list of cells.
-  islands() {
-    const { kind, mark, queue, dist } = this;
-    mark.fill(0);
-    let tail = 0;
-    for (let i = 0; i < SIZE; i++) if (kind[i] === K.BEDROCK || kind[i] === K.CORE) { mark[i] = 1; queue[tail++] = i; }
-    for (let head = 0; head < tail; head++) {
-      const i = queue[head], x = i % N;
-      if (x + 1 < N && kind[i + 1] && !mark[i + 1]) { mark[i + 1] = 1; queue[tail++] = i + 1; }
-      if (i + N < SIZE && kind[i + N] && !mark[i + N]) { mark[i + N] = 1; queue[tail++] = i + N; }
-      if (x > 0 && kind[i - 1] && !mark[i - 1]) { mark[i - 1] = 1; queue[tail++] = i - 1; }
-      if (i >= N && kind[i - N] && !mark[i - N]) { mark[i - N] = 1; queue[tail++] = i - N; }
-    }
-    const found = [];
-    for (let s = 0; s < SIZE; s++) {
-      if (!kind[s] || mark[s]) continue;
-      const cells = [s];
-      let open = false;
-      mark[s] = 1;
-      for (let head = 0; head < cells.length; head++) {
-        const i = cells[head], x = i % N;
-        const near = [x + 1 < N ? i + 1 : -1, i + N < SIZE ? i + N : -1, x > 0 ? i - 1 : -1, i >= N ? i - N : -1];
-        for (const j of near) {
-          if (j < 0) continue;
-          if (kind[j]) { if (!mark[j]) { mark[j] = 1; cells.push(j); } } else if (dist[j] >= 0) open = true;
-        }
-      }
-      if (open) found.push(cells);
-    }
-    return found;
-  }
-
-  // The ground that would come free if solid cell `i` were cut, found by looking only round it: each neighbouring
-  // piece is followed until it proves to hang on the bedrock or to be larger than `limit` cells. Much cheaper than
-  // `islands`, and used only to light up a cut before it is made.
-  wouldFree(i, limit = 700) {
-    const { kind } = this;
-    const stamp = this.stamp ??= new Int32Array(SIZE), mark = this.stampAt = (this.stampAt ?? 0) + 1;
-    const freed = [];
-    stamp[i] = mark;
+  // The ground that hangs on nothing once cell `i` is open (or would, were it cut): each neighbouring piece is
+  // followed until it proves larger than `limit` cells or to reach the world's edge. A list of pieces, each a list
+  // of cells.
+  freed(i, limit = 700) {
+    const seen = new Set([i]), held = new Set(), found = [];
     for (const start of [i + 1, i - 1, i + N, i - N]) {
-      if (!kind[start] || stamp[start] === mark || stamp[start] === -mark) continue;
+      if (this.k(start) === K.EMPTY || seen.has(start)) continue;
       const cells = [start];
-      let held = false;
-      stamp[start] = mark;
-      for (let head = 0; head < cells.length && !held; head++) {
+      let stuck = false;
+      seen.add(start);
+      for (let head = 0; head < cells.length && !stuck; head++) {
         const c = cells[head];
         for (const j of [c + 1, c - 1, c + N, c - N]) {
-          if (j < 0 || j >= SIZE || !kind[j] || stamp[j] === mark) continue;
-          if (stamp[j] === -mark || kind[j] === K.BEDROCK || cells.length >= limit) { held = true; break; }
-          stamp[j] = mark; cells.push(j);
+          if (seen.has(j)) { if (held.has(j)) { stuck = true; break; } continue; }
+          const kind = this.k(j);
+          if (kind === K.EMPTY) continue;
+          if (kind === K.BEDROCK || cells.length >= limit) { stuck = true; break; }
+          seen.add(j); cells.push(j);
         }
       }
-      // Held ground is stamped as such, so the next neighbour's piece stops as soon as it meets it.
-      if (held) { for (const c of cells) stamp[c] = -mark; continue; }
-      freed.push(cells);
+      if (stuck) { for (const c of cells) held.add(c); continue; }
+      found.push(cells);
     }
-    return freed;
+    return found;
   }
 
   // The blob mask of a cell among its solid neighbours (N=1, NE=2, E=4, SE=8, S=16, SW=32, W=64, NW=128), a corner
@@ -209,82 +165,36 @@ export class World {
       | (s ? 16 : 0) | (s && w && this.solid(x - 1, y + 1) ? 32 : 0) | (w ? 64 : 0) | (w && n && this.solid(x - 1, y - 1) ? 128 : 0);
   }
   lavaMask(x, y) {
-    const L = (u, v) => u >= 0 && v >= 0 && u < N && v < N && (this.lava[v * N + u] > 0 || this.kind[v * N + u] !== K.EMPTY);
+    const L = (u, v) => this.lava.has(v * N + u) || this.k(v * N + u) !== K.EMPTY;
     const n = L(x, y - 1), e = L(x + 1, y), s = L(x, y + 1), w = L(x - 1, y);
     return (n ? 1 : 0) | (n && e && L(x + 1, y - 1) ? 2 : 0) | (e ? 4 : 0) | (e && s && L(x + 1, y + 1) ? 8 : 0)
       | (s ? 16 : 0) | (s && w && L(x - 1, y + 1) ? 32 : 0) | (w ? 64 : 0) | (w && n && L(x - 1, y - 1) ? 128 : 0);
   }
 }
 
-// Is the straight line between two cell centres clear of solid ground? Used to pull the drawn tether taut.
-export function clear(world, x0, y0, x1, y1) {
-  const dx = x1 - x0, dy = y1 - y0, steps = Math.ceil(Math.max(Math.abs(dx), Math.abs(dy)) * 4);
-  for (let s = 1; s < steps; s++) {
-    const t = s / steps, x = x0 + dx * t, y = y0 + dy * t;
-    // The line has the width of the string: test a little to each side of it.
-    for (const [ox, oy] of [[0.18, 0.18], [-0.18, 0.18], [0.18, -0.18], [-0.18, -0.18]]) {
-      if (world.kind[Math.floor(y + 0.5 + oy) * N + Math.floor(x + 0.5 + ox)] !== K.EMPTY) return false;
-    }
+// Every cell a straight line passes through, in order, each sharing a side with the one before. Points are in
+// cells, a cell's middle at +0.5.
+export function cellsAlong(x0, y0, x1, y1, max = 6000) {
+  let cx = Math.floor(x0), cy = Math.floor(y0);
+  const ex = Math.floor(x1), ey = Math.floor(y1), dx = x1 - x0, dy = y1 - y0, sx = dx > 0 ? 1 : -1, sy = dy > 0 ? 1 : -1;
+  const tdx = dx ? Math.abs(1 / dx) : Infinity, tdy = dy ? Math.abs(1 / dy) : Infinity, cells = [cy * N + cx];
+  let tx = dx ? (dx > 0 ? cx + 1 - x0 : x0 - cx) * tdx : Infinity, ty = dy ? (dy > 0 ? cy + 1 - y0 : y0 - cy) * tdy : Infinity;
+  for (let guard = 0; guard < max && (cx !== ex || cy !== ey); guard++) {
+    if (tx < ty) { tx += tdx; cx += sx; } else { ty += tdy; cy += sy; }
+    cells.push(cy * N + cx);
   }
-  return true;
+  return cells;
 }
-
-// ---------------------------------------------------------------- the taut string
-// Is the straight line between two points (in cells, a cell's middle at +0.5) clear of ground? The core lets it in.
+// Is the straight line between two points clear of ground?
 export function sight(world, x0, y0, x1, y1) {
-  const kind = world.kind;
   let cx = Math.floor(x0), cy = Math.floor(y0);
   const ex = Math.floor(x1), ey = Math.floor(y1), dx = x1 - x0, dy = y1 - y0, sx = dx > 0 ? 1 : -1, sy = dy > 0 ? 1 : -1;
   const tdx = dx ? Math.abs(1 / dx) : Infinity, tdy = dy ? Math.abs(1 / dy) : Infinity;
   let tx = dx ? (dx > 0 ? cx + 1 - x0 : x0 - cx) * tdx : Infinity, ty = dy ? (dy > 0 ? cy + 1 - y0 : y0 - cy) * tdy : Infinity;
-  for (let guard = 0; guard < 600; guard++) {
-    const k = kind[cy * N + cx];
-    if (k !== K.EMPTY && k !== K.CORE) return false;
+  for (let guard = 0; guard < 12000; guard++) {
+    if (world.k(cy * N + cx) !== K.EMPTY) return false;
     if (cx === ex && cy === ey) return true;
     if (tx < ty) { tx += tdx; cx += sx; } else { ty += tdy; cy += sy; }
   }
   return false;
-}
-
-// The shortest line from a cell's middle to the core through open ground: straight, except where it wraps the
-// corner of something solid. Its points, in cells. Every corner that sticks out into reached ground is a place the
-// string may bend; the search is A* over those corners, joined wherever one sees another.
-export function taut(world, sx, sy, limit) {
-  const { kind, dist } = world, gx = C + 0.5, gy = C + 0.5, o = 0.15;
-  sx += 0.5; sy += 0.5;
-  if (sight(world, sx, sy, gx, gy)) return [[sx, sy], [gx, gy]];
-  const reach = limit + 2, far = Math.hypot(sx - gx, sy - gy);
-  const x0 = Math.max(1, Math.floor(Math.min(sx, gx) - reach)), x1 = Math.min(N - 1, Math.ceil(Math.max(sx, gx) + reach));
-  const y0 = Math.max(1, Math.floor(Math.min(sy, gy) - reach)), y1 = Math.min(N - 1, Math.ceil(Math.max(sy, gy) + reach));
-  const xs = [sx, gx], ys = [sy, gy];
-  const open = i => kind[i] === K.EMPTY && dist[i] >= 0;
-  for (let vy = y0; vy <= y1; vy++) for (let vx = x0; vx <= x1; vx++) {
-    // A string no longer than the tether cannot bend further out than this.
-    if (Math.hypot(vx - sx, vy - sy) + Math.hypot(vx - gx, vy - gy) > limit + far * 0.5 + 3) continue;
-    const a = (vy - 1) * N + vx - 1, b = a + 1, c = a + N, d = c + 1;
-    const sa = kind[a] !== K.EMPTY, sb = kind[b] !== K.EMPTY, sc = kind[c] !== K.EMPTY, sd = kind[d] !== K.EMPTY;
-    if (sa + sb + sc + sd !== 1) continue;
-    if (sa && open(d)) { xs.push(vx + o); ys.push(vy + o); }
-    else if (sb && open(c)) { xs.push(vx - o); ys.push(vy + o); }
-    else if (sc && open(b)) { xs.push(vx + o); ys.push(vy - o); }
-    else if (sd && open(a)) { xs.push(vx - o); ys.push(vy - o); }
-  }
-  const n = xs.length, cost = new Float32Array(n).fill(Infinity), from = new Int32Array(n).fill(-1), state = new Uint8Array(n);
-  cost[0] = 0;
-  for (;;) {
-    let i = -1, best = Infinity;
-    for (let j = 0; j < n; j++) if (state[j] === 1 || j === 0 && !state[0]) { const f = cost[j] + Math.hypot(xs[j] - gx, ys[j] - gy); if (f < best) { best = f; i = j; } }
-    if (i < 0) return null;
-    if (i === 1) break;
-    state[i] = 2;
-    for (let j = 1; j < n; j++) {
-      if (state[j] === 2) continue;
-      const c2 = cost[i] + Math.hypot(xs[j] - xs[i], ys[j] - ys[i]);
-      if (c2 >= cost[j] || !sight(world, xs[i], ys[i], xs[j], ys[j])) continue;
-      cost[j] = c2; from[j] = i; state[j] = 1;
-    }
-  }
-  const pts = [];
-  for (let i = 1; i >= 0; i = from[i]) pts.push([xs[i], ys[i]]);
-  return pts.reverse();
 }

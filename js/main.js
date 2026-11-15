@@ -5,6 +5,7 @@ import { Game } from './game.js';
 const canvas = document.getElementById('game');
 await loadAtlas();
 const game = new Game(canvas);
+await game.restore();
 
 function resize() {
   const w = window.innerWidth || 360, h = window.innerHeight || 640;
