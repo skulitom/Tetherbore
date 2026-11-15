@@ -3,17 +3,26 @@
 // stock tether faults, spans in a closed seam, the drill's own cell being rock, and how long the drill sat unable to
 // move while steered.
 // Fails on any frame with a fault. (Not for a start in the north: the frost has no hazard of its own.)
-//   node test/regress/e-hazard-fuzz.mjs [seed=1] [turns=500] [start x=0] [start y=170] [density=0.08] [reach=5]
+//   node test/regress/e-hazard-fuzz.mjs [seed=1] [turns=500] [start x=0] [start y=170] [density=0.08] [reach=5] [second]
+// With `second`, every ground that has a hazard is given a second one for the flight (the south spore pods, the
+// west charged crystals, the east lava), the world lays it as it lays any row's, and half the hazards planted are
+// the second: lava among moss, arcs beside lava, pods among crystals.
 import { makeGame, tetherFaults, seamFaults, moreFaults, random, bandRel, rel, C, N, K } from './lib/terrain.mjs';
-const [seed = 1, turns = 500, sx = 0, sy = 170, density = 0.08, reach = 5] = process.argv.slice(2).map(Number);
+import { world } from '../harness.mjs';
+const [seed = 1, turns = 500, sx = 0, sy = 170, density = 0.08, reach = 5] = process.argv.slice(2).map(Number), second = process.argv[8] === 'second';
+if (second) {
+  const NEXT = { lava: { type: 'spore', rate: 1 }, spore: { type: 'spark', rate: 1 }, spark: { type: 'lava', rate: 1, t: 0.78 } };
+  for (const row of world.BIOMES.slice(1, 9)) if (row.haz) world.biome({ ...row, haz2: NEXT[row.haz.type] });
+}
 const game = await makeGame(seed, { tether: reach, drill: 4 });
 const d = game.drill, w = game.world, rnd = random(seed + 77);
 const len = Math.hypot(sx, sy);
 for (let s = 0; s <= len; s += 0.5) for (let u = -1; u <= 1; u++) for (let v = -1; v <= 1; v++) w.setK((C + Math.round(sy * s / len) + v) * N + C + Math.round(sx * s / len) + u, K.EMPTY);
-let made = 0;
+let made = 0, seconds = 0;
 for (let y = sy - 45; y <= sy + 45; y++) for (let x = sx - 45; x <= sx + 45; x++) {
   const i = (C + y) * N + C + x, k = w.k(i);
-  if ((k === K.SOFT || k === K.DENSE) && w.b(i) !== 0 && rnd() < density) { w.setK(i, K.HAZARD); made++; }
+  if ((k === K.SOFT || k === K.DENSE) && w.b(i) !== 0 && rnd() < density) { w.setK(i, second && rnd() < 0.5 ? K.HAZARD2 : K.HAZARD); made++; }
+  if (w.k(i) === K.HAZARD2) seconds++;
 }
 d.x = C + sx + 0.5; d.y = C + sy + 0.5; d.mode = 'free';
 game.band = [[d.x, d.y], [C + 0.5, C + 0.5]];
@@ -40,5 +49,5 @@ for (let turn = 0; turn < turns; turn++) {
     }
   }
 }
-console.log(JSON.stringify({ seed, start: [sx, sy], hazardsMade: made, frames, framesWithFaults: bad, kinds: Object.fromEntries(seen), mostLavaCells: lavaMost, longestStuckSeconds: +(worst / 60).toFixed(1), hauls: game.S.stats.hauls, at: rel([d.x, d.y]), bends: game.band.length }));
-process.exit(bad ? 1 : 0);
+console.log(JSON.stringify({ seed, start: [sx, sy], hazardsMade: made, secondHazards: seconds, frames, framesWithFaults: bad, kinds: Object.fromEntries(seen), mostLavaCells: lavaMost, longestStuckSeconds: +(worst / 60).toFixed(1), hauls: game.S.stats.hauls, at: rel([d.x, d.y]), bends: game.band.length }));
+process.exit(bad || (second && !seconds) ? 1 : 0);

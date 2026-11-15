@@ -180,7 +180,7 @@ export const cellHash = hash;
 // hashes of the square it was last asked about: a piece of the world is made a row at a time, so most cells ask
 // about the square the cell before them did.
 // Layers and hash seeds in use (added to the world's seed): 1-3 and 14-17 whose ground a cell is; 4 the world's
-// edge; 5-13 and 18 the ground itself; 21-24 finds; 31-32 wrecks. docs/CONTENT-PLAN.md (S3)
+// edge; 5-13 and 18 the ground itself; 21-24 finds; 31-32 wrecks; 58-59 a second hazard. docs/CONTENT-PLAN.md (S3)
 // allots the rest: take a number from there, so that no two rules read the same layer.
 const kept = new Float64Array(128 * 7).fill(NaN);
 const noise = (x, y, s, k = s & 127) => {
@@ -307,13 +307,16 @@ export class World {
       return K.SOFT;
     }
     // Every other ground is laid the same way, by its row's own thresholds (`lay`), and in the same order: the
-    // last of these to hold is what the cell is, as above.
+    // last of these to hold is what the cell is, as above. A second hazard has layers of its own (58, and 59 for
+    // the hash), so it never lies where the first does, and gives way to it.
     if (noise(x / 19, y / 19, seed + 18, 18) > g.cavern) return K.EMPTY;
     if (noise(x / 5, y / 5, seed + 13, 13) > g.cave) return K.EMPTY;
     if (r > 600 && Math.abs(noise(x / 8, y / 8, seed + 12, 12) - 0.5) < 0.028) return K.VAULT;
     if (Math.abs(noise(x / 9, y / 9, seed + 11, 11) - 0.5) < g.slate) return K.SLATE;
     if (g.haz === SCATTER) { if (hash(x, y, seed + 10) < g.hazT) return K.HAZARD; }
     else if (g.haz === POCKETS && h > 0.45 && noise(x / 2.5, y / 2.5, seed + 8, 8) > g.hazT) return K.HAZARD;
+    if (g.haz2 === SCATTER) { if (hash(x, y, seed + 59) < g.haz2T) return K.HAZARD2; }
+    else if (g.haz2 === POCKETS && h > 0.45 && noise(x / 2.5, y / 2.5, seed + 58, 58) > g.haz2T) return K.HAZARD2;
     if (h < 0.5 && noise(x / 3.5, y / 3.5, seed + 7, 7) > g.oreB) return K.ORE_B;
     if (h < 0.62 && noise(x / 3, y / 3, seed + 6, 6) > g.oreA) return K.ORE_A;
     if (noise(x / 4, y / 4, seed + 5, 5) > g.dense) return K.DENSE;
