@@ -5,6 +5,7 @@ import { sheets, draw, drawScaled, frameAt, duration, slice9, text, textWidth } 
 import { sfx, unlock, isMuted, setMuted, setAmbience } from './audio.js';
 
 const T = 16;                                   // pixels in a cell
+const BURST = 0.26, GATHER = 0.22, SHARD_LAG = 0.09;   // a hauled block: seconds bursting apart, drawn to the tether, and between its quarters
 const HX = C + 0.5, HY = C + 0.5;               // the middle of the core, in cells
 const SAVE_KEY = 'tetherbore-save-v3';
 const DIR_BIOME = [B.LODE, B.EMBER, B.MIRE, B.FROST];
@@ -200,11 +201,18 @@ export class Game {
   tend(rounds, bends) {
     const w = this.world, d = this.drill, P = this.band;
     P[0] = [d.x, d.y];
-    if (P.length >= 2 && !sight(w, d.x, d.y, P[1][0], P[1][1]) && sight(w, d.px, d.py, P[1][0], P[1][1])) P.splice(1, 0, [d.px, d.py]);
+    if (P.length >= 2 && !sight(w, d.x, d.y, P[1][0], P[1][1]) && sight(w, d.px, d.py, P[1][0], P[1][1])) {
+      // The new bend is drawn tight against the corner that caught the string before anything is shown, so the
+      // string is never seen bent in the open.
+      P.splice(1, 0, [d.px, d.py]); rounds = Math.max(rounds, 60); bends = Math.max(bends, 2);
+    }
     // A point of string keeps a hair clear of ground on every side.
     const m = 0.14, open = (x, y) => w.k(Math.floor(y - m) * N + Math.floor(x - m)) === K.EMPTY && w.k(Math.floor(y - m) * N + Math.floor(x + m)) === K.EMPTY
       && w.k(Math.floor(y + m) * N + Math.floor(x - m)) === K.EMPTY && w.k(Math.floor(y + m) * N + Math.floor(x + m)) === K.EMPTY;
-    for (let round = 0; round < rounds; round++) {
+    // A slack string snaps taut at once rather than creeping: rounds go on until nothing moves, within a budget of
+    // cells looked along so that a very long tether cannot hold up a frame.
+    let work = 0;
+    for (let round = 0; round < rounds && work < 40000; round++) {
       let moved = false;
       for (let n = Math.min(bends, P.length - 2); n >= 1; n--) {
         const a = P[n - 1], b = P[n], c = P[n + 1];
@@ -213,12 +221,14 @@ export class Game {
         let dx = a[0] + ux * t - b[0], dy = a[1] + uy * t - b[1];
         const far = Math.hypot(dx, dy);
         if (far < 0.07) { if (sight(w, a[0], a[1], c[0], c[1])) { P.splice(n, 1); moved = true; } continue; }
-        for (const step of [Math.min(far, 0.3), Math.min(far, 0.08)]) {
+        for (const step of [Math.min(far, 0.3), Math.min(far, 0.08), Math.min(far, 0.02)]) {
           let done = false;
           for (const [mx, my] of [[dx * step / far, dy * step / far], [dx * step / far, 0], [0, dy * step / far]]) {
             if (Math.abs(mx) + Math.abs(my) < 0.004) continue;
             const qx = b[0] + mx, qy = b[1] + my;
-            if (!open(qx, qy) || !sight(w, b[0], b[1], qx, qy) || !sight(w, a[0], a[1], qx, qy) || !sight(w, qx, qy, c[0], c[1])) continue;
+            if (!open(qx, qy)) continue;
+            work += Math.abs(a[0] - qx) + Math.abs(a[1] - qy) + Math.abs(c[0] - qx) + Math.abs(c[1] - qy);
+            if (!sight(w, b[0], b[1], qx, qy) || !sight(w, a[0], a[1], qx, qy) || !sight(w, qx, qy, c[0], c[1])) continue;
             P[n] = [qx, qy]; moved = done = true;
             break;
           }
@@ -463,12 +473,22 @@ export class Game {
     S.stats.hauls++; S.stats.best = Math.max(S.stats.best, n);
     sprites.sort((a, b) => a.far - b.far);
     const count = sprites.length, spread = Math.min(1.7, 0.25 + count * 0.018), lift = Math.min(0.5, 0.26 + count * 0.003);
-    sprites.forEach((s, i) => { s.go = lift + (count > 1 ? i / (count - 1) : 0) * spread; s.done = false; });
-    // The bundle rides the tether from the drill to the core.
-    const route = this.band.map(([x, y]) => [x * T, y * T]);
-    let length = 0;
-    for (let k = 1; k < route.length; k++) length += Math.hypot(route[k][0] - route[k - 1][0], route[k][1] - route[k - 1][1]);
-    this.hauls.push({ sprites, t: 0, n, count, grit, gems, left: grit, paid: 0, lift, relic, route, length, speed: Math.max(260, length / 1.6) });
+    // The rubble rides the tether to the core: each block joins it at the nearest point and runs in from there.
+    const route = this.band.map(([x, y]) => [x * T, y * T]), cum = [0];
+    for (let k = 1; k < route.length; k++) cum.push(cum[k - 1] + Math.hypot(route[k][0] - route[k - 1][0], route[k][1] - route[k - 1][1]));
+    const length = cum[cum.length - 1], speed = Math.max(300, length / 1.1);
+    sprites.forEach((s, i) => {
+      s.go = lift + (count > 1 ? i / (count - 1) : 0) * spread; s.done = false;
+      const px = (s.x + 0.5) * T, py = (s.y + 0.5) * T;
+      let best = Infinity; s.at = 0;
+      for (let k = 1; k < route.length; k++) {
+        const ax = route[k - 1][0], ay = route[k - 1][1], bx = route[k][0] - ax, by = route[k][1] - ay, len = bx * bx + by * by;
+        const u = len ? Math.max(0, Math.min(1, ((px - ax) * bx + (py - ay) * by) / len)) : 0, gap = Math.hypot(px - ax - bx * u, py - ay - by * u);
+        if (gap < best) { best = gap; s.at = cum[k - 1] + (cum[k] - cum[k - 1]) * u; }
+      }
+      s.arrive = s.go + SHARD_LAG + BURST + GATHER + (length - s.at) / speed;
+    });
+    this.hauls.push({ sprites, t: 0, n, count, grit, gems, left: grit, paid: 0, lift, relic, route, cum, length, speed });
     cx = (cx / n + 0.5) * T; cy = (cy / n + 0.5) * T;
     this.effect('haul', 'impact', cx, cy);
     if (n >= 20) this.effect('bank', 'area', cx, cy);
@@ -482,16 +502,59 @@ export class Game {
     this.banner = { title, n, mult, grit, gems, t: 0, life: 2.2 + Math.min(1.2, n * 0.01) };
     if (relic >= 0) { S.relics[relic] = 1; sfx.relic(); if (S.relics.every(Boolean) && !S.won) { S.won = true; this.wonAt = this.time; } }
   }
-  // A lassoed piece gathers into a bundle, runs in along the tether, and is paid out at the core.
+  // A point `dist` pixels along a haul's route, from the drill's end toward the core.
+  along(h, dist) {
+    const { route, cum } = h;
+    if (dist <= 0 || route.length < 2) return route[0];
+    if (dist >= h.length) return route[route.length - 1];
+    let k = 1;
+    while (cum[k] < dist) k++;
+    const u = (dist - cum[k - 1]) / ((cum[k] - cum[k - 1]) || 1);
+    return [route[k - 1][0] + (route[k][0] - route[k - 1][0]) * u, route[k - 1][1] + (route[k][1] - route[k - 1][1]) * u];
+  }
+  // One quarter (`q`, 0 to 3) of a hauled block, in world pixels: [x, y, size]. The block trembles, bursts into its
+  // four quarters, they are drawn on to the tether, and they run in along it, shrinking as they go.
+  shard(h, s, q) {
+    const qx = q & 1, qy = q >> 1, r = cellHash(s.x * 4 + q, s.y, 31), r2 = cellHash(s.x, s.y * 4 + q, 37);
+    let x = s.x * T + qx * 8, y = s.y * T + qy * 8 - Math.min(1, h.t / h.lift) * 3;
+    const before = h.t - s.go;
+    if (before < 0) {
+      const shake = Math.max(0, 1 + before / 0.3) * 1.4;
+      return [x + Math.sin(h.t * 83 + s.x * 3.1) * shake, y + Math.cos(h.t * 71 + s.y * 2.3) * shake, 8];
+    }
+    const tau = Math.max(0, before - r * SHARD_LAG);
+    const a = Math.atan2(qy - 0.5, qx - 0.5) + (r2 - 0.5) * 1.8, reach = 4 + r * 9;
+    const u = Math.min(1, tau / BURST), e = 1 - (1 - u) * (1 - u);
+    x += Math.cos(a) * reach * e; y += Math.sin(a) * reach * e;
+    if (tau <= BURST) return [x, y, 8];
+    const ox = (r - 0.5) * 7, oy = (r2 - 0.5) * 7;
+    if (tau < BURST + GATHER) {
+      const v = (tau - BURST) / GATHER, e2 = v * v, [tx, ty] = this.along(h, s.at);
+      return [x + (tx + ox - 3 - x) * e2, y + (ty + oy - 3 - y) * e2, 8 - 2 * v];
+    }
+    const dist = s.at + (tau - BURST - GATHER) * h.speed, [px, py] = this.along(h, dist), left = Math.min(1, (h.length - dist) / 40);
+    return [px + ox * left - 3, py + oy * left - 3, dist >= h.length ? 0 : 6 - 2 * Math.min(1, (dist - s.at) / 160)];
+  }
+  // A lassoed piece crumbles block by block, the rubble runs in along the tether, and it is paid out at the core.
   updateHauls(dt) {
     for (const h of this.hauls) {
       h.t += dt;
-      if (h.home === undefined && (h.t - h.lift - 0.45) * h.speed >= h.length) h.home = h.t;
       let arrived = 0;
       for (const s of h.sprites) {
-        if (!s.done && h.home !== undefined && h.t >= s.go + 0.42 && h.t >= h.home + (s.go - h.lift) * 0.5 + 0.12) {
+        if (s.done) continue;
+        if (!s.broke && h.t >= s.go) {
+          s.broke = true;
+          if (h.count < 80 || cellHash(s.x, s.y, 9) < 0.35) this.chips(s.x, s.y, s.tile[0], 3, null, 0.8);
+          if (this.time - (this.lastSnap ?? 0) > 0.05) { this.lastSnap = this.time; sfx.dig((s.x + s.y) & 1); }
+        }
+        if (h.t >= s.arrive) {
           s.done = true; arrived++;
           if (s.gem) this.pending.gems[s.gem] = Math.max(0, this.pending.gems[s.gem] - s.gems);
+        } else if (s.broke && h.t > s.go + BURST && this.parts.length < 380 && Math.random() < dt * (h.count < 40 ? 14 : 5)) {
+          // Dust shed along the way.
+          const [x, y] = this.shard(h, s, (Math.random() * 4) | 0), colors = DEBRIS[s.tile[0]] ?? DEBRIS.crust;
+          this.parts.push({ x: x + 2, y: y + 2, vx: (Math.random() - 0.5) * 16, vy: (Math.random() - 0.5) * 16, t: 0, life: 0.2 + Math.random() * 0.3,
+            color: s.over && Math.random() < 0.5 ? '#fff6c8' : colors[(Math.random() * colors.length) | 0], size: 1 });
         }
       }
       if (arrived) {
@@ -721,7 +784,7 @@ export class Game {
     if (this.confirmReset > 0) this.confirmReset -= dt;
     if (!this.shop) {
       this.fly(dt);
-      this.tend(3, 4);
+      this.tend(60, 6);
       this.reelTick = (this.reelTick ?? 0) + dt;
       if (this.reelTick > 0.1) { this.reelTick = 0; this.reelIfRound(); }
       this.updateHazards(dt);
@@ -810,41 +873,39 @@ export class Game {
       });
     }
     this.drawTether(ox, oy);
-    // Lassoed pieces: they lift, gather into a bundle, run in along the tether, then drop into the core.
-    const hx = HX * T - ox, hy = HY * T - oy;
+    // Lassoed pieces: each block trembles, cracks and breaks into quarters, which stream in along the tether.
     for (const h of this.hauls) {
-      // The bundle is packed as a disc as wide as the piece was big.
-      const girth = Math.min(40, 4 + Math.sqrt(h.count) * 4.2);
-      let run = Math.max(0, (h.t - h.lift - 0.45) * h.speed), tailX = h.route[0][0] - ox, tailY = h.route[0][1] - oy;
-      for (let k = 1; k < h.route.length && run > 0; k++) {
-        const seg = Math.hypot(h.route[k][0] - h.route[k - 1][0], h.route[k][1] - h.route[k - 1][1]), take = Math.min(seg, run);
-        tailX = h.route[k - 1][0] + (h.route[k][0] - h.route[k - 1][0]) * (seg ? take / seg : 1) - ox;
-        tailY = h.route[k - 1][1] + (h.route[k][1] - h.route[k - 1][1]) * (seg ? take / seg : 1) - oy;
-        run -= take;
-      }
       const flash = h.t < h.lift && ((h.t * 24) | 0) % 2 === 0;
-      h.sprites.forEach((s, n) => {
-        if (s.done) return;
-        const u = Math.max(0, Math.min(1, (h.t - s.go) / 0.42)), e = u * u;
-        const lift = Math.min(1, h.t / h.lift) * 3;
-        const ring = Math.sqrt((n + 0.5) / h.count) * girth, turn = n * 2.39996 + h.t * 0.6;
-        let bx = tailX + Math.cos(turn) * ring - 8, by = tailY + Math.sin(turn) * ring - 8;
-        if (h.home !== undefined) {
-          // Home: each piece in turn leaves the bundle for the core.
-          const v = Math.max(0, Math.min(1, (h.t - h.home) / ((s.go - h.lift) * 0.5 + 0.12)));
-          bx += (hx - 8 - bx) * v * v; by += (hy - 8 - by) * v * v;
+      for (const s of h.sprites) {
+        if (s.done) continue;
+        const before = h.t - s.go, image = sheets[s.tile[0]].image, r = s.tile[1];
+        const sx = s.x * T - ox, sy = s.y * T - oy;
+        if (before < 0) {
+          if (sx < -T || sy < -T || sx > W || sy > H) continue;
+          const [x, y] = this.shard(h, s, 0), px = x - ox, py = y - oy;
+          draw(ctx, s.tile[0], r, px, py);
+          if (s.over) draw(ctx, this.itemSheet(s.biome), s.over === 'hazard' || s.over === 'relic' ? frameAt(this.itemSheet(s.biome), s.over, 0) : s.over, px, py);
+          if (before > -0.24) draw(ctx, 'cracks', `crack-${Math.min(4, 1 + (((before + 0.24) / 0.06) | 0))}`, px, py);
+          if (flash) { ctx.globalAlpha = 0.6; ctx.fillStyle = '#ffffff'; ctx.fillRect(Math.round(px) + 2, Math.round(py) + 2, 12, 12); ctx.globalAlpha = 1; }
+          continue;
         }
-        let px = s.x * T - ox, py = s.y * T - oy - lift, size = T;
-        if (u > 0) { px += (bx - px) * e; py += (by - py) * e; size = Math.round(T - 5 * u); }
-        if (px < -T || py < -T || px > W || py > H) return;
-        const off = (T - size) / 2;
-        if (size === T) draw(ctx, s.tile[0], s.tile[1], px, py); else drawScaled(ctx, s.tile[0], s.tile[1], px + off, py + off, size, size);
-        if (s.over) {
+        let mx = 0, my = 0, shown = 0;
+        for (let q = 0; q < 4; q++) {
+          const [x, y, size] = this.shard(h, s, q), px = Math.round(x - ox), py = Math.round(y - oy), sz = Math.round(size);
+          if (sz < 1) continue;
+          mx += px + sz / 2; my += py + sz / 2; shown++;
+          if (px < -8 || py < -8 || px > W || py > H) continue;
+          ctx.drawImage(image, r[0] + (q & 1) * 8, r[1] + (q >> 1) * 8, 8, 8, px, py, sz, sz);
+          // The break shows white for a moment.
+          if (before < 0.07) { ctx.globalAlpha = 0.7; ctx.fillStyle = '#ffffff'; ctx.fillRect(px, py, sz, sz); ctx.globalAlpha = 1; }
+        }
+        // What the block held rides in the middle of its rubble.
+        if (s.over && shown) {
           const items = this.itemSheet(s.biome), f = s.over === 'hazard' || s.over === 'relic' ? frameAt(items, s.over, 0) : s.over;
-          if (size === T) draw(ctx, items, f, px, py); else drawScaled(ctx, items, f, px + off, py + off, size, size);
+          const size = Math.round(Math.max(9, T - before * 26));
+          drawScaled(ctx, items, f, mx / shown - size / 2, my / shown - size / 2, size, size);
         }
-        if (flash) { ctx.globalAlpha = 0.6; ctx.fillStyle = '#ffffff'; ctx.fillRect(Math.round(px) + 2, Math.round(py) + 2, 12, 12); ctx.globalAlpha = 1; }
-      });
+      }
     }
     // Spore clouds.
     for (const c of this.clouds) {
