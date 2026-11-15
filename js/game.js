@@ -4,7 +4,7 @@ import { World, N, C, K, B, HARD, GRIT, GEMS, DX, DY, BIOME_NAMES, base, cellHas
 import { sheets, draw, drawScaled, frameAt, duration, slice9, text, textWidth } from './atlas.js';
 import { sfx, unlock, isMuted, setMuted, setAmbience } from './audio.js';
 
-const T = 16;                                   // pixels in a cell
+export const T = 16;                            // pixels in a cell
 const HX = C + 0.5, HY = C + 0.5;               // the middle of the core, in cells
 const SAVE_KEY = 'tetherbore-save-v3';
 const DIR_BIOME = [B.LODE, B.EMBER, B.MIRE, B.FROST];
@@ -71,7 +71,7 @@ const DEBRIS = {
 };
 const GLOOM = [[10, 8, 7], [5, 12, 30], [22, 5, 6], [14, 6, 26], [22, 13, 4], [3, 18, 24], [30, 5, 3], [26, 4, 28], [24, 18, 2]];
 const MOTE = ['#8a7a66', '#ffffff', '#ff9a3a', '#a5f0a0', '#ffe08a', '#d8fff4', '#ffc040', '#ffa0e0', '#ffe680'];
-const MAPC = [[111, 91, 73], [188, 216, 238], [116, 64, 58], [102, 84, 120], [185, 138, 90], [98, 184, 180], [122, 36, 24], [138, 60, 140], [110, 90, 52]];
+export const MAPC = [[111, 91, 73], [188, 216, 238], [116, 64, 58], [102, 84, 120], [185, 138, 90], [98, 184, 180], [122, 36, 24], [138, 60, 140], [110, 90, 52]];
 // How the tether looks at each level of reach: rope, braid, cable, then lines of light.
 const TETHERS = [
   { a: '#e8dcc0', b: '#e8dcc0', dash: 1 }, { a: '#e8dcc0', b: '#b89a6c', dash: 0.5 }, { a: '#f0d890', b: '#b0803a', dash: 0.5 },
@@ -114,6 +114,7 @@ export class Game {
     this.shake = 0; this.twang = 0; this.edge = 0; this.hurt = 0; this.coreFlash = 0; this.banner = null; this.shop = false; this.shopRise = 0; this.confirmReset = 0;
     this.buttons = [];
     this.chunks = new Map(); this.version = 0;
+    this.daylight = false;                  // no dark is laid over the ground: only a staged view asks for it (js/shot.js)
     this.fresh((Math.random() * 1e9) | 0, true);
   }
 
@@ -1876,7 +1877,7 @@ export class Game {
     for (let i = 0; i < L.lit.length; i++) L.lit[i] += (Math.min(1, L.want[i]) - L.lit[i]) * 0.3;
     for (let y = 0; y < mrows; y++) for (let x = 0; x < mcols; x++) {
       const l = L.lit[(y + pad) * cols + x + pad], o = (y * mcols + x) * 4;
-      px[o] = r; px[o + 1] = g; px[o + 2] = b; px[o + 3] = 168 * (1 - l * (2 - l));
+      px[o] = r; px[o + 1] = g; px[o + 2] = b; px[o + 3] = this.daylight ? 0 : 168 * (1 - l * (2 - l));
     }
     mc.putImageData(data, 0, 0);
     ctx.imageSmoothingEnabled = true;
