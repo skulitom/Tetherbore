@@ -276,12 +276,16 @@ export class Game {
           const key = (row * N + x) * 4 + c;
           if (skip.includes(key)) continue;
           const qx = x + ox, qy = row + oy;
-          const off = side * ((cx - px) * (qy - py) - (cy - py) * (qx - px));
+          const off = side * ((cx - px) * (qy - py) - (cy - py) * (qx - px)), path = side * ((tx - cx) * (qy - cy) - (ty - cy) * (qx - cx));
           // A corner the string already lies along counts: whether it is caught is settled below, by which side its
           // cell is on.
-          if ((qx === px && qy === py) || off < -1e-9 || side * ((tx - cx) * (qy - cy) - (ty - cy) * (qx - cx)) < -1e-9 || side * ((px - tx) * (qy - ty) - (py - ty) * (qx - tx)) <= 1e-9) continue;
+          if ((qx === px && qy === py) || off < -1e-9 || path < -1e-9 || side * ((px - tx) * (qy - ty) - (py - ty) * (qx - tx)) <= 1e-9) continue;
           // The string turns toward the cell it has run into, not away from it.
           if (side * ((qx - px) * (row + 0.5 - qy) - (qy - py) * (x + 0.5 - qx)) <= 0) continue;
+          // A corner on the very line the end travels along is reached by the end of the string alone. It is caught
+          // only if its cell lies on the string's side of that line, where the string runs into it: a cell beyond
+          // the line is never touched.
+          if (path <= 1e-9 && side * ((tx - cx) * (row + 0.5 - cy) - (ty - cy) * (x + 0.5 - cx)) <= 0) continue;
           // The one met first is the one least far round from where the string lay; of two in line, the further.
           const round = Math.atan2(off, (cx - px) * (qx - px) + (cy - py) * (qy - py)), far = (qx - px) ** 2 + (qy - py) ** 2;
           if (round < least - 1e-12 || (round < least + 1e-12 && far > reach)) { least = round; reach = far; best = [qx, qy, row * N + x, key]; }
@@ -320,16 +324,25 @@ export class Game {
     }
     return out;
   }
-  // The drill has moved: the string follows, catching corners and letting go of bends it no longer turns round.
-  tend() {
-    const d = this.drill, P = this.band, to = [d.x, d.y];
-    let cur = P[0];
-    for (let guard = 0; guard < 60 && P.length >= 2; guard++) {
-      const pivot = P[1];
-      let target = to, lift = false;
-      if (P.length > 2 && pivot[2]) {
+  // An end of the string moves: P[n] goes to `to` and the string beyond it (P[n + 1] and on, toward the core)
+  // follows, catching the corners it sweeps over and letting go of each bend it swings past straight at. The move
+  // must be one the end could make: a straight line through open ground. Nothing before P[n] is touched.
+  lead(P, to, n = 0) {
+    let cur = P[n];
+    for (let guard = 0; guard < 60 + 2 * P.length && P.length >= n + 2; guard++) {
+      const pivot = P[n + 1];
+      if (n + 2 < P.length) {
+        // The end runs back along its own string right through the bend it hangs from, or stands on it already:
+        // the bend is let go there. Going on from the corner, the string takes it up again if it turns round it.
+        const ex = to[0] - cur[0], ey = to[1] - cur[1], qx = pivot[0] - cur[0], qy = pivot[1] - cur[1], on = ex * qx + ey * qy;
+        if ((qx === 0 && qy === 0) || (ex * qy - ey * qx === 0 && on > 0 && on <= ex * ex + ey * ey)) { P.splice(n + 1, 1); cur = [pivot[0], pivot[1]]; continue; }
+      }
+      let target = to, lift = false, ref = n + 2;
+      // The way the string comes on to this bend, from the nearest point beyond it that is somewhere else.
+      while (ref < P.length && P[ref][0] === pivot[0] && P[ref][1] === pivot[1]) ref++;
+      if (ref < P.length && pivot[2]) {
         // Does the string swing past straight at this bend on the way? Then it goes only that far first.
-        const bx = pivot[0] - P[2][0], by = pivot[1] - P[2][1];
+        const bx = pivot[0] - P[ref][0], by = pivot[1] - P[ref][1];
         const now = bx * (cur[1] - pivot[1]) - by * (cur[0] - pivot[0]), then = bx * (to[1] - pivot[1]) - by * (to[0] - pivot[0]);
         if (then * pivot[2] < 0) {
           lift = true;
@@ -337,25 +350,52 @@ export class Game {
           target = [cur[0] + (to[0] - cur[0]) * t, cur[1] + (to[1] - cur[1]) * t];
         }
       }
-      const got = this.caught(pivot, cur, target, P.length > 2 && P[2][4] !== undefined ? [P[2][4]] : []);
-      if (got && got.length) P.splice(1, 0, ...got.reverse()); else if (lift) P.splice(1, 1);
+      const got = this.caught(pivot, cur, target, n + 2 < P.length && P[n + 2][4] !== undefined ? [P[n + 2][4]] : []);
+      if (got.length) P.splice(n + 1, 0, ...got.reverse()); else if (lift) P.splice(n + 1, 1);
       cur = target;
       if (!lift) break;
     }
-    P[0] = to;
+    P[n] = to;
   }
-  // The ground has changed: a bend whose corner is gone, or that the string no longer turns round, is let go, and
-  // the string takes up whatever corners lie in the way as it straightens.
+  // The drill has moved: the string follows. Called after every small move the drill makes, never across a move that
+  // went round something, so the string is led the way the drill really went.
+  tend() {
+    const d = this.drill, P = this.band;
+    if (P[0][0] !== d.x || P[0][1] !== d.y) this.lead(P, [d.x, d.y]);
+  }
+  // Does the string, running from `c` to bend `b` and on to `a`, turn round the bend's ground: the ground is there,
+  // the string turns the way the bend says, and the ground lies inside the turn. A bend the string runs out to and
+  // straight back from holds nothing, and neither does one whose neighbour stands on the same spot.
+  holds(b, a, c) {
+    if (this.world.k(b[3]) === K.EMPTY) return false;
+    const ux = a[0] - b[0], uy = a[1] - b[1], vx = c[0] - b[0], vy = c[1] - b[1];
+    if ((ux === 0 && uy === 0) || (vx === 0 && vy === 0)) return false;
+    const gx = (b[3] % N) + 0.5 - b[0], gy = Math.floor(b[3] / N) + 0.5 - b[1], turn = ux * vy - uy * vx;
+    // Dead straight across the corner: it stays while its ground is on the side it would turn to.
+    if (turn === 0) return ux * vx + uy * vy < 0 && (ux * gy - uy * gx) * b[2] > 0;
+    return turn * b[2] > 0 && (ux * gy - uy * gx) * turn > 0 && (gx * vy - gy * vx) * turn > 0;
+  }
+  // The ground has changed: the string settles on what is left. It is walked from the core outward. A bend that
+  // still holds (`holds`) stays as it is. At the first that does not (its ground gone, or the string no longer
+  // turning round it) the string's end is taken in hand there and led on along the way the string lay, bend to
+  // bend, catching and letting go as any moving end does (`lead`), until it comes to a bend that holds again or to
+  // the drill. So nothing is ever swept about a bend that is itself going, a run of bends on ground that went is let
+  // go as one, the same corner twice running comes down to one bend or none (a bend whose neighbour stands on the
+  // same spot does not hold, and the end led on from there lets go of the other), and however many bends there are
+  // each is looked at once.
   retighten() {
-    const w = this.world, P = this.band;
-    for (let guard = 0, n = 1; n < P.length - 1 && guard < 600; guard++) {
-      const a = P[n - 1], b = P[n], c = P[n + 1];
-      const turn = (b[0] - c[0]) * (a[1] - b[1]) - (b[1] - c[1]) * (a[0] - b[0]);
-      if (b[2] && w.k(b[3]) !== K.EMPTY && turn * b[2] >= 0) { n++; continue; }
-      const got = this.caught(c, b, a, [b[4], a[4]].filter(k => k !== undefined));
-      if (!got) { n++; continue; }
-      P.splice(n, 1, ...got.reverse());
-      n = Math.max(1, n - 1);
+    const P = this.band;
+    // `loose`: P[n + 1] is no bend but the end in hand, standing where the bend before stood.
+    let loose = false;
+    for (let n = P.length - 2; n >= 0; n--) {
+      const p = P[n];
+      if (loose) {
+        this.lead(P, [p[0], p[1]], n + 1);
+        P.splice(n + 1, 1);
+      }
+      if (n === 0) break;
+      loose = !this.holds(p, P[n - 1], P[n + 1]);
+      if (loose) P[n] = [p[0], p[1]];
     }
   }
   // The string as it is drawn and as things ride along it: each bend stood a hair off its corner, on the outside of
