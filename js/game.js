@@ -107,7 +107,7 @@ export class Game {
     this.input = { id: null, ax: 0, ay: 0, px: 0, py: 0, vx: 0, vy: 0, m: 0, keys: new Set(), auto: null };
     this.band = []; this.pieces = []; this.loose = []; this.looseSet = new Set(); this.preview = []; this.under = new Set();
     this.effects = []; this.popups = []; this.hauls = []; this.clouds = []; this.sparks = new Map(); this.lavaVol = new Map(); this.frostOpen = [];
-    this.parts = []; this.rings = []; this.motes = []; this.gloom = [10, 8, 7]; this.flash = 0; this.counted = 0; this.chime = 3;
+    this.parts = []; this.rings = []; this.motes = []; this.gloom = [10, 8, 7]; this.flash = 0; this.counted = 0; this.chime = 3; this.clock = 0;
     this.shake = 0; this.twang = 0; this.edge = 0; this.hurt = 0; this.coreFlash = 0; this.banner = null; this.shop = false; this.shopRise = 0; this.confirmReset = 0;
     this.buttons = [];
     this.chunks = new Map(); this.version = 0;
@@ -483,21 +483,40 @@ export class Game {
     if (d.stun > 0 || this.shop) m = 0;
     // Just reeled home: it stays put until the thumb lets go.
     if (d.park) { if (m === 0) d.park = false; m = 0; }
-    // Ground that grew back round the drill never holds it: it is set in the middle of the cell it is in.
-    if (d.mode === 'free' && !this.free(d.x, d.y) && w.k(this.di) === K.EMPTY && this.free(Math.floor(d.x) + 0.5, Math.floor(d.y) + 0.5)) { d.x = Math.floor(d.x) + 0.5; d.y = Math.floor(d.y) + 0.5; }
+    // Ground that grew back round the drill never holds it. Should its own cell have closed, the cell is opened
+    // again; then it is set in the middle of the cell it is in.
+    if (d.mode === 'free' && !this.free(d.x, d.y)) {
+      const i = this.di, k = w.k(i);
+      if (k !== K.EMPTY && HARD[k] < 99) {
+        w.setK(i, K.EMPTY);
+        if (base(w.b(i)) === B.FROST) { w.dug.set(i, this.clock); this.frostOpen.push(i); }
+        this.changed([i]);
+      }
+      if (w.k(i) === K.EMPTY && this.free(Math.floor(d.x) + 0.5, Math.floor(d.y) + 0.5)) { d.x = Math.floor(d.x) + 0.5; d.y = Math.floor(d.y) + 0.5; this.tend(); }
+    }
     d.px = d.x; d.py = d.y;
     const far = this.far;
     if (d.mode !== 'free') {
       // Thrown from the core, or being reeled home: straight to where it is going.
-      const dx = d.tx - d.x, dy = d.ty - d.y, left = Math.hypot(dx, dy), step = d.speed * dt;
-      d.ang = Math.atan2(dy, dx); d.vx = dx / (left || 1) * d.speed; d.vy = dy / (left || 1) * d.speed;
-      if (left > step) { d.x += dx / left * step; d.y += dy / left * step; }
-      else {
-        d.x = d.tx; d.y = d.ty; d.vx = d.vy = 0;
-        if (d.mode === 'home') { sfx.dock(); this.ring(HX * T, HY * T, '#84dcff', 30); d.armed = false; d.park = true; }
+      const dx = d.tx - d.x, dy = d.ty - d.y, left = Math.hypot(dx, dy), ux = dx / (left || 1), uy = dy / (left || 1);
+      d.ang = Math.atan2(dy, dx); d.vx = ux * d.speed; d.vy = uy * d.speed;
+      // The way was open when it set off, and nothing closes on it while it flies (`updateHazards`). All the same
+      // each frame's stretch is looked at before it is flown: were it shut, the drill stops at the last free place.
+      let go = Math.min(left, d.speed * dt), shut = false;
+      const cells = cellsAlong(d.x, d.y, d.x + ux * go, d.y + uy * go, 12000), open = new Set([cells[0]]);
+      for (let n = 1; n < cells.length && !shut; n++) { if (w.k(cells[n]) !== K.EMPTY || w.lava.has(cells[n])) shut = true; else open.add(cells[n]); }
+      if (shut || (go === left && !this.free(d.tx, d.ty))) {
+        shut = true;
+        while (go > 0 && !(open.has(Math.floor(d.y + uy * go) * N + Math.floor(d.x + ux * go)) && this.free(d.x + ux * go, d.y + uy * go))) go = Math.max(0, go - 0.1);
+      }
+      if (!shut && go === left) { d.x = d.tx; d.y = d.ty; } else { d.x += ux * go; d.y += uy * go; }
+      if (shut || go === left) {
+        d.vx = d.vy = 0;
+        if (d.mode === 'home' && !shut) { sfx.dock(); this.ring(HX * T, HY * T, '#84dcff', 30); d.armed = false; d.park = true; }
         else { sfx.thud(); this.land(); d.squash = 0.12; }
         d.mode = 'free'; d.run = 0;
       }
+      this.tend();
       this.look();
       return;
     }
@@ -645,7 +664,7 @@ export class Game {
   finishDig(i) {
     const w = this.world, d = this.drill, x = i % N, y = Math.floor(i / N), k = w.k(i), b = w.b(i);
     w.setK(i, K.EMPTY);
-    if (base(b) === B.FROST) { w.dug.set(i, this.time); this.frostOpen.push(i); }
+    if (base(b) === B.FROST) { w.dug.set(i, this.clock); this.frostOpen.push(i); }
     const tough = k === K.SLATE ? 3 : k === K.VAULT ? 4 : k === K.DENSE || k === K.ORE_B || k === K.BASALT ? 2 : 1;
     sfx.dig(tough);
     this.chips(x, y, this.rockSheet(k, b), 9 + tough * 3, d.ang, 1);
@@ -925,6 +944,13 @@ export class Game {
             along(P[n - 1][0] + ex + ox, P[n - 1][1] + ey + oy, P[n][0] - ex + ox, P[n][1] - ey + oy);
           }
         }
+        // A drill thrown or being reeled home: nothing closes on the line of its flight, as wide as it is, or where
+        // it will come down.
+        if (d.mode !== 'free') {
+          const sx = d.tx - d.x, sy = d.ty - d.y, len = Math.hypot(sx, sy) || 1;
+          for (const side of [0, BODY, -BODY]) along(d.x - sy / len * side, d.y + sx / len * side, d.tx - sy / len * side, d.ty + sx / len * side);
+          for (const [u, v] of [[-BODY, -BODY], [BODY, -BODY], [-BODY, BODY], [BODY, BODY]]) under.add(Math.floor(d.ty + v) * N + Math.floor(d.tx + u));
+        }
       }
       return this.under.has(i);
     };
@@ -975,7 +1001,7 @@ export class Game {
       this.frostTick = 0;
       this.frostOpen = this.frostOpen.filter(i => {
         if (w.k(i) !== K.EMPTY) { w.dug.delete(i); return false; }
-        if (this.time - w.dug.get(i) < 30) return true;
+        if (this.clock - w.dug.get(i) < 30) return true;
         const x = i % N, y = Math.floor(i / N);
         if (lies(i) || Math.max(Math.abs(dcx - x), Math.abs(dcy - y)) <= 1 || w.lava.has(i)) return true;
         w.setK(i, K.ICE); w.dug.delete(i); moved = true;
@@ -996,7 +1022,7 @@ export class Game {
       const i = (cy + v) * N + cx + u, k = w.k(i);
       if (k === K.EMPTY || HARD[k] >= 99 || !this.within(cx + u + 0.5, cy + v + 0.5)) continue;
       w.setK(i, K.EMPTY); opened.push(i);
-      if (base(w.b(i)) === B.FROST) { w.dug.set(i, this.time); this.frostOpen.push(i); }
+      if (base(w.b(i)) === B.FROST) { w.dug.set(i, this.clock); this.frostOpen.push(i); }
     }
     this.effect('blast', 'fire-explosion', d.x * T, d.y * T);
     this.shake = 9; sfx.blast();
@@ -1100,6 +1126,9 @@ export class Game {
     if (this.bought) { this.bought.t -= dt; if (this.bought.t <= 0) this.bought = null; }
     if (this.confirmReset > 0) this.confirmReset -= dt;
     if (!this.shop) {
+      // The clock the ground's own changes are timed by (a cut in the north icing over) stands still with the shop
+      // open, as the lava, the spores and the sparks do: nothing comes due behind the shop.
+      this.clock += dt;
       this.fly(dt);
       this.tend();
       this.reelTick = (this.reelTick ?? 0) + dt;
@@ -1155,7 +1184,7 @@ export class Game {
     }
     for (const i of this.frostOpen) {
       // Ice about to close over a cut: a rim of it creeps in first.
-      const age = this.time - (w.dug.get(i) ?? this.time);
+      const age = this.clock - (w.dug.get(i) ?? this.clock);
       if (age <= 22 || this.under.has(i)) continue;
       ctx.globalAlpha = Math.min(0.8, (age - 22) / 8);
       draw(ctx, 'ice', sheets.ice.tiles[0][0], (i % N) * T - ox, Math.floor(i / N) * T - oy);
