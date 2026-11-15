@@ -1,5 +1,5 @@
 // A staged view of the world, for tools/shot.mjs to photograph and for looking at a far place by hand:
-//   index.html?shot&seed=7&at=0,-300&reach=6&zoom=4&lit&met&wake
+//   index.html?shot&seed=7&at=0,-300&reach=6&zoom=4&lit&met&wake&bombs=3&blast
 // js/main.js loads this file only when the address has `shot`; ordinary play never fetches it.
 //
 // The view is a fresh world on `seed` (7 if none is given). It reads no saved game and is never saved. The drill
@@ -13,6 +13,9 @@
 // stands in comes up on its plate and not, as the first time, across the screen. `wake` wakes the hazard nearest
 // the drill (within WAKE cells), as a cut beside it would: lava pours and quenches its slag, a pod bursts, a
 // crystal's fuse is lit; how far that has gone when the picture is taken is how long the view is stepped.
+// `bombs` gives the drill that level of BLAST, with its charges racked, and no room is carved: the drill stands in
+// the end of the tunnel with the ground round it as the seed laid it. `blast` then sets one charge off there, so
+// the same view with and without it is a charge's room before and after.
 //
 // The view is held still: `tetherbore.advance(ms)` steps it, `tetherbore.resume()` lets it play.
 import * as world from './world.js';
@@ -32,16 +35,17 @@ export function stage(game, query) {
   const level = Math.max(0, Math.min(reaches.length - 1, Math.floor(number('reach', least < 0 ? reaches.length - 1 : least))));
   const zoom = Math.max(1, number('zoom', 1)), lit = query.has('lit') && query.get('lit') !== '0', met = query.has('met') && query.get('met') !== '0';
   const wake = query.has('wake') && query.get('wake') !== '0';
+  const bombs = Math.max(0, Math.min(4, Math.floor(number('bombs', 0)))), blast = bombs > 0 && query.has('blast') && query.get('blast') !== '0';
 
   game.save = () => {};
   game.fresh(seed, true);
-  game.S.lv.tether = level;
+  game.S.lv.tether = level; game.S.lv.bombs = bombs; game.bombs = bombs;
   game.daylight = lit;
   if (met) for (const row of world.BIOMES) if (row) game.S.met[row.id] = 1;
   const d = game.drill, w = game.world;
   if (dx || dy) {
     for (let s = 0; s <= far; s += 0.5) for (let u = -1; u <= 1; u++) for (let v = -1; v <= 1; v++) w.setK((C + Math.round(dy * s / far) + v) * N + C + Math.round(dx * s / far) + u, K.EMPTY);
-    for (let v = -ROOM; v <= ROOM; v++) for (let u = -ROOM; u <= ROOM; u++) w.setK((C + dy + v) * N + C + dx + u, K.EMPTY);
+    if (!bombs) for (let v = -ROOM; v <= ROOM; v++) for (let u = -ROOM; u <= ROOM; u++) w.setK((C + dy + v) * N + C + dx + u, K.EMPTY);
     d.x = d.px = C + dx + 0.5; d.y = d.py = C + dy + 0.5; d.mode = 'free';
     game.band = [[d.x, d.y], [HX, HY]];
     game.changed();
@@ -60,6 +64,9 @@ export function stage(game, query) {
     }
     if (best >= 0) { woke = w.hazAt(best); game.changed(game.trigger(best, woke, false)); }
   }
+  // One charge, set off as a tap on the bomb sets it off.
+  const opened = blast ? game.sifts(Math.floor(d.x), Math.floor(d.y)).length : 0;
+  if (blast) game.blast();
 
   let shown = 1;                                // the zoom as it came out: no canvas is made wider than MOST
   return {
@@ -87,7 +94,7 @@ export function stage(game, query) {
         seed, at: [dx, dy], level, reach: reaches[level], zoom: shown, lit,
         cells: [Math.round(game.W / T), Math.round(game.H / T)], canvas: [game.W, game.H],
         biome: b, ground: world.BIOMES[b]?.name ?? `${b}`,
-        loose: game.pieces.length, woke,
+        loose: game.pieces.length, woke, bombs: game.bombs, opened,
       };
     },
   };

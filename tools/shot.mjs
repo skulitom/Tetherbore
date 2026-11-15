@@ -1,5 +1,6 @@
 // Photographs the game, so that ground and art can be judged by eye with no hand on a browser:
 //   node tools/shot.mjs <out.png> [--seed 7] [--at dx,dy] [--reach level] [--size 360x640] [--zoom n] [--frames n] [--lit] [--met] [--wake]
+//                                 [--bombs level] [--blast]
 //
 //   --at dx,dy    where the drill stands, in cells from the core: east and south are counted up, so 300 cells north
 //                 is `--at 0,-300`. Away from the core it stands in a small room at the end of a tunnel carved from
@@ -19,6 +20,10 @@
 //   --wake        the hazard nearest the drill, within 12 cells, is woken as a cut beside it would wake it: lava
 //                 pours, a pod bursts, a crystal's fuse is lit. `--frames` is then how far that has gone when the
 //                 picture is taken (`--frames 5`: lava just woken; 400: poured; 700: set).
+//   --bombs n     the drill has BLAST at level n (1 to 4), its charges racked, and no room is carved: it stands in
+//                 the end of the tunnel with the ground round it as the seed laid it.
+//   --blast       with --bombs: one charge is set off where the drill stands. The same view without it is the
+//                 ground before the charge (`--frames 8`: the blast itself; 180: the room it leaves).
 //   --browser p   the Edge or Chrome to use, if the installed one is not to be.
 //
 // It serves this checkout on a free loopback port (static files, read only), opens `index.html?shot&...` in an
@@ -40,11 +45,11 @@ import { WORLD_R } from '../js/world.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
-const usage = 'node tools/shot.mjs <out.png> [--seed 7] [--at dx,dy] [--reach level] [--size 360x640] [--zoom n] [--frames n] [--lit] [--met] [--wake] [--browser path]';
+const usage = 'node tools/shot.mjs <out.png> [--seed 7] [--at dx,dy] [--reach level] [--size 360x640] [--zoom n] [--frames n] [--lit] [--met] [--wake] [--bombs level] [--blast] [--browser path]';
 const wrong = why => { console.error(`${why}\n  ${usage}`); process.exit(2); };
 
 // ---------------------------------------------------------------- what was asked for
-const options = { seed: '7', at: '0,0', reach: '', size: '360x640', zoom: '1', frames: '180', lit: false, met: false, wake: false, browser: '' };
+const options = { seed: '7', at: '0,0', reach: '', size: '360x640', zoom: '1', frames: '180', lit: false, met: false, wake: false, bombs: '0', blast: false, browser: '' };
 let out = null;
 for (let args = process.argv.slice(2), i = 0; i < args.length; i++) {
   const arg = args[i];
@@ -66,7 +71,8 @@ const whole = (name, least, most) => {
   return n;
 };
 const seed = whole('seed', 0, 2 ** 31 - 1), frames = whole('frames', 0, 36000), level = options.reach === '' ? null : whole('reach', 0, 9);
-const zoom = Number(options.zoom);
+const zoom = Number(options.zoom), bombs = whole('bombs', 0, 4);
+if (options.blast && !bombs) wrong('--blast sets off a charge of the level --bombs gives: say which, 1 to 4.');
 if (!(zoom >= 1 && zoom <= 64)) wrong(`--zoom is a number from 1 to 64, not ${options.zoom}.`);
 const at = options.at.split(',').map(Number), size = options.size.toLowerCase().split('x').map(Number);
 if (at.length !== 2 || !at.every(Number.isInteger)) wrong(`--at is two whole numbers of cells, dx,dy, not ${options.at}.`);
@@ -206,6 +212,8 @@ async function take() {
   if (options.lit) query.set('lit', '1');
   if (options.met) query.set('met', '1');
   if (options.wake) query.set('wake', '1');
+  if (bombs) query.set('bombs', `${bombs}`);
+  if (options.blast) query.set('blast', '1');
   await page('Page.navigate', { url: `${origin}/index.html?${query}` });
   await processes();
   // The page says when the view is staged; if its scripts failed it never will, and what it said instead is told.
@@ -224,7 +232,7 @@ async function take() {
   if (told()) console.error(`The page complained:\n  ${told()}`);
   const narrowed = facts.zoom < zoom ? ` (zoom ${+facts.zoom.toFixed(2)}, not ${zoom}: no canvas is made wider than ${Math.max(...facts.canvas)} pixels)` : '';
   console.log(`seed ${facts.seed}: the drill ${compass(facts.at)}, in ${facts.ground} (ground ${facts.biome}), reach ${facts.reach} (level ${facts.level}); ${facts.cells[0]} x ${facts.cells[1]} cells in view${narrowed}`
-    + `${facts.lit ? ', lit' : ''}, ${facts.loose} loose piece${facts.loose === 1 ? '' : 's'} known${options.wake ? `, ${facts.woke ?? 'no hazard near to be'} woken` : ''}; ${frames} frame${frames === 1 ? '' : 's'}; ${png.readUInt32BE(16)} x ${png.readUInt32BE(20)} pixels`);
+    + `${facts.lit ? ', lit' : ''}, ${facts.loose} loose piece${facts.loose === 1 ? '' : 's'} known${options.wake ? `, ${facts.woke ?? 'no hazard near to be'} woken` : ''}${bombs ? `, BLAST at level ${bombs}${options.blast ? `: one charge set off, ${facts.opened} cells opened` : ''}, ${facts.bombs} charge${facts.bombs === 1 ? '' : 's'} left` : ''}; ${frames} frame${frames === 1 ? '' : 's'}; ${png.readUInt32BE(16)} x ${png.readUInt32BE(20)} pixels`);
   console.log(out);
 }
 

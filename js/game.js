@@ -59,8 +59,22 @@ export const UPGRADES = [
   { id: 'winch', icon: 'winch', name: 'WINCH', what: 'BIGGER HAULS AT FULL PAY', values: [1, 1.3, 1.6, 2, 2.5, 3], gem: B.FROST, ...levels([0.8, 2, 3.6, 5.4, 7.2], 0.5), show: v => `x${v}` },
   { id: 'scanner', icon: 'scanner', name: 'SCAN', what: 'SEES DEEPER IN ROCK', values: [3, 4, 5, 7, 9], gem: B.FROST, ...levels([0.4, 1.6, 3.4, 5.8], 0.3), show: v => `${v}` },
   { id: 'momentum', icon: 'momentum', name: 'RAM', what: 'FLIES FASTER', values: [1, 1.25, 1.5, 1.8, 2.2], gem: B.LODE, ...levels([0.7, 2.4, 4.2, 6.2], 0.4), show: v => `x${v}` },
-  { id: 'bombs', icon: 'bomb', name: 'BLAST', what: 'BOMB: CLEARS ROCK', values: [0, 1, 2, 3, 4], gem: B.EMBER, ...levels([1, 2.8, 5, 7.4], 0.35), show: v => `${v}` },
+  // The bomb: a charge blows the plain rock out of a room round the drill and wakes nothing (`SIFT`, `sifts`). What
+  // was worth having stands loose in the room, to be flown round. A level is another charge and, later, a wider room.
+  { id: 'bombs', icon: 'bomb', name: 'BLAST', what: 'BOMB: SHAKES ORE LOOSE', values: [0, 1, 2, 3, 4], gem: B.EMBER, ...levels([1, 2.8, 5, 7.4], 0.4), show: v => `${v}` },
 ];
+// A charge clears a disc of this radius round the drill's cell, in cells, by the level of BLAST (the cells whose
+// middles lie that near: 21, 21, 37 and 69 of them). Only plain rock goes (`PLAIN`: soft and dense rock, ice,
+// basalt, glass and fault rock): ore, slate, slag and steel, hazards asleep, caches and whatever else was laid to be
+// found stand. So that what stands can be flown round, the plain rock round it goes too, `room` cells deep on
+// every side and at the corners, past the disc's edge where it stands near the edge; and a lump that runs on out
+// of the disc is followed `shake` cells past its edge. (Played with no hand on it, tools/sift.mjs,
+// 214 charges aimed where ore stands, on four worlds. As first planned, a plain disc with dense rock left standing,
+// two charges in three shook nothing loose: half the room stood, and a lump of ore nearly always runs on over the
+// disc's edge and holds to the wall. As it is, one in thirty-five. `room` is two cells because the drill is 0.68 of
+// a cell wide and cuts whatever it is pushed into: a lane one cell wide past a nugget is a nugget crushed.)
+export const SIFT = { radius: [0, 2.5, 2.5, 3.5, 4.5], shake: 2, room: 2 };
+const PLAIN = []; for (const k of [K.SOFT, K.DENSE, K.ICE, K.BASALT, K.GLASS, K.FAULT]) PLAIN[k] = true;
 // Where each direction's gems are found, for a price that cannot be met yet.
 const GEM_WHERE = [null, 'NORTH', 'SOUTH', 'WEST', 'EAST'];
 // What is called out the first time it is seen (`World.see` says what it is): the name that comes up, and the
@@ -1553,21 +1567,57 @@ export class Game {
   }
 
   // ------------------------------------------------------------ blast, shop
-  blast() {
-    const w = this.world, d = this.drill;
-    if (this.bombs <= 0) { if (this.val('bombs')) sfx.deny(); return; }
-    const r = this.S.lv.bombs >= 3 ? 2 : 1, cx = Math.floor(d.x), cy = Math.floor(d.y), opened = [];
-    this.bombs--;
-    for (let v = -r; v <= r; v++) for (let u = -r; u <= r; u++) {
+  // The cells a charge set off in cell (cx, cy) would open, at this level of BLAST or for a disc of radius `r`
+  // (`SIFT` says what goes and what stands). Asking changes nothing. Nothing beyond the tether's reach opens.
+  sifts(cx, cy, r = SIFT.radius[this.S.lv.bombs]) {
+    const w = this.world, open = new Set(), stand = [], most = Math.ceil(r), far = (r + SIFT.shake) * (r + SIFT.shake);
+    for (let v = -most; v <= most; v++) for (let u = -most; u <= most; u++) {
+      if (u * u + v * v > r * r) continue;
       const i = (cy + v) * N + cx + u, k = w.k(i);
       if (k === K.EMPTY || HARD[k] >= 99 || !this.within(cx + u + 0.5, cy + v + 0.5)) continue;
-      w.setK(i, K.EMPTY); opened.push(i);
+      if (PLAIN[k]) open.add(i); else stand.push(i);
+    }
+    // What stands in the disc, and as much of each lump as lies within `shake` cells of the disc's edge.
+    const lump = new Set(stand);
+    for (let n = 0; n < stand.length; n++) for (const s of SIDE) {
+      const j = stand[n] + s, u = (j % N) - cx, v = Math.floor(j / N) - cy, k = w.k(j);
+      if (k === K.EMPTY || PLAIN[k] || HARD[k] >= 99 || u * u + v * v > far || lump.has(j)) continue;
+      lump.add(j); stand.push(j);
+    }
+    // The plain rock round it, `room` cells deep on every side and at the corners: room to fly round it.
+    for (const i of stand) for (let v = -SIFT.room; v <= SIFT.room; v++) for (let u = -SIFT.room; u <= SIFT.room; u++) {
+      const j = i + v * N + u;
+      if (PLAIN[w.k(j)] && this.within((j % N) + 0.5, Math.floor(j / N) + 0.5)) open.add(j);
+    }
+    return [...open];
+  }
+  // A charge goes off where the drill is: the plain rock round it is gone, and everything it held stands as it
+  // stood, asleep if it slept (nothing is cut, so nothing wakes). The books of loose ground hear of all the cells
+  // at once, so every lump the rock was holding is known as loose. A charge that would open nothing is not spent,
+  // and says so; so does a tap with none left.
+  blast() {
+    const w = this.world, d = this.drill;
+    if (!this.val('bombs')) return;
+    if (this.bombs <= 0) { sfx.deny(); this.popup(d.x - 0.5, d.y - 1, 'NO BOMBS', '#ff7a5a'); return; }
+    const cx = Math.floor(d.x), cy = Math.floor(d.y), opened = this.sifts(cx, cy);
+    if (!opened.length) { sfx.deny(); this.popup(d.x - 0.5, d.y - 1, 'NO ROCK', '#ff7a5a'); return; }
+    this.bombs--;
+    const known = new Set(this.pieces);
+    for (const i of opened) {
+      const x = i % N, y = Math.floor(i / N);
+      if (this.onScreen(x, y)) this.chips(x, y, this.debris(w.k(i), w.b(i)), 3, null, 1.2);
+      w.setK(i, K.EMPTY);
       if (w.row(i).freeze > 0) { w.dug.set(i, this.clock); this.frostOpen.push(i); }
     }
     this.effect('blast', 'fire-explosion', d.x * T, d.y * T);
     this.shake = 9; sfx.blast();
-    w.see(cx, cy, r + 1);
+    w.see(cx, cy, Math.ceil(SIFT.radius[this.S.lv.bombs] + SIFT.shake) + SIFT.room + 1);
     this.changed(opened);
+    // What the charge shook loose glints, a lump at a time.
+    for (const cells of this.pieces) {
+      if (known.has(cells) || cells.length > 400) continue;
+      for (const i of cells) if (cellHash(i % N, Math.floor(i / N), 5) < 0.5) this.sparkle((i % N + 0.5) * T, (Math.floor(i / N) + 0.5) * T, 2, '#fff6c8');
+    }
   }
   cost(u) { const l = this.S.lv[u.id]; return l >= u.values.length - 1 ? null : { grit: u.grit[l], gems: u.gems[l] }; }
   // What can be spent is what has come home: grit and gems still on their way up the tether are not banked yet,
