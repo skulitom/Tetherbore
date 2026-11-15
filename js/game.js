@@ -2,7 +2,7 @@
 // Logic moves by whole cells and at once; what is drawn catches up, so input never waits on an animation.
 import { World, N, C, K, B, HARD, GRIT, GEMS, DX, DY, BIOME_NAMES, base, cellHash, taut, sight, onCore } from './world.js';
 import { sheets, draw, drawScaled, frameAt, duration, slice9, text, textWidth } from './atlas.js';
-import { sfx, unlock, isMuted, setMuted } from './audio.js';
+import { sfx, unlock, isMuted, setMuted, setAmbience } from './audio.js';
 
 const T = 16;                                   // pixels in a cell
 const SAVE_KEY = 'tetherbore-save-v1';
@@ -26,6 +26,16 @@ export const UPGRADES = [
   { id: 'bombs', icon: 'bomb', name: 'BLAST', values: [0, 1, 2, 3, 4], gem: B.EMBER, grit: [80, 400, 1600, 6000], gems: [0, 10, 40, 110], show: v => `${v}` },
 ];
 // Nothing is too hard to cut: tougher ground only takes longer, and a better bit cuts all of it faster.
+// What flies off each kind of ground when it is cut, and the dark each direction's ground lies in.
+const DEBRIS = {
+  crust: ['#6f5b49', '#806a55', '#a08a6c'], frost: ['#bcd8ee', '#ffffff', '#a2c4e2'], ember: ['#4a2f37', '#855350', '#ff8a2a'],
+  mire: ['#574766', '#5c8a48', '#a5d86a'], lode: ['#b98a5a', '#f0d8a0', '#a57648'], slate: ['#6a7080', '#a4acbc', '#454a5a'],
+  vault: ['#463a68', '#8a78c0', '#c8a8ff'], ice: ['#6fb0e0', '#d8f4ff', '#ffffff'], basalt: ['#4a3840', '#8a6468', '#8a3424'],
+  rime: ['#62b8b4', '#d8fff4', '#84d4c8'], magma: ['#7a2418', '#e8743a', '#ffb040'], bloom: ['#8a3c8c', '#ffa0e0', '#7af0d0'],
+  gilt: ['#6e5a34', '#ffe680', '#ffd040'], bedrock: ['#1e1e26', '#34343e'],
+};
+const GLOOM = [[10, 8, 7], [5, 12, 30], [26, 6, 4], [14, 6, 26], [22, 13, 4], [3, 18, 24], [34, 5, 2], [26, 4, 28], [24, 18, 2]];
+const MOTE = ['#8a7a66', '#ffffff', '#ff9a3a', '#a5f0a0', '#ffe08a', '#d8fff4', '#ffc040', '#ffa0e0', '#ffe680'];
 const DIG_TIME = [0, 0, 0, 0.24, 0.45, 0.24, 0.45, 1.0, 1.8, 0.24, 0, 0.18, 0.45];
 const DIG_COST = [0, 0, 0, 1, 1, 1, 1, 2, 3, 1, 0, 1, 1];
 const SPEED = [1, 1.6, 2.4, 3.6, 5];
@@ -43,6 +53,7 @@ export class Game {
     this.time = 0;
     this.input = { held: null, queued: null, id: null, ax: 0, ay: 0, px: 0, py: 0, keys: new Set() };
     this.effects = []; this.popups = []; this.hauls = []; this.clouds = []; this.sparks = new Map(); this.lavaVol = new Map(); this.frostOpen = [];
+    this.parts = []; this.rings = []; this.motes = []; this.gloom = [10, 8, 7]; this.flash = 0; this.counted = 0; this.chime = 3;
     this.shake = 0; this.twang = 0; this.coreFlash = 0; this.banner = null; this.shop = false; this.confirmReset = 0;
     this.buttons = [];
     this.chunks = new Map(); this.version = 0; this.lavaCells = new Set();
@@ -59,6 +70,7 @@ export class Game {
   begin() {
     const w = this.world;
     this.pending = { grit: 0, gems: [0, 0, 0, 0, 0] };
+    this.parts.length = 0; this.rings.length = 0;
     this.effects.length = 0; this.popups.length = 0; this.hauls.length = 0; this.clouds.length = 0; this.sparks.clear(); this.lavaVol.clear(); this.frostOpen.length = 0;
     w.lava.fill(0); w.dugAt.fill(0); w.reached.fill(0); this.lavaCells.clear(); this.version++;
     w.reach(this.val('scanner'));
@@ -269,6 +281,7 @@ export class Game {
     if (this.atCore && (this.charge < this.val('battery') || this.bombs < this.val('bombs'))) {
       this.charge = this.val('battery'); this.bombs = this.val('bombs');
       sfx.dock(); this.coreFlash = 0.25; this.save();
+      this.ring((C + 0.5) * T, (C + 0.5) * T, '#84dcff', 46);
     }
   }
   finishDig() {
@@ -278,6 +291,7 @@ export class Game {
     if (base(b) === B.FROST) { w.dugAt[i] = this.time; this.frostOpen.push(i); }
     const tough = k === K.SLATE ? 3 : k === K.VAULT ? 4 : k === K.DENSE || k === K.ORE_B || k === K.BASALT ? 2 : 1;
     sfx.dig(tough);
+    this.chips(x, y, this.rockSheet(k, b), 9 + tough * 3, d.dir, 1);
     this.effect('dust', 'dust', (x + 0.5) * T, (y + 0.5) * T);
     if (tough >= 2 || k === K.ICE) this.effect('shatter', 'shatter', (x + 0.5) * T, (y + 0.5) * T);
     if (k === K.ORE_A || k === K.ORE_B) this.popup(x, y, 'CRUSHED', '#9a94a8');
@@ -327,6 +341,9 @@ export class Game {
     this.shake = Math.max(this.shake, Math.min(9, 2.5 + n * 0.12));
     this.hitstop = Math.min(0.16, 0.05 + n * 0.002);
     sfx.crack(n);
+    this.flash = Math.min(0.5, 0.12 + n * 0.006);
+    this.ring(cx, cy, '#fff6c8', 30 + Math.min(60, n * 1.5));
+    for (const sp of sprites) if (sprites.length < 60 || cellHash(sp.x, sp.y, 9) < 0.4) this.chips(sp.x, sp.y, sp.tile[0], 2, -1, 0.7);
     const title = relic >= 0 ? 'RELIC!' : n >= 200 ? 'COLOSSAL!' : n >= 80 ? 'HUGE HAUL!' : n >= 30 ? 'BIG HAUL!' : n >= 10 ? 'NICE CUT!' : 'HAUL';
     this.banner = { title, n, mult, grit, gems, t: 0, life: 2.2 + Math.min(1.2, n * 0.01) };
     if (relic >= 0) { S.relics[relic] = 1; sfx.relic(); if (S.relics.every(Boolean) && !S.won) { S.won = true; this.wonAt = this.time; } }
@@ -349,7 +366,8 @@ export class Game {
         h.paid += arrived;
         const left = Math.round(h.grit * (1 - h.paid / h.n));
         this.pending.grit = Math.max(0, this.pending.grit - (h.left - left)); h.left = left;
-        this.coreFlash = 0.12;
+        this.coreFlash = 0.12; this.counted = 0.12;
+        if (this.time - (this.lastRing ?? 0) > 0.11) { this.lastRing = this.time; this.ring((C + 0.5) * T, (C + 0.5) * T, '#ffe14a', 30); this.sparkle((C + 0.5) * T, (C + 0.5) * T, 3, '#ffe14a'); }
         if (this.time - (this.lastTick ?? 0) > 0.045) { this.lastTick = this.time; sfx.tick(Math.floor(h.paid / Math.max(1, h.n / 14))); }
         if (h.paid >= h.n) {
           h.doneAt = h.t;
@@ -535,11 +553,76 @@ export class Game {
     const c = this.cost(u);
     this.S.grit -= c.grit; this.S.gems[u.gem] -= c.gems; this.S.lv[u.id]++; this.S.stats.buys++;
     sfx.buy();
+    this.ring((C + 0.5) * T, (C + 0.5) * T, '#8ce060', 70); this.sparkle((C + 0.5) * T, (C + 0.5) * T, 16, '#c8f4a0'); this.flash = 0.15;
     if (u.id === 'battery') this.charge = this.val('battery');
     if (u.id === 'bombs') this.bombs = this.val('bombs');
     if (u.id === 'scanner') { this.world.reached.fill(0); this.world.reach(this.val('scanner')); this.version++; }
     this.bought = { id: u.id, t: 0.5 };
     this.retether(); this.save();
+  }
+
+  // ------------------------------------------------------------ feel
+  // Chips of the ground's own colours. `dir` is the way the drill was cutting (they fly back at it), -1 for all round.
+  chips(cx, cy, sheet, count, dir, speed) {
+    const colors = DEBRIS[sheet] ?? DEBRIS.crust;
+    if (this.parts.length > 420) return;
+    for (let n = 0; n < count; n++) {
+      const a = Math.random() * 6.283, v = (20 + Math.random() * 70) * speed;
+      let vx = Math.cos(a) * v, vy = Math.sin(a) * v;
+      if (dir >= 0) { vx -= DX[dir] * 45 * speed; vy -= DY[dir] * 45 * speed; }
+      this.parts.push({ x: (cx + 0.2 + Math.random() * 0.6) * T, y: (cy + 0.2 + Math.random() * 0.6) * T, vx, vy, t: 0, life: 0.25 + Math.random() * 0.4,
+        color: colors[(Math.random() * colors.length) | 0], size: Math.random() < 0.3 ? 2 : 1 });
+    }
+  }
+  sparkle(x, y, count, color) {
+    for (let n = 0; n < count; n++) {
+      const a = Math.random() * 6.283, v = 30 + Math.random() * 90;
+      this.parts.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, t: 0, life: 0.3 + Math.random() * 0.5, color, size: 1, star: Math.random() < 0.4 });
+    }
+  }
+  ring(x, y, color, reach) { this.rings.push({ x, y, color, reach, t: 0 }); }
+  // The drill fetches up against ground at the end of a snap.
+  land() {
+    const d = this.drill, x = d.x + DX[d.dir], y = d.y + DY[d.dir], k = this.world.at(x, y);
+    this.shake = Math.max(this.shake, 2.2);
+    if (k !== K.EMPTY) this.chips(d.x + DX[d.dir] * 0.5, d.y + DY[d.dir] * 0.5, this.rockSheet(k, this.world.biome[y * N + x]), 6, d.dir, 0.8);
+    this.effect('dust', 'dust', (d.x + 0.5 + DX[d.dir] * 0.4) * T, (d.y + 0.5 + DY[d.dir] * 0.4) * T);
+  }
+  // Everything that only sets the mood: chips in flight, rings, drifting motes, glints on ore, the colour of the
+  // dark, and the sound of the place.
+  ambient(dt) {
+    const w = this.world, d = this.drill, W = this.W, H = this.H;
+    for (const p of this.parts) { p.t += dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= 1 - 3.5 * dt; p.vy *= 1 - 3.5 * dt; }
+    this.parts = this.parts.filter(p => p.t < p.life);
+    for (const r of this.rings) r.t += dt;
+    this.rings = this.rings.filter(r => r.t < 0.5);
+    this.flash = Math.max(0, this.flash - dt); this.counted = Math.max(0, this.counted - dt);
+    const here = w.biome[this.di], want = GLOOM[here], k = 1 - Math.exp(-dt * 1.5);
+    for (let c = 0; c < 3; c++) this.gloom[c] += (want[c] - this.gloom[c]) * k;
+    // Motes hang in open ground near the view; each belongs to the ground it was born over.
+    while (this.motes.length < 34) {
+      const x = this.cam.x + (Math.random() - 0.5) * (W + 60), y = this.cam.y + (Math.random() - 0.5) * (H + 60);
+      this.motes.push({ x, y, seed: Math.random() * 100, t: 0, life: 4 + Math.random() * 5, biome: w.biome[Math.max(0, Math.min(N - 1, (y / T) | 0)) * N + Math.max(0, Math.min(N - 1, (x / T) | 0))] });
+    }
+    for (const m of this.motes) {
+      m.t += dt;
+      const b = base(m.biome), sway = Math.sin(this.time * 1.3 + m.seed);
+      if (b === B.FROST) { m.y += 9 * dt; m.x += sway * 6 * dt; }
+      else if (b === B.EMBER) { m.y -= 14 * dt; m.x += sway * 4 * dt; }
+      else if (b === B.MIRE) { m.y += Math.cos(this.time * 0.9 + m.seed) * 4 * dt; m.x += sway * 5 * dt; }
+      else { m.y -= 2 * dt; m.x += sway * 2 * dt; }
+    }
+    this.motes = this.motes.filter(m => m.t < m.life && Math.abs(m.x - this.cam.x) < W / 2 + 40 && Math.abs(m.y - this.cam.y) < H / 2 + 40);
+    // A glint now and then on ore in view.
+    for (let n = 0; n < 2; n++) {
+      const x = ((this.cam.x + (Math.random() - 0.5) * W) / T) | 0, y = ((this.cam.y + (Math.random() - 0.5) * H) / T) | 0;
+      if (x < 0 || y < 0 || x >= N || y >= N) continue;
+      const i = y * N + x, kk = w.kind[i];
+      if (w.seen[i] && (kk === K.ORE_A || kk === K.ORE_B || kk === K.RELIC) && Math.random() < 0.5) this.parts.push({ x: (x + 0.25 + Math.random() * 0.5) * T, y: (y + 0.25 + Math.random() * 0.5) * T, vx: 0, vy: 0, t: 0, life: 0.35, color: '#ffffff', size: 1, star: true });
+    }
+    setAmbience(base(here), here > 4);
+    this.chime -= dt;
+    if (this.chime <= 0 && d.mode !== 'recall') { this.chime = 2.5 + Math.random() * 4.5; sfx.chime(base(here)); }
   }
 
   // ------------------------------------------------------------ small things
@@ -563,10 +646,11 @@ export class Game {
       // What is drawn follows the drill's cell.
       if (d.mode === 'slide') {
         const tx = d.x, ty = d.y, dx = tx - d.fx, dy = ty - d.fy, far = Math.hypot(dx, dy), step = d.speed * dt;
-        if (far <= step) { d.fx = tx; d.fy = ty; d.mode = 'idle'; if (d.speed === 24) sfx.thud(); } else { d.fx += dx / far * step; d.fy += dy / far * step; }
+        if (far <= step) { d.fx = tx; d.fy = ty; d.mode = 'idle'; if (d.speed === 24) { sfx.thud(); this.land(); } } else { d.fx += dx / far * step; d.fy += dy / far * step; }
       } else if (d.mode === 'dig') {
         d.t += dt;
         if (((d.t * 30) | 0) !== (((d.t - dt) * 30) | 0) && d.dur > 0.15) sfx.grind();
+        if (((d.t * 18) | 0) !== (((d.t - dt) * 18) | 0)) this.chips(d.target % N, (d.target / N) | 0, this.rockSheet(this.world.kind[d.target], this.world.biome[d.target]), 2, d.dir, 0.6);
         if (d.t >= d.dur) this.finishDig();
       } else if (d.mode === 'bump') {
         d.t += dt; if (d.t > 0.14) d.mode = 'idle';
@@ -598,6 +682,7 @@ export class Game {
       this.saveTick = (this.saveTick ?? 0) + dt;
       if (this.saveTick > 15) { this.saveTick = 0; this.save(); }
     }
+    this.ambient(dt);
     for (const e of this.effects) e.t += dt * 1000;
     this.effects = this.effects.filter(e => e.t < duration(e.sheet, e.animation));
     for (const p of this.popups) p.t += dt;
@@ -718,12 +803,41 @@ export class Game {
     if (d.mode === 'dig') { const push = 3 + Math.sin(d.t * 70) * 1.2; dx += DX[d.dir] * push; dy += DY[d.dir] * push; }
     if (d.mode === 'bump') { const push = Math.sin(Math.min(1, d.t / 0.14) * Math.PI) * 3; dx += DX[d.dir] * push; dy += DY[d.dir] * push; }
     const busy = d.mode === 'dig' || d.mode === 'slide' || d.mode === 'recall' || d.mode === 'launch';
+    if (d.mode === 'slide' || d.mode === 'recall' || d.mode === 'launch') {
+      // Speed leaves a wake: fading copies of the drill back along the way it came.
+      const to = d.mode === 'slide' ? [d.x, d.y] : d.route[Math.min(d.at, d.route.length - 1)], mvx = to[0] - d.fx, mvy = to[1] - d.fy, far = Math.hypot(mvx, mvy) || 1;
+      for (let g = 3; g >= 1; g--) { ctx.globalAlpha = 0.34 - g * 0.09; draw(ctx, 'drill', `${dirName}-a`, dx - mvx / far * g * 7, dy - mvy / far * g * 7); }
+      ctx.globalAlpha = 1;
+    }
     draw(ctx, 'drill', busy ? frameAt('drill', dirName, now) : `${dirName}-a`, dx, dy);
     if (this.hurt > 0 && ((now / 50) | 0) % 2) { ctx.globalAlpha = 0.5; ctx.fillStyle = '#ff5a4a'; ctx.fillRect(Math.round(dx) + 3, Math.round(dy) + 3, 10, 10); ctx.globalAlpha = 1; }
     for (const e of this.effects) {
       const f = frameAt(e.sheet, e.animation, e.t);
       if (f) draw(ctx, e.sheet, f, e.x - ox - f[2] / 2, e.y - oy - f[3] / 2);
     }
+    for (const p of this.parts) {
+      const px = Math.round(p.x - ox), py = Math.round(p.y - oy), fade = 1 - p.t / p.life;
+      if (px < 0 || py < 0 || px >= W || py >= H) continue;
+      ctx.globalAlpha = Math.min(1, fade * 2); ctx.fillStyle = p.color;
+      if (p.star) { const arm = fade > 0.5 ? 2 : 1; ctx.fillRect(px - arm, py, arm * 2 + 1, 1); ctx.fillRect(px, py - arm, 1, arm * 2 + 1); }
+      else ctx.fillRect(px, py, p.size, p.size);
+    }
+    for (const m of this.motes) {
+      const cx = (m.x / T) | 0, cy = (m.y / T) | 0;
+      if (cx < 0 || cy < 0 || cx >= N || cy >= N || w.kind[cy * N + cx] !== K.EMPTY || !w.seen[cy * N + cx]) continue;
+      ctx.globalAlpha = Math.max(0, Math.min(1, m.t, m.life - m.t)) * (0.35 + 0.3 * Math.sin(this.time * 3 + m.seed)); ctx.fillStyle = MOTE[m.biome];
+      ctx.fillRect(Math.round(m.x - ox), Math.round(m.y - oy), 1, 1);
+    }
+    ctx.globalAlpha = 1;
+    this.light(ox, oy);
+    for (const r of this.rings) {
+      // A ring of whole pixels spreading from a point.
+      const u = r.t / 0.5, rad = r.reach * (1 - (1 - u) * (1 - u)), n = Math.max(12, (rad * 1.6) | 0);
+      ctx.globalAlpha = (1 - u) * 0.9; ctx.fillStyle = r.color;
+      for (let a = 0; a < n; a++) ctx.fillRect(Math.round(r.x - ox + Math.cos(a / n * 6.283) * rad), Math.round(r.y - oy + Math.sin(a / n * 6.283) * rad), 1, 1);
+    }
+    ctx.globalAlpha = 1;
+    if (this.flash > 0) { ctx.globalAlpha = Math.min(0.45, this.flash * 1.4); ctx.fillStyle = '#fff6c8'; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1; }
     for (const p of this.popups) {
       const py = p.y - oy - p.t * 18, px = p.x - ox;
       ctx.globalAlpha = Math.min(1, (0.9 - p.t) * 4);
@@ -755,7 +869,7 @@ export class Game {
       const floorSheet = `${BIOME_NAMES[b]}-floor`, floors = sheets[floorSheet].tiles[255], floor = floors[(cellHash(x, y, 1) * floors.length) | 0];
       if (!w.seen[i]) {
         // Ground the scanner has not reached: only whose it is shows, dimly.
-        if (k !== K.BEDROCK) { ctx.globalAlpha = 0.5; draw(ctx, floorSheet, floor, px, py); ctx.globalAlpha = 1; }
+        if (k !== K.BEDROCK) { ctx.globalAlpha = 0.42; draw(ctx, floorSheet, floor, px, py); ctx.globalAlpha = 1; }
         continue;
       }
       const m = k === K.EMPTY ? 255 : w.mask(x, y);
@@ -768,6 +882,52 @@ export class Game {
       const over = this.overlay(k, b);
       if (over && over !== 'hazard' && over !== 'relic') draw(ctx, this.itemSheet(b), over, ux, uy);
     }
+  }
+
+  // The dark: a wash in the colour of the ground the drill is in, with pools of light cut out of it round the
+  // drill, the core, lava and whatever is being hauled; then a little colour added back where things glow.
+  light(ox, oy) {
+    const { ctx, W, H } = this, d = this.drill;
+    let dark = this.dark;
+    if (!dark || dark.width !== W || dark.height !== H) { dark = this.dark = document.createElement('canvas'); dark.width = W; dark.height = H; }
+    const c = dark.getContext('2d'), [r, g, b] = this.gloom;
+    c.globalCompositeOperation = 'source-over'; c.globalAlpha = 1;
+    c.clearRect(0, 0, W, H);
+    c.fillStyle = `rgba(${r | 0},${g | 0},${b | 0},0.6)`;
+    c.fillRect(0, 0, W, H);
+    c.globalCompositeOperation = 'destination-out'; c.fillStyle = '#000';
+    const pool = (x, y, rad) => {
+      if (x < -rad || y < -rad || x > W + rad || y > H + rad) return;
+      for (const [share, alpha] of [[1, 0.3], [0.78, 0.4], [0.56, 0.6], [0.34, 1]]) { c.globalAlpha = alpha; c.beginPath(); c.arc(Math.round(x), Math.round(y), rad * share, 0, 6.2832); c.fill(); }
+    };
+    const flick = Math.sin(this.time * 9) * 1.5;
+    const dxp = d.fx * T + 8 - ox, dyp = d.fy * T + 8 - oy, cxp = (C + 0.5) * T - ox, cyp = (C + 0.5) * T - oy;
+    pool(dxp + DX[d.dir] * 12, dyp + DY[d.dir] * 12, 70 + flick + (d.mode === 'dig' ? 5 : 0));
+    pool(cxp, cyp, 60 + Math.sin(this.time * 2) * 3 + this.coreFlash * 60);
+    for (const i of this.lavaCells) pool((i % N + 0.5) * T - ox, (((i / N) | 0) + 0.5) * T - oy, 26);
+    for (const e of this.effects) if (e.sheet === 'blast' || e.sheet === 'zap' || e.sheet === 'haul' || e.sheet === 'bank') pool(e.x - ox, e.y - oy, 48);
+    for (const [i, s] of this.sparks) if (s.fuse > 0) pool((i % N + 0.5) * T - ox, (((i / N) | 0) + 0.5) * T - oy, 22);
+    ctx.drawImage(dark, 0, 0);
+    // Glow: colour laid over the light.
+    ctx.globalCompositeOperation = 'lighter';
+    const glow = (x, y, rad, color, alpha) => {
+      if (x < -rad || y < -rad || x > W + rad || y > H + rad) return;
+      ctx.fillStyle = color;
+      for (const share of [1, 0.6]) { ctx.globalAlpha = alpha; ctx.beginPath(); ctx.arc(Math.round(x), Math.round(y), rad * share, 0, 6.2832); ctx.fill(); }
+    };
+    glow(cxp, cyp, 34 + Math.sin(this.time * 2) * 2, '#2a78c8', 0.1 + this.coreFlash);
+    if (cxp > -80 && cyp > -80 && cxp < W + 80 && cyp < H + 80) {
+      // Slow rays turning round the core.
+      ctx.fillStyle = '#5cc4f0';
+      for (let ray = 0; ray < 6; ray++) {
+        const a = this.time * 0.25 + ray * 1.0472, len = 46 + Math.sin(this.time * 1.7 + ray * 2) * 10 + this.coreFlash * 80;
+        ctx.globalAlpha = 0.07 + this.coreFlash * 0.5;
+        this.line(cxp + Math.cos(a) * 24, cyp + Math.sin(a) * 24, cxp + Math.cos(a) * len, cyp + Math.sin(a) * len);
+        this.line(cxp + Math.cos(a + 0.04) * 24, cyp + Math.sin(a + 0.04) * 24, cxp + Math.cos(a + 0.04) * len * 0.8, cyp + Math.sin(a + 0.04) * len * 0.8);
+      }
+    }
+    for (const i of this.lavaCells) glow((i % N + 0.5) * T - ox, (((i / N) | 0) + 0.5) * T - oy, 18, '#ff6a1c', 0.1);
+    ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
   }
 
   // A line of whole pixels; `dash` (0-1) draws only that share of every 4 pixels.
@@ -825,7 +985,7 @@ export class Game {
     if (this.banner) {
       const b = this.banner, pop = Math.min(1, b.t / 0.12), y = Math.round(H * 0.2 - (1 - pop) * 8);
       ctx.globalAlpha = Math.min(1, (b.life - b.t) * 3);
-      const big = b.n >= 10 ? 2 : 1;
+      const big = (b.n >= 10 ? 2 : 1) + (b.t < 0.07 ? 1 : 0);
       text(ctx, b.title, W / 2, y, b.n >= 30 ? '#ffe14a' : '#ffffff', 0.5, big);
       text(ctx, `${b.n} x${b.mult.toFixed(1)}`, W / 2, y + 11 * big + 2, '#bfe6ff', 0.5);
       let line = `+${compact(b.grit)}`, lw = textWidth(line) + 11;
@@ -842,7 +1002,7 @@ export class Game {
     // Top: what has been banked, the cell and the tether.
     slice9(ctx, 'ui', 'panel', 2, 2, W - 4, 40);
     draw(ctx, 'icons', 'grit', 6, 5);
-    text(ctx, compact(S.grit - this.pending.grit), 18, 6, '#ffe14a');
+    text(ctx, compact(S.grit - this.pending.grit), 18, 6 - (this.counted > 0 ? 1 : 0), this.counted > 0 ? '#ffffff' : '#ffe14a');
     const gw = (W - 30) / 4;
     for (let g = 1; g < 5; g++) {
       const gx = Math.round(6 + (g - 1) * gw), have = S.gems[g] - this.pending.gems[g];
@@ -900,6 +1060,7 @@ export class Game {
       this.line(ax, ay, px, py, 0.5);
       ctx.globalAlpha = 1;
     }
+    this.shopRise = this.shop ? Math.min(1, (this.shopRise ?? 0) + 0.12) : 0;
     if (this.shop) this.drawShop();
   }
   bar(x, y, w, icon, fill, color, flash) {
@@ -910,9 +1071,9 @@ export class Game {
   }
   drawShop() {
     const { ctx, W, H, S } = this;
-    ctx.globalAlpha = 0.6; ctx.fillStyle = '#07060b'; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1;
+    ctx.globalAlpha = 0.6 * this.shopRise; ctx.fillStyle = '#07060b'; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1;
     const pw = Math.min(W - 8, 200), px = Math.round((W - pw) / 2), rh = Math.max(22, Math.min(28, Math.floor((H - 100) / UPGRADES.length)));
-    const ph = 22 + rh * UPGRADES.length + 22, py = Math.max(44, Math.round((H - ph) / 2));
+    const rise = 1 - this.shopRise, ph = 22 + rh * UPGRADES.length + 22, py = Math.max(44, Math.round((H - ph) / 2)) + Math.round(rise * rise * 60);
     slice9(ctx, 'ui', 'panel', px, py, pw, ph);
     this.button(px, py, pw, ph, () => {});
     text(ctx, 'UPGRADES', px + 8, py + 7, '#ffe14a');

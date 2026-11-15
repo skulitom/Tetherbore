@@ -85,3 +85,36 @@ export const sfx = {
   blast() { noise(0.7, { freq: 1300, to: 50, gain: 0.6, q: 0.5, type: 'lowpass' }); tone(70, 0.6, { type: 'sine', gain: 0.6, to: 26 }); },
   relic() { [0, 2, 4, 5, 7, 9, 10, 12].forEach((s, i) => tone(note(5 + s), 0.6, { type: 'triangle', gain: 0.13, delay: i * 0.09 })); },
 };
+
+// ---------------------------------------------------------------- the sound of the place
+// A bed of filtered noise and a low drone that change with the ground the drill is in, and now and then a single
+// soft note from that ground's own scale.
+let bed = null, bedKey = -1;
+const AIR = [[420, 55], [1500, 82], [240, 41], [700, 62], [520, 73]];     // [filter Hz, drone Hz] per direction
+export function setAmbience(biome, deep) {
+  if (!ctx) return;
+  if (!bed) {
+    const src = ctx.createBufferSource(), filter = ctx.createBiquadFilter(), out = ctx.createGain(), drone = ctx.createOscillator(), dg = ctx.createGain();
+    src.buffer = noiseBuffer; src.loop = true;
+    filter.type = 'lowpass'; filter.Q.value = 0.6;
+    out.gain.value = 0;
+    drone.type = 'sine'; dg.gain.value = 0.5;
+    src.connect(filter); filter.connect(out); drone.connect(dg); dg.connect(out); out.connect(master);
+    src.start(); drone.start();
+    bed = { filter, out, drone };
+  }
+  const key = biome + (deep ? 10 : 0);
+  if (key === bedKey) return;
+  bedKey = key;
+  const [hz, low] = AIR[biome] ?? AIR[0], t = ctx.currentTime;
+  bed.filter.frequency.setTargetAtTime(hz * (deep ? 0.7 : 1), t, 1.2);
+  bed.drone.frequency.setTargetAtTime(low * (deep ? 0.75 : 1), t, 1.2);
+  bed.out.gain.setTargetAtTime(0.06, t, 1.5);
+}
+const MOODS = [[0, 4, 7], [7, 9, 12, 14, 16], [0, 3, 5], [2, 4, 9, 11], [0, 4, 7, 9]];
+sfx.chime = biome => {
+  const steps = MOODS[biome] ?? MOODS[0], step = steps[(Math.random() * steps.length) | 0];
+  const top = biome === 1 ? 880 : biome === 2 ? 165 : biome === 3 ? 330 : 440, f = top * 2 ** (step / 12);
+  tone(f, 1.6, { type: 'sine', gain: 0.045, attack: 0.08 });
+  tone(f * 1.5, 1.2, { type: 'sine', gain: 0.02, attack: 0.1, delay: 0.22 });
+};

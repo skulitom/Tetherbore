@@ -26,7 +26,7 @@ const relic = (palette) => ([
 
 export const frost = {
   version: 1, name: 'frost-items', width: 16, height: 16,
-  palette: { k: '#22395a', d: '#5f86b8', l: '#eef8ff', i: '#e6f5ff', w: '#ffffff', p: '#a8eef2', q: '#58b4d6', a: '#f6a0e0', b: '#b452ac', g: '#8cf2c4', h: '#3aa88a',
+  palette: { k: '#22395a', d: '#5f86b8', l: '#eef8ff', i: '#e6f5ff', w: '#ffffff', p: '#4fd0e8', q: '#1f86c0', a: '#f6a0e0', b: '#b452ac', g: '#8cf2c4', h: '#3aa88a',
     y: '#f4d86a', G: '#6ab8f0', D: '#3a78c8' },
   symbols: {
     dense: [
