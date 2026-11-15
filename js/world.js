@@ -63,7 +63,7 @@ export class World {
       let k = K.SOFT;
       if (b !== B.CRUST) {
         const h = hash(x, y, seed + 9);
-        if (r > 7 && noise(x / 4, y / 4, seed + 5) > (b === B.EMBER ? 0.57 : 0.63)) k = K.DENSE;
+        if (r > 7 && noise(x / 4, y / 4, seed + 5) > (b === B.EMBER ? 0.64 : 0.68)) k = K.DENSE;
         if (r > 6.5 && noise(x / 3, y / 3, seed + 6) > (deep ? 0.6 : 0.66) && h < 0.62) k = K.ORE_A;
         if (r > 15 && noise(x / 3.5, y / 3.5, seed + 7) > (deep ? 0.66 : 0.74) && h < 0.5) k = K.ORE_B;
         if (r > 10) {

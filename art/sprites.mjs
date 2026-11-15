@@ -79,7 +79,7 @@ export const frost = {
 
 export const ember = {
   version: 1, name: 'ember-items', width: 16, height: 16,
-  palette: { k: '#160c12', d: '#1a0c12', l: '#7c5052', o: '#ff8a2a', y: '#ffd84a', r: '#c8381e', w: '#fff6c8', m: '#7a1e14',
+  palette: { k: '#160c12', d: '#2a1214', l: '#a86a58', o: '#ff8a2a', y: '#ffd84a', r: '#c8381e', w: '#fff6c8', m: '#7a1e14',
     g: '#ffb060', G: '#f0602a', D: '#a82a1a' },
   symbols: {
     dense: [
@@ -148,7 +148,7 @@ export const ember = {
 
 export const mire = {
   version: 1, name: 'mire-items', width: 16, height: 16,
-  palette: { k: '#1c1426', d: '#2a1e36', l: '#7c6c8e', a: '#f0a020', A: '#ffd070', B: '#a85a10', c: '#58f0e0', C: '#2aa8b0', w: '#ffffff', s: '#e8e0d0', S: '#a89ab0',
+  palette: { k: '#1c1426', d: '#30243e', l: '#8c7ca0', a: '#f0a020', A: '#ffd070', B: '#a85a10', c: '#58f0e0', C: '#2aa8b0', w: '#ffffff', s: '#e8e0d0', S: '#a89ab0',
     v: '#b060d0', V: '#7a3a9a', u: '#f0c0f8', y: '#f4d86a', g: '#b8f06a', G: '#5cb848', D: '#2a7a3a' },
   symbols: {
     dense: [
@@ -307,7 +307,7 @@ const DRILL = [
 const SPIN = { s: 'S', S: 's' };
 export const drill = {
   version: 1, name: 'drill', width: 16, height: 16,
-  palette: { k: '#1c1420', b: '#f0a838', d: '#b86c24', c: '#5fd0e8', w: '#eafcff', s: '#d4dae4', S: '#7e8898' },
+  palette: { k: '#1c1420', b: '#ffd83a', d: '#e08a1c', c: '#3ab8e8', w: '#eafcff', s: '#eef2f8', S: '#8c96a8' },
   symbols: { drill: DRILL },
   frames: ['right', 'down', 'left', 'up'].flatMap((dir, i) => [
     { name: `${dir}-a`, duration: 70, ops: [{ op: 'stamp', symbol: 'drill', x: 0, y: 0, ...(i && { rotate: i * 90 }) }] },
@@ -614,7 +614,7 @@ const plate = [
 ];
 export const tough = {
   version: 1, name: 'tough', width: 16, height: 16,
-  palette: { k: '#0c0a12b0', l: '#ffffff50', w: '#ffffffd0', g: '#ffe14a' },
+  palette: { k: '#0c0a1268', l: '#ffffff58', w: '#ffffffd0', g: '#ffe14a' },
   frames: [
     { name: 'slate', ops: plate },
     { name: 'vault', ops: [...plate,

@@ -34,7 +34,7 @@ const DEBRIS = {
   rime: ['#62b8b4', '#d8fff4', '#84d4c8'], magma: ['#7a2418', '#e8743a', '#ffb040'], bloom: ['#8a3c8c', '#ffa0e0', '#7af0d0'],
   gilt: ['#6e5a34', '#ffe680', '#ffd040'], bedrock: ['#1e1e26', '#34343e'],
 };
-const GLOOM = [[10, 8, 7], [5, 12, 30], [26, 6, 4], [14, 6, 26], [22, 13, 4], [3, 18, 24], [34, 5, 2], [26, 4, 28], [24, 18, 2]];
+const GLOOM = [[10, 8, 7], [5, 12, 30], [22, 5, 6], [14, 6, 26], [22, 13, 4], [3, 18, 24], [30, 5, 3], [26, 4, 28], [24, 18, 2]];
 const MOTE = ['#8a7a66', '#ffffff', '#ff9a3a', '#a5f0a0', '#ffe08a', '#d8fff4', '#ffc040', '#ffa0e0', '#ffe680'];
 const DIG_TIME = [0, 0, 0, 0.24, 0.45, 0.24, 0.45, 1.0, 1.8, 0.24, 0, 0.18, 0.45];
 const DIG_COST = [0, 0, 0, 1, 1, 1, 1, 2, 3, 1, 0, 1, 1];
@@ -893,7 +893,7 @@ export class Game {
     const c = dark.getContext('2d'), [r, g, b] = this.gloom;
     c.globalCompositeOperation = 'source-over'; c.globalAlpha = 1;
     c.clearRect(0, 0, W, H);
-    c.fillStyle = `rgba(${r | 0},${g | 0},${b | 0},0.6)`;
+    c.fillStyle = `rgba(${r | 0},${g | 0},${b | 0},0.56)`;
     c.fillRect(0, 0, W, H);
     c.globalCompositeOperation = 'destination-out'; c.fillStyle = '#000';
     const pool = (x, y, rad) => {
@@ -916,6 +916,7 @@ export class Game {
       for (const share of [1, 0.6]) { ctx.globalAlpha = alpha; ctx.beginPath(); ctx.arc(Math.round(x), Math.round(y), rad * share, 0, 6.2832); ctx.fill(); }
     };
     glow(cxp, cyp, 34 + Math.sin(this.time * 2) * 2, '#2a78c8', 0.1 + this.coreFlash);
+    glow(dxp, dyp, 13, '#ffb040', 0.09);
     if (cxp > -80 && cyp > -80 && cxp < W + 80 && cyp < H + 80) {
       // Slow rays turning round the core.
       ctx.fillStyle = '#5cc4f0';

@@ -43,11 +43,11 @@ export const ROCKS = [
   rock('frost', { k: '#22395a', D: '#7fa3cc', L: '#ffffff', s: '#06102659', f: '#bcd8ee', a: '#a2c4e2', b: '#d6eaf8', c: '#f4fbff' },
     { color: 'f', speckle: [{ color: 'a', amount: 0.2, size: 6 }, { color: 'b', amount: 0.18, size: 4 }, { color: 'c', amount: 0.04, size: 2 }] }, 11),
   // South: basalt with embers in it.
-  rock('ember', { k: '#12080c', D: '#2a171e', L: '#855350', s: '#00000066', f: '#4a2f37', a: '#3a232b', b: '#5d3c41', c: '#b0482a' },
+  rock('ember', { k: '#160808', D: '#3e1e20', L: '#c07a5c', s: '#00000066', f: '#74403a', a: '#5e3230', b: '#8a5044', c: '#ff8a3a' },
     { color: 'f', speckle: [{ color: 'a', amount: 0.24, size: 5 }, { color: 'b', amount: 0.14, size: 4 }, { color: 'c', amount: 0.025, size: 2 }] }, 23),
   // West: violet loam under moss.
-  rock('mire', { k: '#17101f', D: '#352a45', L: '#8cc058', s: '#05020a59', f: '#574766', a: '#463853', b: '#5c8a48', c: '#a5d86a' },
-    { color: 'f', speckle: [{ color: 'a', amount: 0.2, size: 5 }, { color: 'b', amount: 0.2, size: 5 }, { color: 'c', amount: 0.03, size: 2 }] }, 31),
+  rock('mire', { k: '#17101f', D: '#3c2f50', L: '#9ad062', s: '#05020a59', f: '#665478', a: '#574766', b: '#5f9450', c: '#b4e878' },
+    { color: 'f', speckle: [{ color: 'a', amount: 0.2, size: 6 }, { color: 'b', amount: 0.11, size: 5 }, { color: 'c', amount: 0.025, size: 2 }] }, 31),
   // East: sandstone.
   rock('lode', { k: '#3a2212', D: '#8a5c38', L: '#f0d8a0', s: '#1a0c0459', f: '#b98a5a', a: '#a57648', b: '#cca06c', c: '#e4c68e' },
     { color: 'f', speckle: [{ color: 'a', amount: 0.2, size: 6 }, { color: 'b', amount: 0.18, size: 4 }, { color: 'c', amount: 0.04, size: 2 }] }, 43),
@@ -64,7 +64,7 @@ export const ROCKS = [
   rock('ice', { k: '#1c3a66', D: '#3f78b8', L: '#d8f4ff', s: '#06102659', f: '#6fb0e0', a: '#5a9cd2', b: '#8cc8ee', c: '#e8fbff' },
     { color: 'f', speckle: [{ color: 'a', amount: 0.22, size: 6 }, { color: 'b', amount: 0.16, size: 3 }, { color: 'c', amount: 0.03, size: 1 }] }, 83),
   // Lava gone cold in the south.
-  rock('basalt', { k: '#0c0608', D: '#2a1c22', L: '#8a6468', s: '#00000066', f: '#4a3840', a: '#3e2e36', b: '#58444c', c: '#8a3424' },
+  rock('basalt', { k: '#0c0608', D: '#241a22', L: '#7a6a78', s: '#00000066', f: '#463e4c', a: '#3a3240', b: '#544a5a', c: '#8a3424' },
     { color: 'f', speckle: [{ color: 'a', amount: 0.26, size: 4 }, { color: 'b', amount: 0.14, size: 3 }, { color: 'c', amount: 0.03, size: 2 }] }, 89),
   // The far flanks: each direction's ground gone strange.
   rock('rime', { k: '#0e2a3a', D: '#2f7a8a', L: '#d8fff4', s: '#02101a59', f: '#62b8b4', a: '#4aa0a4', b: '#84d4c8', c: '#f0fff8' },
@@ -84,7 +84,7 @@ export const FLOORS = [
   floor('gilt-floor', { f: '#241c10', a: '#1c160c', b: '#302614' }, { color: 'f', speckle: [{ color: 'a', amount: 0.25, size: 6 }, { color: 'b', amount: 0.1, size: 3 }] }, 15),
   floor('crust-floor', { f: '#2a211c', a: '#241c18', b: '#312720' }, { color: 'f', speckle: [{ color: 'a', amount: 0.25, size: 5 }, { color: 'b', amount: 0.1, size: 3 }] }, 5),
   floor('frost-floor', { f: '#1c2c48', a: '#17253e', b: '#243858' }, { color: 'f', speckle: [{ color: 'a', amount: 0.25, size: 6 }, { color: 'b', amount: 0.1, size: 3 }] }, 6),
-  floor('ember-floor', { f: '#1c0e12', a: '#160a0e', b: '#2a1418' }, { color: 'f', speckle: [{ color: 'a', amount: 0.25, size: 5 }, { color: 'b', amount: 0.1, size: 3 }] }, 7),
+  floor('ember-floor', { f: '#200c0c', a: '#180808', b: '#301412' }, { color: 'f', speckle: [{ color: 'a', amount: 0.25, size: 5 }, { color: 'b', amount: 0.1, size: 3 }] }, 7),
   floor('mire-floor', { f: '#1e1628', a: '#181120', b: '#243020' }, { color: 'f', speckle: [{ color: 'a', amount: 0.25, size: 5 }, { color: 'b', amount: 0.1, size: 3 }] }, 8),
   floor('lode-floor', { f: '#3a2616', a: '#301e11', b: '#48301c' }, { color: 'f', speckle: [{ color: 'a', amount: 0.25, size: 6 }, { color: 'b', amount: 0.1, size: 3 }] }, 9),
 ];
