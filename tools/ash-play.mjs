@@ -26,7 +26,7 @@ export const flatsOf = (w, far = 2300) => w.pocketsWithin(far).filter(Z => rowOf
 // Returns
 //   { flat, levels, tektites (cells of its mineral in the flat), loop (the loop's radius), hauled: [{ n, ash (how
 //     many of its cells were the flat's), minerals, paid, lump (what its tektites pay by themselves), spec, light,
-//     title }] (every haul made), n, minerals (cells and tektites brought home in all), cut
+//     title, says (the first line under its banner's title) }] (every haul made), n, minerals (cells and tektites brought home in all), cut
 //     (cells the drill cut), crushed (tektites among them), said (how many times CRUSHED came up), t (seconds from
 //     the flat's edge to the last haul), lap (seconds the loop took), pace (cells cut a second on the loop), speed
 //     (cells flown a second on the loop), run (the longest the drill's run went unbroken, in seconds: pushing
@@ -57,7 +57,7 @@ export async function play(seed = 7, pick = 0, share = 0.62, lv = {}) {
     const ash = cells.filter(i => w.b(i) === Z.row).length, lump = cells.reduce((sum, i) => sum + (w.b(i) === Z.row && w.k(i) === Z.mineral ? round2(income(Math.max(22, Math.hypot(i % N - C, Math.floor(i / N) - C))) * P.lump) : 0), 0);
     haul(cells);
     const h = game.hauled;
-    out.hauled.push({ n: h.n, ash, minerals: h.minerals, paid: h.grit, lump, spec: h.spec, light: h.light, title: h.title }); out.n += h.n; out.minerals += h.minerals;
+    out.hauled.push({ n: h.n, ash, minerals: h.minerals, paid: h.grit, lump, spec: h.spec, light: h.light, title: h.title, says: h.light ? null : game.bannerSays(h)[0] }); out.n += h.n; out.minerals += h.minerals;
   };
   // Round the loop: the drill is steered at a point a little way on round the circle from where it is, so the
   // heading turns all the time, a degree or two a frame. Once and an eighth round, or until the loop's haul.

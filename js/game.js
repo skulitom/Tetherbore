@@ -1200,7 +1200,9 @@ export class Game {
     for (const i of cells) one(w.k(i), w.b(i), i % N, Math.floor(i / N));
     for (const e of extra) one(e.k, e.b, e.x, e.y);
     // Each part brought home from a wreck makes every haul pay a tenth more, the haul that brings it too.
-    const parts = wrecks.length, over = overload(n, S.lv.winch), mult = haulBonus(n, this.val('winch')) * (1 + 0.1 * (held.filter(Boolean).length + parts)) * over;
+    // (A piece over the winch's load pays less for each cell's own grit, and its banner says so; where the cells
+    // are worth nothing themselves, as a loop of ash is, nothing is lost and nothing is said.)
+    const parts = wrecks.length, over = grit > 0 ? overload(n, S.lv.winch) : 1, mult = haulBonus(n, this.val('winch')) * (1 + 0.1 * (held.filter(Boolean).length + parts)) * over;
     const shine = 1 + 0.5 * Math.min(prisms, 3);
     for (let b = 1; b < 5; b++) gems[b] = Math.round(gems[b] * shine);
     return { n, grit: Math.round(grit * mult) + lump, gems, lump, spec, minerals, mineral, prisms, shine, relic, caches, parts, wrecks, mult, over, chain: chains ? chain : 0 };
