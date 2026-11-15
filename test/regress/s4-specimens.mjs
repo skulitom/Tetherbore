@@ -88,7 +88,8 @@ const GEM_COLOR = [null, '#bfe6ff', '#ffb060', '#b8f06a', '#d8b8ff'];
   check(S.spec[B.LODE] === 1.5 && game.hauled.spec === 1 && game.hauled.mineral === null && game.popups.some(p => p.icon === 'spec-lode' && p.label === '+1') && game.popups.some(p => p.icon === 'grit'), `a mineral with no picture: ${JSON.stringify(S.spec)}, ${JSON.stringify(game.popups.map(p => [p.label, p.icon]))}`);
   game.haul(lay(-60, 18, [K.MINERAL], rich.id));
   check(S.spec[B.LODE] === 3 && game.hauled.spec === 2, `the second cell of it took the whole count from 1 to 3: said ${game.hauled.spec}`);
-  for (let kin = 1; kin <= 4; kin++) check(game.specNeed(kin) === 0, `something is bought with the specimens of direction ${kin}`);
+  // (What each direction's specimens buy next, and for how many: the first rows of the shop's second tab.)
+  check([1, 2, 3, 4].map(kin => game.specNeed(kin)).join() === '8,12,12,12', `the next thing each direction's specimens buy asks ${[1, 2, 3, 4].map(kin => game.specNeed(kin))}`);
 }
 
 // ---- the count under the top bar: three seconds, drawn with the specimen's icon

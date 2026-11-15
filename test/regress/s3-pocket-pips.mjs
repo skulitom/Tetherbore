@@ -29,11 +29,15 @@ check(pips.every(Z => far(Z) <= 230 && !S.visited[Z.key]) && pips.length === wit
 
 // ---- drawn: two pixels in the pocket's colour on four of dark, where it lies
 {
-  const R = 230, size = 46, per = R * 2.25 / size, [mapX, mapY] = [game.W - 54, game.H - 58], squares = [];
+  // (The map shows the ground near the drill, a cell and a half to a pixel; a pocket off it is at its edge.)
+  const size = 46, per = 1.5, [mapX, mapY] = [game.W - 54, game.H - 58], squares = [], dx = Math.floor(game.drill.x) + 0.5, dy = Math.floor(game.drill.y) + 0.5;
   game.ctx.fillRect = (x, y, wide, high) => { squares.push([game.ctx.fillStyle, x, y, wide, high]); };
   game.render();
   for (const Z of pips) {
-    const mx = Math.round(mapX + size / 2 + (Z.cx + 0.5 - C - 0.5) / per), my = Math.round(mapY + size / 2 + (Z.cy + 0.5 - C - 0.5) / per);
+    let ox = (Z.cx + 0.5 - dx) / per, oy = (Z.cy + 0.5 - dy) / per;
+    const off = Math.max(Math.abs(ox), Math.abs(oy)), edge = size / 2 - 3;
+    if (off > edge) { ox = ox * edge / off; oy = oy * edge / off; }
+    const mx = Math.round(mapX + size / 2 + ox), my = Math.round(mapY + size / 2 + oy);
     const pip = squares.findIndex(s => s[0] === BIOMES[Z.row].pocket.pip && s[1] === mx - 1 && s[2] === my - 1 && s[3] === 2 && s[4] === 2);
     check(pip > 0 && squares[pip - 1][0] === '#0c0a12' && squares[pip - 1][1] === mx - 2 && squares[pip - 1][3] === 4, `the pocket at ${Z.cx - C},${Z.cy - C} is not drawn as a pip at ${mx},${my}`);
   }

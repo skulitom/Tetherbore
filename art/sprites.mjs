@@ -368,10 +368,19 @@ const PLATES = [1, 2, 3, 4].map(level => {
   if (level >= 4) for (const [x, y] of [[9, 6], [9, 9], [3, 6], [3, 9], [6, 4], [6, 11]]) g[y][x] = 'R';
   return g.map(row => row.join(''));
 });
+// What is fitted to the drill shows on it: the mender's green lamp, the lava skin's red-hot keel, the spore drive's
+// two green vents at the tail, the arc coil's yellow winding between body and bit.
+const fit = cells => { const g = blank(); for (const [x, y, c] of cells) g[y][x] = c; return g.map(row => row.join('')); };
+const FITS = {
+  mender: fit([[7, 8, 'M'], [8, 8, 'm'], [7, 9, 'm'], [8, 9, 'm']]),
+  lavaskin: fit([3, 4, 5, 6, 7, 8, 9].flatMap(x => [[x, 11, 'r'], [x, 10, x % 2 ? 'r' : 'o']])),
+  sporedrive: fit([[1, 5, 'k'], [1, 6, 'g'], [2, 6, 'g'], [1, 7, 'k'], [1, 8, 'k'], [1, 9, 'g'], [2, 9, 'g'], [1, 10, 'k'], [0, 6, 'k'], [0, 9, 'k']]),
+  arccoil: fit([[10, 5, 'y'], [10, 7, 'y'], [10, 8, 'y'], [10, 10, 'y']]),
+};
 export const drill = {
   version: 1, name: 'drill', width: 16, height: 16,
-  palette: { k: '#1c1420', b: '#ffd83a', d: '#e08a1c', c: '#3ab8e8', w: '#eafcff', s: '#eef2f8', S: '#8c96a8', r: '#ff5a3a', y: '#ffe14a', p: '#77829a', P: '#aab4c8', R: '#ffffff' },
-  symbols: { drill: DRILL, ...Object.fromEntries(RAMS.map((rows, n) => [`ram${n + 1}`, rows])), ...Object.fromEntries(PLATES.map((rows, n) => [`plate${n + 1}`, rows])) },
+  palette: { k: '#1c1420', b: '#ffd83a', d: '#e08a1c', c: '#3ab8e8', w: '#eafcff', s: '#eef2f8', S: '#8c96a8', r: '#ff5a3a', y: '#ffe14a', p: '#77829a', P: '#aab4c8', R: '#ffffff', m: '#5cc040', M: '#d8ffb0', g: '#8ce060', o: '#ffb060' },
+  symbols: { drill: DRILL, ...Object.fromEntries(RAMS.map((rows, n) => [`ram${n + 1}`, rows])), ...Object.fromEntries(PLATES.map((rows, n) => [`plate${n + 1}`, rows])), ...Object.fromEntries(Object.entries(FITS).map(([id, rows]) => [`fit-${id}`, rows])) },
   frames: [
     ...BITS.flatMap((bit, level) => DIRS.flatMap((dir, i) => [
       { name: `${dir}-a-${level}`, duration: 70, palette: bit, ops: [{ op: 'stamp', symbol: 'drill', x: 0, y: 0, ...(i && { rotate: i * 90 }) }] },
@@ -379,6 +388,7 @@ export const drill = {
     ])),
     ...RAMS.flatMap((rows, n) => DIRS.map((dir, i) => ({ name: `ram-${dir}-${n + 1}`, ops: [{ op: 'stamp', symbol: `ram${n + 1}`, x: 0, y: 0, ...(i && { rotate: i * 90 }) }] }))),
     ...PLATES.map((rows, n) => ({ name: `plate-right-${n + 1}`, ops: [{ op: 'stamp', symbol: `plate${n + 1}`, x: 0, y: 0 }] })),
+    ...Object.keys(FITS).map(id => ({ name: `fit-${id}`, ops: [{ op: 'stamp', symbol: `fit-${id}`, x: 0, y: 0 }] })),
   ],
   animations: Object.fromEntries(BITS.flatMap((bit, level) => DIRS.map(dir => [`${dir}-${level}`, { frames: [`${dir}-a-${level}`, `${dir}-b-${level}`] }]))),
 };

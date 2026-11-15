@@ -95,10 +95,13 @@ const fails = [], check = (ok, what) => { if (!ok) fails.push(what); };
     const small = ring(), half = 23;
     check(small.x1 - small.x0 === 4 && small.y1 - small.y0 === 4, `on the first reach the ring is ${small.x1 - small.x0 + 1} by ${small.y1 - small.y0 + 1} pixels`);
     check(small.y1 < half && small.y0 > half - 8 && Math.abs(small.x0 + small.x1) <= 4, `on the first reach the ring is drawn at ${JSON.stringify(small)} from the map's middle, which is ${half} pixels from its edge`);
-    game.S.lv.tether = 3;
-    const true72 = ring(), per = 72 * 2.25 / 46, cy = (S.cy - C) / per, cx = (S.cx - C) / per;
-    check(Math.abs((true72.x0 + true72.x1) / 2 - cx) <= 1.5 && Math.abs((true72.y0 + true72.y1) / 2 - cy) <= 1.5 && true72.y1 - true72.y0 >= 4 && true72.y1 - true72.y0 <= 6, `on the fourth reach the ring is drawn at ${JSON.stringify(true72)}, the slab ${cx.toFixed(1)},${cy.toFixed(1)} pixels from the middle`);
-    game.S.lv.tether = 0;
+    // (The map shows the ground near the drill, a cell and a half to a pixel. Twelve cells north of the slab's
+    // middle the ring is the slab's own size, eight pixels below the map's middle.)
+    const home = [game.drill.x, game.drill.y];
+    game.drill.x = S.cx + 0.5; game.drill.y = S.cy - 11.5;
+    const there = ring(), wide = S.p / 1.5 * 2;
+    check(Math.abs((there.x0 + there.x1) / 2) <= 1.5 && Math.abs((there.y0 + there.y1) / 2 - 8) <= 1.5 && Math.abs(there.y1 - there.y0 - wide) <= 2, `twelve cells north of the slab the ring is drawn at ${JSON.stringify(there)}, where the slab is ${wide.toFixed(1)} pixels across, 8 below the middle`);
+    [game.drill.x, game.drill.y] = home;
   }
   w.see(S.cx, S.cy, 14);
   check(S.keys.every(i => w.k(i) === K.KEY) && game.firstRing() === S, 'with its keys seen the first slab has no ring');

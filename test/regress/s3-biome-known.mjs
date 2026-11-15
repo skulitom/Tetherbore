@@ -21,8 +21,11 @@ check(w.biomeKnown(x, y) === B.FROST && w.biomeAt(x, y) === 17, 'where a piece i
 check(w.peek(x, y) === -1, 'the cell has been seen: the test wants it made and unseen');
 
 // The map: its pixel for that cell is the stored ground's colour, shaded as unseen ground within reach.
+// (The map shows the ground near the drill, a cell and a half to a pixel: the drill is stood twenty cells off.)
+game.drill.x = x - 19.5; game.drill.y = y + 0.5;
+game.S.lv.tether = 9;
 game.drawMap(0, 0);
-const size = 46, R = game.val('tether'), per = Math.max(0.6, R * 2.25 / size), HX = C + 0.5, HY = C + 0.5;
+const size = 46, R = game.val('tether'), per = 1.5, HX = Math.floor(game.drill.x) + 0.5, HY = Math.floor(game.drill.y) + 0.5;
 let at = -1, beside = -1;
 for (let v = 0; v < size; v++) for (let u = 0; u < size; u++) {
   const wx = Math.floor(HX + (u - size / 2 + 0.5) * per), wy = Math.floor(HY + (v - size / 2 + 0.5) * per);
