@@ -81,6 +81,9 @@ const PLATE = 2.4, CARD = 1.6, MARKS = 24, HEAR = 30;
 const POD_CHAIN = 0.15, BUNCH = 64;
 // How long slag shows white as lava quenches it to steel, in seconds.
 const QUENCH = 0.12;
+// How long a charged crystal's fuse burns when it is woken by a cut beside it, in seconds: at the slowest the drill
+// flies (9 cells a second) that is seven cells, twice the reach of the arc.
+const FUSE = 0.8;
 // What flies off the kinds of rock that look the same in every ground, by the sheet each is drawn from. A ground's
 // own rock sheds the colours in its row (js/world.js: BIOMES), where the dark it lies in, its motes and its colour
 // on the map are too.
@@ -1024,8 +1027,10 @@ export class Game {
   foresee(i, also = []) {
     // A lava pocket or a spore pod beside the cut bursts with it, and what comes free is what both leave hanging.
     // A pod takes its whole bunch with it (`bunch`), as it will a moment after the cut.
-    const w = this.world, cells = [i];
-    if (w.hazAt(i) === 'spore') this.bunch(i, cells);
+    const w = this.world, cells = [i], here = w.hazAt(i);
+    if (here === 'spore') this.bunch(i, cells);
+    // A charged crystal cut into arcs at once, and the slate it shatters opens with the cut.
+    if (here === 'spark') also = also.concat(this.shatters(i % N, Math.floor(i / N)));
     for (let s = 0; s < 4; s++) {
       const j = i + DY[s] * N + DX[s];
       const haz = w.hazAt(j);
@@ -1046,9 +1051,10 @@ export class Game {
     if (tough >= 2 || k === K.ICE) this.effect('shatter', 'shatter', (x + 0.5) * T, (y + 0.5) * T);
     if (k === K.ORE_A || k === K.ORE_B || k === K.STEEL) this.popup(x, y, 'CRUSHED', '#9a94a8');
     this.shake = Math.max(this.shake, 1 + tough * 0.5);
-    if (haz) this.trigger(i, haz, true);
-    // A hazard beside the cut wakes, and may open its own cell: every cell opened goes to `changed` together.
+    // The hazard that was cut into wakes, and a hazard beside the cut: each may open cells (its own; the slate an
+    // arc shatters), and every cell opened goes to `changed` together.
     const opened = [i];
+    if (haz) for (const j of this.trigger(i, haz, true)) if (j !== i) opened.push(j);
     for (let s = 0; s < 4; s++) {
       const j = (y + DY[s]) * N + x + DX[s];
       const beside = w.hazAt(j);
@@ -1346,8 +1352,11 @@ export class Game {
       return [i];
     }
     if (haz === 'spark') {
-      if (direct) this.zap(x, y);
-      else { const s = this.sparks.get(i); if (!s || s.cool <= 0) this.sparks.set(i, { fuse: 0.55, cool: 0 }); }
+      // Cut into, a crystal arcs at once, and what the arc shattered is opened with the cut. Cut beside, its fuse is
+      // lit: long enough to pull back out of the arc's reach before it goes.
+      if (direct) return this.zap(x, y);
+      const s = this.sparks.get(i);
+      if (!s || s.cool <= 0) this.sparks.set(i, { fuse: FUSE, cool: 0 });
     }
     return [];
   }
@@ -1368,6 +1377,11 @@ export class Game {
     if (turned) { this.version++; if (this.onScreen(i % N, Math.floor(i / N))) { sfx.clink(); sfx.hiss(); } }
     return turned;
   }
+  // A charged crystal arcs. The drill is jolted if it is near; every crystal within three cells is set to follow;
+  // and the slate among the eight cells round the crystal is shattered (`shatters`). Crystals stud the flanks of
+  // slate, so one nick, and room to pull back while the fuse burns, unzips a rib. Shattered slate is crushed: it
+  // pays nothing. Returns the cells opened, for `changed`: whoever called tells the books of loose ground once, with
+  // everything that opened together, so ground the slate was holding is known as loose.
   zap(x, y) {
     const w = this.world, d = this.drill;
     this.effect('zap', 'impact', (x + 0.5) * T, (y + 0.5) * T);
@@ -1377,6 +1391,29 @@ export class Game {
       const j = (y + v) * N + x + u;
       if ((u || v) && w.hazAt(j) === 'spark' && !this.sparks.has(j)) this.sparks.set(j, { fuse: 0.3 + cellHash(u, v, 7) * 0.3, cool: 0 });
     }
+    const opened = this.shatters(x, y);
+    for (const j of opened) {
+      const jx = j % N, jy = Math.floor(j / N);
+      w.setK(j, K.EMPTY);
+      // (Open ground in the north closes over with ice, whatever opened it.)
+      if (w.row(j).freeze > 0) { w.dug.set(j, this.clock); this.frostOpen.push(j); }
+      if (!this.onScreen(jx, jy)) continue;
+      this.chips(jx, jy, DEBRIS.slate, 8, null, 0.9);
+      this.effect('shatter', 'shatter', (jx + 0.5) * T, (jy + 0.5) * T);
+    }
+    // An arc lights what it breaks: the ground it opened, and what stood behind, is seen.
+    if (opened.length) { sfx.dig(3); w.see(x, y, 2); }
+    return opened;
+  }
+  // The slate an arc from the crystal at (x, y) shatters: every cell of slate among the eight round it that the
+  // tether can reach.
+  shatters(x, y) {
+    const w = this.world, cells = [];
+    for (let v = -1; v <= 1; v++) for (let u = -1; u <= 1; u++) {
+      const j = (y + v) * N + x + u;
+      if ((u || v) && w.k(j) === K.SLATE && this.within(x + u + 0.5, y + v + 0.5)) cells.push(j);
+    }
+    return cells;
   }
   // The spore pods that go off with a pod: itself and every pod joined to it through pods, side by side or corner
   // to corner. A pod that bursts sets off the pods round it a moment later (`updateHazards`), so one nick takes a
@@ -1478,7 +1515,7 @@ export class Game {
     // Charged crystals: a short fuse, then an arc that jumps to every crystal near it.
     for (const [i, s] of this.sparks) {
       if (w.hazAt(i) !== 'spark') { this.sparks.delete(i); continue; }
-      if (s.fuse > 0) { s.fuse -= dt; if (s.fuse <= 0) { s.cool = 3; this.zap(i % N, Math.floor(i / N)); } }
+      if (s.fuse > 0) { s.fuse -= dt; if (s.fuse <= 0) { s.cool = 3; opened.push(...this.zap(i % N, Math.floor(i / N))); } }
       else { s.cool -= dt; if (s.cool <= 0) this.sparks.delete(i); }
     }
     // Frost: a cut in ground that freezes (the north's) closes over with ice, after as long as its row says, unless

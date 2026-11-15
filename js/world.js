@@ -76,11 +76,19 @@ export const base = b => b > 4 ? b - 4 : b;
 //   rind   lava lies in a rind of dull slag: plain rock is slag where the lava's layer of noise is under the
 //          pocket's threshold by less than this, and half of the plain rock among the lava is slag too. Slag is
 //          worth little; lava that wakes beside it turns it to steel (js/game.js: `quench`).
+//   ribs   charged crystals stud the flanks of slate: a cell just outside a rib or a level bed of slate (within
+//          RIB of its edge on the slate's own layer of noise, which is the nearer half of the cells against it)
+//          is a crystal where its hash is under this times the ground's `rate`: one such cell in five. An arc
+//          shatters the slate beside it (js/game.js: `zap`) and sets off the crystals within three cells, and
+//          along a rib they stand that near: one nick unzips a run of it, seven cells of slate as often as not.
+//          (Counted, tools/strains.mjs. The figures first planned, one cell in ten within 0.015, left a crystal
+//          every ten cells of rib, and an arc took three cells of slate and stopped.)
 export const HAZARDS = {
   lava: { kin: B.EMBER, sheet: 'ember-items', share: 0, rind: 0.07 },
   spore: { kin: B.MIRE, sheet: 'mire-items', share: 0.022 },
-  spark: { kin: B.LODE, sheet: 'lode-items', share: 0.026 },
+  spark: { kin: B.LODE, sheet: 'lode-items', share: 0.026, ribs: 0.2 },
 };
+const RIB = 0.03;
 const KIN_ITEMS = ['lode-items', 'frost-items', 'ember-items', 'mire-items', 'lode-items'];
 
 // One table of grounds (biomes), by number. The number is what a piece of the world stores for a cell, so, as with
@@ -134,7 +142,8 @@ const grape = (x, y, seed, t) => {
   const at = Math.floor((h - t) / (1 - t) * 16), ex = x - gx * 6 - 1 - (at & 3), ey = y - gy * 6 - 1 - (at >> 2);
   return ex >= -1 && ex <= 1 && ey >= -1 && ey <= 1 && ((ex === 0 && ey === 0) || hash(x, y, seed + 10) < 0.6);
 };
-const stratum = (x, y, seed, w) => Math.abs(noise(x / 40, y / 3, seed + 11, 11) - 0.5) < w;
+// (How far a cell is from the middle of a level bed, on the bed's layer: under the ground's figure it is slate.)
+const stratum = (x, y, seed) => Math.abs(noise(x / 40, y / 3, seed + 11, 11) - 0.5);
 // The hand-made strains of each direction's ground (grounds 17 to 31), by kin: `biomeAt` lays them as provinces.
 const STRAINS = [[], [], [], [], []];
 const laid = (haz, what) => {
@@ -144,7 +153,7 @@ const laid = (haz, what) => {
   if (!type.share && typeof haz.t !== 'number') throw new Error(`${what}: ${haz.type} needs its threshold t`);
   return type.share ? [SCATTER, type.share * (haz.rate ?? 1)] : [POCKETS, haz.t];
 };
-// What goes with a hazard in a ground (`rind`): the ground's own figure, or its type's, or none.
+// What goes with a hazard in a ground (`rind`, `ribs`): the ground's own figure, or its type's, or none.
 const withIt = (haz, what) => haz ? haz[what] ?? HAZARDS[haz.type][what] ?? 0 : 0;
 // Adds a row to the table (or takes the place of one: tests do). Whatever is left out is as the plainest ground has
 // it; what a ground must say for itself is asked for.
@@ -168,7 +177,7 @@ export function biome(f) {
     gen: g, haz: f.haz ?? null, haz2: f.haz2 ?? null, lavaVol: f.lavaVol ?? 5, freeze: f.freeze ?? 0,
     glass: f.glass ?? false, extras: f.extras ?? [], pocket: f.pocket ?? null,
     lay: g && { dense: g.dense, oreA: g.oreA, oreB: g.oreB, slate: g.slate, cave: g.cave, cavern: g.cavern, haz, hazT, haz2, haz2T,
-      rind: withIt(f.haz, 'rind'), rind2: withIt(f.haz2, 'rind'), ...tells },
+      rind: withIt(f.haz, 'rind'), rind2: withIt(f.haz2, 'rind'), ribs: withIt(f.haz, 'ribs') * (f.haz?.rate ?? 1), ribs2: withIt(f.haz2, 'ribs') * (f.haz2?.rate ?? 1), ...tells },
   };
 }
 // The row of a ground's number: the home ground's for a number that has no row.
@@ -470,17 +479,20 @@ export class World {
     // last of these to hold is what the cell is, as above. A second hazard has layers of its own (58, and 59 for
     // the hash), so it never lies where the first does, and gives way to it. What a row has besides (its extras,
     // `TELLS`) is asked where it belongs: bubbles with the caves, strata with the slate, grapes with the first
-    // hazard, a river before the ore and lanes after it.
+    // hazard, a river before the ore and lanes after it. And what goes with a hazard (`HAZARDS`): crystals on the
+    // flanks of slate with the charged crystals, slag last of all, where plain rock is left.
     if (noise(x / 19, y / 19, seed + 18, 18) > g.cavern) return K.EMPTY;
     if (noise(x / 5, y / 5, seed + 13, 13) > g.cave) return K.EMPTY;
     if (g.bubbles < 1 && bubble(x, y, seed, g.bubbles)) return K.EMPTY;
     if (r > 600 && Math.abs(noise(x / 8, y / 8, seed + 12, 12) - 0.5) < 0.028) return K.VAULT;
-    if (g.slate > 0 && Math.abs(noise(x / 9, y / 9, seed + 11, 11) - 0.5) < g.slate) return K.SLATE;
-    if (g.strata > 0 && stratum(x, y, seed, g.strata)) return K.SLATE;
-    if (g.haz === SCATTER) { if (hash(x, y, seed + 10) < g.hazT) return K.HAZARD; }
+    // (`flank`: the cell is not slate, and lies within RIB of a rib's edge or a bed's.)
+    let flank = false;
+    if (g.slate > 0) { const s = Math.abs(noise(x / 9, y / 9, seed + 11, 11) - 0.5); if (s < g.slate) return K.SLATE; flank = s < g.slate + RIB; }
+    if (g.strata > 0) { const s = stratum(x, y, seed); if (s < g.strata) return K.SLATE; if (s < g.strata + RIB) flank = true; }
+    if (g.haz === SCATTER) { const c = hash(x, y, seed + 10); if (c < g.hazT || (flank && c < g.ribs)) return K.HAZARD; }
     else if (g.haz === POCKETS && h > 0.45 && noise(x / 2.5, y / 2.5, seed + 8, 8) > g.hazT) return K.HAZARD;
     if (g.grapes < 1 && grape(x, y, seed, g.grapes)) return K.HAZARD;
-    if (g.haz2 === SCATTER) { if (hash(x, y, seed + 59) < g.haz2T) return K.HAZARD2; }
+    if (g.haz2 === SCATTER) { const c = hash(x, y, seed + 59); if (c < g.haz2T || (flank && c < g.ribs2)) return K.HAZARD2; }
     else if (g.haz2 === POCKETS && h > 0.45 && noise(x / 2.5, y / 2.5, seed + 58, 58) > g.haz2T) return K.HAZARD2;
     // A river runs through ore as through plain rock, or it would be no road; lanes lie only where plain rock would.
     if (g.rivers > 0 && river(x, y, seed, g.rivers)) return K.ICE;

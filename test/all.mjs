@@ -1,6 +1,6 @@
 // Every test in one command: each script in test/regress (each fails while the defect it was written for is there),
 // the smoke test, and the rope fuzz on seeds 11 to 18 from the core, from a start 200 cells out each way and from
-// inside a province of each strain of ground.
+// inside a province of each strain of ground, and from a deep flank.
 //   node test/all.mjs [only: a word the test's name must hold]
 // One line a test, and the last line of a failing test's own output under it. Exits 1 if any failed. Tests run side by
 // side, as many as the machine has cores to spare, and the whole run takes a few minutes.
@@ -19,7 +19,10 @@ const ARGS = {
   'e-hazard-fuzz': [[2, 500, 0, 170, 0.08], [1, 300, -170, 0, 0.08], [4, 300, 170, 0, 0.08],
     [3, 300, 0, 170, 0.08, 5, 'second'], [5, 300, -170, 0, 0.08, 5, 'second'], [6, 300, 170, 0, 0.08, 5, 'second'],
     // Inside a province of sporefall (pods in bunches, which go off together) and one of forge (lava that pours further).
-    [7, 300, -384, -128, 0.08, 7], [7, 300, 128, 384, 0.08, 7]],
+    [7, 300, -384, -128, 0.08, 7], [7, 300, 128, 384, 0.08, 7],
+    // The east's own ground with few hazards planted, so that the crystals are mostly the world's own, on the
+    // flanks of its slate: their arcs shatter the slate beside the string.
+    [8, 300, 200, 0, 0.02]],
   'f-big': [[71], [250], [205, 'jog'], [150, 'bump']],
   'f-freed-diff': [[1, 4000, 14, 0.55], [5, 6000, 20, 0.62], [9, 3000, 20, 0.62]],
   'f-fuzz-books': [[2, 300], [7, 300], [9, 300], [12, 300]],
@@ -30,7 +33,10 @@ const ARGS = {
     // From a start inside a province of each strain (`node tools/strains.mjs --where 7` and `--where 11` say where):
     // firn, serac, scoria, forge, tangle, sporefall, redrock, loess.
     [7, 300, 7, -128, -384, 60], [7, 300, 7, 128, -384, 'mix'], [7, 300, 7, -128, 384, 60], [7, 300, 7, 128, 384, 60, 'bombs'],
-    [11, 300, 7, -384, 128, 60], [7, 300, 7, -384, -128, 60], [11, 300, 7, 384, -384, 60], [7, 300, 7, 384, -128, 30]],
+    [11, 300, 7, -384, 128, 60], [7, 300, 7, -384, -128, 60], [11, 300, 7, 384, -384, 60], [7, 300, 7, 384, -128, 30],
+    // The east's own ground, where arcs shatter slate (with bombs too, at mixed frame lengths), and the south's
+    // own, where lava quenches its slag to steel.
+    [21, 300, 5, 190, 10, 60], [23, 300, 5, 190, 10, 'mix', 'bombs'], [22, 300, 5, 20, 180, 60]],
 };
 const tests = [];
 for (const file of readdirSync(here + 'regress').filter(name => name.endsWith('.mjs')).sort()) {
@@ -45,6 +51,9 @@ for (const [seed, x, y, way] of [[11, 0, -200, 'north'], [12, 0, 200, 'south'], 
 for (const [seed, x, y, strain] of [[7, -128, -384, 'firn'], [7, 128, -384, 'serac'], [7, -128, 384, 'scoria'], [7, 128, 384, 'forge'], [11, -384, 128, 'tangle'], [7, -384, -128, 'sporefall'], [11, 384, -384, 'redrock'], [7, 384, -128, 'loess']]) {
   tests.push({ name: `rope-fuzz.mjs ${seed} 400 7 ${x} ${y} (${strain})`, run: ['rope-fuzz.mjs', seed, 400, 7, x, y] });
 }
+
+// And in a deep flank, where the crystals and the lava are thickest.
+tests.push({ name: 'rope-fuzz.mjs 31 400 9 1000 1000 (deep south-east)', run: ['rope-fuzz.mjs', 31, 400, 9, 1000, 1000] });
 
 const queue = tests.filter(test => test.name.includes(only)), began = Date.now();
 let failed = 0, done = 0;

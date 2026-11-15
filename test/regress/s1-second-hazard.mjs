@@ -14,7 +14,9 @@ const looks = { sheet: 'frost', floor: 'frost-floor', gloom: [5, 12, 30], mote: 
 const lava = { type: 'lava', rate: 1, t: 0.78 }, spore = { type: 'spore', rate: 1 };
 const rows = {
   lavaOnly: biome({ id: 120, name: 'test-lava', kin: B.FROST, gen, haz: lava, ...looks }),
-  lavaSpark: biome({ id: 121, name: 'test-lava-spark', kin: B.FROST, gen, haz: lava, haz2: { type: 'spark', rate: 1 }, ...looks }),
+  // (`ribs: 0`: the crystals scattered a cell at a time alone, without those that stud the flanks of slate, which
+  // test/regress/c2-ribs-laid.mjs counts.)
+  lavaSpark: biome({ id: 121, name: 'test-lava-spark', kin: B.FROST, gen, haz: lava, haz2: { type: 'spark', rate: 1, ribs: 0 }, ...looks }),
   sporeOnly: biome({ id: 122, name: 'test-spore', kin: B.FROST, gen, haz: spore, ...looks }),
   sporeLava: biome({ id: 123, name: 'test-spore-lava', kin: B.FROST, gen, haz: spore, haz2: { type: 'lava', rate: 1, t: 0.74 }, ...looks }),
   sporeSpore: biome({ id: 124, name: 'test-spore-twice', kin: B.FROST, gen, haz: spore, haz2: { type: 'spore', rate: 2 }, ...looks }),

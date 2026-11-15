@@ -1,7 +1,8 @@
 // What the hand-made strains are made of, counted: for each strain (grounds 17 to 31 in js/world.js) and for its
 // direction's own ground beside it, how much of the ground is each kind of cell, and the figures of its tell: how
 // wide a river or a lane of ice runs, how big the bubbles and the bunches of pods are, how long and thick the beds
-// of slate; and what it pays beside its direction's own ground, a cell and a second of cutting (grit alone, by the
+// of slate, how much slag lies round the lava, how many crystals stand beside slate and what one arc among them
+// sets off and shatters; and what it pays beside its direction's own ground, a cell and a second of cutting (grit alone, by the
 // row's `rich` and `dig`). This is what a strain's row is tuned by (docs/CONTENT-PLAN.md, content item 1), with the
 // eye; test/regress/c1-tells.mjs holds the figures to what was settled.
 //   node tools/strains.mjs [--seeds 8] [--where 7]
@@ -47,10 +48,33 @@ export const where = seed => {
 // ---- counting
 // What is counted of each ground: how many windows and cells; cells of each kind; the sizes of the groups of open
 // cells, hazards, ice and slate that lie wholly inside a window (cells joined along sides and across corners); and
-// the lengths of the runs of ice and of slate along rows ([0]) and down columns ([1]).
+// the lengths of the runs of ice and of slate along rows ([0]) and down columns ([1]); and of the charged crystals
+// that have slate among the eight cells round them (`arcs.beside`), what one arc from each would do: how many
+// crystals go off in all, each setting off those within three cells (`arcs.set`), and how many cells of slate
+// they shatter between them, each the slate round itself (`arcs.slate`), as js/game.js: `zap` has it.
 export const count = (seeds = 8) => {
   const w = new World(), counts = new Map(), grid = new Int16Array(SIZE * SIZE), mark = new Uint8Array(SIZE * SIZE);
-  const tally = () => ({ windows: 0, cells: 0, kind: new Array(32).fill(0), groups: { [K.EMPTY]: [], [K.HAZARD]: [], [K.ICE]: [], [K.SLATE]: [] }, runs: { [K.ICE]: [[], []], [K.SLATE]: [[], []] } });
+  const tally = () => ({ windows: 0, cells: 0, kind: new Array(32).fill(0), groups: { [K.EMPTY]: [], [K.HAZARD]: [], [K.ICE]: [], [K.SLATE]: [] }, runs: { [K.ICE]: [[], []], [K.SLATE]: [[], []] },
+    arcs: { beside: 0, set: [], slate: [] } });
+  const arcs = into => {
+    const is = (x, y, kind) => x >= 0 && y >= 0 && x < SIZE && y < SIZE && grid[y * SIZE + x] === kind;
+    for (let s = 0; s < SIZE * SIZE; s++) {
+      if (grid[s] !== K.HAZARD) continue;
+      let beside = false;
+      for (let v = -1; v <= 1 && !beside; v++) for (let u = -1; u <= 1; u++) if (is(s % SIZE + u, ((s / SIZE) | 0) + v, K.SLATE)) { beside = true; break; }
+      if (!beside) continue;
+      const set = new Set([s]), slate = new Set(), stack = [s];
+      while (stack.length) {
+        const c = stack.pop(), x = c % SIZE, y = (c / SIZE) | 0;
+        for (let v = -3; v <= 3; v++) for (let u = -3; u <= 3; u++) {
+          const j = (y + v) * SIZE + x + u;
+          if (is(x + u, y + v, K.HAZARD) && !set.has(j)) { set.add(j); stack.push(j); }
+          if (u >= -1 && u <= 1 && v >= -1 && v <= 1 && is(x + u, y + v, K.SLATE)) slate.add(j);
+        }
+      }
+      into.beside++; into.set.push(set.size); into.slate.push(slate.size);
+    }
+  };
   const groups = (kind, into) => {
     mark.fill(0);
     for (let s = 0; s < SIZE * SIZE; s++) {
@@ -96,6 +120,7 @@ export const count = (seeds = 8) => {
       for (let s = 0; s < SIZE * SIZE; s++) if (grid[s] >= 0) t.kind[grid[s]]++;
       for (const kind of [K.EMPTY, K.HAZARD, K.ICE, K.SLATE]) groups(kind, t.groups[kind]);
       for (const kind of [K.ICE, K.SLATE]) runs(kind, t.runs[kind]);
+      if (BIOMES[ground].haz?.type === 'spark') arcs(t.arcs);
     }
   }
   // What a solid cell of each pays in grit, and what a second of cutting it does.
@@ -108,6 +133,7 @@ export const count = (seeds = 8) => {
   return counts;
 };
 export const mean = list => list.length ? list.reduce((a, b) => a + b, 0) / list.length : 0;
+export const median = list => list.length ? list.slice().sort((a, b) => a - b)[list.length >> 1] : 0;
 // How much of a list of sizes lies from `from` to `to`, as a share of the list.
 export const share = (list, from, to = Infinity) => list.length ? list.filter(v => v >= from && v <= to).length / list.length : 0;
 
@@ -145,6 +171,7 @@ if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '
     if (has('grapes') || id === B.MIRE) says.push(`bunches of pods by size, ${sizes(t.groups[K.HAZARD], [1, 2, 3, 4, 5, 6])} (${each(t.groups[K.HAZARD])} a window)`);
     if (has('strata') || id === B.LODE) says.push(`slate runs ${mean(t.runs[K.SLATE][0]).toFixed(1)} cells along a row and ${mean(t.runs[K.SLATE][1]).toFixed(1)} down a column`);
     if (row.kin === B.EMBER) says.push(`pockets of lava by size, ${sizes(t.groups[K.HAZARD], [1, 2, 3, 6])} (${each(t.groups[K.HAZARD])} a window); ${(t.kind[K.SLAG] / t.kind[K.HAZARD]).toFixed(2)} cells of slag for each of lava`);
+    if (row.haz?.type === 'spark') says.push(`${(t.arcs.beside / t.kind[K.HAZARD] * 100).toFixed(0)} crystals in a hundred stand beside slate; one arc among them sets off ${mean(t.arcs.set).toFixed(1)} crystals and shatters ${mean(t.arcs.slate).toFixed(1)} cells of slate (half of them ${median(t.arcs.slate)} or more)`);
     for (const line of says) console.log(`             ${line}`);
   }
 }

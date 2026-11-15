@@ -7,7 +7,8 @@
 // Ground that was laid on purpose since is in the plain reading too, written out as plainly: the provinces and the
 // eight strains laid in them (docs/CONTENT-PLAN.md S3 and content item 1), each strain's figures as a line of
 // `STRAIN` below and its tell as one line of `kindAt`. So this is also what holds those figures and tells. And the
-// rind of slag round every pocket of lava, in every ground that has lava (content item 2): its last lines.
+// rind of slag round every pocket of lava, in every ground that has lava (content item 2): its last lines. And the
+// crystals that stud the flanks of slate in every ground that has charged crystals: the lines after the east's.
 //   node test/regress/w-same-world.mjs
 import { world } from '../harness.mjs';
 const { World, N, C, CH, CW, K, B, HOME_R, DEEP_R, RELIC_R, WORLD_R, FIND, WRECK_R, DX, DY, base, cellHash: hash } = world;
@@ -111,6 +112,14 @@ const plain = seed => {
     if (kin === B.EMBER && noise(x / 2.5, y / 2.5, seed + 8) > (S.lava ?? (deep ? 0.72 : 0.78)) && h > 0.45) k = K.HAZARD;
     if (kin === B.MIRE && hash(x, y, seed + 10) < 0.022 * more) k = K.HAZARD;
     if (kin === B.LODE && hash(x, y, seed + 10) < 0.026 * more) k = K.HAZARD;
+    // Crystals on the flanks of slate, in the east's grounds: one cell in five (as many times that as the ground
+    // has crystals) of those within 0.03 beyond the edge of a rib of slate, or of a level bed of redrock's, on the
+    // slate's own layer.
+    if (kin === B.LODE && hash(x, y, seed + 10) < 0.2 * more) {
+      const wide = S.slate ?? 0.05, rib = Math.abs(noise(x / 9, y / 9, seed + 11) - 0.5), bed = Math.abs(noise(x / 40, y / 3, seed + 11) - 0.5);
+      if (wide > 0 && rib >= wide && rib < wide + 0.03) k = K.HAZARD;
+      if (S.strata && bed >= S.strata && bed < S.strata + 0.03) k = K.HAZARD;
+    }
     // Sporefall's bunches: a square of six cells has one where its hash is over the figure, the bunch's middle
     // cell a cell or more inside the square, and the pods are that cell and those round it that their hash keeps.
     if (S.grapes) {
