@@ -4,8 +4,8 @@
 //   - a slab is not laid where its keys would not hold it, where its crack would not go right round, or where the
 //     world would not hold its collar: for sectors where each of those is so, the game lays none, and the same
 //     slab laid there all the same is found broken in that way by tools/slabs.mjs;
-//   - nor where it would meet a pocket (`meetsPocket`, asked of `zoneOf`: stood in for here), near a wreck, or
-//     with its middle in or beside a great cavern;
+//   - nor where it would meet a pocket (`meetsPocket`, asked of `zoneOf`: stood in for here), near a wreck or a
+//     relic's vault, hard by the core, on the first slab, or with its middle in or beside a great cavern;
 //   - the slab's own ground and its collar have no cave, no bubble and no find in them, where the ground there
 //     would have had; the slab's own has more ore than that ground would, the collar the same;
 //   - a cobble field's joints are every fifth row and column, and each whole block has one key of its own, in
@@ -44,20 +44,37 @@ for (const [fault, cases] of Object.entries(FAULTS)) for (const [seed, sx, sy] o
 }
 
 // 2. Pockets. A slab that is laid, and the same sector with a pocket set against it, and with one set clear of it.
+// Twice: with the pocket in the next column of the pockets' sectors from the slab's own middle, and in the next
+// row (the first slab found near enough to such a border), since every sector the disc's box overlaps is asked
+// about, not the middle's alone. The pocket is one as pockets are laid: all of it inside its own sector, its middle
+// 14 cells from the sector's edge for a radius of 10 (docs/CONTENT-PLAN.md S3).
 {
-  const w = world(7), S = slabsOf(w, 700).find(s => s !== w.firstSlab && !s.cobble), sx = Math.floor((S.cx - C) / SLAB), sy = Math.floor((S.cy - C) / SLAB);
-  const withPocket = (px, py, rho) => {
-    const v = world(7);
-    let asked = 0;
-    v.zoneOf = (zx, zy) => { asked++; return zx === Math.floor((px - C) / ZONE) && zy === Math.floor((py - C) / ZONE) ? { key: 'test', row: 32, cx: px, cy: py, rho, kin: 1 } : null; };
-    return [v.slabIn(sx, sy), v.refused.pocket, asked];
-  };
-  const [met, refused, asked] = withPocket(S.cx + S.p + 14, S.cy, 10), [clear] = withPocket(S.cx + S.p + 5 + 12 + 3, S.cy, 10);
-  if (met !== null || refused !== 1) fail(`a slab of radius ${S.p} is laid with a pocket of radius 10 whose middle is ${S.p + 14} cells from its own`);
-  if (clear === null) fail('a slab is not laid though the pocket beside it is clear of its disc and five cells more');
-  if (asked < 1 || asked > 4) fail(`asking whether a slab meets a pocket asked about ${asked} sectors of pockets`);
-  if (w.meetsPocket(S.cx, S.cy, 20)) fail('with no pocket laid, a disc meets one');
-  out.pocket = { asked };
+  const w = world(7), zx = x => Math.floor((x - C) / ZONE);
+  out.pocket = [];
+  for (const sides of [[[1, 0], [-1, 0]], [[0, 1], [0, -1]]]) {
+    // How far it is from a slab's middle to the middle of a pocket set 14 cells into the next sector that way.
+    const reach = (s, dx, dy) => { const at = dx ? s.cx - C : s.cy - C, way = dx + dy, edge = way > 0 ? (zx(at + C) + 1) * ZONE - at : at - zx(at + C) * ZONE + 1; return edge + 13; };
+    let S = null, ux = 0, uy = 0;
+    for (const s of slabsOf(w, 1500)) {
+      if (S || s === w.firstSlab || s.cobble) continue;
+      for (const [dx, dy] of sides) if (!S && reach(s, dx, dy) < s.p + 16) { S = s; ux = dx; uy = dy; }
+    }
+    const sx = Math.floor((S.cx - C) / SLAB), sy = Math.floor((S.cy - C) / SLAB), near = reach(S, ux, uy), where = `${ux ? 'beside' : 'below or above'} the slab at ${S.cx - C},${S.cy - C}`;
+    const withPocket = (far, rho) => {
+      const px = S.cx + ux * far, py = S.cy + uy * far;
+      const v = world(7);
+      let asked = 0;
+      v.zoneOf = (qx, qy) => { asked++; return qx === zx(px) && qy === zx(py) ? { key: 'test', row: 32, cx: px, cy: py, rho, kin: 1 } : null; };
+      return [v.slabIn(sx, sy), v.refused.pocket, asked];
+    };
+    if (zx(S.cx + ux * near) === zx(S.cx) && zx(S.cy + uy * near) === zx(S.cy)) fail(`${where}: the pocket set against it is in the slab's own sector`);
+    const [met, refused, asked] = withPocket(near, 10), [clear] = withPocket(S.p + 5 + 12 + 3, 10);
+    if (met !== null || refused !== 1) fail(`${where}: the slab of radius ${S.p} is laid with a pocket of radius 10 whose middle is ${near} cells from its own`);
+    if (clear === null) fail(`${where}: the slab is not laid though the pocket is clear of its disc and five cells more`);
+    if (asked < 1 || asked > 4) fail(`${where}: asking whether the slab meets a pocket asked about ${asked} sectors of pockets`);
+    if (w.meetsPocket(S.cx, S.cy, 20)) fail('with no pocket laid, a disc meets one');
+    out.pocket.push({ radius: S.p, far: near, asked });
+  }
 }
 
 // 3. What stood against the rest, counted: wrecks and caverns each refuse some, and the share laid is what it was.
@@ -72,6 +89,40 @@ for (const [fault, cases] of Object.entries(FAULTS)) for (const [seed, sx, sy] o
   out.refused = { tried, laid, ...why };
   if (!(why.wreck > 0 && why.cavern > tried * 0.1 && why.cavern < tried * 0.35 && why.keys > 0)) fail(`of ${tried} slabs tried, what stood against them: ${JSON.stringify(why)}`);
   if (laid + Object.values(why).reduce((a, b) => a + b, 0) !== tried) fail('slabs tried are neither laid nor counted as refused');
+}
+
+// 3b. Hard by the core, on a relic's vault, on the first slab: where the seed would put a slab's middle within 60
+// cells of the core, within 40 cells and its radius of a vault, or within 44 and its radius of the first slab (the
+// seed's figures read here from its hashes alone), none is laid and that is what is counted as standing against it.
+{
+  const seen = { core: 0, wreck: 0, first: 0 };
+  const tried = (seed, sx, sy) => hash(sx, sy, seed + 80) < 0.22 ? { p: 8 + Math.floor(hash(sx, sy, seed + 81) * 9), cx: C + sx * SLAB + 40 + Math.floor(hash(sx, sy, seed + 82) * (SLAB - 80)), cy: C + sy * SLAB + 40 + Math.floor(hash(sx, sy, seed + 83) * (SLAB - 80)) } : null;
+  const refusedAs = (w, sx, sy, why, at) => {
+    const before = { ...w.refused }, laid = w.slabIn(sx, sy);
+    seen[why]++;
+    if (laid !== null || w.refused[why] !== before[why] + 1) fail(`${at}: ${laid ? 'a slab is laid' : `no slab is laid, for ${Object.keys(before).find(k => w.refused[k] !== before[k])}`}, where '${why}' stands against it`);
+  };
+  // (A slab's middle lies 40 cells or more inside its sector, so few come so near the core or a vault: the seeds
+  // are gone through by their hashes alone until enough have, and a world is made only for those.)
+  for (let seed = 1; seed <= 24000; seed++) {
+    // The four sectors round the core: a middle within 60 cells of it.
+    for (const [sx, sy] of [[0, 0], [-1, 0], [0, -1], [-1, -1]]) { const T = tried(seed, sx, sy); if (T && Math.hypot(T.cx - C, T.cy - C) <= 60) refusedAs(world(seed), sx, sy, 'core', `seed ${seed} sector ${sx},${sy}`); }
+    // The sectors round each relic's vault (2000 cells out on each axis): counted with the wrecks.
+    if (seed <= 4000) for (const [vx, vy] of [[2000, 0], [0, 2000], [-2000, 0], [0, -2000]]) for (let v = -1; v <= 1; v++) for (let u = -1; u <= 1; u++) {
+      const sx = Math.floor(vx / SLAB) + u, sy = Math.floor(vy / SLAB) + v, T = tried(seed, sx, sy);
+      if (T && Math.hypot(T.cx - C - vx, T.cy - C - vy) < 40 + T.p) refusedAs(world(seed), sx, sy, 'wreck', `seed ${seed} sector ${sx},${sy} (a vault)`);
+    }
+    if (seed > 160) continue;
+    const w = world(seed), first = w.firstSlab;
+    // The same four: clear of the core and the wrecks, and on the first slab.
+    for (const [sx, sy] of [[0, 0], [-1, 0], [0, -1], [-1, -1]]) {
+      const T = tried(seed, sx, sy);
+      if (!T || Math.hypot(T.cx - C, T.cy - C) <= 60 || w.wrecks.some(([x, y]) => Math.hypot(T.cx - x, T.cy - y) < 40 + T.p)) continue;
+      if (first && Math.hypot(T.cx - first.cx, T.cy - first.cy) < 44 + T.p) refusedAs(w, sx, sy, 'first', `seed ${seed} sector ${sx},${sy}`);
+    }
+  }
+  out.against = seen;
+  if (seen.core < 8 || seen.wreck < 8 || seen.first < 5) fail(`too few slabs tried hard by the core, on a vault or on the first slab to say they are kept off: ${JSON.stringify(seen)}`);
 }
 
 // 4. The ground of a slab and of its collar, beside what would lie there with no slab.

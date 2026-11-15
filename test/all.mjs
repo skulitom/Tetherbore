@@ -1,6 +1,7 @@
 // Every test in one command: each script in test/regress (each fails while the defect it was written for is there),
 // the smoke test, and the rope fuzz on seeds 11 to 18 from the core, from a start 200 cells out each way and from
-// inside a province of each strain of ground, from a deep flank, and from inside provinces of generated crosses.
+// inside a province of each strain of ground, from a deep flank, from inside provinces of generated crosses, and from
+// the cracks of keystone slabs; and the slabs themselves, as they lie in 200 worlds (slab-moat.mjs).
 //   node test/all.mjs [only: a word the test's name must hold]
 // One line a test, and the last line of a failing test's own output under it. Exits 1 if any failed. Tests run side by
 // side, as many as the machine has cores to spare, and the whole run takes a few minutes.
@@ -52,7 +53,11 @@ const ARGS = {
     // With bombs in the north's own ground (the room a charge leaves freezes over, and heals as ore beside ore),
     // the south's (pockets of lava left standing asleep in their slag) and the west's (pods left hanging), and
     // on the first reach but one from the core, with trips home to fill the rack.
-    [25, 300, 5, 10, -190, 60, 'bombs'], [26, 300, 5, 20, 180, 60, 'bombs'], [27, 300, 5, -190, 10, 'mix', 'bombs'], [29, 300, 1, 0, 0, 60, 'bombs,home']],
+    [25, 300, 5, 10, -190, 60, 'bombs'], [26, 300, 5, 20, 180, 60, 'bombs'], [27, 300, 5, -190, 10, 'mix', 'bombs'], [29, 300, 1, 0, 0, 60, 'bombs,home'],
+    // From a start in the crack of a keystone slab (`node tools/slabs.mjs --where 7` and `--where 11` say where they
+    // lie): the first slab of a new game on the reach that goes round it, a slab with three keys (with bombs, which
+    // open the rock a key holds to), the middle of a cobble field, and the widest slab there is (with bombs).
+    [7, 300, 3, 3, 44, 60], [7, 300, 7, 334, 375, 'mix', 'bombs'], [7, 300, 7, 192, -500, 60], [11, 300, 6, 222, 82, 60, 'bombs']],
 };
 const tests = [];
 for (const file of readdirSync(here + 'regress').filter(name => name.endsWith('.mjs')).sort()) {
@@ -74,6 +79,12 @@ for (const [seed, x, y, strain] of [[7, -128, -384, 'firn'], [7, 128, -384, 'ser
 // bubbles and level beds for the string to lie on.
 for (const [x, y, reach, cross] of [[-640, -640, 8, 'buzzmire'], [384, 1152, 8, 'hollow flashrock'], [384, -1408, 9, 'crazed tundra'], [-128, -1920, 9, 'frothy hailstone'], [1408, 384, 9, 'banded kilnstone'], [-1408, -384, 9, 'banded rimemoss']]) {
   tests.push({ name: `rope-fuzz.mjs 7 400 ${reach} ${x} ${y} (${cross})`, run: ['rope-fuzz.mjs', 7, 400, reach, x, y] });
+}
+
+// And from a start in the crack of a keystone slab: the first slab, one with three keys, the middle of a cobble
+// field (joints one cell wide between blocks that hang by a key each) and the widest slab there is.
+for (const [seed, x, y, reach, what] of [[7, 3, 44, 3, 'the first slab'], [7, 334, 375, 7, 'a slab of three keys'], [7, 192, -500, 7, 'a cobble field'], [11, 222, 82, 6, 'a slab 16 in radius']]) {
+  tests.push({ name: `rope-fuzz.mjs ${seed} 400 ${reach} ${x} ${y} (${what})`, run: ['rope-fuzz.mjs', seed, 400, reach, x, y] });
 }
 
 // And in a deep flank, where the crystals and the lava are thickest.

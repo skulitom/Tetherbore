@@ -516,8 +516,10 @@ export class World {
   // Whether a disc of ground (its middle cell and how far it runs) meets a pocket: the one test that keeps slabs
   // out of pockets. It asks `zoneOf` for every sector of ZONE cells the disc's box overlaps, and takes a pocket's
   // record to give its middle as a cell of the world (`cx`, `cy`) and to run no further than 1.2 times its `rho`,
-  // the widest its wobbling edge goes (docs/CONTENT-PLAN.md S3). No pocket is laid yet, so today it never does:
-  // whoever lays pockets keeps this true to how far a pocket's cells can lie from its middle.
+  // the widest its wobbling edge goes (docs/CONTENT-PLAN.md S3). It counts on a pocket lying wholly inside its own
+  // sector, as S3 lays them (a middle 38 cells or more from the sector's edge): a pocket that ran over into the
+  // next sector would not be asked about from there. No pocket is laid yet, so today it never does: whoever lays
+  // pockets keeps this true to how far a pocket's cells can lie from its middle.
   meetsPocket(cx, cy, reach) {
     for (let zy = Math.floor((cy - reach - C) / ZONE), y1 = Math.floor((cy + reach - C) / ZONE); zy <= y1; zy++) {
       for (let zx = Math.floor((cx - reach - C) / ZONE), x1 = Math.floor((cx + reach - C) / ZONE); zx <= x1; zx++) {

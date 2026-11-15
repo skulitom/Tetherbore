@@ -76,8 +76,8 @@ export function aim(seed, L, sx, sy) {
   return best;
 }
 // Steers to the middle of cell (x, y), slowing as it comes. `each` is called after every frame and stops the flight
-// by returning true. Returns whether it got there.
-function fly(game, x, y, clock, each, frames = 300) {
+// by returning true. Returns whether it got there. (tools/slab-play.mjs flies by it too.)
+export function fly(game, x, y, clock, each, frames = 300) {
   const d = game.drill, w = game.world, tx = x + 0.5, ty = y + 0.5;
   // Where there is open ground all round, near enough is there.
   let roomy = true;
