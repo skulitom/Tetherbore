@@ -1,6 +1,6 @@
 // Tetherbore: the game. A drill flies free on a tether from a fixed core, cuts whatever ground it is pushed into,
 // and reels in any piece of ground it has drawn the tether round.
-import { World, N, C, K, B, HARD, GRIT, GEMS, DX, DY, BIOMES, HAZARDS, ZONE, rowOf, hazOf, gemKin, digTime, cellHash, sight, cellsAlong, RELIC_R, HOME_R } from './world.js';
+import { World, N, C, K, B, HARD, GRIT, GEMS, DX, DY, BIOMES, HAZARDS, ZONE, FIND, rowOf, hazOf, gemKin, digTime, cellHash, sight, cellsAlong, RELIC_R, HOME_R } from './world.js';
 import { sheets, draw, drawScaled, frameAt, duration, slice9, text, textWidth } from './atlas.js';
 import { sfx, unlock, isMuted, setMuted, setAmbience } from './audio.js';
 
@@ -63,6 +63,19 @@ export const UPGRADES = [
 ];
 // Where each direction's gems are found, for a price that cannot be met yet.
 const GEM_WHERE = [null, 'NORTH', 'SOUTH', 'WEST', 'EAST'];
+// What is called out the first time it is seen (`World.see` says what it is): the name that comes up, and the
+// colour of that name, of the ring round the thing and of its dot on the map. A relic's colour is its direction's
+// gem's, and a pocket's mineral has its own name and its pocket's colour. Names only: nothing here says what a
+// thing is for.
+const SPOT = {
+  cache: ['CACHE', '#ffe14a'], geode: ['GEODE', '#f4ecd8'], wreck: ['WRECK', '#ff9a3a'], key: ['KEYSTONE', '#a4acbc'], prism: ['PRISM', '#ffffff'],
+  relic: ['RELIC', '#ffffff'], mineral: ['MINERAL', '#ffffff'],
+};
+// A place's name is written in the colour it has on the map, as bright as that colour goes.
+const bright = ([r, g, b]) => { const k = 255 / Math.max(1, r, g, b); return `rgb(${Math.round(r * k)},${Math.round(g * k)},${Math.round(b * k)})`; };
+// How long a place's name stays up: on its plate, and across the screen the first time the place is met. How
+// many dots of things seen the map keeps, and how near an unclaimed wreck is heard.
+const PLATE = 2.4, CARD = 1.6, MARKS = 24, HEAR = 30;
 // What flies off the kinds of rock that look the same in every ground, by the sheet each is drawn from. A ground's
 // own rock sheds the colours in its row (js/world.js: BIOMES), where the dark it lies in, its motes and its colour
 // on the map are too.
@@ -113,13 +126,16 @@ export class Game {
     this.buttons = [];
     this.chunks = new Map(); this.version = 0;
     this.daylight = false;                  // no dark is laid over the ground: only a staged view asks for it (js/shot.js)
+    this.place = null; this.placeKey = null; this.motifAt = -9;      // the name on show, the place the drill is in, when a place last sounded
+    this.called = new Set(); this.calledAt = {};                      // things called out since the game began, and when each kind last was
+    this.tickIn = 0; this.ticks = 0;                                  // until a wreck's next tick, and how many there have been
     this.fresh((Math.random() * 1e9) | 0, true);
   }
 
   // ------------------------------------------------------------ state
   fresh(seed, quiet = false) {
     this.S = { seed, grit: 0, gems: [0, 0, 0, 0, 0], lv: Object.fromEntries(UPGRADES.map(u => [u.id, 0])), relics: [0, 0, 0, 0], wrecks: [0, 0, 0, 0, 0, 0, 0, 0],
-      stats: { hauls: 0, best: 0, buys: 0, moves: 0, time: 0 }, won: false };
+      stats: { hauls: 0, best: 0, buys: 0, moves: 0, time: 0 }, won: false, met: {}, marks: [], visited: {} };
     this.world.reset(seed);
     this.begin();
     if (!quiet) store().then(db => db.transaction('pieces', 'readwrite').objectStore('pieces').clear()).catch(() => {});
@@ -136,6 +152,10 @@ export class Game {
     this.pieces = []; this.pieceOf = new Map(); this.taken.length = 0; this.homeKey = ''; this.homeEnd = [HX, HY];
     this.chain = null; this.hauled = null;
     w.see(C, C, this.val('scanner') + 4);
+    // Where the game begins is where the player already is: its name does not come up, now or as a new place later.
+    const here = this.placeAt(this.di);
+    this.place = null; this.placeKey = here.key; this.S.met[here.row.id] = 1;
+    this.called.clear(); this.calledAt = {}; this.tickIn = 0;
     // The first piece, beside the core, lies loose from the start: the open cell between them tells of it.
     this.changed([C * N + C + 3]);
     this.shop = false;
@@ -173,6 +193,9 @@ export class Game {
         });
       } catch { rows = []; }
       this.S = S;
+      // What a game saved before these were kept does not have: the wrecks' parts, the grounds met, the dots of
+      // things seen on the map, the pockets visited.
+      S.wrecks ??= [0, 0, 0, 0, 0, 0, 0, 0]; S.met ??= {}; S.marks ??= []; S.visited ??= {};
       for (const u of UPGRADES) this.S.lv[u.id] = Math.min(this.S.lv[u.id] ?? 0, u.values.length - 1);
       this.world.reset(S.seed);
       for (const [id, p] of rows) this.world.chunks[id] = p;
@@ -509,6 +532,9 @@ export class Game {
     this.retighten();
     this.discover(this.taken.splice(0), 600, this.walked);
     this.reelIfRound();
+    // A dot on the map stays until the thing it marks is gone: cut, hauled, or turned into something else.
+    const marks = this.S.marks;
+    if (marks.length && marks.some(m => { const k = w.laid(m[0]); return k >= 0 && k !== m[1]; })) this.S.marks = marks.filter(m => { const k = w.laid(m[0]); return k < 0 || k === m[1]; });
   }
   // A piece of loose ground goes into the books. Ground known as loose before that lies within it is part of it now.
   enter(cells) {
@@ -883,11 +909,79 @@ export class Game {
       if (this.world.see(x, y, r)) this.version++;
       // Ground that has come into view is looked at: an island among it is known as loose from the first sight.
       for (let v = y - r; v <= y + r; v++) for (let u = x - r; u <= x + r; u++) if (Math.abs(u - px) > r || Math.abs(v - py) > r) this.spot(v * N + u);
+      this.arrive(cell);
     }
+    if (this.world.spotted.length) this.callOut();
     const home = this.atCore;
     if (home && !d.home && this.bombs < this.val('bombs')) { this.bombs = this.val('bombs'); sfx.dock(); this.coreFlash = 0.25; }
     if (home && !d.home) { this.homecoming(); this.save(); }
     d.home = home;
+  }
+  // The place a cell lies in: the row of its ground, and the key the place is known by. A pocket is a place of
+  // its own (`zone`: the world's record of it), so two pockets of one kind are two places; any other ground is one
+  // place wherever it lies. What ground a cell is, the cell itself says.
+  placeAt(i) {
+    const w = this.world, row = w.row(i);
+    const zone = row.pocket ? w.zoneOf(Math.floor(((i % N) - C) / ZONE), Math.floor((Math.floor(i / N) - C) / ZONE)) : null;
+    return { key: zone ? zone.key : row.id, row, zone };
+  }
+  // The drill has come into another cell. If that is another place, its name comes up: on a plate under the top
+  // bar with its direction's gem beside it, or, the first time ever that this ground is met, alone across the
+  // screen. The name and nothing more.
+  arrive(i) {
+    const here = this.placeAt(i);
+    if (here.key === this.placeKey) return;
+    this.placeKey = here.key;
+    const S = this.S, row = here.row, card = !S.met[row.id];
+    S.met[row.id] = 1;
+    if (here.zone) S.visited[here.key] = 1;
+    this.place = { title: row.title, icon: GEM_ICON[row.kin] ?? 'grit', colour: bright(row.map), t: 0, card, life: card ? CARD : PLATE };
+    // (A border that wanders is crossed many times in a few cells: the name changes each time, the sound does not.)
+    if (card) sfx.arrive(row.kin); else if (this.time - this.motifAt > PLATE) sfx.place(row.kin);
+    this.motifAt = this.time;
+  }
+  // Things seen for the first time are called out: a ring spreading from the thing, its name, a few notes, and a
+  // dot on the map that stays until it is gone (but for wrecks and relics, which the map shows anyway). One call
+  // for each thing, however many of its cells come into view and however often (a thing is known by what it is and
+  // the sector of FIND cells its middle lies in), and no more than one of a kind every three seconds: what comes
+  // sooner still gets its dot.
+  callOut() {
+    const w = this.world, S = this.S;
+    for (const [what, seen, mid] of w.spotted.splice(0)) {
+      const x = mid % N, y = Math.floor(mid / N), key = `${what}:${Math.floor((x - C) / FIND)},${Math.floor((y - C) / FIND)}`;
+      if (this.called.has(key)) continue;
+      this.called.add(key);
+      // The cell the thing is marked by is one that goes when it is taken: a geode's is a cell of its ore.
+      const cell = what === 'geode' && w.k(mid + 1) === K.ORE_B ? mid + 1 : seen, kind = w.k(cell);
+      if (kind === K.EMPTY || S.marks.some(m => m[0] === cell)) continue;
+      const row = w.row(seen), dir = w.relicAt.indexOf(seen);
+      const name = what === 'mineral' ? (row.pocket?.mineral ?? SPOT.mineral[0]).toUpperCase() : SPOT[what][0];
+      const colour = what === 'mineral' ? bright(row.map) : what === 'relic' && dir >= 0 ? GEM_COLOR[DIR_BIOME[dir]] : SPOT[what][1];
+      if (what !== 'wreck' && what !== 'relic') { S.marks.push([cell, kind, colour]); if (S.marks.length > MARKS) S.marks.shift(); }
+      if (this.time - (this.calledAt[what] ?? -9) < 3) continue;
+      this.calledAt[what] = this.time;
+      this.ring((x + 0.5) * T, (y + 0.5) * T, colour, 30);
+      this.sparkle((x + 0.5) * T, (y + 0.5) * T, 5, colour);
+      this.popup(x, y - 1, name, colour);
+      sfx.spot(what);
+    }
+  }
+  // A wreck nobody has claimed, within hearing, ticks: softly, and quicker the nearer the drill is to it.
+  listen(dt) {
+    const w = this.world, d = this.drill, held = this.S.wrecks ?? [], spots = w.wrecks;
+    let near = HEAR;
+    for (let n = 0; n < spots.length; n++) {
+      if (held[n]) continue;
+      const far = Math.hypot(spots[n][0] + 0.5 - d.x, spots[n][1] + 0.5 - d.y);
+      // (The wreck itself must be there, where the world has been made: one that is on its way home is not.)
+      if (far < near && w.laid(spots[n][1] * N + spots[n][0]) !== K.EMPTY) near = far;
+    }
+    if (near >= HEAR) { this.tickIn = 0; return; }
+    this.tickIn -= dt;
+    if (this.tickIn > 0) return;
+    this.tickIn = 0.22 + 1.4 * near / HEAR;
+    this.ticks++;
+    sfx.ping(1 - near / HEAR);
   }
   // Home with the tether still wound round something: ground it lies against that nobody knew was loose is found
   // now (`discover`) and what the tether is round is reeled in. Reeling lets the string settle on whatever lay
@@ -1486,6 +1580,7 @@ export class Game {
       if (this.sweepHome(this.reelTick > 0.1)) met = true;
       if (met || this.reelTick > 0.1) { this.reelTick = 0; this.reelIfRound(); }
       this.updateHazards(dt);
+      this.listen(dt);
       // The station makes a trickle of grit of its own: however a world has been spent, the next reach is never out
       // of reach for good.
       this.trickle = (this.trickle ?? 0) + dt;
@@ -1501,6 +1596,7 @@ export class Game {
     for (const p of this.popups) p.t += dt;
     this.popups = this.popups.filter(p => p.t < 0.9);
     if (this.banner) { this.banner.t += dt; if (this.banner.t > this.banner.life) this.banner = null; }
+    if (this.place) { this.place.t += dt; if (this.place.t > this.place.life) this.place = null; }
     // The camera eases after the drill, a little ahead of the way it is flying.
     const k = 1 - Math.exp(-dt * 8), lead = Math.min(3, Math.hypot(d.vx, d.vy) * 0.1), speed = Math.hypot(d.vx, d.vy) || 1;
     this.cam.x += ((d.x + d.vx / speed * lead) * T - this.cam.x) * k; this.cam.y += ((d.y + d.vy / speed * lead) * T - this.cam.y) * k;
@@ -2058,6 +2154,25 @@ export class Game {
       ctx.globalAlpha = 1;
     }
     if (S.won && this.wonAt !== undefined && this.time - this.wonAt < 6) text(ctx, 'CORE RESTORED', W / 2, H * 0.36, '#ffe14a', 0.5, 2);
+    // A ground met for the first time: its name alone, large, a little under where a haul's banner goes (and under
+    // the banner itself, if one is up). A name too long for the screen is set on two lines, or small.
+    const place = this.place;
+    if (place && place.card) {
+      const pop = Math.min(1, place.t / 0.12), words = place.title.split(' '), fits = s => textWidth(s, 2) <= W - 8;
+      let lines = [place.title], big = 2;
+      if (!fits(place.title)) {
+        let best = null;
+        for (let n = 1; n < words.length; n++) {
+          const a = words.slice(0, n).join(' '), b = words.slice(n).join(' '), wide = Math.max(textWidth(a, 2), textWidth(b, 2));
+          if (fits(a) && fits(b) && (!best || wide < best[2])) best = [a, b, wide];
+        }
+        if (best) lines = [best[0], best[1]]; else big = 1;
+      }
+      const under = this.banner ? Math.round(H * 0.2) + 11 * (this.banner.n >= 10 ? 2 : 1) + 30 : 0, y = Math.max(under, Math.round(H * 0.3 - (1 - pop) * 8));
+      ctx.globalAlpha = Math.min(1, (place.life - place.t) * 3);
+      lines.forEach((line, n) => text(ctx, line, W / 2, y + n * 11 * big, place.colour, 0.5, big + (n === 0 && lines.length === 1 && place.t < 0.07 ? 1 : 0)));
+      ctx.globalAlpha = 1;
+    }
     // Top: what has been banked, and how much of its reach the tether has left.
     slice9(ctx, 'ui', 'panel', 2, 2, W - 4, 40);
     draw(ctx, 'icons', 'grit', 6, 5);
@@ -2082,6 +2197,15 @@ export class Game {
     this.button(W - ww - 6, 42, ww + 6, 20, () => {
       if (this.confirmReset > 0) { this.confirmReset = 0; this.fresh((Math.random() * 1e9) | 0); this.save(); sfx.relic(); } else { this.confirmReset = 2.5; sfx.tap(); }
     });
+    // The place the drill has come into: its name on a plate, with its direction's gem.
+    if (place && !place.card) {
+      const slide = Math.min(1, place.t / 0.15), pw = textWidth(place.title) + 23, px = 4 - Math.round((1 - slide) * (1 - slide) * 10);
+      ctx.globalAlpha = Math.min(1, slide, (place.life - place.t) / 0.3);
+      slice9(ctx, 'ui', 'panel', px, 44, pw, 14);
+      draw(ctx, 'icons', place.icon, px + 4, 46);
+      text(ctx, place.title, px + 17, 46, place.colour);
+      ctx.globalAlpha = 1;
+    }
     this.drawMap(W - 54, H - 58);
     // Bottom: the blast, and the shop when the drill is home.
     const by = H - 46;
@@ -2153,6 +2277,14 @@ export class Game {
       if (this.S.relics[dir]) continue;
       const [mx, my] = at(HX + DX[dir] * RELIC_R, HY + DY[dir] * RELIC_R);
       ctx.fillStyle = GEM_COLOR[DIR_BIOME[dir]]; ctx.fillRect(Math.round(mx) - 1, Math.round(my) - 1, 3, 3);
+    }
+    // Things seen and not yet taken, each a dot in its own colour.
+    for (const [cell, , colour] of this.S.marks) {
+      const wx = cell % N, wy = Math.floor(cell / N);
+      if (Math.hypot(wx + 0.5 - HX, wy + 0.5 - HY) > R) continue;
+      const [mx, my] = at(wx + 0.5, wy + 0.5);
+      ctx.fillStyle = '#0c0a12'; ctx.fillRect(Math.round(mx) - 1, Math.round(my) - 1, 3, 3);
+      ctx.fillStyle = colour; ctx.fillRect(Math.round(mx) - 1, Math.round(my) - 1, 2, 2);
     }
     if (((this.time * 2) | 0) % 2) this.world.wrecks.forEach(([wx, wy], n) => {
       if (this.S.wrecks?.[n] || Math.hypot(wx + 0.5 - HX, wy + 0.5 - HY) > R) return;

@@ -1,5 +1,5 @@
 // A staged view of the world, for tools/shot.mjs to photograph and for looking at a far place by hand:
-//   index.html?shot&seed=7&at=0,-300&reach=6&zoom=4&lit
+//   index.html?shot&seed=7&at=0,-300&reach=6&zoom=4&lit&met
 // js/main.js loads this file only when the address has `shot`; ordinary play never fetches it.
 //
 // The view is a fresh world on `seed` (7 if none is given). It reads no saved game and is never saved. The drill
@@ -9,7 +9,8 @@
 // ground in view is uncovered, and looked at as ground that comes into view is, so what stands loose is known.
 // `reach` is the level of the tether (if none is given, the first that reaches the room with a little to spare).
 // `zoom` shows that many times as many cells across: the game's canvas is that much larger and the page scales
-// it down. `lit` leaves out the dark.
+// it down. `lit` leaves out the dark. `met` takes every ground as met before, so the name of the place the drill
+// stands in comes up on its plate and not, as the first time, across the screen.
 //
 // The view is held still: `tetherbore.advance(ms)` steps it, `tetherbore.resume()` lets it play.
 import * as world from './world.js';
@@ -26,12 +27,13 @@ export function stage(game, query) {
   const [dx = 0, dy = 0] = (query.get('at') ?? '').split(',').map(v => Math.round(+v) || 0);
   const far = Math.hypot(dx, dy), least = reaches.findIndex(R => R >= far + 8);
   const level = Math.max(0, Math.min(reaches.length - 1, Math.floor(number('reach', least < 0 ? reaches.length - 1 : least))));
-  const zoom = Math.max(1, number('zoom', 1)), lit = query.has('lit') && query.get('lit') !== '0';
+  const zoom = Math.max(1, number('zoom', 1)), lit = query.has('lit') && query.get('lit') !== '0', met = query.has('met') && query.get('met') !== '0';
 
   game.save = () => {};
   game.fresh(seed, true);
   game.S.lv.tether = level;
   game.daylight = lit;
+  if (met) for (const row of world.BIOMES) if (row) game.S.met[row.id] = 1;
   const d = game.drill, w = game.world;
   if (dx || dy) {
     for (let s = 0; s <= far; s += 0.5) for (let u = -1; u <= 1; u++) for (let v = -1; v <= 1; v++) w.setK((C + Math.round(dy * s / far) + v) * N + C + Math.round(dx * s / far) + u, K.EMPTY);

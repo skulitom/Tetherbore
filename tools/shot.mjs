@@ -1,5 +1,5 @@
 // Photographs the game, so that ground and art can be judged by eye with no hand on a browser:
-//   node tools/shot.mjs <out.png> [--seed 7] [--at dx,dy] [--reach level] [--size 360x640] [--zoom n] [--frames n] [--lit]
+//   node tools/shot.mjs <out.png> [--seed 7] [--at dx,dy] [--reach level] [--size 360x640] [--zoom n] [--frames n] [--lit] [--met]
 //
 //   --at dx,dy    where the drill stands, in cells from the core: east and south are counted up, so 300 cells north
 //                 is `--at 0,-300`. Away from the core it stands in a small room at the end of a tunnel carved from
@@ -13,6 +13,9 @@
 //   --frames n    how many frames (sixtieths of a second) the game is stepped before the picture; 180 if not
 //                 given, which lets the dark settle to the colour of the ground the drill is in.
 //   --lit         no dark: every cell in view as the sheet draws it. (All ground in view is uncovered either way.)
+//   --met         every ground is taken as met before, so the name of the place the drill stands in comes up on
+//                 its plate, not across the screen as it does the first time. (Either shows for a second or two:
+//                 `--frames 30` catches it, and the names of what the view uncovered, called out in the first frame.)
 //   --browser p   the Edge or Chrome to use, if the installed one is not to be.
 //
 // It serves this checkout on a free loopback port (static files, read only), opens `index.html?shot&...` in an
@@ -34,11 +37,11 @@ import { WORLD_R } from '../js/world.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
-const usage = 'node tools/shot.mjs <out.png> [--seed 7] [--at dx,dy] [--reach level] [--size 360x640] [--zoom n] [--frames n] [--lit] [--browser path]';
+const usage = 'node tools/shot.mjs <out.png> [--seed 7] [--at dx,dy] [--reach level] [--size 360x640] [--zoom n] [--frames n] [--lit] [--met] [--browser path]';
 const wrong = why => { console.error(`${why}\n  ${usage}`); process.exit(2); };
 
 // ---------------------------------------------------------------- what was asked for
-const options = { seed: '7', at: '0,0', reach: '', size: '360x640', zoom: '1', frames: '180', lit: false, browser: '' };
+const options = { seed: '7', at: '0,0', reach: '', size: '360x640', zoom: '1', frames: '180', lit: false, met: false, browser: '' };
 let out = null;
 for (let args = process.argv.slice(2), i = 0; i < args.length; i++) {
   const arg = args[i];
@@ -198,6 +201,7 @@ async function take() {
   const query = new URLSearchParams({ shot: '1', seed: `${seed}`, at: at.join(','), zoom: `${zoom}` });
   if (level !== null) query.set('reach', `${level}`);
   if (options.lit) query.set('lit', '1');
+  if (options.met) query.set('met', '1');
   await page('Page.navigate', { url: `${origin}/index.html?${query}` });
   await processes();
   // The page says when the view is staged; if its scripts failed it never will, and what it said instead is told.

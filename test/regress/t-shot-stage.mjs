@@ -4,7 +4,8 @@
 //   `?shot` reads no saved game and never writes one. The drill stands where it was asked to, in an open room at
 //   the end of an open tunnel from the core, the tether sound, on the first reach that gets there; every cell in
 //   view is uncovered; ground standing loose in view is known (a wreck in its hollow); `zoom` widens the game's
-//   canvas and leaves the tether's as it was; `lit` takes the dark away; and stepped for three seconds, nothing
+//   canvas and leaves the tether's as it was; `lit` takes the dark away; `met` puts the place's name on its plate
+//   in place of the title card of a first meeting; and stepped for three seconds, nothing
 //   has moved the drill, nothing is wrong with the tether, and the saved game is as it was.
 import { makeGame, tetherFaults, sight, C, N, K } from '../harness.mjs';
 
@@ -72,6 +73,17 @@ check(await open('', 'example.org') === undefined, 'away from localhost an ordin
     check(facts.cells.join() === '11,20' && facts.ground === 'frost' && facts.zoom === 1, `what the view says of itself: ${JSON.stringify(facts)}`);
     check(localStorage.getItem(SAVE) === saved, 'the staged view wrote over the saved game');
   }
+}
+
+// The name of the place the drill is staged in comes up as it does the first time a ground is met, across the
+// screen; with `met` every ground counts as met before, and it comes up on its plate.
+{
+  const first = (await open('?shot&seed=7&at=0,-300')).game;
+  globalThis.tetherbore.advance(100);
+  check(first.place?.title === 'FROST' && first.place.card === true, `the place named in a staged view: ${JSON.stringify(first.place)}`);
+  const again = (await open('?shot&seed=7&at=0,-300&met')).game;
+  globalThis.tetherbore.advance(100);
+  check(again.place?.title === 'FROST' && again.place.card === false, `the place named in a view staged with \`met\`: ${JSON.stringify(again.place)}`);
 }
 
 // At the core nothing is carved, and the first game's title is left as it is.
