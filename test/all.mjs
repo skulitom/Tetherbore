@@ -1,7 +1,8 @@
 // Every test in one command: each script in test/regress (each fails while the defect it was written for is there),
 // the smoke test, and the rope fuzz on seeds 11 to 18 from the core, from a start 200 cells out each way and from
-// inside a province of each strain of ground, from a deep flank, from inside provinces of generated crosses, and from
-// the cracks of keystone slabs; and the slabs themselves, as they lie in 200 worlds (slab-moat.mjs).
+// inside a province of each strain of ground, from a deep flank, from inside provinces of generated crosses, from
+// the cracks of keystone slabs, and from inside amber hives; and the slabs themselves, as they lie in 200 worlds
+// (slab-moat.mjs).
 //   node test/all.mjs [only: a word the test's name must hold]
 // One line a test, and the last line of a failing test's own output under it. Exits 1 if any failed. Tests run side by
 // side, as many as the machine has cores to spare, and the whole run takes a few minutes.
@@ -57,7 +58,11 @@ const ARGS = {
     // From a start in the crack of a keystone slab (`node tools/slabs.mjs --where 7` and `--where 11` say where they
     // lie): the first slab of a new game on the reach that goes round it, a slab with three keys (with bombs, which
     // open the rock a key holds to), the middle of a cobble field, and the widest slab there is (with bombs).
-    [7, 300, 3, 3, 44, 60], [7, 300, 7, 334, 375, 'mix', 'bombs'], [7, 300, 7, 192, -500, 60], [11, 300, 6, 222, 82, 60, 'bombs']],
+    [7, 300, 3, 3, 44, 60], [7, 300, 7, 334, 375, 'mix', 'bombs'], [7, 300, 7, 192, -500, 60], [11, 300, 6, 222, 82, 60, 'bombs'],
+    // From a start inside an amber hive (`node tools/zone-budget.mjs --where 7` says where pockets lie): the west's
+    // first, a great hive of forty chambers (with bombs, which open its wax and leave its nuggets hanging), the
+    // north's first, and a middling one with bombs and trips home at thirty frames a second.
+    [7, 300, 6, -205, -11, 60], [7, 300, 7, -456, -72, 'mix', 'bombs'], [7, 300, 5, 14, -162, 60], [7, 300, 6, -209, 53, 30, 'bombs,home']],
 };
 const tests = [];
 for (const file of readdirSync(here + 'regress').filter(name => name.endsWith('.mjs')).sort()) {
@@ -85,6 +90,12 @@ for (const [x, y, reach, cross] of [[-640, -640, 8, 'buzzmire'], [384, 1152, 8, 
 // field (joints one cell wide between blocks that hang by a key each) and the widest slab there is.
 for (const [seed, x, y, reach, what] of [[7, 3, 44, 3, 'the first slab'], [7, 334, 375, 7, 'a slab of three keys'], [7, 192, -500, 7, 'a cobble field'], [11, 222, 82, 6, 'a slab 16 in radius']]) {
   tests.push({ name: `rope-fuzz.mjs ${seed} 400 ${reach} ${x} ${y} (${what})`, run: ['rope-fuzz.mjs', seed, 400, reach, x, y] });
+}
+
+// And from inside an amber hive, where the string lies on walls of wax a cell thick and on nuggets that hang by a
+// stalk: the west's first hive, a great one, and the north's first.
+for (const [x, y, reach, what] of [[-205, -11, 6, 'the west\'s first hive'], [-456, -72, 7, 'a great hive'], [14, -162, 5, 'the north\'s first hive']]) {
+  tests.push({ name: `rope-fuzz.mjs 7 400 ${reach} ${x} ${y} (${what})`, run: ['rope-fuzz.mjs', 7, 400, reach, x, y] });
 }
 
 // And in a deep flank, where the crystals and the lava are thickest.
