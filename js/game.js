@@ -18,6 +18,7 @@ const GEM_COLOR = [null, '#bfe6ff', '#ffb060', '#b8f06a', '#d8b8ff'];
 // Ground is worth more the further out it lies, in proportion to the distance (`richness`). A haul pays the worth of
 // its cells times a bonus for its size that grows with the logarithm of the size (`haulBonus`): cutting a big piece is
 // already quicker per cell than cutting small ones, so a bonus in proportion to size would pay with its square.
+// For the same reason a piece larger than the winch's load pays less a cell (`overload`).
 //
 // A player with reach R cuts loops about R / 3 across, 48 at most. A loop of side s takes 4 s cells of cutting and
 // frees s x s cells, so at `PACE` cells cut a second it earns about s x PACE / 4 cells a second (`income`). The price
@@ -29,6 +30,10 @@ const PACE = 0.9, WORTH = 1.6;                  // cells cut a second, turning a
 const GEM_REACH = 5;                            // the level of reach (230) from which upgrades may ask for gems
 export const richness = r => Math.max(1, r / 12);
 export const haulBonus = (n, winch = 1) => 1 + winch * Math.log2(Math.max(1, n)) / 8;
+// The winch draws in so many cells at full pay; a piece beyond that pays less for each cell, though never less in all,
+// so the biggest loop a player can cut is a little better than a middling one and not many times better.
+const WINCH_LOAD = [150, 400, 1000, 2300, 5000, 12000];
+export const overload = (n, level) => n <= WINCH_LOAD[level] ? 1 : (WINCH_LOAD[level] / n) ** 0.35;
 export const income = R => { const side = Math.max(4, Math.min(48, R / 3)); return side * PACE / 4 * WORTH * richness(R * 0.7) * haulBonus(side * side); };
 const round2 = n => { const unit = 10 ** Math.max(0, Math.floor(Math.log10(n)) - 1); return Math.round(n / unit) * unit; };
 // What the step up from each level of reach costs: the first is within the first haul, then 1.5 minutes of income
@@ -48,7 +53,7 @@ export const UPGRADES = [
   // The tether's reach: how far from the core the drill may go, by any road. Each level nearly doubles it.
   { id: 'tether', icon: 'string', name: 'REACH', what: 'TETHER GOES FURTHER', values: REACH, gem: B.MIRE, ...levels(REACH.slice(0, -1).map((R, l) => l), 1), show: v => `${v}` },
   { id: 'drill', icon: 'drill', name: 'BIT', what: 'CUTS FASTER', values: [1, 2, 3, 4, 5], gem: B.LODE, ...levels([0.6, 2.2, 4.4, 6.6], 0.6), show: v => `MK${v}` },
-  { id: 'winch', icon: 'winch', name: 'WINCH', what: 'BIG HAULS PAY MORE', values: [1, 1.3, 1.6, 2, 2.5, 3], gem: B.FROST, ...levels([0.8, 2, 3.6, 5.4, 7.2], 0.5), show: v => `x${v}` },
+  { id: 'winch', icon: 'winch', name: 'WINCH', what: 'BIGGER HAULS AT FULL PAY', values: [1, 1.3, 1.6, 2, 2.5, 3], gem: B.FROST, ...levels([0.8, 2, 3.6, 5.4, 7.2], 0.5), show: v => `x${v}` },
   { id: 'scanner', icon: 'scanner', name: 'SCAN', what: 'SEES DEEPER IN ROCK', values: [3, 4, 5, 7, 9], gem: B.FROST, ...levels([0.4, 1.6, 3.4, 5.8], 0.3), show: v => `${v}` },
   { id: 'momentum', icon: 'momentum', name: 'RAM', what: 'FLIES FASTER', values: [1, 1.25, 1.5, 1.8, 2.2], gem: B.LODE, ...levels([0.7, 2.4, 4.2, 6.2], 0.4), show: v => `x${v}` },
   { id: 'bombs', icon: 'bomb', name: 'BLAST', what: 'BOMB: CLEARS ROCK', values: [0, 1, 2, 3, 4], gem: B.EMBER, ...levels([1, 2.8, 5, 7.4], 0.35), show: v => `${v}` },
@@ -221,49 +226,116 @@ export class Game {
   }
 
   // ------------------------------------------------------------ the tether
-  // The tether is a string from the drill to the core: `band`, a line of points. When the drill passes out of sight
-  // of the next point the string catches on what came between, and a new point is left where the drill last had
-  // sight. Each point is then drawn toward the straight line between its neighbours until ground stops it, and let
-  // go once it lies on that line. So the string runs straight, bends only against ground, and wraps what the drill
-  // goes round. `bends` is how many points from the drill's end are worked on.
-  tend(rounds, bends) {
-    const w = this.world, d = this.drill, P = this.band;
-    P[0] = [d.x, d.y];
-    if (P.length >= 2 && !sight(w, d.x, d.y, P[1][0], P[1][1]) && sight(w, d.px, d.py, P[1][0], P[1][1])) {
-      // The new bend is drawn tight against the corner that caught the string before anything is shown, so the
-      // string is never seen bent in the open.
-      P.splice(1, 0, [d.px, d.py]); rounds = Math.max(rounds, 60); bends = Math.max(bends, 2);
-    }
-    // A point of string keeps a hair clear of ground on every side.
-    const m = 0.14, open = (x, y) => w.k(Math.floor(y - m) * N + Math.floor(x - m)) === K.EMPTY && w.k(Math.floor(y - m) * N + Math.floor(x + m)) === K.EMPTY
-      && w.k(Math.floor(y + m) * N + Math.floor(x - m)) === K.EMPTY && w.k(Math.floor(y + m) * N + Math.floor(x + m)) === K.EMPTY;
-    // A slack string snaps taut at once rather than creeping: rounds go on until nothing moves, within a budget of
-    // cells looked along so that a very long tether cannot hold up a frame.
-    let work = 0;
-    for (let round = 0; round < rounds && work < 40000; round++) {
-      let moved = false;
-      for (let n = Math.min(bends, P.length - 2); n >= 1; n--) {
-        const a = P[n - 1], b = P[n], c = P[n + 1];
-        // The nearest point to this bend on the straight line between its neighbours.
-        const ux = c[0] - a[0], uy = c[1] - a[1], len2 = ux * ux + uy * uy, t = len2 ? Math.max(0, Math.min(1, ((b[0] - a[0]) * ux + (b[1] - a[1]) * uy) / len2)) : 0;
-        let dx = a[0] + ux * t - b[0], dy = a[1] + uy * t - b[1];
-        const far = Math.hypot(dx, dy);
-        if (far < 0.07) { if (sight(w, a[0], a[1], c[0], c[1])) { P.splice(n, 1); moved = true; } continue; }
-        for (const step of [Math.min(far, 0.3), Math.min(far, 0.08), Math.min(far, 0.02)]) {
-          let done = false;
-          for (const [mx, my] of [[dx * step / far, dy * step / far], [dx * step / far, 0], [0, dy * step / far]]) {
-            if (Math.abs(mx) + Math.abs(my) < 0.004) continue;
-            const qx = b[0] + mx, qy = b[1] + my;
-            if (!open(qx, qy)) continue;
-            work += Math.abs(a[0] - qx) + Math.abs(a[1] - qy) + Math.abs(c[0] - qx) + Math.abs(c[1] - qy);
-            if (!sight(w, b[0], b[1], qx, qy) || !sight(w, a[0], a[1], qx, qy) || !sight(w, qx, qy, c[0], c[1])) continue;
-            P[n] = [qx, qy]; moved = done = true;
-            break;
-          }
-          if (done) break;
+  // The tether is a string from the drill to the core: `band`, a line of points, the drill's end first. It runs
+  // straight and bends only where it lies against a corner of ground. A bend is [x, y, turn, cell, corner]: a point
+  // a hair off the corner, which way the string turns there (1 or -1), the cell whose corner it is, and which corner.
+  //
+  // Nothing is nudged into place. When an end of the string moves, the string sweeps a triangle about the bend next
+  // to it, and any corner of ground inside that triangle is one the string has caught: it becomes a bend at once,
+  // exactly at the corner. When the string swings back until it no longer turns round a bend, the bend is let go.
+  // So the string is always the tight one for the way it has been led, and it never creeps.
+
+  // The first corner a string catches as its end moves from `cur` to `to` about `pivot`: [x, y, cell, corner], null
+  // when there is none, undefined when the triangle is too large to search. It is caught when the string meets the
+  // rock's own corner, and the bend is put a hair off it. `skip` is the corners the string is on already.
+  catchIn(pivot, cur, to, skip) {
+    const w = this.world, m = 0.14, px = pivot[0], py = pivot[1], cx = cur[0], cy = cur[1], tx = to[0], ty = to[1];
+    const area = (cx - px) * (ty - py) - (cy - py) * (tx - px);
+    if (Math.abs(area) < 1e-9) return null;
+    const side = area > 0 ? 1 : -1, tri = [[px, py], [cx, cy], [tx, ty]];
+    let best = null, least = Infinity, reach = 0, looked = 0;
+    for (let row = Math.floor(Math.min(py, cy, ty) - m) - 1; row <= Math.floor(Math.max(py, cy, ty) + m) + 1; row++) {
+      // The stretch of this row the triangle crosses, a cell to spare either side.
+      const ya = row - 0.3, yb = row + 1.3;
+      let lo = Infinity, hi = -Infinity;
+      for (let e = 0; e < 3; e++) {
+        const a = tri[e], b = tri[(e + 1) % 3];
+        if (a[1] >= ya && a[1] <= yb) { lo = Math.min(lo, a[0]); hi = Math.max(hi, a[0]); }
+        if (a[1] === b[1]) continue;
+        for (const y of [ya, yb]) {
+          const t = (y - a[1]) / (b[1] - a[1]);
+          if (t >= 0 && t <= 1) { const x = a[0] + (b[0] - a[0]) * t; lo = Math.min(lo, x); hi = Math.max(hi, x); }
         }
       }
-      if (!moved) break;
+      if (lo > hi) continue;
+      const x0 = Math.floor(lo - m) - 1, x1 = Math.floor(hi + m) + 1;
+      if ((looked += x1 - x0 + 1) > 400000) return undefined;
+      for (let x = x0; x <= x1; x++) {
+        if (w.k(row * N + x) === K.EMPTY) continue;
+        for (let c = 0; c < 4; c++) {
+          // A corner that sticks out: the three other cells round it are open.
+          const ox = c & 1, oy = c >> 1, nx = ox ? 1 : -1, ny = oy ? 1 : -1;
+          if (w.k(row * N + x + nx) !== K.EMPTY || w.k((row + ny) * N + x) !== K.EMPTY || w.k((row + ny) * N + x + nx) !== K.EMPTY) continue;
+          const key = (row * N + x) * 4 + c;
+          if (skip.includes(key)) continue;
+          const qx = x + ox, qy = row + oy;
+          const off = side * ((cx - px) * (qy - py) - (cy - py) * (qx - px));
+          if (off <= 1e-7 || side * ((tx - cx) * (qy - cy) - (ty - cy) * (qx - cx)) < -1e-9 || side * ((px - tx) * (qy - ty) - (py - ty) * (qx - tx)) <= 1e-7) continue;
+          // The one met first is the one least far round from where the string lay; of two in line, the further.
+          const round = Math.atan2(off, (cx - px) * (qx - px) + (cy - py) * (qy - py)), far = (qx - px) ** 2 + (qy - py) ** 2;
+          if (round < least - 1e-9 || (round < least + 1e-9 && far > reach)) { least = round; reach = far; best = [qx, qy, row * N + x, key, qx + nx * m, qy + ny * m]; }
+        }
+      }
+    }
+    return best;
+  }
+  // The bends a string picks up as its end moves from `from` to `to` while the rest holds at `pivot`, in order from
+  // the pivot outward; undefined when that could not be worked out.
+  caught(pivot, from, to, skip = []) {
+    const out = [];
+    let cur = from;
+    skip = skip.slice();
+    if (pivot[4] !== undefined) skip.push(pivot[4]);
+    for (let guard = 0; guard < 40; guard++) {
+      const q = this.catchIn(pivot, cur, to, skip);
+      if (q === undefined) return undefined;
+      if (!q) break;
+      // Where the moving end was when the string met the corner.
+      const ax = q[0] - pivot[0], ay = q[1] - pivot[1], mx = to[0] - cur[0], my = to[1] - cur[1], den = mx * ay - my * ax;
+      const t = den ? Math.max(0, Math.min(1, -((cur[0] - pivot[0]) * ay - (cur[1] - pivot[1]) * ax) / den)) : 0;
+      cur = [cur[0] + mx * t, cur[1] + my * t];
+      pivot = [q[4], q[5], Math.sign(ax * (to[1] - q[1]) - ay * (to[0] - q[0])) || 1, q[2], q[3]];
+      skip.push(q[3]);
+      out.push(pivot);
+    }
+    return out;
+  }
+  // The drill has moved: the string follows, catching corners and letting go of bends it no longer turns round.
+  tend() {
+    const d = this.drill, P = this.band, to = [d.x, d.y];
+    let cur = P[0];
+    for (let guard = 0; guard < 40 && P.length >= 2; guard++) {
+      const pivot = P[1];
+      let target = to, lift = false;
+      if (P.length > 2 && pivot[2]) {
+        // Does the string swing past straight at this bend on the way? Then it goes only that far first.
+        const bx = pivot[0] - P[2][0], by = pivot[1] - P[2][1];
+        const now = bx * (cur[1] - pivot[1]) - by * (cur[0] - pivot[0]), then = bx * (to[1] - pivot[1]) - by * (to[0] - pivot[0]);
+        if (then * pivot[2] < 0) {
+          lift = true;
+          const t = now * pivot[2] <= 0 ? 0 : now / (now - then);
+          target = [cur[0] + (to[0] - cur[0]) * t, cur[1] + (to[1] - cur[1]) * t];
+        }
+      }
+      const got = this.caught(pivot, cur, target, P.length > 2 && P[2][4] !== undefined ? [P[2][4]] : []);
+      if (got && got.length) P.splice(1, 0, ...got.reverse()); else if (lift) P.splice(1, 1);
+      cur = target;
+      if (!lift) break;
+    }
+    P[0] = to;
+  }
+  // The ground has changed: a bend whose corner is gone, or that the string no longer turns round, is let go, and
+  // the string takes up whatever corners lie in the way as it straightens.
+  retighten() {
+    const w = this.world, P = this.band;
+    for (let guard = 0, n = 1; n < P.length - 1 && guard < 600; guard++) {
+      const a = P[n - 1], b = P[n], c = P[n + 1];
+      const turn = (b[0] - c[0]) * (a[1] - b[1]) - (b[1] - c[1]) * (a[0] - b[0]);
+      if (b[2] && w.k(b[3]) !== K.EMPTY && turn * b[2] >= 0) { n++; continue; }
+      const got = this.caught(c, b, a, [b[4], a[4]].filter(k => k !== undefined));
+      if (!got) { n++; continue; }
+      P.splice(n, 1, ...got.reverse());
+      n = Math.max(1, n - 1);
     }
   }
   // After the ground changed: which pieces lie loose, how the tether settles, what the next cut would free.
@@ -271,15 +343,31 @@ export class Game {
   changed(touched = []) {
     const w = this.world;
     this.version++;
-    this.pieces = this.pieces.filter(cells => cells.every(i => w.k(i) !== K.EMPTY));
-    this.looseSet = new Set(this.pieces.flat());
-    for (const i of touched) for (const cells of w.freed(i, 4000)) {
-      if (this.looseSet.has(cells[0])) continue;
-      this.pieces.push(cells);
-      for (const c of cells) this.looseSet.add(c);
+    // A loose piece that has been cut into is whatever is left of it, which may be several pieces now.
+    const was = this.looseSet, pieces = [];
+    for (const cells of this.pieces) {
+      if (cells.every(i => w.k(i) !== K.EMPTY)) { pieces.push(cells); continue; }
+      const left = new Set(cells.filter(i => w.k(i) !== K.EMPTY));
+      for (const start of left) {
+        const part = [start];
+        left.delete(start);
+        for (let head = 0; head < part.length; head++) for (const j of [part[head] + 1, part[head] - 1, part[head] + N, part[head] - N]) if (left.delete(j)) part.push(j);
+        pieces.push(part);
+      }
+    }
+    this.pieces = pieces;
+    this.looseSet = new Set(pieces.flat());
+    // A cut into ground that was held may have cut a piece off, of any size.
+    for (const i of touched) {
+      if (was.has(i)) continue;
+      for (const cells of w.freed(i, 120000)) {
+        if (this.looseSet.has(cells[0])) continue;
+        this.pieces.push(cells);
+        for (const c of cells) this.looseSet.add(c);
+      }
     }
     this.loose = this.pieces.flat();
-    this.tend(40, this.band.length);
+    this.retighten();
     this.reelIfRound();
   }
   // A loose piece is lassoed once the tether has gone far enough round it that the straight way home would close
@@ -425,9 +513,12 @@ export class Game {
     }
     if (last < 2) return false;
     // As far along the drag as the last open cell lets the drill's middle go.
-    const lx = (cells[last] % N) + 0.5, ly = Math.floor(cells[last] / N) + 0.5, along = (lx - HX) * ix + (ly - HY) * iy;
+    // It stays on the line of the drag: where its body would not fit, it stops a little short instead.
+    const lx = (cells[last] % N) + 0.5, ly = Math.floor(cells[last] / N) + 0.5;
+    let along = (lx - HX) * ix + (ly - HY) * iy;
+    while (along > 0.5 && !this.free(HX + ix * along, HY + iy * along)) along -= 0.1;
+    if (along <= 0.5) return false;
     d.tx = HX + ix * along; d.ty = HY + iy * along;
-    if (!this.free(d.tx, d.ty)) { d.tx = lx; d.ty = ly; }
     d.mode = 'fling'; d.speed = Math.max(34, along / 0.55); d.ang = Math.atan2(iy, ix);
     sfx.slide(Math.min(12, along));
     return true;
@@ -441,7 +532,22 @@ export class Game {
     }
     const home = this.atCore;
     if (home && !d.home && this.bombs < this.val('bombs')) { this.bombs = this.val('bombs'); sfx.dock(); this.coreFlash = 0.25; }
-    if (home && !d.home) this.save();
+    if (home && !d.home) {
+      const P = this.band;
+      if (P.length > 2) {
+        let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, found = false;
+        for (const [x, y] of P) { x0 = Math.min(x0, Math.floor(x) - 1); y0 = Math.min(y0, Math.floor(y) - 1); x1 = Math.max(x1, Math.floor(x) + 1); y1 = Math.max(y1, Math.floor(y) + 1); }
+        for (let n = 1; n < P.length - 1; n++) {
+          if (P[n][3] === undefined || this.looseSet.has(P[n][3])) continue;
+          const cells = this.world.pieceIn(P[n][3], x0, y0, x1, y1, 400000);
+          if (!cells) continue;
+          this.pieces.push(cells); found = true;
+          for (const c of cells) this.looseSet.add(c);
+        }
+        if (found) { this.loose = this.pieces.flat(); this.reelIfRound(); }
+      }
+      this.save();
+    }
     d.home = home;
   }
   // The end of the tether's reach: say so, and show where the edge is.
@@ -452,7 +558,7 @@ export class Game {
   }
   // The last cut glows: the ground that would come free if this cell were cut.
   foresee(i) {
-    const found = this.world.freed(i, 700);
+    const found = this.world.freed(i, 4000);
     this.preview = found.length ? [{ i, cells: found.flat() }] : [{ i, cells: [] }];
   }
   finishDig(i) {
@@ -497,7 +603,7 @@ export class Game {
     });
     for (const i of cells) w.setK(i, K.EMPTY);
     // Each part brought home from a wreck makes every haul pay a tenth more.
-    const mult = haulBonus(n, this.val('winch')) * (1 + 0.1 * S.wrecks.filter(Boolean).length);
+    const over = overload(n, S.lv.winch), mult = haulBonus(n, this.val('winch')) * (1 + 0.1 * S.wrecks.filter(Boolean).length) * over;
     grit = Math.round(grit * mult) + lump;
     for (let b = 1; b < 5; b++) gems[b] = Math.round(gems[b]);
     S.grit += grit; this.pending.grit += grit;
@@ -533,7 +639,7 @@ export class Game {
     this.ring(cx, cy, '#fff6c8', 30 + Math.min(60, n * 1.5));
     for (const sp of sprites) if (count < 60 || cellHash(sp.x, sp.y, 9) < 0.4) this.chips(sp.x, sp.y, sp.tile[0], 2, null, 0.7);
     const title = relic >= 0 ? 'RELIC!' : parts ? 'WRECK PART! PAY +10%' : caches ? 'CACHE!' : n >= 200 ? 'COLOSSAL!' : n >= 80 ? 'HUGE HAUL!' : n >= 30 ? 'BIG HAUL!' : n >= 10 ? 'NICE CUT!' : 'HAUL';
-    this.banner = { title, n, mult, grit, gems, t: 0, life: 2.2 + Math.min(1.2, n * 0.01) };
+    this.banner = { title, n, mult, over, grit, gems, t: 0, life: 2.2 + Math.min(1.2, n * 0.01) };
     if (parts || caches) sfx.relic();
     if (relic >= 0) { S.relics[relic] = 1; sfx.relic(); if (S.relics.every(Boolean) && !S.won) { S.won = true; this.wonAt = this.time; } }
   }
@@ -721,10 +827,15 @@ export class Game {
     let moved = false;
     // Where the tether lies, a few times a second: ground never closes over it.
     this.underTick = (this.underTick ?? 0) + dt;
-    if (this.underTick > 0.25 && (w.lava.size || this.clouds.length || this.frostOpen.length)) {
-      this.underTick = 0; this.under.clear();
-      for (let n = 1; n < this.band.length; n++) for (const c of cellsAlong(this.band[n - 1][0], this.band[n - 1][1], this.band[n][0], this.band[n][1])) this.under.add(c);
-    }
+    // Ground never grows back across the tether: where it lies is worked out afresh, at the moment it is asked.
+    let fresh = false;
+    const lies = i => {
+      if (!fresh) {
+        fresh = true; this.under.clear();
+        for (let n = 1; n < this.band.length; n++) for (const c of cellsAlong(this.band[n - 1][0], this.band[n - 1][1], this.band[n][0], this.band[n][1])) this.under.add(c);
+      }
+      return this.under.has(i);
+    };
     // Lava: a pocket pours a stream as long as its volume down the open ground, then sets.
     this.lavaTick = (this.lavaTick ?? 0) + dt;
     const flow = this.lavaTick >= 0.26;
@@ -744,7 +855,7 @@ export class Game {
       }
       if (life - dt > 0) { w.lava.set(i, life - dt); continue; }
       w.lava.delete(i); this.lavaVol.delete(i);
-      if (!this.under.has(i) && Math.abs(dcx - x) + Math.abs(dcy - y) > 1) {
+      if (!lies(i) && Math.abs(dcx - x) + Math.abs(dcy - y) > 1) {
         w.setK(i, K.BASALT); moved = true;
         this.effect('steam', 'smoke-puff', (x + 0.5) * T, (y + 0.5) * T);
       }
@@ -756,7 +867,7 @@ export class Game {
       if (c.t < c.life) continue;
       for (let v = -1; v <= 1; v++) for (let u = -1; u <= 1; u++) {
         const j = (c.y + v) * N + c.x + u;
-        if (w.k(j) === K.EMPTY && !this.under.has(j) && !w.lava.has(j) && Math.max(Math.abs(dcx - c.x - u), Math.abs(dcy - c.y - v)) > 1) { w.setK(j, K.SOFT); w.setB(j, B.MIRE); moved = true; }
+        if (w.k(j) === K.EMPTY && !lies(j) && !w.lava.has(j) && Math.max(Math.abs(dcx - c.x - u), Math.abs(dcy - c.y - v)) > 1) { w.setK(j, K.SOFT); w.setB(j, B.MIRE); moved = true; }
       }
     }
     this.clouds = this.clouds.filter(c => c.t < c.life);
@@ -774,7 +885,7 @@ export class Game {
         if (w.k(i) !== K.EMPTY) { w.dug.delete(i); return false; }
         if (this.time - w.dug.get(i) < 30) return true;
         const x = i % N, y = Math.floor(i / N);
-        if (this.under.has(i) || Math.max(Math.abs(dcx - x), Math.abs(dcy - y)) <= 1 || w.lava.has(i)) return true;
+        if (lies(i) || Math.max(Math.abs(dcx - x), Math.abs(dcy - y)) <= 1 || w.lava.has(i)) return true;
         w.setK(i, K.ICE); w.dug.delete(i); moved = true;
         if (this.onScreen(x, y)) { this.effect('freeze', 'impact', (x + 0.5) * T, (y + 0.5) * T); sfx.freeze(); }
         return false;
@@ -898,7 +1009,7 @@ export class Game {
     if (this.confirmReset > 0) this.confirmReset -= dt;
     if (!this.shop) {
       this.fly(dt);
-      this.tend(60, 6);
+      this.tend();
       this.reelTick = (this.reelTick ?? 0) + dt;
       if (this.reelTick > 0.1) { this.reelTick = 0; this.reelIfRound(); }
       this.updateHazards(dt);
@@ -1040,8 +1151,6 @@ export class Game {
         if (ring.length > 2) {
           let mx = 0, my = 0;
           for (const p of ring) { mx += p[0] / ring.length; my += p[1] / ring.length; }
-          // Slack at first, drawn tight as the blocks break up.
-          const slack = 2 + 3 * Math.max(0, 1 - h.t / h.gathered), out = ring.map(([x, y]) => { const far = Math.hypot(x - mx, y - my) || 1; return [x + (x - mx) / far * slack, y + (y - my) / far * slack]; });
           const own = TETHERS[this.S.lv.tether], dark = { a: '#16121c', b: '#16121c', dash: 1 };
           const line = [this.along(h, h.S)];
           for (let k = 1; k < h.route.length; k++) if (h.cum[k] > h.S) line.push(h.route[k]);
@@ -1050,11 +1159,29 @@ export class Game {
             if (Math.max(a[0], b[0]) - ox < -2 || Math.max(a[1], b[1]) - oy < -2 || Math.min(a[0], b[0]) - ox > W + 2 || Math.min(a[1], b[1]) - oy > H + 2) continue;
             this.drawSpan(a[0] - ox, a[1] - oy, b[0] - ox, b[1] - oy, pass ? dark : own, pass);
           }
-          for (const pass of [1, 0]) for (let i = 0; i < out.length; i++) {
-            const a = out[i], b = out[(i + 1) % out.length];
-            if (Math.max(a[0], b[0]) < -2 || Math.max(a[1], b[1]) < -2 || Math.min(a[0], b[0]) > W + 2 || Math.min(a[1], b[1]) > H + 2) continue;
-            this.drawSpan(a[0], a[1], b[0], b[1], pass ? { a: '#16121c', b: '#16121c', dash: 1 } : own, pass);
+          // The loop lies like rope, not like a line drawn from bit to bit: it is the heap's outline as a distance
+          // from its middle in each direction, eased round the loop and over time, and drawn as one smooth curve.
+          // Slack at first, drawn tight as the blocks break up.
+          const M = 28, slack = 2.5 + 3 * Math.max(0, 1 - h.t / h.gathered), want = new Float32Array(M), loop = h.loop ??= new Float32Array(M);
+          const ease = h.loopAt === undefined ? 1 : Math.max(0, Math.min(1, (this.time - h.loopAt) * 16));
+          h.loopAt = this.time;
+          for (let i = 0; i < M; i++) {
+            const ux = Math.cos(i / M * 6.2832), uy = Math.sin(i / M * 6.2832);
+            let far = Infinity;
+            for (let k = 0; k < ring.length; k++) {
+              const a = ring[k], b = ring[(k + 1) % ring.length], ex = b[0] - a[0], ey = b[1] - a[1], den = ux * ey - uy * ex;
+              if (Math.abs(den) < 1e-6) continue;
+              const t = ((a[0] - mx) * ey - (a[1] - my) * ex) / den, v = ((a[0] - mx) * uy - (a[1] - my) * ux) / den;
+              if (t > 0 && v >= -0.001 && v <= 1.001 && t < far) far = t;
+            }
+            want[i] = (far === Infinity ? 4 : far) + slack;
           }
+          const round = [];
+          for (let i = 0; i < M; i++) {
+            loop[i] += (want[(i + M - 1) % M] * 0.25 + want[i] * 0.5 + want[(i + 1) % M] * 0.25 - loop[i]) * ease;
+            round.push([mx + Math.cos(i / M * 6.2832) * loop[i], my + Math.sin(i / M * 6.2832) * loop[i]]);
+          }
+          if (Math.max(mx, my) > -80 && mx < W + 80 && my < H + 80) for (const pass of [1, 0]) this.rope(round, true, pass ? dark : own, pass);
         }
       }
     }
@@ -1150,6 +1277,28 @@ export class Game {
       ctx.drawImage(s.image, r[0], r[1], r[2], r[3], -8, -8, 16, 16);
     }
     ctx.restore();
+  }
+  // A rope through `pts` (a closed loop if `closed`), as one clean line of pixels: a smooth curve through the points,
+  // with no doubled corners.
+  rope(pts, closed, style, off = 0) {
+    const { ctx } = this, n = pts.length, px = [];
+    const at = i => closed ? pts[(i + n) % n] : pts[Math.max(0, Math.min(n - 1, i))];
+    for (let i = 0; i < (closed ? n : n - 1); i++) {
+      const a = at(i - 1), b = at(i), c = at(i + 1), e = at(i + 2), steps = Math.max(2, Math.ceil(Math.hypot(c[0] - b[0], c[1] - b[1]) * 2));
+      for (let k = 0; k < steps; k++) {
+        const t = k / steps, t2 = t * t, t3 = t2 * t;
+        const X = Math.round(0.5 * (2 * b[0] + (c[0] - a[0]) * t + (2 * a[0] - 5 * b[0] + 4 * c[0] - e[0]) * t2 + (3 * b[0] - a[0] - 3 * c[0] + e[0]) * t3));
+        const Y = Math.round(0.5 * (2 * b[1] + (c[1] - a[1]) * t + (2 * a[1] - 5 * b[1] + 4 * c[1] - e[1]) * t2 + (3 * b[1] - a[1] - 3 * c[1] + e[1]) * t3)) + off;
+        const last = px.length - 2;
+        if (last >= 0 && px[last] === X && px[last + 1] === Y) continue;
+        // A pixel that only joins two that already touch at a corner is taken out.
+        if (last >= 2 && Math.abs(X - px[last - 2]) === 1 && Math.abs(Y - px[last - 1]) === 1) { px[last] = X; px[last + 1] = Y; continue; }
+        px.push(X, Y);
+      }
+    }
+    ctx.fillStyle = style.a;
+    for (let k = 0; k < px.length; k += 2) ctx.fillRect(px[k], px[k + 1], 1, 1);
+    if (style.b !== style.a) { ctx.fillStyle = style.b; for (let k = 0; k < px.length; k += 2) if (((k >> 1) & 3) < style.dash * 4) ctx.fillRect(px[k], px[k + 1], 1, 1); }
   }
   // A span of tether in the style of a level of reach.
   drawSpan(x0, y0, x1, y1, style, off = 0) {
@@ -1308,8 +1457,6 @@ export class Game {
       ctx.globalAlpha = 1;
     }
     const pts = this.band.map(([x, y]) => [x * T - ox, y * T - oy]);
-    // The first point is the drill as drawn, the tether leaving from its tail.
-    pts[0] = [d.x * T - ox - Math.cos(d.ang) * 5, d.y * T - oy - Math.sin(d.ang) * 5];
     const wob = this.twang > 0 ? Math.sin(this.time * 90) * this.twang * 5 : 0;
     // Turned back at the edge it shows red; otherwise it is whatever the reach upgrades have made it.
     const own = TETHERS[this.S.lv.tether], style = this.twang > 0 ? { a: '#ff5a4a', b: '#ff5a4a', dash: 1, thick: own.thick } : own;
@@ -1337,7 +1484,7 @@ export class Game {
       ctx.globalAlpha = Math.min(1, (b.life - b.t) * 3);
       const big = (b.n >= 10 ? 2 : 1) + (b.t < 0.07 ? 1 : 0);
       text(ctx, b.title, W / 2, y, b.n >= 30 ? '#ffe14a' : '#ffffff', 0.5, big);
-      text(ctx, `${b.n} x${b.mult.toFixed(1)}`, W / 2, y + 11 * big + 2, '#bfe6ff', 0.5);
+      text(ctx, b.over < 1 ? `${b.n} x${b.mult.toFixed(1)} WINCH OVER LOAD` : `${b.n} x${b.mult.toFixed(1)}`, W / 2, y + 11 * big + 2, b.over < 1 ? '#ffb060' : '#bfe6ff', 0.5);
       let line = `+${compact(b.grit)}`, lw = textWidth(line) + 11;
       const gems = [1, 2, 3, 4].filter(g => b.gems[g] > 0);
       for (const g of gems) lw += textWidth(`+${compact(b.gems[g])}`) + 15;

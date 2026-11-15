@@ -174,26 +174,67 @@ export class World {
   // followed until it proves larger than `limit` cells or to reach the world's edge. A list of pieces, each a list
   // of cells.
   freed(i, limit = 700) {
-    const seen = new Set([i]), held = new Set(), found = [];
+    // Every piece of ground beside the cell is flooded at once, a cell each in turn. Floods that meet are one piece.
+    // One that runs out is cut off; the last one still going is the rest of the world and need not be finished, so
+    // the work is in proportion to the piece cut off, however large, and next to nothing when nothing is.
+    const owner = new Map([[i, -1]]), parent = [], queues = [], heads = [], held = [];
+    const find = g => { while (parent[g] !== g) g = parent[g] = parent[parent[g]]; return g; };
     for (const start of [i + 1, i - 1, i + N, i - N]) {
-      if (this.k(start) === K.EMPTY || seen.has(start)) continue;
-      const cells = [start];
-      let stuck = false;
-      seen.add(start);
-      for (let head = 0; head < cells.length && !stuck; head++) {
-        const c = cells[head];
+      if (this.k(start) === K.EMPTY || owner.has(start)) continue;
+      owner.set(start, parent.length); parent.push(parent.length); queues.push([start]); heads.push(0); held.push(false);
+    }
+    for (let spent = 0; ;) {
+      const going = new Set(), all = new Set();
+      for (let q = 0; q < queues.length; q++) { const root = find(q); all.add(root); if (!held[root] && heads[q] < queues[q].length) going.add(root); }
+      if (!going.size || (going.size === 1 && all.size === 1)) break;
+      if (going.size === 1 && [...all].every(root => going.has(root) || !held[root])) { held[[...going][0]] = true; break; }
+      if (spent > limit) { for (const root of going) held[root] = true; break; }
+      for (let q = 0; q < queues.length; q++) {
+        if (heads[q] >= queues[q].length || held[find(q)]) continue;
+        const c = queues[q][heads[q]++];
+        spent++;
         for (const j of [c + 1, c - 1, c + N, c - N]) {
-          if (seen.has(j)) { if (held.has(j)) { stuck = true; break; } continue; }
+          const o = owner.get(j);
+          if (o !== undefined) {
+            if (o >= 0 && find(o) !== find(q)) { const a = find(o), b = find(q); parent[a] = b; held[b] = held[b] || held[a]; }
+            continue;
+          }
           const kind = this.k(j);
           if (kind === K.EMPTY) continue;
-          if (kind === K.BEDROCK || cells.length >= limit) { stuck = true; break; }
-          seen.add(j); cells.push(j);
+          if (kind === K.BEDROCK) { held[find(q)] = true; continue; }
+          owner.set(j, q); queues[q].push(j);
         }
       }
-      if (stuck) { for (const c of cells) held.add(c); continue; }
-      found.push(cells);
     }
-    return found;
+    // What ran out is cut off. What was still going (everything met, so nothing was split) or was held is not.
+    const pieces = new Map(), open = new Set();
+    for (let q = 0; q < queues.length; q++) if (heads[q] < queues[q].length) open.add(find(q));
+    for (let q = 0; q < queues.length; q++) {
+      const root = find(q);
+      if (held[root] || open.has(root)) continue;
+      if (!pieces.has(root)) pieces.set(root, []);
+      const into = pieces.get(root);
+      for (const c of queues[q]) into.push(c);
+    }
+    return [...pieces.values()];
+  }
+  // The whole piece of ground a cell belongs to, if it lies inside the box and is no more than `limit` cells; null if
+  // it runs out of the box, touches bedrock or is larger.
+  pieceIn(i, x0, y0, x1, y1, limit) {
+    if (this.k(i) === K.EMPTY) return null;
+    const seen = new Set([i]), cells = [i];
+    for (let head = 0; head < cells.length; head++) {
+      const c = cells[head];
+      for (const j of [c + 1, c - 1, c + N, c - N]) {
+        if (seen.has(j)) continue;
+        const kind = this.k(j);
+        if (kind === K.EMPTY) continue;
+        const x = j % N, y = Math.floor(j / N);
+        if (kind === K.BEDROCK || x < x0 || x > x1 || y < y0 || y > y1 || cells.length >= limit) return null;
+        seen.add(j); cells.push(j);
+      }
+    }
+    return cells;
   }
 
   // The blob mask of a cell among its solid neighbours (N=1, NE=2, E=4, SE=8, S=16, SW=32, W=64, NW=128), a corner
