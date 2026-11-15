@@ -76,6 +76,9 @@ const bright = ([r, g, b]) => { const k = 255 / Math.max(1, r, g, b); return `rg
 // How long a place's name stays up: on its plate, and across the screen the first time the place is met. How
 // many dots of things seen the map keeps, and how near an unclaimed wreck is heard.
 const PLATE = 2.4, CARD = 1.6, MARKS = 24, HEAR = 30;
+// How long after a spore pod bursts the pods round it burst, in seconds, and how many pods the glow follows a bunch
+// through.
+const POD_CHAIN = 0.15, BUNCH = 64;
 // What flies off the kinds of rock that look the same in every ground, by the sheet each is drawn from. A ground's
 // own rock sheds the colours in its row (js/world.js: BIOMES), where the dark it lies in, its motes and its colour
 // on the map are too.
@@ -1017,11 +1020,14 @@ export class Game {
   // through): those glow with it, and what they would leave hanging is found as what the cut itself would.
   foresee(i, also = []) {
     // A lava pocket or a spore pod beside the cut bursts with it, and what comes free is what both leave hanging.
+    // A pod takes its whole bunch with it (`bunch`), as it will a moment after the cut.
     const w = this.world, cells = [i];
+    if (w.hazAt(i) === 'spore') this.bunch(i, cells);
     for (let s = 0; s < 4; s++) {
       const j = i + DY[s] * N + DX[s];
       const haz = w.hazAt(j);
-      if (haz === 'lava' || haz === 'spore') cells.push(j);
+      if (haz === 'lava') cells.push(j);
+      else if (haz === 'spore') this.bunch(j, cells);
     }
     const open = also.filter(j => j !== i && w.k(j) !== K.EMPTY), found = w.freed(cells, 2000, open.length ? new Set(open) : null);
     this.preview = [{ i, cells: open.concat(...found) }];
@@ -1351,6 +1357,22 @@ export class Game {
       if ((u || v) && w.hazAt(j) === 'spark' && !this.sparks.has(j)) this.sparks.set(j, { fuse: 0.3 + cellHash(u, v, 7) * 0.3, cool: 0 });
     }
   }
+  // The spore pods that go off with a pod: itself and every pod joined to it through pods, side by side or corner
+  // to corner. A pod that bursts sets off the pods round it a moment later (`updateHazards`), so one nick takes a
+  // whole bunch. They are added to `into` (BUNCH at the most, and none twice), which is returned.
+  bunch(j, into = []) {
+    const w = this.world;
+    let n = into.indexOf(j);
+    if (n < 0) n = into.push(j) - 1;
+    for (const most = into.length + BUNCH; n < into.length && into.length < most; n++) {
+      if (w.hazAt(into[n]) !== 'spore') continue;
+      for (let v = -1; v <= 1; v++) for (let u = -1; u <= 1; u++) {
+        const q = into[n] + v * N + u;
+        if ((u || v) && w.hazAt(q) === 'spore' && !into.includes(q)) into.push(q);
+      }
+    }
+    return into;
+  }
   // A hazard's bite: the drill is knocked senseless for a moment.
   jolt(time) { const d = this.drill; d.stun = Math.max(d.stun, time); this.hurt = time; d.vx = d.vy = 0; d.dig = -1; }
   updateHazards(dt) {
@@ -1411,10 +1433,17 @@ export class Game {
       }
     }
     // Spores: a burst pod hangs a cloud that stuns what flies into it, then moss closes the ground round it: soft
-    // rock of whatever ground each cell lies in.
+    // rock of whatever ground each cell lies in. The pods round one that has burst, side by side or corner to
+    // corner, burst a moment after it, so a bunch of pods goes off one after another from a single nick (`bunch`
+    // says which, for the glow). (A pod woken here joins the list and is met later in this same pass, a moment
+    // younger.)
     for (const c of this.clouds) {
       c.t += dt;
       if (Math.max(Math.abs(dcx - c.x), Math.abs(dcy - c.y)) <= 1 && c.t < 0.2) this.jolt(0.4);
+      if (!c.spread && c.t >= POD_CHAIN) {
+        c.spread = true;
+        for (let v = -1; v <= 1; v++) for (let u = -1; u <= 1; u++) { const j = (c.y + v) * N + c.x + u; if (w.hazAt(j) === 'spore') opened.push(...this.trigger(j, 'spore', false)); }
+      }
       if (c.t < c.life) continue;
       for (let v = -1; v <= 1; v++) for (let u = -1; u <= 1; u++) {
         const j = (c.y + v) * N + c.x + u;
