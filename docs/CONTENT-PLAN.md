@@ -129,6 +129,14 @@ The light haul. haul() fires hitstop, shake, flash, a ring and the banner every 
 
 Size S to M.
 
+S2 AS BUILT (read this with the above; where they differ, this is the code):
+- World.freed was reworked by the hunt's second pass before this was built: it walks outlines and floods nothing, and already took a list of cuts and an `open` set. What was missing is in: walks begin from the sides of the cells taken as open as well as from the cuts', so ground that hung only on a pane, a crack or a punched cell is found. Game.foresee(i, also = []) passes `also` as the open set and the glow holds those cells with what they free.
+- Game.payOf(cells, extra = []) returns { n, grit, gems, lump, spec, minerals, mineral, prisms, shine, relic, caches, parts, wrecks, mult, over }: as the plan lists, with `mineral` (the name in the row's pocket, for an icon), `shine` (what prisms multiply gems by) and `wrecks` (which wrecks the parts are of: the haul marks them held, payOf does not). `extra` is a list of { k, b, x, y }. Specimens go to `world.zoneOf(sx, sy)?.kin`, or the row's kin where the sector has no pocket on record. They are counted and not banked: S.spec is S4's.
+- A chain is Game.chain = { t, n }: a haul within CHAIN (8) seconds of the one before is a link, n is how many hauls the chain holds, and payOf raises a pocket mineral's lump by a fifth for each haul before this one, to five. In a chain no rubble breaks finer than 2 x 2 to a cell. Any haul is a link, light or not. The eight seconds are a first figure for whoever builds Pumice Drift.
+- Game.hauled is what the last haul was and paid ({ title, n, mult, over, grit, gems, light }); Game.banner is that same record when the haul was not light. The tests that read the banner as the record of a haul read `hauled`.
+- The light haul's popup has the grit icon, and one more for each direction's gems it paid. The mineral's own icon waits for the minerals sheet (content item 6).
+- World.ZONE (128) and World.zoneOf(sx, sy), which says null for every sector until S3 lays pockets, are in world.js so that payOf and the place plate have one thing to ask.
+
 --------------------------------------------------------------
 S3. Where places lie
 --------------------------------------------------------------
@@ -189,6 +197,15 @@ S5. Naming a place and announcing a find (the first juice item, needed by everyt
 - First sight: world.see() pushes each newly seen notable cell to world.spotted (CACHE, WRECK, RELIC, KEY, PRISM, a pocket's mineral, and SLATE inside a geode's radius by findSpot). look() drains it: one callout per thing (keyed by kind and 48-cell sector), one per kind per 3 s: a ring spreading from the object, a motif per kind, a popup with its name ('GEODE', 'CACHE', 'WRECK', 'KEYSTONE', 'PRISM', the mineral's name), and a dot in S.marks (24 at most) drawn on the map until the cell is gone. An unclaimed wreck within 30 cells ticks softly, quicker as the drill nears.
 - Saves: S.met ??= {}, S.marks ??= [], S.visited ??= {}.
 - Code: world.see, look, drawHud, drawMap, audio.js (two motifs). Size S for the plate and callouts, M with the title card and the tick.
+
+S5 AS BUILT (read this with the above; where they differ, this is the code):
+- Game.placeAt(i) gives { key, row, zone }: the key is the zone's (world.zoneOf of the cell's sector) where the cell's own row is a pocket's, else the row's number. Game.arrive(i), from look() on a change of cell, sets Game.place = { title, icon, colour, t, card, life } and S.met[row.id]; in a pocket, S.visited[zone.key]. The ground a game begins in is met from the start and never announced. Not saved: place, placeKey.
+- The plate's icon is the kin's gem from the icons sheet at its own 10 x 10 (the home ground: grit), not scaled to 8 x 8. The name is written in the row's map colour made as bright as it goes (`bright`), since several map colours are too dark to read on the panel. A title card too wide for the screen at twice the size is set on two lines, and sits under a haul's banner when one is up. The sounds are sfx.place(kin) and sfx.arrive(kin).
+- World.see pushes [what, cell, middle] to World.spotted (400 at the most; cleared by reset): 'cache', 'wreck', 'relic', 'key', 'prism', 'mineral' (the kind the row's pocket names, K.MINERAL if none) and 'geode' (slate within a geode by World.findSpot, the middle being the geode's). World.findSpot(sx, sy) returns ['geode' | 'cache' | null, x, y, size] and makes no ground; World.find(sx, sy, record) is the sum it shares with findAt. The free band of findAt is still S3's to allot.
+- Game.callOut(), from look() whenever the list is not empty: one call for each thing (what it is and the 48-cell sector of its middle), a ring and five sparks, the name in a popup, sfx.spot(what). Of one kind no more than one call in three seconds, but a thing seen sooner still gets its dot. S.marks holds [cell, kind, colour], 24 at the most, pruned in changed() when the cell is no longer that kind; a geode's dot is on the ore cell east of its middle. Wrecks and relics are called out and get no dot: the map shows them already.
+- Game.listen(dt): the nearest unclaimed wreck within HEAR (30) cells ticks every 0.22 to 1.6 s by its distance (sfx.ping), counted in Game.ticks.
+- Saved: S.met, S.marks, S.visited (and S.wrecks), made in fresh() and defaulted in restore().
+- tools/shot.mjs has `--met` (js/shot.js: `&met`): every ground taken as met, so the staged view shows the plate.
 
 --------------------------------------------------------------
 S6. Shop layout: two tabs (built with the first WORKS item, after the cut line)
