@@ -1,8 +1,8 @@
 // Every test in one command: each script in test/regress (each fails while the defect it was written for is there),
 // the smoke test, and the rope fuzz on seeds 11 to 18 from the core, from a start 200 cells out each way and from
 // inside a province of each strain of ground, from a deep flank, from inside provinces of generated crosses, from
-// the cracks of keystone slabs, and from inside amber hives, pumice drifts and ash flats; and the slabs themselves,
-// as they lie in 200 worlds (slab-moat.mjs).
+// the cracks of keystone slabs, and from inside amber hives, pumice drifts and ash flats (most on world 7, some of
+// each on worlds 19 and 23 as well); and the slabs themselves, as they lie in 200 worlds (slab-moat.mjs).
 //   node test/all.mjs [only: a word the test's name must hold]
 // One line a test, and the last line of a failing test's own output under it. Exits 1 if any failed. Tests run side by
 // side, as many as the machine has cores to spare, and the whole run takes a few minutes.
