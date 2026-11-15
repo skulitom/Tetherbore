@@ -159,12 +159,17 @@ export class Game {
       const data = JSON.parse(localStorage.getItem(SAVE_KEY));
       if (!data || data.v !== 3) return false;
       const { v, ...S } = data;
-      const db = await store();
-      const rows = await new Promise((resolve, reject) => {
-        const found = [], walk = db.transaction('pieces').objectStore('pieces').openCursor();
-        walk.onsuccess = () => { const c = walk.result; if (c) { found.push([c.key, c.value]); c.continue(); } else resolve(found); };
-        walk.onerror = () => reject(walk.error);
-      });
+      // What was bought and banked does not wait on the database: where that cannot be opened or read (a private
+      // window), the world is made again from its seed and only the cuts are lost.
+      let rows = [];
+      try {
+        const db = await store();
+        rows = await new Promise((resolve, reject) => {
+          const found = [], walk = db.transaction('pieces').objectStore('pieces').openCursor();
+          walk.onsuccess = () => { const c = walk.result; if (c) { found.push([c.key, c.value]); c.continue(); } else resolve(found); };
+          walk.onerror = () => reject(walk.error);
+        });
+      } catch { rows = []; }
       this.S = S;
       for (const u of UPGRADES) this.S.lv[u.id] = Math.min(this.S.lv[u.id] ?? 0, u.values.length - 1);
       this.world.reset(S.seed);
@@ -1145,12 +1150,15 @@ export class Game {
     this.changed(opened);
   }
   cost(u) { const l = this.S.lv[u.id]; return l >= u.values.length - 1 ? null : { grit: u.grit[l], gems: u.gems[l] }; }
-  canBuy(u) { const c = this.cost(u); return !!c && this.S.grit >= c.grit && this.S.gems[u.gem] >= c.gems; }
+  // What can be spent is what has come home: grit and gems still on their way up the tether are not banked yet,
+  // and the top bar never shows them (nor ever less than nothing).
+  banked(gem) { return gem === undefined ? this.S.grit - this.pending.grit : this.S.gems[gem] - this.pending.gems[gem]; }
+  canBuy(u) { const c = this.cost(u); return !!c && this.banked() >= c.grit && this.banked(u.gem) >= c.gems; }
   buy(u) {
     if (!this.canBuy(u)) {
       // Says what is missing, and where gems are to be had.
       const c = this.cost(u);
-      if (c) this.shopNote = { t: 2.5, color: c.gems > this.S.gems[u.gem] ? GEM_COLOR[u.gem] : '#ff7a5a', text: c.gems > this.S.gems[u.gem] ? `GEMS: ${GEM_WHERE[u.gem]}, PAST ${HOME_R}` : 'NOT ENOUGH GRIT' };
+      if (c) this.shopNote = { t: 2.5, color: c.gems > this.banked(u.gem) ? GEM_COLOR[u.gem] : '#ff7a5a', text: c.gems > this.banked(u.gem) ? `GEMS: ${GEM_WHERE[u.gem]}, PAST ${HOME_R}` : 'NOT ENOUGH GRIT' };
       sfx.deny(); return;
     }
     const c = this.cost(u);
@@ -1251,7 +1259,6 @@ export class Game {
       this.reelTick = (this.reelTick ?? 0) + dt;
       if (met || this.reelTick > 0.1) { this.reelTick = 0; this.reelIfRound(); }
       this.updateHazards(dt);
-      this.updateHauls(dt);
       // The station makes a trickle of grit of its own: however a world has been spent, the next reach is never out
       // of reach for good.
       this.trickle = (this.trickle ?? 0) + dt;
@@ -1259,6 +1266,8 @@ export class Game {
       this.saveTick = (this.saveTick ?? 0) + dt;
       if (this.saveTick > 20) { this.saveTick = 0; this.save(); }
     }
+    // Rubble on its way home keeps coming with the shop open: what it pays is banked as it lands.
+    this.updateHauls(dt);
     this.ambient(dt);
     for (const e of this.effects) e.t += dt * 1000;
     this.effects = this.effects.filter(e => e.t < duration(e.sheet, e.animation));

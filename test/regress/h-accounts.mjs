@@ -37,3 +37,7 @@ const paid = banners.reduce((a, b) => a + b.grit, 0), gems = banners.reduce((a, 
 console.log(JSON.stringify({ hauls: S.stats.hauls, afterSmall: small, afterBig: big, banners, mostHaulsAtOnce: most, endedAfterFrames: end,
   grit: S.grit, bannersSay: paid, restIsTrickle: S.grit - paid, secondsPlayed: +(S.stats.time).toFixed(1), gemsHeld: S.gems[1], bannerGems: gems,
   pendingLeft: game.pending, minShown, shownWentDownFrames: wentDown, gemsShownWentDown: gemsDown, gemsShownNegative: negGems }));
+// The books: nothing left on its way, the bar never below nothing nor going down, and all the grit held is what the
+// banners said plus the station's own trickle (so much every two seconds, by the reach).
+const rest = S.grit - paid, trickled = Math.ceil(Math.max(1, game.val('tether') / 24)) * (S.stats.time / 2 + 1);
+process.exit(game.pending.grit || game.pending.gems.some(Boolean) || minShown < 0 || wentDown || negGems || end < 0 || rest < 0 || rest > trickled ? 1 : 0);
