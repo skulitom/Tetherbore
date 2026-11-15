@@ -212,6 +212,13 @@ export const POCKETS = [
     const HOLES = [['.pp.', 'pppc', 'pqqc', '.cc.'], ['pp.', 'pqc', '.cc'], ['pq', 'qc'], ['p.', '.c'], ['q.', '.c'], ['q']];
     fill.places(6, 4, 1).forEach(([x, y], i) => { const rows = HOLES[i]; fill.stamp(Math.min(x, 15 - rows.length), Math.min(y, 15 - rows.length), rows); });
   })),
+  // Ash Flats (south): fallen ash, pale and soft, that cuts like air. Low in contrast, with a fleck of char here
+  // and there.
+  rounded(2, strain('ash', { k: '#3a3a40', D: '#77777f', L: '#f4f4f0', s: '#00000040', f: '#c4c4c0', a: '#b8b8b5', b: '#cfcfcb', c: '#e0e0dc', g: '#9c9c9e', G: '#6c6c74' }, 173, (fill, n) => {
+    fill.clumps('a', 0.2, 6).clumps('b', 0.14, 5);
+    fill.dots('c', 2, 1).dots('g', 3, 1);
+    if (n % 2) fill.dots('G', 1, 2);
+  })),
 ];
 
 export const POCKET_FLOORS = [
@@ -226,6 +233,8 @@ export const POCKET_FLOORS = [
     fill.dots('s', [2, 1, 3, 0, 2][n], 2);
     if (n === 0 || n === 2) fill.dots('S', 1, 3);
   }, 5),
+  // The flats, cut away: the dark of cold cinders.
+  floor('ash-floor', { f: '#1a1a1e', a: '#151518', b: '#222226' }, { color: 'f', speckle: [{ color: 'a', amount: 0.25, size: 6 }, { color: 'b', amount: 0.1, size: 3 }] }, 18),
 ];
 
 export const FLOORS = [
