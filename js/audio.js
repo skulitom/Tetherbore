@@ -1,0 +1,87 @@
+// Every sound is synthesised here with Web Audio: there are no audio files. The context starts on the first touch.
+
+let ctx = null, master = null, noiseBuffer = null, muted = false;
+try { muted = localStorage.getItem('tetherbore-mute') === '1'; } catch { /* private mode */ }
+
+export function unlock() {
+  if (ctx) { if (ctx.state === 'suspended') ctx.resume(); return; }
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return;
+  ctx = new AC();
+  master = ctx.createGain();
+  master.gain.value = muted ? 0 : 0.5;
+  const squash = ctx.createDynamicsCompressor();
+  master.connect(squash); squash.connect(ctx.destination);
+  noiseBuffer = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+  const data = noiseBuffer.getChannelData(0);
+  let s = 12345;
+  for (let i = 0; i < data.length; i++) { s = (s * 1664525 + 1013904223) >>> 0; data[i] = s / 2147483648 - 1; }
+}
+export const isMuted = () => muted;
+export function setMuted(value) {
+  muted = value;
+  try { localStorage.setItem('tetherbore-mute', value ? '1' : '0'); } catch { /* private mode */ }
+  if (master) master.gain.value = value ? 0 : 0.5;
+}
+
+function tone(freq, length, { type = 'square', gain = 0.2, to = freq, delay = 0, attack = 0.004 } = {}) {
+  if (!ctx || muted) return;
+  const t = ctx.currentTime + delay, o = ctx.createOscillator(), g = ctx.createGain();
+  o.type = type;
+  o.frequency.setValueAtTime(freq, t);
+  if (to !== freq) o.frequency.exponentialRampToValueAtTime(Math.max(20, to), t + length);
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(gain, t + attack);
+  g.gain.exponentialRampToValueAtTime(0.0008, t + length);
+  o.connect(g); g.connect(master);
+  o.start(t); o.stop(t + length + 0.02);
+}
+function noise(length, { gain = 0.2, freq = 1200, to = freq, q = 1, delay = 0, type = 'bandpass' } = {}) {
+  if (!ctx || muted) return;
+  const t = ctx.currentTime + delay, src = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+  src.buffer = noiseBuffer; src.loop = true;
+  f.type = type; f.Q.value = q;
+  f.frequency.setValueAtTime(freq, t);
+  if (to !== freq) f.frequency.exponentialRampToValueAtTime(Math.max(30, to), t + length);
+  g.gain.setValueAtTime(gain, t);
+  g.gain.exponentialRampToValueAtTime(0.0008, t + length);
+  src.connect(f); f.connect(g); g.connect(master);
+  src.start(t, (t * 7.3) % 0.9); src.stop(t + length + 0.02);
+}
+
+const SCALE = [0, 2, 4, 7, 9];   // major pentatonic: any run of payouts is in tune
+const note = step => 220 * 2 ** ((SCALE[((step % 5) + 5) % 5] + 12 * Math.floor(step / 5)) / 12);
+
+export const sfx = {
+  dig(hard) { noise(0.09, { freq: 1900 - hard * 320, to: 500, gain: 0.22, q: 0.8 }); tone(150 - hard * 18, 0.06, { gain: 0.12, to: 70 }); },
+  grind() { noise(0.05, { freq: 2600, to: 1400, gain: 0.07, q: 2 }); },
+  slide(cells) { noise(0.12 + Math.min(cells, 12) * 0.012, { freq: 500, to: 2600, gain: 0.1, q: 1.4 }); },
+  thud() { tone(110, 0.09, { type: 'sine', gain: 0.3, to: 50 }); },
+  clink() { tone(1500, 0.07, { type: 'triangle', gain: 0.2, to: 1100 }); tone(2300, 0.05, { type: 'triangle', gain: 0.1, delay: 0.02 }); },
+  twang() { tone(190, 0.32, { type: 'sawtooth', gain: 0.16, to: 120 }); tone(380, 0.2, { type: 'triangle', gain: 0.1, to: 250 }); },
+  crack(size) {
+    const big = Math.min(1, size / 80);
+    noise(0.25 + big * 0.3, { freq: 900, to: 90, gain: 0.4, q: 0.6, type: 'lowpass' });
+    tone(90 - big * 30, 0.4 + big * 0.3, { type: 'sine', gain: 0.5, to: 32 });
+    tone(520, 0.5, { type: 'sawtooth', gain: 0.12, to: 1900, delay: 0.12 });
+  },
+  tick(step) { tone(note(step), 0.11, { type: 'triangle', gain: 0.17 }); },
+  gem(step) { tone(note(step + 10), 0.22, { type: 'sine', gain: 0.2 }); tone(note(step + 12), 0.2, { type: 'sine', gain: 0.1, delay: 0.05 }); },
+  banked(size) {
+    const top = 10 + Math.min(10, Math.floor(size / 12));
+    [0, 2, 4].forEach((s, i) => tone(note(top - 4 + s), 0.5, { type: 'triangle', gain: 0.18, delay: i * 0.07 }));
+    tone(note(top + 5), 0.8, { type: 'sine', gain: 0.16, delay: 0.21 });
+  },
+  recall() { noise(0.4, { freq: 300, to: 3200, gain: 0.14, q: 2 }); tone(200, 0.4, { type: 'sawtooth', gain: 0.07, to: 900 }); },
+  dock() { tone(330, 0.12, { type: 'triangle', gain: 0.2 }); tone(495, 0.2, { type: 'triangle', gain: 0.2, delay: 0.09 }); },
+  buy() { [0, 2, 4, 7].forEach((s, i) => tone(note(5 + s), 0.16, { gain: 0.1, delay: i * 0.05 })); },
+  deny() { tone(150, 0.14, { gain: 0.12, to: 110 }); },
+  tap() { tone(700, 0.04, { type: 'triangle', gain: 0.1 }); },
+  low() { tone(440, 0.09, { gain: 0.1 }); tone(330, 0.12, { gain: 0.1, delay: 0.11 }); },
+  zap() { noise(0.22, { freq: 3800, to: 700, gain: 0.3, q: 3 }); tone(1100, 0.2, { type: 'sawtooth', gain: 0.12, to: 110 }); },
+  hiss() { noise(0.6, { freq: 5200, to: 1300, gain: 0.14, q: 0.7, type: 'highpass' }); },
+  puff() { noise(0.4, { freq: 420, to: 160, gain: 0.25, q: 0.8, type: 'lowpass' }); },
+  freeze() { tone(1900, 0.12, { type: 'sine', gain: 0.07, to: 2700 }); },
+  blast() { noise(0.7, { freq: 1300, to: 50, gain: 0.6, q: 0.5, type: 'lowpass' }); tone(70, 0.6, { type: 'sine', gain: 0.6, to: 26 }); },
+  relic() { [0, 2, 4, 5, 7, 9, 10, 12].forEach((s, i) => tone(note(5 + s), 0.6, { type: 'triangle', gain: 0.13, delay: i * 0.09 })); },
+};
