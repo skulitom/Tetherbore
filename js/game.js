@@ -1415,6 +1415,15 @@ export class Game {
     }
     return cells;
   }
+  // Vein frost: does a cut that is closing over lie beside ore? Then it heals as ore, the plainer kind, where it
+  // would have closed with ice: a vein grows a cell into the cut made against it. Only ore the world itself laid
+  // counts (`World.first`), never ore that healed: a cut beside healed ore closes with ice, or one cut against one
+  // nugget would turn the whole tunnel behind it to ore, cell after cell as each closed beside the last.
+  veined(i) {
+    const w = this.world;
+    for (const s of SIDE) { const k = w.k(i + s); if ((k === K.ORE_A || k === K.ORE_B) && w.first(i + s) === k) return true; }
+    return false;
+  }
   // The spore pods that go off with a pod: itself and every pod joined to it through pods, side by side or corner
   // to corner. A pod that bursts sets off the pods round it a moment later (`updateHazards`), so one nick takes a
   // whole bunch. They are added to `into` (BUNCH at the most, and none twice), which is returned.
@@ -1519,7 +1528,7 @@ export class Game {
       else { s.cool -= dt; if (s.cool <= 0) this.sparks.delete(i); }
     }
     // Frost: a cut in ground that freezes (the north's) closes over with ice, after as long as its row says, unless
-    // the tether lies in it.
+    // the tether lies in it. Beside ore it closes as ore (`veined`).
     this.frostTick = (this.frostTick ?? 0) + dt;
     if (this.frostTick > 0.4) {
       this.frostTick = 0;
@@ -1529,8 +1538,13 @@ export class Game {
         if (this.clock - w.dug.get(i) < freeze) return true;
         const x = i % N, y = Math.floor(i / N);
         if (lies(i) || Math.max(Math.abs(dcx - x), Math.abs(dcy - y)) <= 1 || w.lava.has(i)) return true;
-        w.setK(i, K.ICE); w.dug.delete(i); closed.push(i);
-        if (this.onScreen(x, y)) { this.effect('freeze', 'impact', (x + 0.5) * T, (y + 0.5) * T); sfx.freeze(); }
+        // Vein frost: beside ore the cut heals as ore, not as ice.
+        const vein = this.veined(i);
+        w.setK(i, vein ? K.ORE_A : K.ICE); w.dug.delete(i); closed.push(i);
+        if (this.onScreen(x, y)) {
+          this.effect('freeze', 'impact', (x + 0.5) * T, (y + 0.5) * T);
+          if (vein) { this.sparkle((x + 0.5) * T, (y + 0.5) * T, 6, '#a8fff0'); sfx.gem(0); } else sfx.freeze();
+        }
         return false;
       });
     }

@@ -34,9 +34,9 @@ const ARGS = {
     // firn, serac, scoria, forge, tangle, sporefall, redrock, loess.
     [7, 300, 7, -128, -384, 60], [7, 300, 7, 128, -384, 'mix'], [7, 300, 7, -128, 384, 60], [7, 300, 7, 128, 384, 60, 'bombs'],
     [11, 300, 7, -384, 128, 60], [7, 300, 7, -384, -128, 60], [11, 300, 7, 384, -384, 60], [7, 300, 7, 384, -128, 30],
-    // The east's own ground, where arcs shatter slate (with bombs too, at mixed frame lengths), and the south's
-    // own, where lava quenches its slag to steel.
-    [21, 300, 5, 190, 10, 60], [23, 300, 5, 190, 10, 'mix', 'bombs'], [22, 300, 5, 20, 180, 60]],
+    // The east's own ground, where arcs shatter slate (with bombs too, at mixed frame lengths), the south's own,
+    // where lava quenches its slag to steel, and the north's own, where a cut beside ore heals as ore.
+    [21, 300, 5, 190, 10, 60], [23, 300, 5, 190, 10, 'mix', 'bombs'], [22, 300, 5, 20, 180, 60], [24, 300, 5, 10, -190, 60]],
 };
 const tests = [];
 for (const file of readdirSync(here + 'regress').filter(name => name.endsWith('.mjs')).sort()) {

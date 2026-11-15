@@ -506,6 +506,8 @@ export class World {
     if (noise(x / 4, y / 4, seed + 5, 5) > g.dense) return K.DENSE;
     return K.SOFT;
   }
+  // What the seed laid in a cell, in the ground the cell lies in: what it was before anything touched it.
+  first(i) { return this.kindAt(i & (N - 1), i >>> 14, this.b(i)); }
   // The piece of world holding a cell, made now if nothing has looked there before.
   piece(id) {
     let p = this.chunks[id];

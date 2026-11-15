@@ -58,6 +58,14 @@ check(asleep.gems[B.EMBER] === 4 && asleep.gems.reduce((a, b) => a + b, 0) === 4
 check(woken.gems[B.EMBER] === 20 && woken.gems.reduce((a, b) => a + b, 0) === 20, `woken it pays gems ${woken.gems}: 4 for each of its five cells of steel, the south's`);
 check(woken.grit > asleep.grit, `woken it pays ${woken.grit} grit, asleep ${asleep.grit}`);
 
+// A quench by itself: the ground is drawn again when slag turned, and only then.
+{
+  const open = at(-20, -20), slag = at(-20, -21), bare = at(-25, -20);
+  w.setK(slag, K.SLAG);
+  const before = game.version, none = game.quench(bare), same = game.version, one = game.quench(open);
+  check(none === 0 && same === before, `a quench beside no slag turned ${none} cells and drew the ground again ${same - before} times`);
+  check(one === 1 && w.k(slag) === K.STEEL && game.version === same + 1, `a quench beside one cell of slag turned ${one}, and the ground was drawn again ${game.version - same} times`);
+}
 // What they pay, a cell, and whose gems: steel's are the south's in any ground.
 check(GRIT[K.SLAG] === 2 && GEMS[K.SLAG] === 0 && GRIT[K.STEEL] === 6 && GEMS[K.STEEL] === 4, `slag pays ${GRIT[K.SLAG]} grit and ${GEMS[K.SLAG]} gems, steel ${GRIT[K.STEEL]} and ${GEMS[K.STEEL]}`);
 check(digTime(K.SLAG, BIOMES[2]) === 0.45 && digTime(K.STEEL, BIOMES[2]) === 0.6, 'slag or steel takes other than 0.45 and 0.6 s to cut');
