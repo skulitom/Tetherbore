@@ -140,6 +140,23 @@ export const STRAINS = [
   strain('sporefall', { k: '#22142c', D: '#5a4070', L: '#f0c8ff', s: '#05020a59', f: '#a888b8', a: '#9a7aac', b: '#b898c6', c: '#b4e878', g: '#6aa050' }, 149, fill => {
     fill.clumps('a', 0.2, 4).clumps('b', 0.16, 3).dots('c', 4, 1).dots('g', 3, 1);
   }),
+  // East. Redrock: iron sandstone in level beds. The beds meet a block's sides at the same rows in every variant,
+  // so they run on through the ground; inside a block a bed steps up or down a pixel here and there.
+  strain('redrock', { k: '#2e120a', D: '#703420', L: '#f0b080', s: '#1a0c0459', f: '#a85a3a', a: '#904830', b: '#bc6e48', c: '#e09a6a' }, 151, fill => {
+    const BEDS = 'fffabbcfffaabbbf';
+    const steps = [0, 1, 2].map(() => ({ x: fill.int(2, 8), w: fill.int(3, 6), y: fill.int(0, 15), h: fill.int(4, 7), by: fill.next() < 0.5 ? 1 : -1 }));
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+      const lift = steps.reduce((sum, s) => sum + (x >= s.x && x < s.x + s.w && (y - s.y + 16) % 16 < s.h ? s.by : 0), 0);
+      fill.set(x, y, BEDS[(y + lift + 16) % 16]);
+    }
+    fill.dots('a', 4, 1).dots('b', 4, 1);
+  }),
+  // Loess: pale silt, soft, that stands in fine upright grain.
+  strain('loess', { k: '#4a4030', D: '#a89878', L: '#ffffff', s: '#1a140c59', f: '#e4dcc8', a: '#d4cab0', b: '#f0ead8', c: '#fffaf0', g: '#c4b898' }, 157, fill => {
+    fill.clumps('a', 0.18, 5).clumps('b', 0.14, 4);
+    for (const [x, y] of fill.places(5, 3, 2)) fill.line(x, y, x, y + fill.int(1, 2), 'g');
+    fill.dots('c', 2, 2);
+  }),
 ];
 
 export const FLOORS = [
