@@ -1,7 +1,10 @@
 // catchIn() gives up (returns undefined) when the triangle it must search covers more than 400000 cells. In
 // retighten() that means a bend whose rock has gone is simply kept. Far out at reach 1350: the tether runs up a
 // shaft L cells north, round the corner and L cells east; then the rock at the corner goes.
-//   node test/hunt/modes/budget-400000.mjs [L, default 1000]
+// The string, let go, meets the next corner of ground almost at once, so only a sliver of that great triangle
+// need be searched: the cells the sweeps looked at are counted (`game.swept`), and the test fails over 60,000
+// (the whole triangle is some 450,000, and making the unseen world under it took most of an 80 ms frame).
+//   node test/regress/c-budget-400000.mjs [L, default 1000]
 import { makeGame, tetherFaults, C, N, K } from '../harness.mjs';
 const L = Number(process.argv[2] ?? 1000);
 const game = await makeGame(7, { tether: 8, momentum: 4 });
@@ -24,12 +27,14 @@ let gaveUp = 0;
 const catchIn = game.catchIn; game.catchIn = function (...a) { const q = catchIn.apply(this, a); if (q === undefined) gaveUp++; return q; };
 const cell = game.band[1][3];
 w.setK(cell, K.EMPTY);
-const t0 = performance.now();
+const t0 = performance.now(), swept0 = game.swept, made0 = w.made;
 game.changed([cell]);
-console.log(`corner rock (${(cell % N) - C},${Math.floor(cell / N) - C}) removed: changed() took ${(performance.now() - t0).toFixed(1)} ms, catchIn gave up ${gaveUp} time(s); band ${rel()}`);
+const swept = game.swept - swept0;
+console.log(`corner rock (${(cell % N) - C},${Math.floor(cell / N) - C}) removed: changed() took ${(performance.now() - t0).toFixed(1)} ms, looked at ${swept} cells and made ${w.made - made0} new pieces of world, catchIn gave up ${gaveUp} time(s); band ${rel()}`);
 console.log(`faults: ${JSON.stringify(tetherFaults(game))}`);
 for (let k = 0; k < 3; k++) game.changed();
 for (let f = 0; f < 600; f++) { game.input.auto = [f % 120 < 60 ? -1 : 1, 0, 1]; game.update(1 / 60); }
 const faults = tetherFaults(game);
 console.log(`three more changed() calls and 10 s of flying to and fro later: band ${rel()}\n  faults: ${JSON.stringify(faults)}`);
-process.exit(faults.length ? 1 : 0);
+if (swept > 60000) console.log(`DEFECT: letting go of the bend searched ${swept} cells`);
+process.exit(faults.length || swept > 60000 ? 1 : 0);

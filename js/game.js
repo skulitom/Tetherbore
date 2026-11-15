@@ -107,6 +107,7 @@ export class Game {
     this.input = { id: null, ax: 0, ay: 0, px: 0, py: 0, vx: 0, vy: 0, m: 0, keys: new Set(), auto: null };
     this.band = []; this.pieces = []; this.loose = []; this.pieceOf = new Map(); this.preview = []; this.under = new Set();
     this.taken = []; this.walked = new Set(); this.boxes = new WeakMap(); this.cuts = 0; this.homeKey = '';
+    this.swept = 0;                         // cells the tether's sweeps have looked at, for tests of how much work is done
     this.effects = []; this.popups = []; this.hauls = []; this.clouds = []; this.sparks = new Map(); this.lavaVol = new Map(); this.frostOpen = [];
     this.parts = []; this.rings = []; this.motes = []; this.gloom = [10, 8, 7]; this.flash = 0; this.counted = 0; this.chime = 3; this.clock = 0;
     this.shake = 0; this.twang = 0; this.edge = 0; this.hurt = 0; this.coreFlash = 0; this.banner = null; this.shop = false; this.shopRise = 0; this.confirmReset = 0;
@@ -273,13 +274,19 @@ export class Game {
       if (lo > hi) continue;
       const x0 = Math.floor(lo) - 1, x1 = Math.floor(hi) + 1;
       if ((looked += x1 - x0 + 1) > 400000) return undefined;
-      for (let x = x0; x <= x1; x++) {
-        if (w.k(row * N + x) === K.EMPTY) continue;
+      this.swept += x1 - x0 + 1;
+      // The row is read straight from each piece of the world it crosses, and a cell of ground with ground to both
+      // sides of it in the row has no corner to catch on: nearly every cell is passed over at one look.
+      for (let x = x0; x <= x1;) for (let kind = w.piece(((row >> 6) << 8) | (x >> 6)).kind, base = (row & 63) << 6, end = Math.min(x1, x | 63); x <= end; x++) {
+        const u = x & 63;
+        if (kind[base | u] === K.EMPTY) continue;
+        const west = (u > 0 ? kind[base | (u - 1)] : w.k(row * N + x - 1)) === K.EMPTY, east = (u < 63 ? kind[base | (u + 1)] : w.k(row * N + x + 1)) === K.EMPTY;
+        if (!west && !east) continue;
         for (let c = 0; c < 4; c++) {
           // A corner the string can lie against: the cells either side of it along this cell's edges are open.
           // (The cell across the corner may be ground too: two cells touching at a point are two corners there.)
-          const ox = c & 1, oy = c >> 1, nx = ox ? 1 : -1, ny = oy ? 1 : -1;
-          if (w.k(row * N + x + nx) !== K.EMPTY || w.k((row + ny) * N + x) !== K.EMPTY) continue;
+          const ox = c & 1, oy = c >> 1, ny = oy ? 1 : -1;
+          if (!(ox ? east : west) || w.k((row + ny) * N + x) !== K.EMPTY) continue;
           const key = (row * N + x) * 4 + c;
           if (skip.includes(key)) continue;
           const qx = x + ox, qy = row + oy;
@@ -302,25 +309,27 @@ export class Game {
     return best;
   }
   // The bends a string picks up as its end moves from `from` to `to` while the rest holds at `pivot`, in order from
-  // the pivot outward. A triangle too large to search at once is swept a part at a time: the end goes part of the
-  // way, then on, which is the same sweep, so no sweep is ever given up.
+  // the pivot outward. A large triangle is swept a part at a time: the end goes part of the way, then on, which is
+  // the same sweep, so no sweep is ever given up. The first part is small and each part that meets nothing is twice
+  // the one before: a string let go over ground meets a corner almost at once, and then only a sliver has been
+  // searched, however long the legs of the triangle; only a sweep across ground that is truly open is searched whole.
   caught(pivot, from, to, skip = []) {
     const out = [];
-    let cur = from, aim = to;
+    let cur = from, aim = to, most = 4000;
     skip = skip.slice();
     if (pivot[4] !== undefined) skip.push(pivot[4]);
     for (let guard = 0; guard < 4000; guard++) {
-      // About how many cells the search would look at: over the most it will, the end goes only so far first.
-      const cells = Math.abs((cur[0] - pivot[0]) * (aim[1] - pivot[1]) - (cur[1] - pivot[1]) * (aim[0] - pivot[0])) / 2
-        + 4 * (Math.max(pivot[1], cur[1], aim[1]) - Math.min(pivot[1], cur[1], aim[1]) + 3);
-      if (cells > 300000) { const part = 250000 / cells; aim = [cur[0] + (aim[0] - cur[0]) * part, cur[1] + (aim[1] - cur[1]) * part]; }
+      // How many cells the triangle covers: over the most this part may, the end goes only so far first.
+      const cells = Math.abs((cur[0] - pivot[0]) * (aim[1] - pivot[1]) - (cur[1] - pivot[1]) * (aim[0] - pivot[0])) / 2;
+      if (cells > most * 1.25) { const part = most / cells; aim = [cur[0] + (aim[0] - cur[0]) * part, cur[1] + (aim[1] - cur[1]) * part]; }
       const q = this.catchIn(pivot, cur, aim, skip);
       if (q === undefined) { aim = [(cur[0] + aim[0]) / 2, (cur[1] + aim[1]) / 2]; continue; }
       if (!q) {
         if (aim === to) break;
-        cur = aim; aim = to;
+        cur = aim; aim = to; most = Math.min(250000, most * 2);
         continue;
       }
+      most = 4000;
       // Where the moving end was when the string met the corner.
       const ax = q[0] - pivot[0], ay = q[1] - pivot[1], mx = aim[0] - cur[0], my = aim[1] - cur[1], den = mx * ay - my * ax;
       const t = den ? Math.max(0, Math.min(1, -((cur[0] - pivot[0]) * ay - (cur[1] - pivot[1]) * ax) / den)) : 0;
@@ -636,15 +645,21 @@ export class Game {
     // Speed builds over a long clear run, so far ground is not a long walk.
     const top = FLY * this.val('momentum') * (1 + Math.max(0, d.run - 0.8) * 0.9) * m, ease = Math.min(1, dt * (m > 0 ? 14 : 10));
     d.vx += (ix * top - d.vx) * ease; d.vy += (iy * top - d.vy) * ease;
-    // Move a little at a time, sliding along whatever stops it. The string follows each small move (`tend`), so it
+    // Move a little at a time, sliding along whatever stops it. The string follows the small moves (`tend`), so it
     // goes round whatever the drill went round: a move this small never leaves the open ground the drill stands in,
     // where one straight line across a whole frame's flight could pass the far side of a corner.
+    //
+    // Small moves that were not stopped, slid or drawn back all go the same way, so together they are one straight
+    // line through open ground, and the string is led along the whole run of them at once (`run`): the same sweep
+    // as leading it move by move, made once. Far out with no bend that sweep is about the core, as long as the
+    // tether, and a fast flight makes a dozen small moves a frame.
     const speed = Math.hypot(d.vx, d.vy), steps = Math.max(1, Math.ceil(speed * dt / 0.3)), R = this.val('tether');
-    let hitX = false, hitY = false, held = false;
+    let hitX = false, hitY = false, held = false, run = false;
     for (let n = 0; n < steps; n++) {
       const sx = d.x, sy = d.y, nx = d.x + d.vx * dt / steps, ny = d.y + d.vy * dt / steps;
-      if (this.free(nx, d.y)) d.x = nx; else hitX = true;
-      if (this.free(d.x, ny)) d.y = ny; else hitY = true;
+      let plain = true;
+      if (this.free(nx, d.y)) d.x = nx; else { hitX = true; plain = false; }
+      if (this.free(d.x, ny)) d.y = ny; else { hitY = true; plain = false; }
       // The end of the tether's reach: a move that ends beyond it is drawn back on to it. The reach never pins the
       // drill, though. Should it stand beyond the reach already (set in the middle of a cell out there when ground
       // grew back on it) and the place drawn back to be shut, any move that takes it no further out stands: so it
@@ -659,10 +674,14 @@ export class Game {
           else if (my !== sy && Math.hypot(sx - HX, my - HY) <= was && this.free(sx, my)) { d.x = sx; d.y = my; }
           else { d.x = sx; d.y = sy; }
         }
-        held = true;
+        held = true; plain = false;
       }
+      if (plain) { run = true; continue; }
+      // This move turned off the line of the run before it: the string goes to where the run ended, then on.
+      if (run) { this.lead(this.band, [sx, sy]); run = false; }
       this.tend();
     }
+    if (run) this.tend();
     if (held) {
       if (m > 0 && (d.vx * (d.x - HX) + d.vy * (d.y - HY)) > 0 && this.edge <= 0) this.refuse();
       d.run = 0;
