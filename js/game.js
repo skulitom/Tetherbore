@@ -2244,7 +2244,9 @@ export class Game {
     if (this.shop) this.drawShop();
   }
   // The map: everything within the tether's reach, the core in the middle. Ground that has been seen shows as
-  // rock or open; the rest only as whose ground it is, so there is always somewhere to choose to go.
+  // rock or open; the rest only as whose ground it is, so there is always somewhere to choose to go. Whose it is
+  // is asked of the world as far as it is known (`biomeKnown`): what a piece already made holds, seen or not, so
+  // that an older saved game's map never shows a place that its ground does not have.
   drawMap(x, y) {
     const { ctx } = this, w = this.world, d = this.drill, size = 46, R = this.val('tether'), per = Math.max(0.6, R * 2.25 / size);
     slice9(ctx, 'ui', 'panel', x - 3, y - 3, size + 6, size + 6);
@@ -2256,7 +2258,7 @@ export class Game {
       const px = this.mapData.data;
       for (let v = 0; v < size; v++) for (let u = 0; u < size; u++) {
         const wx = Math.floor(HX + (u - size / 2 + 0.5) * per), wy = Math.floor(HY + (v - size / 2 + 0.5) * per), o = (v * size + u) * 4, k = w.peek(wx, wy);
-        const [r, g, b] = rowOf(k < 0 ? w.biomeAt(wx, wy) : w.b(wy * N + wx)).map;
+        const [r, g, b] = rowOf(w.biomeKnown(wx, wy)).map;
         const inside = Math.hypot(wx - C, wy - C) <= R, shade = (k < 0 ? 0.3 : k === K.EMPTY ? 0.12 : 0.85) * (inside ? 1 : 0.45);
         px[o] = r * shade + 8; px[o + 1] = g * shade + 7; px[o + 2] = b * shade + 10; px[o + 3] = 255;
       }
