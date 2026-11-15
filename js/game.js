@@ -95,9 +95,12 @@ const store = () => new Promise((resolve, reject) => {
 });
 
 export class Game {
-  constructor(canvas) {
+  // `over` is a second canvas laid on the first at the screen's full resolution, for the tether: without one (in
+  // tests) the tether is drawn in the game's own pixels.
+  constructor(canvas, over = null) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d', { alpha: false });
+    this.over = over; this.overCtx = over ? over.getContext('2d') : null; this.ropes = []; this.scale = 1;
     this.world = new World();
     this.W = 180; this.H = 320;
     this.time = 0;
@@ -175,6 +178,8 @@ export class Game {
     this.W = Math.ceil(cssW * dpr / scale); this.H = Math.ceil(cssH * dpr / scale);
     this.canvas.width = this.W; this.canvas.height = this.H;
     this.ctx.imageSmoothingEnabled = false;
+    this.scale = scale;
+    if (this.over) { this.over.width = this.W * scale; this.over.height = this.H * scale; this.ropeDirty = null; }
   }
 
   // ------------------------------------------------------------ input
@@ -1079,6 +1084,7 @@ export class Game {
     const ox = Math.round(this.cam.x - W / 2 + sx), oy = Math.round(this.cam.y - H / 2 + sy);
     ctx.fillStyle = '#07060b';
     ctx.fillRect(0, 0, W, H);
+    this.ropes.length = 0;
     // The ground is painted once into 8 x 8 cell pieces and redrawn only when it changes; a frame lays those
     // down, then draws what moves over them.
     const x0 = Math.floor(ox / T), y0 = Math.floor(oy / T), x1 = Math.floor((ox + W) / T), y1 = Math.floor((oy + H) / T);
@@ -1181,7 +1187,8 @@ export class Game {
           const own = TETHERS[this.S.lv.tether], dark = { a: '#16121c', b: '#16121c', dash: 1 };
           const line = [this.along(h, h.S)];
           for (let k = 1; k < h.route.length; k++) if (h.cum[k] > h.S) line.push(h.route[k]);
-          for (const pass of [1, 0]) for (let i = 0; i + 1 < line.length; i++) {
+          if (this.over) this.ropes.push({ pts: line.map(([x, y]) => [x - ox, y - oy]).reverse(), style: own });
+          else for (const pass of [1, 0]) for (let i = 0; i + 1 < line.length; i++) {
             const a = line[i], b = line[i + 1];
             if (Math.max(a[0], b[0]) - ox < -2 || Math.max(a[1], b[1]) - oy < -2 || Math.min(a[0], b[0]) - ox > W + 2 || Math.min(a[1], b[1]) - oy > H + 2) continue;
             this.drawSpan(a[0] - ox, a[1] - oy, b[0] - ox, b[1] - oy, pass ? dark : own, pass);
@@ -1208,7 +1215,10 @@ export class Game {
             loop[i] += (want[(i + M - 1) % M] * 0.25 + want[i] * 0.5 + want[(i + 1) % M] * 0.25 - loop[i]) * ease;
             round.push([mx + Math.cos(i / M * 6.2832) * loop[i], my + Math.sin(i / M * 6.2832) * loop[i]]);
           }
-          if (Math.max(mx, my) > -80 && mx < W + 80 && my < H + 80) for (const pass of [1, 0]) this.rope(round, true, pass ? dark : own, pass);
+          if (Math.max(mx, my) > -80 && mx < W + 80 && my < H + 80) {
+            if (this.over) this.ropes.push({ pts: round, style: own, loop: true });
+            else for (const pass of [1, 0]) this.rope(round, true, pass ? dark : own, pass);
+          }
         }
       }
     }
@@ -1289,6 +1299,7 @@ export class Game {
       ctx.globalAlpha = 1;
     }
     this.drawHud(ox, oy);
+    if (this.over) this.drawRopes(ox, oy);
   }
 
   // The drill as its upgrades have made it (the bit's metal, whatever the ram has bolted on), drawn about its
@@ -1304,6 +1315,71 @@ export class Game {
       ctx.drawImage(s.image, r[0], r[1], r[2], r[3], -8, -8, 16, 16);
     }
     ctx.restore();
+  }
+  // The tether and the loops round hauls, drawn on the canvas laid over the game at the screen's own resolution: smooth
+  // lines whatever way they lie, rounded where they turn a corner, then shaded by the same darkness as the ground and
+  // cut away where the interface is. Lengths here are in the game's pixels; the canvas is `scale` times finer.
+  drawRopes(ox, oy) {
+    const o = this.overCtx, k = this.scale, { W, H } = this;
+    o.setTransform(1, 0, 0, 1, 0, 0);
+    if (this.ropeDirty) { const [x0, y0, x1, y1] = this.ropeDirty; o.clearRect(x0 * k, y0 * k, (x1 - x0) * k, (y1 - y0) * k); }
+    this.ropeDirty = null;
+    if (!this.ropes.length || this.shopRise > 0.02) return;
+    o.setTransform(k, 0, 0, k, 0, 0);
+    o.lineJoin = 'round';
+    let bx0 = Infinity, by0 = Infinity, bx1 = -Infinity, by1 = -Infinity;
+    for (const r of this.ropes) {
+      const pts = r.pts;
+      if (pts.length < 2) continue;
+      const wide = r.style.thick ? 2 : 1.4;
+      const trace = dy => {
+        o.beginPath();
+        if (r.loop) {
+          // A closed curve through the middles of its sides.
+          const n = pts.length, mid = i => [(pts[i % n][0] + pts[(i + 1) % n][0]) / 2, (pts[i % n][1] + pts[(i + 1) % n][1]) / 2 + dy];
+          o.moveTo(...mid(0));
+          for (let i = 1; i <= n; i++) o.quadraticCurveTo(pts[i % n][0], pts[i % n][1] + dy, ...mid(i));
+          o.closePath();
+          return;
+        }
+        o.moveTo(pts[0][0], pts[0][1] + dy);
+        for (let i = 1; i < pts.length; i++) {
+          const [x, y] = pts[i], [px, py] = pts[i - 1];
+          if (r.wob && Math.hypot(x - px, y - py) < 600) {
+            // A plucked string: each span bows across itself.
+            const len = Math.hypot(x - px, y - py) || 1;
+            o.quadraticCurveTo((px + x) / 2 - (y - py) / len * r.wob * 2, (py + y) / 2 + (x - px) / len * r.wob * 2 + dy, x, y + dy);
+          } else if (i + 1 < pts.length) {
+            // Round the corner, as wide as the shorter span beside it allows.
+            const nx = pts[i + 1][0], ny = pts[i + 1][1];
+            o.arcTo(x, y + dy, nx, ny + dy, Math.min(3.5, Math.hypot(x - px, y - py) / 2, Math.hypot(nx - x, ny - y) / 2));
+          } else o.lineTo(x, y + dy);
+        }
+      };
+      o.setLineDash([]); o.lineCap = 'round';
+      o.strokeStyle = 'rgba(10, 8, 16, 0.7)'; o.lineWidth = wide + 1.2; trace(0.8); o.stroke();
+      o.strokeStyle = r.style.a; o.lineWidth = wide; trace(0); o.stroke();
+      if (r.style.b !== r.style.a) {
+        // The second strand of the braid, in short lengths along it.
+        o.lineCap = 'butt'; o.setLineDash([4 * r.style.dash, 4 * (1 - r.style.dash)]);
+        o.strokeStyle = r.style.b; o.lineWidth = wide * 0.62; trace(0); o.stroke();
+        o.setLineDash([]);
+      }
+      for (const [x, y] of pts) { bx0 = Math.min(bx0, x); by0 = Math.min(by0, y); bx1 = Math.max(bx1, x); by1 = Math.max(by1, y); }
+    }
+    if (bx0 > bx1) return;
+    bx0 = Math.max(0, Math.floor(bx0 - 12)); by0 = Math.max(0, Math.floor(by0 - 12)); bx1 = Math.min(W, Math.ceil(bx1 + 12)); by1 = Math.min(H, Math.ceil(by1 + 12));
+    this.ropeDirty = [bx0, by0, bx1, by1];
+    // In the dark it is as dim as the ground it lies on.
+    if (this.dark && this.darkAt) {
+      o.globalCompositeOperation = 'source-atop'; o.imageSmoothingEnabled = true; o.globalAlpha = 0.85;
+      o.drawImage(this.dark, ...this.darkAt);
+      o.globalCompositeOperation = 'source-over'; o.globalAlpha = 1;
+    }
+    // Never over the interface.
+    o.clearRect(0, 0, W, 43);
+    if (this.mapRect) o.clearRect(...this.mapRect);
+    for (const b of this.buttons) o.clearRect(b.x, b.y, b.w, b.h);
   }
   // A rope through `pts` (a closed loop if `closed`), as one clean line of pixels: a smooth curve through the points,
   // with no doubled corners.
@@ -1430,6 +1506,7 @@ export class Game {
     ctx.imageSmoothingEnabled = true;
     ctx.drawImage(map, vx0 * T - ox, vy0 * T - oy, mcols * T, mrows * T);
     ctx.imageSmoothingEnabled = false;
+    this.darkAt = [vx0 * T - ox, vy0 * T - oy, mcols * T, mrows * T];
     // The core's slow turning rays.
     const cxp = HX * T - ox, cyp = HY * T - oy;
     if (cxp > -80 && cyp > -80 && cxp < W + 80 && cyp < H + 80) {
@@ -1487,6 +1564,13 @@ export class Game {
     const wob = this.twang > 0 ? Math.sin(this.time * 90) * this.twang * 5 : 0;
     // Turned back at the edge it shows red; otherwise it is whatever the reach upgrades have made it.
     const own = TETHERS[this.S.lv.tether], style = this.twang > 0 ? { a: '#ff5a4a', b: '#ff5a4a', dash: 1, thick: own.thick } : own;
+    if (this.over) {
+      // It leaves the drill's tail, and is laid out from the core's end so that its braid stays put on the ground
+      // as the drill pays it out.
+      pts[0] = [d.x * T - ox - Math.cos(d.ang) * 5, d.y * T - oy - Math.sin(d.ang) * 5];
+      this.ropes.push({ pts: pts.reverse(), style, wob });
+      return;
+    }
     for (const pass of own.thick ? [2, 1, 0] : [1, 0]) {
       const shadow = pass === (own.thick ? 2 : 1), use = shadow ? { a: '#16121c', b: '#16121c', dash: 1 } : style;
       for (let i = 0; i < pts.length - 1; i++) {
@@ -1587,6 +1671,7 @@ export class Game {
   drawMap(x, y) {
     const { ctx } = this, w = this.world, d = this.drill, size = 46, R = this.val('tether'), per = Math.max(0.6, R * 2.25 / size);
     slice9(ctx, 'ui', 'panel', x - 3, y - 3, size + 6, size + 6);
+    this.mapRect = [x - 3, y - 3, size + 6, size + 6];
     let map = this.mapCanvas;
     if (!map) { map = this.mapCanvas = document.createElement('canvas'); map.width = map.height = size; this.mapData = map.getContext('2d').createImageData(size, size); this.mapAt = -1; }
     if (this.time - this.mapAt > 0.5 || this.mapFor !== this.version + R) {

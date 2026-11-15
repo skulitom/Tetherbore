@@ -1,4 +1,6 @@
 html, body { margin: 0; height: 100%; background: #07060b; overflow: hidden; overscroll-behavior: none; }
 body { position: fixed; inset: 0; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
 #game { display: block; width: 100vw; height: 100vh; height: 100dvh; touch-action: none; image-rendering: pixelated; image-rendering: crisp-edges; cursor: pointer; }
+/* The tether's own canvas, laid over the game at the screen's full resolution so its lines are smooth. */
+#rope { position: absolute; left: 0; top: 0; width: 100vw; height: 100vh; height: 100dvh; pointer-events: none; }
 noscript { color: #f4ecd8; font: 16px sans-serif; position: absolute; top: 1em; left: 1em; }

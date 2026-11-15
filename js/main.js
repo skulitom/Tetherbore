@@ -4,7 +4,7 @@ import { Game } from './game.js';
 
 const canvas = document.getElementById('game');
 await loadAtlas();
-const game = new Game(canvas);
+const game = new Game(canvas, document.getElementById('rope'));
 await game.restore();
 
 function resize() {
