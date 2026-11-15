@@ -11,9 +11,11 @@
 //   - A slab is the haul the winch is for: one of 400 cells hauled with no winch bought is over its load, is paid
 //     less for it and says so on its banner; with one level of winch it is paid in full and says nothing.
 //   - A slab with three keys comes home whole when the lap has cut through all three.
+//   - A cobble field: a lap of its joints round one block, and round a square of four, cuts every key that holds
+//     them (each lies in a joint the lap flies) and brings them home, in three fields.
 //   node test/regress/c5-slab-play.mjs
 import { haulBonus, overload } from '../../js/game.js';
-import { play } from '../../tools/slab-play.mjs';
+import { play, field } from '../../tools/slab-play.mjs';
 
 const fails = [], check = (ok, what) => { if (!ok) fails.push(what); }, out = {};
 
@@ -62,6 +64,19 @@ for (const seed of [7, 11, 34]) {
 {
   const r = await play(7, 8, {}, true);
   if (whole('three keys', r, 3)) out.three = { cells: r.hauled.n, keyCells: r.keys, lap: +r.lapT.toFixed(1), sides: r.loose.sides };
+}
+
+// ---- 4. Cobble fields. (Seed 7's nearest, 536 cells north of the core, and its third and fourth.)
+out.fields = [];
+for (const [pick, side] of [[0, 1], [0, 2], [2, 2], [3, 1], [3, 2]]) {
+  const r = await field(7, pick, side), name = `the cobble field at ${r.field.cx - 8192},${r.field.cy - 8192}, a square of ${side}`;
+  check(r.blocks === 16 * side * side, `${name}: its blocks have ${r.blocks} cells`);
+  // (What the way in cut loose beside the joint is hauled too, and counted with the square.)
+  check(r.left === 0 && r.n >= r.blocks, `${name}: ${r.n} cells hauled in ${r.hauls.length} hauls, ${r.left} of the blocks' ${r.blocks} left standing`);
+  check(r.keys >= 2, `${name}: ${r.keys} keys cut`);
+  check(r.hauls.some(h => h.n >= 16) && r.hauls.every(h => h.light === h.n < 12), `${name}: the hauls were ${r.hauls.map(h => `${h.n}${h.light ? ' (no banner)' : ''}`)}`);
+  check(r.faults.length === 0, `${name}: ${r.faults.join('; ')}`);
+  out.fields.push({ side, cells: r.n, hauls: r.hauls.length, keys: r.keys, t: +r.t.toFixed(1) });
 }
 
 console.log(JSON.stringify(out));

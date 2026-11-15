@@ -2,6 +2,7 @@
 // from the core to the slab's crack, cutting its own way; flies one lap of the crack, cutting through each key as it
 // comes to it; and the slab is hauled when the tether is round it. What it took and what it paid is printed.
 //   node tools/slab-play.mjs [--seed 7] [--slab n] [--tether level] [--winch level] [--staged]
+//   node tools/slab-play.mjs [--seed 7] --field n [--blocks 1]
 //
 //   --seed n      the world (7)
 //   --slab n      which of the world's slabs, counted from the nearest the core: 0 is the first slab (the default),
@@ -11,12 +12,16 @@
 //   --winch n     another level of winch than that (0: a slab over 150 cells is over its load)
 //   --staged      the drill starts at the end of a tunnel staged from the core to just outside the slab's collar
 //                 (as the fuzz stages a start), not at the core: for a slab far out, where the way there is long
+//   --field n     a cobble field instead, the nth from the core (0: the nearest): from the end of a tunnel staged
+//                 to just outside its collar the drill flies in along a joint and once round a square of blocks
+//                 beside the field's middle, `--blocks` a side (1 or 2), cutting every key it meets in the joints
 //
 // The pilot flies from cell to cell by the quickest way (open ground flown, rock cut at what the cut costs), slows
 // for every turn, and never cuts a key until it is in the crack: slower than a thumb, and no cleverer. Its lap is
 // the cheapest ring through the crack's own cells, the keys among them, right round the slab's middle.
 //
-// `play` returns what happened; test/regress/c5-slab-play.mjs holds the first slab of a new game to it.
+// `play` and `field` return what happened; test/regress/c5-slab-play.mjs holds the first slab of a new game, and a
+// lap of a cobble field's joints, to it.
 import { fileURLToPath } from 'node:url';
 import { makeGame, random, tetherFaults, UPGRADES, C, N, K, world } from '../test/harness.mjs';
 import { fly } from './sift.mjs';
@@ -197,8 +202,60 @@ export async function play(seed = 7, pick = 0, lv = {}, staged = false) {
   return out;
 }
 
+// A lap of a cobble field's joints. `pick` is which of the world's fields, counted from the core, `side` how many
+// blocks a side the square flown round has (1 or 2). The drill starts outside the collar on the side that faces the
+// core, at the end of a staged tunnel, flies in along the joint through the field's middle to the far corner of
+// the square, and once round it: every key that holds the square to the rest lies in a joint it flies.
+// (Blocks that come loose before the lap is done are reeled in as soon as the tether is round them: the square may
+// come home in more hauls than one.)
+// Returns { field, levels, blocks (cells of ground in the square's blocks), keys (cells of key cut), hauls (each
+// haul made on the way: { title, n, mult, grit, gems, light }), n (cells hauled in all), left (cells of the
+// square's blocks still standing), t (seconds from the start to the last haul), faults }.
+export async function field(seed = 7, pick = 0, side = 1) {
+  Math.random = random(seed + 5);
+  const fields = w => slabsOf(w, 2300).filter(S => S.cobble).sort((a, b) => Math.hypot(a.cx - C, a.cy - C) - Math.hypot(b.cx - C, b.cy - C));
+  const probe = new world.World(); probe.reset(seed);
+  const at = fields(probe)[pick], levels = holds(UPGRADES[0].values.findIndex(R => R >= Math.hypot(at.cx - C, at.cy - C) + at.p + 12));
+  const game = await makeGame(seed, levels), w = game.world, d = game.drill, S = fields(w)[pick];
+  // (u, v): along the joint toward the core, and across it.
+  const flat = Math.abs(S.cx - C) >= Math.abs(S.cy - C), ux = flat ? Math.sign(C - S.cx) : 0, uy = flat ? 0 : Math.sign(C - S.cy), vx = uy ? 1 : 0, vy = ux ? 1 : 0;
+  const cell = (u, v) => [S.cx + ux * u + vx * v, S.cy + uy * u + vy * v], start = cell(S.p + 9, 0), sx = start[0] - C, sy = start[1] - C, len = Math.hypot(sx, sy);
+  for (let s = 0; s <= len; s += 0.5) for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) { const x = C + Math.round(sx * s / len) + a, y = C + Math.round(sy * s / len) + b; if (!w.slabCell(S, x, y)) w.setK(y * N + x, K.EMPTY); }
+  d.x = start[0] + 0.5; d.y = start[1] + 0.5; d.mode = 'free';
+  game.band = [[d.x, d.y], [HX, HY]];
+  game.changed();
+  const own = [];
+  for (let u = 1; u < 5 * side; u++) for (let v = 1; v < 5 * side; v++) if (u % 5 && v % 5) { const [x, y] = cell(u, v); own.push(y * N + x); }
+  const out = { field: S, levels, blocks: own.length, keys: 0, hauls: [], n: 0, left: 0, t: 0, faults: [] };
+  const clock = { t: 0 }, before = S.keys.filter(i => w.k(i) === K.KEY).length;
+  let frame = 0, hauls = game.S.stats.hauls;
+  const each = () => {
+    if (frame++ % 6 === 0) for (const f of tetherFaults(game)) if (out.faults.length < 8) out.faults.push(`${clock.t.toFixed(1)} s: ${f}`);
+    if (game.S.stats.hauls === hauls) return false;
+    hauls = game.S.stats.hauls;
+    const h = game.hauled;
+    out.hauls.push({ title: h.title, n: h.n, mult: h.mult, grit: h.grit, gems: h.gems.reduce((a, b) => a + b, 0), light: h.light });
+    out.n += h.n; out.t = clock.t;
+    return own.every(i => w.k(i) === K.EMPTY);
+  };
+  const n = 5 * side, gone = () => own.every(i => w.k(i) === K.EMPTY);
+  for (const [u, v] of [[n, 0], [0, 0], [0, n], [n, n], [n, 0]]) { if (gone()) break; const [x, y] = cell(u, v); fly(game, x, y, clock, each, 2400); }
+  for (let f = 0; f < 30 && !gone(); f++) { game.update(1 / 60); clock.t += 1 / 60; each(); }
+  out.keys = before - S.keys.filter(i => w.k(i) === K.KEY).length;
+  out.left = own.filter(i => w.k(i) !== K.EMPTY).length;
+  out.game = game;
+  return out;
+}
+
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const arg = (name, fallback) => { const n = process.argv.indexOf(`--${name}`); return n < 0 ? fallback : process.argv[n + 1]; };
+  if (arg('field') !== undefined) {
+    const r = await field(Number(arg('seed', 7)), Number(arg('field')), Number(arg('blocks', 1))), S = r.field;
+    console.log(`seed ${arg('seed', 7)}: the cobble field at ${S.cx - C},${S.cy - C} (${Math.round(Math.hypot(S.cx - C, S.cy - C))} out), radius ${S.p}; a square of ${arg('blocks', 1)} block${arg('blocks', 1) === '2' ? 's' : ''} a side, ${r.blocks} cells; reach ${UPGRADES[0].values[r.levels.tether]}, bit ${r.levels.drill}`);
+    console.log(r.hauls.length ? `  ${r.n} cells hauled within ${r.t.toFixed(1)} s of the start, ${r.keys} keys cut: ${r.hauls.map(h => `${h.title} ${h.n} x${h.mult.toFixed(2)}, +${h.grit} grit +${h.gems} gems`).join('; ')}; ${r.left} cells of the blocks left standing` : `  not hauled: ${r.keys} keys cut, ${r.left} cells of the blocks standing`);
+    console.log(`  tether faults: ${r.faults.length ? r.faults.join('; ') : 'none'}`);
+    process.exit(0);
+  }
   const lv = {};
   if (arg('tether') !== undefined) lv.tether = Number(arg('tether'));
   if (arg('winch') !== undefined) lv.winch = Number(arg('winch'));
