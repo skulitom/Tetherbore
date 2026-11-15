@@ -185,6 +185,18 @@ S3 AS BUILT, THE PROVINCE PART (read this with the above; where they differ, thi
 - The finds' bands are one table, FINDS = [[0.38, 'geode'], [0.70, 'cache'], [0.74, 'prism'], [0.80, 'twin'], [0.86, 'fossil']]. World.find works out the sector's middle for all five (a prism only where its middle is over 130 cells out, none within 16), findSpot names all five, and findAt lays only geodes and caches: whoever builds a prism, twin stones or a fossil adds its cells there. findSpot does not yet say null inside a pocket.
 - Tests: s3-provinces (the order, the shares, each strain in its own direction, a strain added later), s3-find-bands, s3-biome-known. test/regress/w-same-world.mjs, the plain reading of the ground, now has the provinces and the strains written out in it as plainly as the rest, so it holds them cell for cell; 38 of the 96 hashed pieces moved and were recorded again (none at the core; the pieces 200 out to the east and south reach into the next province).
 
+S3 AS BUILT, POCKETS (read this with "Pockets" and "The map" above; where they differ, this is the code). Built with content item 6; counted with tools/zone-budget.mjs, held by test/regress/s3-pockets.mjs and s3-pocket-pips.mjs.
+- A pocket's ground is a row made with pocket(id, name, { ..., pocket: { shape, kins, minR, rho, weight, wobble, mineral, kind, node, nodeDig, lump, spec, chain, pip, chips } }) in js/world.js, with no thresholds of its own; grounds 32 to 63 that name a shape are what a sector may choose among. What lays a shape is a rule of POCKET_SHAPES: reach(rho), how far from its middle a cell of such a pocket can lie; has(Z, ex, ey), where the shape has an edge of its own (left out: a disc, wandering by layer 44 unless the row says `wobble: false`); cell(seed, Z, x, y), what a cell is.
+- World.zoneOf(sx, sy) is as the plan has it, worked out once for a sector and kept, with the record { key, row, cx, cy, rho, kin, reach, shape, mineral, wobble, herald } (key 'z' + the sector). World.pocketOf(x, y) is the pocket of a cell's sector with the last sector kept, World.inPocket(Z, x, y) whether a cell is that pocket's, World.pocketCell(Z, x, y) what it is, World.zone(row, cx, cy, rho, kin) a record made by hand (for tools and tests), World.pocketsWithin(far) a world's pockets nearest the core first.
+- biomeAt asks for a pocket first, of cells over 130 cells out (the plan says 150; nothing lies between). kindAt lays a pocket's cells straight after the wrecks and asks nothing else of them. A cell that holds a pocket's ground where the world would lay none (a saved game's may) is plain rock of it.
+- Heralds: 165 out and 14 aside, radius 9, as planned; and 40 cells further out where a wreck lies within 24 cells of that (8 heralds of 240 on sixty worlds), which the plan does not say. What kind each is: the first of its list that has a row (HERALDS: north glaze, drift, hive; south tinderwork, ash, hive; west grotto, hive; east shale, drift, hive). Only the hive has a row yet, so all four are hives today, and each direction has a pocket inside the sixth reach. When Pumice Drift and Ash Flats get their rows (33, 34) the north's, the east's and the south's heralds become those by themselves: the pieces round those three heralds will then move, on purpose.
+- No pocket's middle lies under 170 cells out or so far out that the last reach does not go round it (the plan does not say the second).
+- Finds and slabs keep clear: World.find gives a sector nothing where its find's middle is within 5 cells of where a pocket's cells can lie, so findAt lays nothing there and findSpot says null; World.meetsPocket(cx, cy, reach) is now true to the record's own `reach` and asks every sector within that and POCKET_MOST (36). Of 2,037 slabs tried on 12 worlds 70 are refused for a pocket, with pockets in the west alone; with pockets in every direction it will be about four times that, one slab in seven.
+- The map: Game.pocketPips() is the list (pockets within reach, not visited, whose middle's ground is the pocket's as far as is known, the 24 nearest the drill), made again when the drill comes into another sector, the reach changes or a pocket is visited. Every such pocket has a pip, whether or not it is big enough to show as a patch of its own colour; a pip is two pixels of the pocket's `pip` colour on four of dark.
+- Counts, 8 worlds, hives alone (they lie only in the west, and the heralds): 4.6 pockets within reach 230, 6.3 within 420, 16.9 within 750, 44.6 within 1,350, 123.8 within 2,300; 0.65% of the ground. The plan's figures (6, 14, 51, 172, 505; 2.4%) are for pockets of every direction.
+- Flank pockets (seed 97) are not built: item 11.
+- test/regress/w-same-world.mjs has pockets and the hive in its plain reading; 7 of the 96 hashed pieces moved and were recorded again, all in the west.
+
 --------------------------------------------------------------
 S4. The resource set
 --------------------------------------------------------------
@@ -195,6 +207,13 @@ S4. The resource set
 - HUD: no permanent slot. When specimens are banked a line slides out under the top panel for 3 s: the specimen icon in the direction's gem colour and the count, with "/need" while an unlock in that direction is unbought. The haul banner's third line gains the mineral's icon and +n.
 
 Model: pockets cover 2.4% of the ground and pay 1.3 to 2 times the model's rate while inside, about +3% in all; nothing is repriced.
+
+S4 AS BUILT (read this with the above; where they differ, this is the code). Held by test/regress/s4-specimens.mjs and s4-budget.mjs.
+- S.spec is made in fresh() and defaulted in restore(). haul() banks what payOf said (built with S2), a fraction a cell, to the direction of the pocket's record. `hauled.spec` is how far the whole count rose and `hauled.specOf` whose.
+- A pocket's lump rises in a chain of hauls only where its row says `chain: true` (S2 built it for every pocket; it is Pumice Drift's twist, and the hive's figures have none).
+- The line: Game.specLine = { kin, t, life }, three seconds, drawn as a small panel at (4, 60), under where a place's plate goes: a specimen icon in the direction's colour ('spec-frost', 'spec-ember', 'spec-mire', 'spec-lode', added to the icons sheet on the code track: one six-sided cut stone drawn once, in each direction's three colours) and the whole count. Game.specNeed(kin) is what "/need" will read; it is 0 until the WORKS tab sells something.
+- A light haul (a nugget is one) has no banner, so it says it where it lay: what it paid with the mineral's own picture beside it in place of the grit's icon, and under that '+n' with the specimen icon when the whole count rose. A haul with a banner has the mineral's picture and '+n' at the end of the line of what it paid (Game.bannerSays(b)[2]).
+- tools/zone-budget.mjs is as planned (pure but for --play, which plays hives through the test harness). By it the hive's lump is 0.8, not the 0.9 first written, so that a herald, the smallest pocket anyone meets and the first, is within its 31.5 s (30.5); and its specimens stay 0.25 a cell: 11.1 at radius 14.
 
 --------------------------------------------------------------
 S5. Naming a place and announcing a find (the first juice item, needed by everything)
@@ -465,6 +484,37 @@ Generation, in whole-cell offsets (u, v) from the centre: rows of chambers 8 tal
 Numbers at radius 14: about 5.3 nuggets, 48 amber, 43 s against a budget of 49.
 Art: rock 'wax' k #3a2208 D #8a5a14 L #ffe89a s #1a0c0059 f #d89a2a a #c0841e b #eab040 c #fff2c0, fill as a 16-row hexagon pattern (a pattern has no seed, so the three variants match; if it tiles badly use speckle a .22/4, b .16/3, c .03/2). Floor 'wax-floor' f #201206 a #1a0e04 b #2a1a0a. 'amber': a drop, point up, body #ff9a1a, highlight #ffd070 upper left, shade #a85a10 lower right, one dark speck #3a2208. 'stalk-h' and 'stalk-v': a pale strand 4 pixels wide (#f4dc9a, edges #c0841e) across a full wax block, so the stalk is as wide as any block. Pip #ffb020.
 Code: generation and art only. The stalk is an ordinary cut and the nugget comes loose through freed().
+
+ITEM 6 AS BUILT (read this with the above and with S3 AS BUILT, POCKETS and S4 AS BUILT; where they differ, this is the code). Counted with tools/zone-budget.mjs, played with tools/hive-play.mjs, looked at with tools/shot.mjs, which has `--pocket` for it (the drill inside the pocket nearest, in the lane beside the nugget at a hive's middle) and `--haul n` (that many nuggets brought home from there).
+
+The hive as it lies, js/world.js (POCKET_SHAPES.hive, hiveChambers, nuggets):
+- A hive is whole chambers. The pocket's middle cell is the middle of a chamber; a chamber is the hive's if its own middle is within rho of the hive's; and every cell of such a chamber and of the walls round it is the hive's, so its edge is the chambers' own, a wall of wax a cell thick all the way round, and no chamber is cut through by a circle. A hive of radius 9 (a herald) is seven chambers, 25 cells across; one of radius 30 about forty-four. A hive's cells lie up to 5.7 cells beyond its radius.
+- Doors are not in any wall at four in ten, as planned: laid so, one nugget in eight (23 of 189 looked at) hung from a scrap of wall that doors had cut off from everything, loose before anyone came. Instead, at the corner where a chamber's west wall meets the wall over it, one of the two may have a door (35 corners in a hundred each): the west wall two cells above or below its middle, or the wall overhead in its half next the corner. The other half of the wall overhead never has one, and a door is only ever between two chambers of the hive. So from any corner the wall runs on unbroken to the outside wall, which is whole: nothing in a hive hangs on nothing (0 of 189), and the way in is to bite through the wax.
+- A stalk's wall is never a door: the walls' doors are two cells off their middles, and a stalk hangs from a middle.
+- The chamber at a hive's middle always holds a nugget, so no hive is without one.
+- The share of the other chambers that hold a nugget is 55 in a hundred up to radius 14 and 7.7 / rho beyond (26 in a hundred at radius 30), not 55 everywhere. A hive has chambers as the square of its radius and its budget grows with the radius: at a flat 55 a hive of radius 30 held 220 cells of amber, 198 s of income where it may pay 105, and 55 specimens. As built the mean hive holds 3 to 3.7 cells of amber for each cell of its radius, small or great.
+- Numbers, 200 hives made as the world makes them: the mean (radius 13.7) holds 45.9 cells of amber and pays 36.8 s of the 48 it may; by band of radius 61%, 73%, 84% and 86% of what it may; a herald 38.1 cells, 30.5 s of 31.5, 9.5 specimens; at radius 14, 11.1 specimens.
+
+In the game, js/game.js:
+- K.MINERAL is drawn as its row's mineral from the 'minerals' sheet over its block of rock, and K.NODE as `node`-h or `node`-v as the cell lies between what it joins: Game.overlay(k, row, i) takes the cell for that. The artist's stalk is a cord across a whole block of wax, so the stalk is a block wide.
+- Amber cut into is CRUSHED (as ore is) and sheds amber; a stalk cut says nothing.
+- Nothing grows back in a pocket: a pod's moss does not close a pocket's open cells, and lava that runs into one goes out and leaves no basalt.
+- The plate of a pocket has its mineral on it, twelve pixels square at its own size, where the plan has it scaled to eight.
+- A charge (SIFT) opens wax and leaves amber and stalks standing, so a nugget whose wall went with the charge hangs loose: nothing was added for it.
+
+Played with no hand on it (tools/hive-play.mjs; the pilot bites in by the cheapest way, flies the lane against the chamber's walls once round, through the stalk's far cell, and slows for every turn; with the bit and ram a player holds at that reach):
+- World 7's first six hives: every nugget home, 32 of them, each a light haul of 10 or 11 cells, no amber crushed, the tether sound; 2.0 s a nugget with the way to it, about 1.3 s of that in its chamber. A nugget pays nine lumps: about 2,900 grit at 166 cells out.
+- That is 3.7 times the model's income while inside, where the plan allows 1.3 to 2: the plan reckoned five seconds a nugget (1.44 times at lump 0.8), and the pilot takes two. A thumb will be between. What a hive pays in all is held by its budget whatever the pace; the rate while inside is the one to watch in play.
+- The fuzz flies from inside four hives, with bombs and without, and is clean.
+
+Seen with tools/shot.mjs on seed 7: the west's first hive whole, lit and in the dark, in a cavern of the mire (gold comb, sealed, three nuggets on their stalks); the north's in pale frost and the south's in red basalt, each plainly its own place; a great hive of forty chambers 460 cells out (a brick-laid maze with a nugget in every fourth chamber, some chambers wax right through); inside, in the dark, AMBER HIVE across the screen and AMBER called out with its ring; the plate with the amber on it; a nugget hauled, with '+3.5K' beside an amber and '+2' beside a green specimen where it lay and the count out under the plate; two nuggets, with NICE CUT!, '22 x1.6' and the amber and '+4' on the banner's last line; and the map with a gold pip in each direction.
+
+Not done, or done otherwise:
+- The heralds of the north, east and south are hives until item 7's rows exist (above).
+- Nobody has flown a hive by hand: the lap of a two-cell lane with a thumb, and whether a one-cell door is worth aiming for, are unseen. The light haul's popups were seen staged (`--haul`), not after a real lap.
+- A hive that stands wholly in a cavern would be one loose piece from first sight, walls and nuggets and all; none was found in four worlds, and nothing prevents it.
+- No glint or glow on amber: in the dark outside a hive its comb is dim gold.
+- The sounds at a nugget's haul (sfx.gem when the whole count rises) have not been heard by anyone.
 
 --------------------------------------------------------------
 7. PUMICE DRIFT and ASH FLATS  (M + S)
