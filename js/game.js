@@ -117,6 +117,7 @@ export class Game {
     const far = Math.hypot(dx, dy);
     if (far < 9) return;
     const dir = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 0 : 2) : (dy > 0 ? 1 : 3);
+    inp.vec = [dx / far, dy / far];
     if (dir !== inp.held) { inp.held = dir; inp.queued = dir; }
     // The origin trails the finger, so turning takes a short stroke from wherever the thumb is.
     if (far > 20) { inp.ax = x - dx / far * 20; inp.ay = y - dy / far * 20; }
@@ -126,7 +127,7 @@ export class Game {
     const dir = { ArrowRight: 0, KeyD: 0, ArrowDown: 1, KeyS: 1, ArrowLeft: 2, KeyA: 2, ArrowUp: 3, KeyW: 3 }[code];
     const inp = this.input;
     if (dir !== undefined) {
-      if (down) { unlock(); if (this.shop) this.shop = false; if (!inp.keys.has(code)) { inp.held = dir; inp.queued = dir; } inp.keys.add(code); }
+      if (down) { unlock(); if (this.shop) this.shop = false; if (!inp.keys.has(code)) { inp.held = dir; inp.queued = dir; inp.vec = null; } inp.keys.add(code); }
       else { inp.keys.delete(code); if (inp.held === dir && inp.id === null) inp.held = null; }
       return true;
     }
@@ -177,6 +178,7 @@ export class Game {
     const w = this.world, d = this.drill, L = this.val('tether');
     d.dir = dir;
     if (fromInput) { d.bore = this.val('momentum'); this.S.stats.moves++; }
+    if (fromInput && this.atCore && this.input.vec && this.fling(this.input.vec)) return;
     const nx = d.x + DX[dir], ny = d.y + DY[dir], ni = ny * N + nx, k = w.at(nx, ny);
     if (k === K.EMPTY) {
       if (w.lava[ni] > 0) { this.bump(); sfx.hiss(); return; }
@@ -206,6 +208,26 @@ export class Game {
     if (this.charge <= 0) { this.bump(); sfx.deny(); this.popup(nx, ny, 'EMPTY', '#ffe14a', 'bolt'); this.nudge = 2.5; return; }
     d.mode = 'dig'; d.target = ni; d.t = 0;
     d.dur = DIG_TIME[k] / SPEED[this.S.lv.drill] * (fromInput ? 1 : 0.55);
+  }
+  // From the core the drill can be thrown at any angle: it flies straight along the drag until ground, lava or
+  // the end of the tether stops it. Returns false when it cannot leave its cell that way.
+  fling([vx, vy]) {
+    const w = this.world, d = this.drill, L = this.val('tether');
+    let cx = d.x, cy = d.y, last = this.di;
+    const sx = vx > 0 ? 1 : -1, sy = vy > 0 ? 1 : -1, tdx = vx ? Math.abs(1 / vx) : Infinity, tdy = vy ? Math.abs(1 / vy) : Infinity;
+    let tx = tdx / 2, ty = tdy / 2;
+    for (let guard = 0; guard < 300; guard++) {
+      if (tx < ty) { tx += tdx; cx += sx; } else { ty += tdy; cy += sy; }
+      const i = cy * N + cx;
+      if (w.kind[i] !== K.EMPTY || w.lava[i] > 0 || w.dist[i] < 0 || w.dist[i] > L) break;
+      last = i;
+    }
+    if (last === this.di) return false;
+    d.x = last % N; d.y = (last / N) | 0; d.mode = 'slide'; d.speed = 24; d.wait = 0.13;
+    d.dir = Math.abs(vx) > Math.abs(vy) ? (vx > 0 ? 0 : 2) : (vy > 0 ? 1 : 3);
+    sfx.slide(Math.hypot(d.x - d.fx, d.y - d.fy));
+    this.retether(); this.arrive();
+    return true;
   }
   bump() { const d = this.drill; d.mode = 'bump'; d.t = 0; }
   // The tether is all paid out: say so on the cell that was refused, and point at the way home.
@@ -275,14 +297,17 @@ export class Game {
     const title = relic >= 0 ? 'RELIC!' : n >= 200 ? 'COLOSSAL!' : n >= 80 ? 'HUGE HAUL!' : n >= 30 ? 'BIG HAUL!' : n >= 10 ? 'NICE CUT!' : 'HAUL';
     this.banner = { title, n, mult, grit, gems, t: 0, life: 2.2 + Math.min(1.2, n * 0.01) };
     if (relic >= 0) { S.relics[relic] = 1; sfx.relic(); if (S.relics.every(Boolean) && !S.won) { S.won = true; this.wonAt = this.time; } }
-    this.drill.bore = 0; this.homeAfter = true;
+    this.drill.bore = 0; this.homeAfter = lift + 0.2;
   }
+  // A piece cut free gathers behind the drill, is towed home along the tether, and is paid out at the core.
   updateHauls(dt) {
+    const d = this.drill;
     for (const h of this.hauls) {
       h.t += dt;
+      if (h.home === undefined && this.atCore && d.mode === 'idle') h.home = h.t;
       let arrived = 0;
       for (const s of h.sprites) {
-        if (!s.done && h.t >= s.go + 0.42) {
+        if (!s.done && h.home !== undefined && h.t >= s.go + 0.42 && h.t >= h.home + (s.go - h.lift) * 0.5 + 0.12) {
           s.done = true; arrived++;
           if (s.gem) this.pending.gems[s.gem] = Math.max(0, this.pending.gems[s.gem] - s.gems);
         }
@@ -294,13 +319,14 @@ export class Game {
         this.coreFlash = 0.12;
         if (this.time - (this.lastTick ?? 0) > 0.045) { this.lastTick = this.time; sfx.tick(Math.floor(h.paid / Math.max(1, h.n / 14))); }
         if (h.paid >= h.n) {
+          h.doneAt = h.t;
           sfx.banked(h.n);
           this.effect('bank', 'area', (C + 0.5) * T, (C + 0.5) * T);
           this.save();
         }
       }
     }
-    if (this.hauls.length && this.hauls.every(h => h.t > h.end)) {
+    if (this.hauls.length && this.hauls.every(h => h.doneAt !== undefined && h.t > h.doneAt + 0.4)) {
       this.hauls.length = 0; this.pending.grit = 0; this.pending.gems.fill(0);
     }
   }
@@ -431,7 +457,7 @@ export class Game {
       sfx.recall();
     } else sfx.deny();
   }
-  recall() {
+  recall(reel = false) {
     const d = this.drill;
     if (this.atCore || d.mode === 'recall') return;
     const cells = this.pathCells, w = this.world;
@@ -446,7 +472,11 @@ export class Game {
     }
     d.route = [...this.pathPts.slice(1, -1).map(([x, y]) => [x - 0.5, y - 0.5]), [home % N, (home / N) | 0]]; d.at = 0; d.mode = 'recall';
     d.x = home % N; d.y = (home / N) | 0;
-    this.S.stats.recalls++;
+    if (!reel) this.S.stats.recalls++;
+    // Reeling a piece in is slow enough to watch; a plain recall is quick.
+    let len = 0, px = d.fx, py = d.fy;
+    for (const [x, y] of d.route) { len += Math.hypot(x - px, y - py); px = x; py = y; }
+    d.reel = reel ? Math.max(17, len / 2.6) : 70;
     this.input.queued = null;
     this.retether(); sfx.recall();
   }
@@ -509,7 +539,7 @@ export class Game {
       } else if (d.mode === 'bump') {
         d.t += dt; if (d.t > 0.14) d.mode = 'idle';
       } else if (d.mode === 'recall' || d.mode === 'launch') {
-        let step = 70 * dt;
+        let step = (d.mode === 'recall' ? d.reel : 70) * dt;
         while (step > 0 && d.at < d.route.length) {
           const [tx, ty] = d.route[d.at], dx = tx - d.fx, dy = ty - d.fy, far = Math.hypot(dx, dy);
           if (dx || dy) d.dir = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 0 : 2) : (dy > 0 ? 1 : 3);
@@ -519,7 +549,12 @@ export class Game {
       }
       if (d.mode === 'idle') {
         d.wait -= dt;
-        if (this.homeAfter) { this.homeAfter = false; if (!this.atCore) { Object.assign(inp, { queued: null, held: null, lock: true }); inp.keys.clear(); this.recall(); } }
+        if (this.homeAfter > 0) {
+          // The cut is finished: hold while the piece lifts, then reel it home.
+          Object.assign(inp, { queued: null, held: null, lock: true }); inp.keys.clear();
+          this.homeAfter -= dt;
+          if (this.homeAfter <= 0 && !this.atCore) this.recall(true);
+        }
         else if (d.next) { d.next = false; this.attempt(d.dir, false); }
         else if (inp.queued !== null) { const q = inp.queued; inp.queued = null; this.attempt(q, true); }
         else if (inp.held !== null && d.wait <= 0) this.attempt(inp.held, true);
@@ -614,18 +649,26 @@ export class Game {
       if (this.S.relics[dir]) drawScaled(ctx, `${BIOME_NAMES[DIR_BIOME[dir]]}-items`, 'relic', coreX + u, coreY + v, 8, 8);
     });
     this.drawTether(ox, oy);
-    // Cut pieces on their way in.
+    // Cut pieces: they lift, gather into a bundle behind the drill, ride home with it, then drop into the core.
     const hx = (C + 0.5) * T - ox, hy = (C + 0.5) * T - oy;
+    const tailX = d.fx * T + 8 - ox - DX[d.dir] * 12, tailY = d.fy * T + 8 - oy - DY[d.dir] * 12;
     for (const h of this.hauls) {
       const flash = h.t < h.lift && ((h.t * 24) | 0) % 2 === 0;
-      for (const s of h.sprites) {
-        if (s.done) continue;
-        const u = Math.max(0, (h.t - s.go) / 0.42), e = u * u * u;
+      h.sprites.forEach((s, n) => {
+        if (s.done) return;
+        const u = Math.max(0, Math.min(1, (h.t - s.go) / 0.42)), e = u * u;
         const lift = Math.min(1, h.t / h.lift) * 3;
+        const ring = Math.min(11, 2 + Math.sqrt(n) * 2.1), turn = n * 2.4 + h.t * 1.5;
+        let bx = tailX + Math.cos(turn) * ring - 8, by = tailY + Math.sin(turn) * ring - 8;
+        if (h.home !== undefined) {
+          // Home: each piece in turn leaves the bundle for the core.
+          const v = Math.max(0, Math.min(1, (h.t - h.home) / ((s.go - h.lift) * 0.5 + 0.12)));
+          bx += (hx - 8 - bx) * v * v; by += (hy - 8 - by) * v * v;
+        }
         let px = s.x * T - ox, py = s.y * T - oy - lift, size = T;
-        if (u > 0) { px += (hx - 8 - px) * e; py += (hy - 8 - py) * e; size = Math.round(T - 7 * Math.min(1, u * 1.5)); }
-        if (px < -T || py < -T || px > W || py > H) continue;
-        if (u > 0 && u < 0.5) { ctx.fillStyle = '#fff6c8'; this.line(px + 8, py + 8, hx, hy, 0.25); }
+        if (u > 0) { px += (bx - px) * e; py += (by - py) * e; size = Math.round(T - 8 * u); }
+        if (px < -T || py < -T || px > W || py > H) return;
+        if (u > 0 && u < 1) { ctx.fillStyle = '#fff6c8'; this.line(px + 8, py + 8, tailX, tailY, 0.25); }
         const off = (T - size) / 2;
         if (size === T) draw(ctx, s.tile[0], s.tile[1], px, py); else drawScaled(ctx, s.tile[0], s.tile[1], px + off, py + off, size, size);
         if (s.over) {
@@ -634,7 +677,7 @@ export class Game {
           if (size === T) draw(ctx, items, f, px, py); else drawScaled(ctx, items, f, px + off, py + off, size, size);
         }
         if (flash) { ctx.globalAlpha = 0.6; ctx.fillStyle = '#ffffff'; ctx.fillRect(Math.round(px) + 2, Math.round(py) + 2, 12, 12); ctx.globalAlpha = 1; }
-      }
+      });
     }
     // Spore clouds.
     for (const c of this.clouds) {

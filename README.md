@@ -6,7 +6,7 @@ Every sprite, tile set and effect is made with [Pixelbolt](https://github.com/sk
 
 ## How it plays
 
-- **Press anywhere and drag** to steer. Heading away from the core, the drill snaps to the next piece of ground in that direction; any other way it moves a cell at a time. Keep holding to cut. Arrow keys or WASD work on a desktop.
+- **Press anywhere and drag** to steer. Heading away from the core, the drill snaps to the next piece of ground in that direction; any other way it moves a cell at a time. From the core itself the drill can be thrown at any angle. Keep holding to cut. Arrow keys or WASD work on a desktop.
 - **Only hauls pay.** Drilling through ore crushes it. Cut round a piece instead, and when it no longer touches the rest of the world it flies home. The bigger the piece, the bigger the multiplier. Ground that is one cut from coming free glows.
 - **The tether is the limit.** It is a real string: it runs straight and bends only where it is pulled round a corner. When it is all paid out the drill stops. A longer tether is the first upgrade.
 - **After a haul** the drill rides the tether home with it. **The house button** does the same at any time. At the core the cell recharges and the upgrades are for sale; the same button then sends the drill back to where it was.
