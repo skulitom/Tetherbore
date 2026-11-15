@@ -305,15 +305,34 @@ const DRILL = [
   '................',
 ];
 const SPIN = { s: 'S', S: 's' };
+const DIRS = ['right', 'down', 'left', 'up'];
+// Each better bit is a different metal: steel, bronze, blue steel, gold, diamond.
+export const BITS = [
+  { s: '#eef2f8', S: '#8c96a8' }, { s: '#f4cc94', S: '#b4703a' }, { s: '#bfe4ff', S: '#4a86c8' }, { s: '#fff2a0', S: '#e0a020' }, { s: '#e6fffa', S: '#38dcd0' },
+];
+// The ram bolts on to the body: fins, longer fins, a thruster, then a second pair of fins and a lit thruster.
+const blank = () => Array.from({ length: 16 }, () => Array(16).fill('.'));
+const put = (g, y, x0, x1, c) => { for (let x = x0; x <= x1; x++) g[y][x] = c; };
+const RAMS = [1, 2, 3, 4].map(level => {
+  const g = blank();
+  const fin = level >= 2 ? 7 : 5;
+  put(g, 2, 3, fin, 'r'); put(g, 13, 3, fin, 'r'); put(g, 1, 3, fin - 1, 'k'); put(g, 14, 3, fin - 1, 'k');
+  if (level >= 3) { for (let y = 6; y <= 9; y++) put(g, y, 0, 1, y === 6 || y === 9 ? 'k' : 'r'); }
+  if (level >= 4) { put(g, 1, 3, 5, 'y'); put(g, 14, 3, 5, 'y'); put(g, 0, 3, 4, 'k'); put(g, 15, 3, 4, 'k'); put(g, 7, 0, 0, 'y'); put(g, 8, 0, 0, 'y'); }
+  return g.map(row => row.join(''));
+});
 export const drill = {
   version: 1, name: 'drill', width: 16, height: 16,
-  palette: { k: '#1c1420', b: '#ffd83a', d: '#e08a1c', c: '#3ab8e8', w: '#eafcff', s: '#eef2f8', S: '#8c96a8' },
-  symbols: { drill: DRILL },
-  frames: ['right', 'down', 'left', 'up'].flatMap((dir, i) => [
-    { name: `${dir}-a`, duration: 70, ops: [{ op: 'stamp', symbol: 'drill', x: 0, y: 0, ...(i && { rotate: i * 90 }) }] },
-    { name: `${dir}-b`, duration: 70, ops: [{ op: 'stamp', symbol: 'drill', x: 0, y: 0, ...(i && { rotate: i * 90 }), remap: SPIN }] },
-  ]),
-  animations: Object.fromEntries(['right', 'down', 'left', 'up'].map(dir => [dir, { frames: [`${dir}-a`, `${dir}-b`] }])),
+  palette: { k: '#1c1420', b: '#ffd83a', d: '#e08a1c', c: '#3ab8e8', w: '#eafcff', s: '#eef2f8', S: '#8c96a8', r: '#ff5a3a', y: '#ffe14a' },
+  symbols: { drill: DRILL, ...Object.fromEntries(RAMS.map((rows, n) => [`ram${n + 1}`, rows])) },
+  frames: [
+    ...BITS.flatMap((bit, level) => DIRS.flatMap((dir, i) => [
+      { name: `${dir}-a-${level}`, duration: 70, palette: bit, ops: [{ op: 'stamp', symbol: 'drill', x: 0, y: 0, ...(i && { rotate: i * 90 }) }] },
+      { name: `${dir}-b-${level}`, duration: 70, palette: bit, ops: [{ op: 'stamp', symbol: 'drill', x: 0, y: 0, ...(i && { rotate: i * 90 }), remap: SPIN }] },
+    ])),
+    ...RAMS.flatMap((rows, n) => DIRS.map((dir, i) => ({ name: `ram-${dir}-${n + 1}`, ops: [{ op: 'stamp', symbol: `ram${n + 1}`, x: 0, y: 0, ...(i && { rotate: i * 90 }) }] }))),
+  ],
+  animations: Object.fromEntries(BITS.flatMap((bit, level) => DIRS.map(dir => [`${dir}-${level}`, { frames: [`${dir}-a-${level}`, `${dir}-b-${level}`] }]))),
 };
 
 // ------------------------------------------------------------------ the core
@@ -340,16 +359,42 @@ const coreOps = [
     { op: 'pixel', x, y, color: 'l' }, { op: 'pixel', x: x + 1, y: y + 1, color: 'k' },
   ]),
 ];
+// A better winch is a better station: iron, steel, bronze, brass, gold, then gold gone radiant; from brass on it
+// grows teeth.
+export const HULLS = [
+  { l: '#c8ccd8', m: '#8a90a2', M: '#5a6074' }, { l: '#dce8f8', m: '#8aa4c8', M: '#566e94' }, { l: '#f4cc94', m: '#c48c52', M: '#84582c' },
+  { l: '#ffe8a4', m: '#dcac44', M: '#986e1c' }, { l: '#fff6bc', m: '#f4c434', M: '#b48010' }, { l: '#ffffff', m: '#ffe468', M: '#e49c20' },
+];
+const teeth = [[22, 0, 4, 3], [22, 45, 4, 3], [0, 22, 3, 4], [45, 22, 3, 4], [6, 6, 4, 4], [38, 6, 4, 4], [6, 38, 4, 4], [38, 38, 4, 4]]
+  .flatMap(([x, y, w, h]) => [{ op: 'rect', x, y, w, h, color: 'k', filled: true }, { op: 'rect', x: x + (w > 3 ? 1 : 0), y: y + (h > 3 ? 1 : 0), w: Math.min(w, 2), h: Math.min(h, 2), color: 'l', filled: true }]);
+const GLOWS = { a: {}, b: { g: '#3a90dc', G: '#84dcff' }, c: { g: '#5cc4f0', G: '#c8f4ff', D: '#2a4a78' }, flash: { g: '#c8f4ff', G: '#ffffff', D: '#5cc4f0' } };
 export const core = {
   version: 1, name: 'core', width: 48, height: 48,
   palette: { k: '#16121c', l: '#c8ccd8', m: '#8a90a2', M: '#5a6074', D: '#1e2a44', g: '#2a78c8', G: '#5cc4f0', w: '#eafcff' },
-  frames: [
-    { name: 'core-a', duration: 260, ops: coreOps },
-    { name: 'core-b', duration: 260, from: 'core-a', palette: { g: '#3a90dc', G: '#84dcff' } },
-    { name: 'core-c', duration: 260, from: 'core-a', palette: { g: '#5cc4f0', G: '#c8f4ff', D: '#2a4a78' } },
-    { name: 'core-flash', duration: 80, from: 'core-a', palette: { g: '#c8f4ff', G: '#ffffff', D: '#5cc4f0', m: '#b8c0d4', M: '#8a90a2' } },
-  ],
-  animations: { idle: { frames: ['core-a', 'core-b', 'core-c', 'core-b'] }, flash: { frames: ['core-flash'], loop: false } },
+  frames: HULLS.flatMap((hull, level) => Object.entries(GLOWS).map(([glow, lit]) => ({
+    name: `core-${glow}-${level}`, duration: glow === 'flash' ? 80 : 260, palette: { ...hull, ...lit },
+    ops: [...(level >= 3 ? teeth : []), ...coreOps, ...(level >= 5 ? [{ op: 'ellipse', x: 12, y: 12, w: 24, h: 24, color: 'w' }] : [])],
+  }))),
+  animations: Object.fromEntries(HULLS.map((hull, level) => [`idle-${level}`, { frames: [`core-a-${level}`, `core-b-${level}`, `core-c-${level}`, `core-b-${level}`] }])),
+};
+
+// The scanner is a dish on the station's shoulder; each level raises the mast and widens the dish.
+export const dish = {
+  version: 1, name: 'dish', width: 16, height: 16,
+  palette: { k: '#16121c', s: '#8a90a2', l: '#d8e4f4', c: '#5fe0d0', r: '#ff5a4a' },
+  frames: [0, 1, 2, 3, 4].flatMap(level => {
+    const h = 4 + level * 2, w = 1 + level, top = 14 - h;
+    const ops = [
+      { op: 'line', x: 8, y: 15, x2: 8, y2: top + 1, color: 's' },
+      { op: 'line', x: 8 - w, y: top, x2: 8 + w, y2: top, color: 'l' },
+      { op: 'pixel', x: 8 - w, y: top - 1, color: 'l' }, { op: 'pixel', x: 8 + w, y: top - 1, color: 'l' },
+      ...(level >= 2 ? [{ op: 'pixel', x: 8 - w, y: top - 2, color: 'l' }, { op: 'pixel', x: 8 + w, y: top - 2, color: 'l' }] : []),
+      { op: 'pixel', x: 8, y: top - 1, color: 'c' },
+      { op: 'outline', color: 'k', position: 'outside' },
+    ];
+    return [{ name: `dish-${level}`, duration: 500, ops }, { name: `dish-${level}-b`, duration: 160, ops, palette: { c: '#ffffff' } }];
+  }),
+  animations: Object.fromEntries([0, 1, 2, 3, 4].map(level => [`dish-${level}`, { frames: [`dish-${level}`, `dish-${level}-b`] }])),
 };
 
 // ------------------------------------------------------------------ icons
@@ -640,7 +685,7 @@ export const cracks = {
   frames: [1, 2, 3, 4].map(n => ({ name: `crack-${n}`, ops: crackOps(n) })),
 };
 
-export const RECIPES = [cracks, frost, ember, mire, lode, drill, core, icons, upgrades, ui, logo, tough];
+export const RECIPES = [cracks, dish, frost, ember, mire, lode, drill, core, icons, upgrades, ui, logo, tough];
 
 // The home-screen icon: the core on dark ground, with the drill out on its tether.
 const shift = (ops, dx, dy) => ops.map(op => ({ ...op, x: op.x + dx, y: op.y + dy }));

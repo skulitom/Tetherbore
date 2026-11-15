@@ -22,7 +22,7 @@ for b in ['frost','ember','mire','lode']:
     out.alpha_composite(fr(b,b+'-0-a'),(6*16,row*16))
     out.alpha_composite(fr(b+'-items','oreA'),(6*16,row*16))
     row+=1
-for i,d in enumerate(['right-a','right-b','down-a','left-a','up-a']):
+for i,d in enumerate(['right-a-0','right-a-1','right-a-2','right-a-3','right-a-4']):
     out.alpha_composite(fr('crust-floor','crust-floor-255-a'),(i*16,row*16))
     out.alpha_composite(fr('drill',d),(i*16,row*16))
 for i,n in enumerate(['slate','vault','bedrock','crust']):
@@ -32,6 +32,6 @@ for i,n in enumerate(atlas['upgrades']['frames']): out.alpha_composite(fr('upgra
 row+=1
 for i,n in enumerate(atlas['icons']['frames']): out.alpha_composite(fr('icons',n),(i*12+1,row*16+2))
 for i,n in enumerate(['hand','recall','sound','mute']): out.alpha_composite(fr('ui',n),(i*16+1, (row+1)*16))
-out.alpha_composite(fr('core','core-a'),(96,(row)*16))
+out.alpha_composite(fr('core','core-a-0'),(96,(row)*16))
 out=out.resize((out.width*6,out.height*6),Image.NEAREST)
 out.save(sys.argv[1])

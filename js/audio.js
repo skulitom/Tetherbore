@@ -56,6 +56,7 @@ export const sfx = {
   dig(hard) { noise(0.09, { freq: 1900 - hard * 320, to: 500, gain: 0.22, q: 0.8 }); tone(150 - hard * 18, 0.06, { gain: 0.12, to: 70 }); },
   grind() { noise(0.05, { freq: 2600, to: 1400, gain: 0.07, q: 2 }); },
   slide(cells) { noise(0.12 + Math.min(cells, 12) * 0.012, { freq: 500, to: 2600, gain: 0.1, q: 1.4 }); },
+  step(run) { noise(0.035, { freq: 700 + run * 1100, to: 400 + run * 600, gain: 0.05, q: 2.5 }); },
   thud() { tone(110, 0.09, { type: 'sine', gain: 0.3, to: 50 }); },
   clink() { tone(1500, 0.07, { type: 'triangle', gain: 0.2, to: 1100 }); tone(2300, 0.05, { type: 'triangle', gain: 0.1, delay: 0.02 }); },
   twang() { tone(190, 0.32, { type: 'sawtooth', gain: 0.16, to: 120 }); tone(380, 0.2, { type: 'triangle', gain: 0.1, to: 250 }); },
