@@ -935,8 +935,9 @@ export class Game {
     return { key: zone ? zone.key : row.id, row, zone };
   }
   // The drill has come into another cell. If that is another place, its name comes up: on a plate under the top
-  // bar with its direction's gem beside it, or, the first time ever that this ground is met, alone across the
-  // screen. The name and nothing more.
+  // bar with its direction's gem beside it (and, where its rich ore pays another direction's gems, as a cross's
+  // does, that gem after it), or, the first time ever that this ground is met, alone across the screen. The name
+  // and nothing more.
   arrive(i) {
     const here = this.placeAt(i);
     if (here.key === this.placeKey) return;
@@ -944,7 +945,7 @@ export class Game {
     const S = this.S, row = here.row, card = !S.met[row.id];
     S.met[row.id] = 1;
     if (here.zone) S.visited[here.key] = 1;
-    this.place = { title: row.title, icon: GEM_ICON[row.kin] ?? 'grit', colour: bright(row.map), t: 0, card, life: card ? CARD : PLATE };
+    this.place = { title: row.title, icon: GEM_ICON[row.kin] ?? 'grit', also: row.gemB !== row.kin ? GEM_ICON[row.gemB] ?? null : null, colour: bright(row.map), t: 0, card, life: card ? CARD : PLATE };
     // (A border that wanders is crossed many times in a few cells: the name changes each time, the sound does not.)
     if (card) sfx.arrive(row.kin); else if (this.time - this.motifAt > PLATE) sfx.place(row.kin);
     this.motifAt = this.time;
@@ -1720,9 +1721,11 @@ export class Game {
     return [sheet, rects[(cellHash(x, y, 3) * rects.length) | 0]];
   }
   // What is drawn over a cell's rock, as [sheet, frame], or null for nothing: dense rock and ore from its ground's
-  // own sheet (`row`), a hazard from its type's, a relic from its direction's, a find from the finds'.
+  // own sheet (`row`), a hazard from its type's, a relic from its direction's, a find from the finds'. A cross's
+  // rich ore is its donor's, and is drawn as the donor's (`itemsB`), so that what it looks like is what it pays.
   overlay(k, row) {
-    if (k === K.DENSE || k === K.ORE_A || k === K.ORE_B) return [row.items, k === K.DENSE ? 'dense' : k === K.ORE_A ? 'oreA' : 'oreB'];
+    if (k === K.ORE_B) return [row.itemsB, 'oreB'];
+    if (k === K.DENSE || k === K.ORE_A) return [row.items, k === K.DENSE ? 'dense' : 'oreA'];
     if (k === K.HAZARD || k === K.HAZARD2) { const haz = hazOf(k, row); return haz ? [HAZARDS[haz].sheet, 'hazard'] : null; }
     // Slag and the steel it is quenched to are the lava's, drawn from the lava's sheet whatever ground they lie in.
     if (k === K.SLAG || k === K.STEEL) return [HAZARDS.lava.sheet, k === K.SLAG ? 'slag' : 'steel'];
@@ -2306,13 +2309,15 @@ export class Game {
     this.button(W - ww - 6, 42, ww + 6, 20, () => {
       if (this.confirmReset > 0) { this.confirmReset = 0; this.fresh((Math.random() * 1e9) | 0); this.save(); sfx.relic(); } else { this.confirmReset = 2.5; sfx.tap(); }
     });
-    // The place the drill has come into: its name on a plate, with its direction's gem.
+    // The place the drill has come into: its name on a plate, with its direction's gem (and a second gem, where
+    // the place pays two).
     if (place && !place.card) {
-      const slide = Math.min(1, place.t / 0.15), pw = textWidth(place.title) + 23, px = 4 - Math.round((1 - slide) * (1 - slide) * 10);
+      const more = place.also ? 11 : 0, slide = Math.min(1, place.t / 0.15), pw = textWidth(place.title) + 23 + more, px = 4 - Math.round((1 - slide) * (1 - slide) * 10);
       ctx.globalAlpha = Math.min(1, slide, (place.life - place.t) / 0.3);
       slice9(ctx, 'ui', 'panel', px, 44, pw, 14);
       draw(ctx, 'icons', place.icon, px + 4, 46);
-      text(ctx, place.title, px + 17, 46, place.colour);
+      if (place.also) draw(ctx, 'icons', place.also, px + 15, 46);
+      text(ctx, place.title, px + 17 + more, 46, place.colour);
       ctx.globalAlpha = 1;
     }
     this.drawMap(W - 54, H - 58);
