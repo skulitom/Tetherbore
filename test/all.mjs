@@ -14,7 +14,8 @@ const here = fileURLToPath(new URL('.', import.meta.url)), only = process.argv[2
 const ARGS = {
   'a-fuzz-field': [[1, 400, 0], [1, 400, 1], [1, 400, 2], [1, 400, 3], [1, 400, 4]],
   'a-fuzz-keys': [[2, 300, 0, 4], [2, 300, 1, 4], [2, 300, 2, 4], [2, 300, 3, 4], [2, 300, 4, 4]],
-  'a-fuzz-soft': [[4, 500, 16, 2, 4], [14, 500, 16, 2, 4], [18, 500, 12, 0, 0]],
+  // (The last number is the level of BLAST: the bomb's widest room, its narrowest, and none.)
+  'a-fuzz-soft': [[4, 500, 16, 2, 4], [14, 500, 16, 2, 4], [18, 500, 12, 0, 0], [5, 500, 16, 2, 1], [6, 500, 16, 2, 3]],
   'b-fuzz-fast': [[1, 100, 4, 80, 70, 60], [2, 100, 4, 80, 70, 30]],
   'e-hazard-fuzz': [[2, 500, 0, 170, 0.08], [1, 300, -170, 0, 0.08], [4, 300, 170, 0, 0.08],
     [3, 300, 0, 170, 0.08, 5, 'second'], [5, 300, -170, 0, 0.08, 5, 'second'], [6, 300, 170, 0, 0.08, 5, 'second'],
@@ -47,7 +48,11 @@ const ARGS = {
     // mouldstone, frothy hailstone, banded kilnstone.
     [7, 300, 8, -640, -640, 60], [7, 300, 8, 384, 1152, 'mix', 'bombs'], [7, 300, 9, -128, -1408, 60], [7, 300, 9, -1408, -128, 60, 'bombs'],
     [7, 300, 9, -128, 1920, 60], [7, 300, 8, 1152, 384, 30], [7, 300, 9, 384, -1408, 'mix'], [7, 300, 9, 1920, 640, 60],
-    [7, 300, 9, -128, -1920, 60], [7, 300, 9, 1408, 384, 60]],
+    [7, 300, 9, -128, -1920, 60], [7, 300, 9, 1408, 384, 60],
+    // With bombs in the north's own ground (the room a charge leaves freezes over, and heals as ore beside ore),
+    // the south's (pockets of lava left standing asleep in their slag) and the west's (pods left hanging), and
+    // on the first reach but one from the core, with trips home to fill the rack.
+    [25, 300, 5, 10, -190, 60, 'bombs'], [26, 300, 5, 20, 180, 60, 'bombs'], [27, 300, 5, -190, 10, 'mix', 'bombs'], [29, 300, 1, 0, 0, 60, 'bombs,home']],
 };
 const tests = [];
 for (const file of readdirSync(here + 'regress').filter(name => name.endsWith('.mjs')).sort()) {

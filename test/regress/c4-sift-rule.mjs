@@ -11,6 +11,10 @@
 //   in ground that freezes the room closes over with ice like any cut;
 //   a charge that would open nothing is not spent and says NO ROCK; with none left the tap says NO BOMBS;
 //   and a lump the charge left loose is hauled by flying round it, and pays its gems.
+// The room round what stands is two cells for the thumb's sake (the plan's note: try the swirl round one nugget).
+// The drill is 0.68 of a cell wide and cuts what it is pushed into, so a lane one cell wide lets no circle through:
+// a thumb's circle round a nugget on the disc's edge, flown at the first bits and rams and at the last, brings the
+// nugget home whole every time with two cells of room, and with one cell crushes it some of the times.
 import { makeGame, K, B, C, N, at, rect, arena, fixRandom, flyTo, idle, isLoose, tetherFaults, world } from './lib/lasso.mjs';
 
 const { SIFT } = await import('../../js/game.js');
@@ -160,6 +164,33 @@ for (const [ground, type] of [[B.EMBER, 'lava'], [B.MIRE, 'spore'], [B.LODE, 'sp
   idle(game, 0.3);
   check(game.S.stats.hauls === 1 && w.k(i) === K.EMPTY && game.S.gems[B.LODE] === 5, `flown round, the nugget was hauled ${game.S.stats.hauls} times and paid ${game.S.gems[B.LODE]} gems`);
   check(game.cuts === cut + 1, `the flight round the nugget cut ground (${game.cuts - cut - 1} cuts besides the haul's own)`);
+}
+
+// The swirl: a thumb's circle round one nugget on the disc's edge, steered at a point a little way on round the
+// circle from where the drill is, with no care for cells. `radius` is the circle's, in cells from the nugget's middle.
+{
+  const swirl = async (room, radius, drill, ram) => {
+    SIFT.room = room;
+    const game = await staged(1, { ground: B.LODE }), w = game.world, d = game.drill, i = at(X + 2, 1), nx = C + X + 2.5, ny = C + 1.5;
+    game.S.lv.drill = drill; game.S.lv.momentum = ram;
+    w.setK(i, K.ORE_B); game.changed();
+    game.blast();
+    for (let f = 0; f < 600 && w.k(i) === K.ORE_B; f++) {
+      const a = Math.atan2(d.y - ny, d.x - nx) + 0.6, tx = nx + Math.cos(a) * radius, ty = ny + Math.sin(a) * radius, far = Math.hypot(tx - d.x, ty - d.y);
+      game.input.auto = [(tx - d.x) / far, (ty - d.y) / far, 1];
+      game.update(1 / 60);
+    }
+    idle(game, 0.3);
+    return game.S.stats.hauls === 1 && game.S.gems[B.LODE] === 5;
+  };
+  let whole = 0, crushed = 0;
+  for (const [drill, ram] of [[0, 0], [1, 1], [2, 2], [4, 4]]) {
+    for (const radius of [1.3, 1.6, 2]) if (await swirl(2, radius, drill, ram)) whole++;
+    for (const radius of [0.9, 1, 1.1]) if (!await swirl(1, radius, drill, ram)) crushed++;
+  }
+  Object.assign(SIFT, figures);
+  check(whole === 12, `with two cells of room a thumb's circle brought the nugget home whole ${whole} times in 12`);
+  check(crushed > 0, 'with one cell of room a thumb\'s circle never crushed the nugget: the second cell of room is not needed');
 }
 
 console.log(fails.length ? `DEFECT:\n  ${fails.join('\n  ')}` : 'no defect: a charge opens the plain rock of its disc and round what stands, wakes nothing, and leaves every lump loose in the books');
