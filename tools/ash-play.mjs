@@ -49,12 +49,13 @@ export async function play(seed = 7, pick = 0, share = 0.62, lv = {}) {
   const out = { flat: Z, levels, tektites, loop: R, hauled: [], n: 0, minerals: 0, cut: 0, crushed: 0, said: 0, t: 0, lap: 0, pace: 0, speed: 0, run: 0, grit: 0, rate: 0, worstMs: 0, faults: [], game };
   const finish = game.finishDig.bind(game), popup = game.popup.bind(game), haul = game.haul.bind(game);
   game.finishDig = i => { out.cut++; if (w.k(i) === Z.mineral) out.crushed++; finish(i); };
-  game.popup = (x, y, label, ...rest) => { if (label === 'CRUSHED') out.said++; popup(x, y, label, ...rest); };
+  // (The lab's count of a sample, `TEKTITE 3/4`, is what is said of a tektite cut through; a level gained is not counted.)
+  game.popup = (x, y, label, ...rest) => { if (label === 'CRUSHED' || /[0-9][/][0-9]+$/.test(label)) out.said++; popup(x, y, label, ...rest); };
   // (What a haul's tektites pay by themselves, worked out here from the cells before they go: half a second of
   // what cutting earns out there, each.)
   const round2 = n => { const unit = 10 ** Math.max(0, Math.floor(Math.log10(n)) - 1); return Math.round(n / unit) * unit; };
   game.haul = cells => {
-    const ash = cells.filter(i => w.b(i) === Z.row).length, lump = cells.reduce((sum, i) => sum + (w.b(i) === Z.row && w.k(i) === Z.mineral ? round2(income(Math.max(22, Math.hypot(i % N - C, Math.floor(i / N) - C))) * P.lump) : 0), 0);
+    const ash = cells.filter(i => w.b(i) === Z.row).length, lump = cells.reduce((sum, i) => sum + (w.b(i) === Z.row && w.k(i) === Z.mineral ? round2(income(Math.max(22, Math.hypot(i % N - C, Math.floor(i / N) - C))) * P.lump * (1 + game.studied(w.k(i), w.row(i)))) : 0), 0);
     haul(cells);
     const h = game.hauled;
     out.hauled.push({ n: h.n, ash, minerals: h.minerals, paid: h.grit, lump, spec: h.spec, light: h.light, title: h.title, says: h.light ? null : game.bannerSays(h)[0] }); out.n += h.n; out.minerals += h.minerals;

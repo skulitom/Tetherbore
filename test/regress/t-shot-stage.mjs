@@ -143,22 +143,6 @@ check(await open('', 'example.org') === undefined, 'away from localhost an ordin
   check(!tetherFaults(game).length, `the tether beside woken lava: ${tetherFaults(game).join('; ')}`);
 }
 
-// `bombs`: the drill holds that level of BLAST, and the ground round the end of the tunnel is as the seed laid it
-// (no room is carved). `blast`: one charge is set off there, and what it shook loose is known.
-{
-  const rock = game => { let n = 0; for (let y = -2; y <= 2; y++) for (let x = -2; x <= 2; x++) n += game.world.k((C - 156 + y) * N + C + 6 + x) !== K.EMPTY; return n; };
-  const room = await open('?shot&seed=7&at=6,-156');
-  check(rock(room.game) === 0 && room.shot.facts().bombs === 0 && room.game.S.lv.bombs === 0, 'a view staged without `bombs` has no room round the drill, or has bombs');
-  const before = await open('?shot&seed=7&at=6,-156&bombs=3'), b = before.shot.facts();
-  check(rock(before.game) > 0 && b.bombs === 3 && before.game.S.lv.bombs === 3 && b.opened === 0, `staged with bombs=3: ${rock(before.game)} cells of rock within two of the drill, ${b.bombs} charges, ${b.opened} opened`);
-  const after = await open('?shot&seed=7&at=6,-156&bombs=3&blast'), a = after.shot.facts();
-  check(a.bombs === 2 && a.opened > 20 && a.loose > b.loose && rock(after.game) < rock(before.game), `staged with blast: ${a.bombs} charges left, ${a.opened} cells opened, ${a.loose} loose pieces (${b.loose} before)`);
-  after.advance(1000);
-  check(!tetherFaults(after.game).length, `the tether in the room a charge made: ${tetherFaults(after.game).join('; ')}`);
-  const idle = await open('?shot&seed=7&at=6,-156&blast');
-  check(idle.shot.facts().opened === 0 && rock(idle.game) === 0, '`blast` without `bombs` set a charge off');
-}
-
 // `key`: the last cut of a keystone slab (seed 7's first slab lies 52 cells south of the core, 3 east).
 {
   const t = await open('?shot&seed=7&at=3,52&key'), game = t.game, w = game.world, d = game.drill, S = w.firstSlab, f = t.shot.facts();

@@ -24,7 +24,6 @@ const dtMode = argv[5] ?? '60', flags = new Set((argv[6] ?? '').split(',').filte
 const HX = C + 0.5, HY = C + 0.5, HARD = world.HARD;
 Math.random = random(seed + 5);
 const lv = { tether: reach, drill: flags.has('lowdrill') ? 1 : 4 };
-if (flags.has('bombs')) lv.bombs = 4;
 if (flags.has('ram')) lv.momentum = 4;
 const game = await makeGame(seed, lv);
 const d = game.drill, w = game.world, rnd = random(seed * 7 + 1);
@@ -359,7 +358,6 @@ function tripHome() {
     buySome();
     game.key('Escape', true);
   }
-  if (flags.has('bombs') && game.bombs !== game.val('bombs')) stats.bombsNotRefilled = (stats.bombsNotRefilled ?? 0) + 1;
   // The throw: a fresh stroke at any angle.
   const a = rnd() * 6.283;
   game.pointerDown(1, 180, 400); game.pointerMove(1, 180 + Math.cos(a) * 40, 400 + Math.sin(a) * 40);
@@ -382,7 +380,6 @@ for (let turn = 0; turn < turns; turn++) {
   for (let f = 0; f < hold; f++) {
     game.input.auto = pause ? null : [Math.cos(heading), Math.sin(heading), 1];
     step(nextDt(), !pause);
-    if (flags.has('bombs') && rnd() < 0.004) { if (game.bombs <= 0 && !flags.has('home')) game.bombs = game.val('bombs'); if (game.bombs > 0) { game.blast(); stats.blasts++; books(); for (const f2 of tetherFaults(game)) note('tether after a blast: ' + f2.replace(/[-\d.(),]+/g, '#'), f2); } }
     if (flags.has('forceshop') && rnd() < 0.003) { game.shop = true; stats.shops++; for (let k = 0; k < 1 + Math.floor(rnd() * 90); k++) step(nextDt(), false); buySome(); game.shop = false; }
   }
   if (flags.has('home') && turn % 23 === 11) tripHome();

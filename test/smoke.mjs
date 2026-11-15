@@ -10,7 +10,7 @@ const problems = [];
 const note = (where, what) => { if (problems.length < 20) problems.push(`${where}: ${what}`); };
 
 for (const [name, sx, sy, reach] of [['home', 0, 0, 4], ['north', 0, -260, 6], ['south', 0, 260, 6], ['west', -260, 0, 6], ['east', 260, 0, 6], ['far north-east', 700, -700, 8], ['far south', 0, 1300, 9]]) {
-  const game = await makeGame(seed, { tether: reach, drill: 3, bombs: 2 });
+  const game = await makeGame(seed, { tether: reach, drill: 3 });
   const d = game.drill, w = game.world, rnd = random(seed + sx * 3 + sy * 7);
   if (sx || sy) {
     const len = Math.hypot(sx, sy);
@@ -32,7 +32,6 @@ for (const [name, sx, sy, reach] of [['home', 0, 0, 4], ['north', 0, -260, 6], [
         const faults = tetherFaults(game);
         if (faults.length) note(name, `frame ${frames}: ${faults[0]}`);
       }
-      if (turn % 9 === 4) { game.blast?.(); }
       if (turn % 13 === 6) { game.shop = true; game.shopRise = 1; game.render(); for (const u of UPGRADES) if (rnd() < 0.3) game.buy(u); game.render(); game.shop = false; game.shopRise = 0; }
       if (!Number.isFinite(game.S.grit) || game.S.grit < 0) note(name, `grit is ${game.S.grit}`);
       if (game.S.gems.some(g => !Number.isFinite(g) || g < 0)) note(name, `gems are ${game.S.gems}`);

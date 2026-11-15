@@ -4,7 +4,7 @@
 //   - amber is drawn from the 'minerals' sheet over its block of wax, and a stalk as the cord that runs level or
 //     the one that stands upright, as it lies between its nugget and its wall; a mineral with no picture is not
 //     drawn, and a stalk asked about with no cell is upright;
-//   - amber sheds amber, a stalk and the wax shed wax; amber cut into says CRUSHED, shatters and pays nothing, a
+//   - amber sheds amber, a stalk and the wax shed wax; amber cut into is a sample for the lab (AMBER +1%), shatters and pays nothing, a
 //     stalk cut says nothing, and the nugget whose stalk is cut is in the books as loose;
 //   - coming into the hive names it, across the screen the first time and on a plate after, with the amber on
 //     the plate; its amber is called out by name, in the hive's own colour;
@@ -75,7 +75,7 @@ const stand = (game, x, y) => { const d = game.drill; d.x = d.px = x + 0.5; d.y 
   w.see(n.mx, n.my, 6);
   game.popups.length = 0;
   game.finishDig(n.far);
-  check(!game.popups.some(p => p.label === 'CRUSHED'), 'a stalk cut says CRUSHED');
+  check(!game.popups.some(p => p.label === 'CRUSHED' || p.label.startsWith('AMBER')), 'a stalk cut says CRUSHED, or is a sample of amber');
   const piece = game.pieceOf.get(n.my * N + n.mx);
   check(piece && piece.length === 10 && piece.includes(n.near) && piece.filter(i => w.k(i) === K.MINERAL).length === 9, `a stalk cut: the nugget is ${piece ? `a loose piece of ${piece.length} cells` : 'not in the books as loose'}`);
   // What that piece would pay is nine lumps and nine quarters of a specimen, and asking banks nothing.
@@ -84,7 +84,7 @@ const stand = (game, x, y) => { const d = game.drill; d.x = d.px = x + 0.5; d.y 
   // Amber cut into: crushed.
   game.popups.length = 0; game.effects.length = 0;
   game.finishDig(amber);
-  check(w.k(amber) === K.EMPTY && game.popups.some(p => p.label === 'CRUSHED') && game.effects.some(e => e.sheet === 'shatter') && S.grit === grit && S.spec.every(n => n === 0), `amber cut into: ${JSON.stringify(game.popups.map(p => p.label))}, grit ${S.grit - grit}, specimens ${S.spec}`);
+  check(w.k(amber) === K.EMPTY && game.popups.some(p => p.label === 'AMBER +1%') && S.lab['minerals:amber'] === 1 && game.effects.some(e => e.sheet === 'shatter') && S.grit === grit && S.spec.every(n => n === 0), `amber cut into: ${JSON.stringify(game.popups.map(p => p.label))}, grit ${S.grit - grit}, specimens ${S.spec}`);
 }
 
 // ---- 3. named
@@ -131,23 +131,6 @@ const stand = (game, x, y) => { const d = game.drill; d.x = d.px = x + 0.5; d.y 
   const inside = [-1, 0, 1].map(v => w.k((y + v) * N + x)), outside = [-1, 0, 1].map(v => w.k((y + v) * N + x - 1));
   check(inside.every(k => k === K.EMPTY) && outside.every(k => k === K.SOFT), `after a pod's cloud, the hive's open cells are ${inside} and the mire's beside them ${outside}`);
   check(w.k((y + 5) * N + x) === K.EMPTY && w.k((y + 5) * N + x - 1) === K.BASALT && !w.lava.size, `after lava, the hive's cell is ${w.k((y + 5) * N + x)} and the mire's ${w.k((y + 5) * N + x - 1)}`);
-}
-
-// ---- 5. a charge
-{
-  const { game, w, nuggets } = await stage({ bombs: 3 }), n = nuggets[0];
-  // In the lane on the side the stalk hangs from: the wall it hangs on is within the charge's room.
-  const sx = n.mx + 3 * n.side[0] + (n.side[0] ? 0 : 2), sy = n.my + 3 * n.side[1] + (n.side[1] ? 0 : 2);
-  stand(game, sx, sy); game.bombs = 3;
-  w.see(sx, sy, 8);
-  const opens = game.sifts(sx, sy);
-  check(opens.length > 8 && opens.every(i => w.k(i) === K.SOFT), `a charge in a chamber would open ${opens.length} cells, of kinds ${[...new Set(opens.map(i => w.k(i)))]}`);
-  game.blast();
-  const nugget = [];
-  for (let v = -1; v <= 1; v++) for (let u = -1; u <= 1; u++) nugget.push((n.my + v) * N + n.mx + u);
-  check(nugget.every(i => w.k(i) === K.MINERAL) && w.k(n.near) === K.NODE && w.k(n.far) === K.NODE, 'a charge opened amber or a stalk');
-  const piece = game.pieceOf.get(nugget[4]);
-  check(piece && piece.length === 11 && nugget.every(i => piece.includes(i)), `after the charge the nugget is ${piece ? `a loose piece of ${piece.length} cells` : 'not in the books as loose'}`);
 }
 
 console.log(fails.length ? `DEFECT: ${fails.join('\n        ')}` : 'ok: amber and its stalk are drawn, shed, named and crushed as a pocket\'s own, nothing grows back in the hive, and a charge leaves its nuggets hanging');

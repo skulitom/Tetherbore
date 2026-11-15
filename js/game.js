@@ -59,26 +59,40 @@ export const UPGRADES = [
   { id: 'winch', icon: 'winch', name: 'WINCH', what: 'BIGGER HAULS AT FULL PAY', values: [1, 1.3, 1.6, 2, 2.5, 3], gem: B.FROST, ...levels([0.8, 2, 3.6, 5.4, 7.2], 0.5), show: v => `x${v}` },
   { id: 'scanner', icon: 'scanner', name: 'SCAN', what: 'SEES DEEPER IN ROCK', values: [3, 4, 5, 7, 9], gem: B.FROST, ...levels([0.4, 1.6, 3.4, 5.8], 0.3), show: v => `${v}` },
   { id: 'momentum', icon: 'momentum', name: 'RAM', what: 'FLIES FASTER', values: [1, 1.25, 1.5, 1.8, 2.2], gem: B.LODE, ...levels([0.7, 2.4, 4.2, 6.2], 0.4), show: v => `x${v}` },
-  // The bomb: a charge blows the plain rock out of a room round the drill and wakes nothing (`SIFT`, `sifts`). What
-  // was worth having stands loose in the room, to be flown round. A level is another charge and, later, a wider room.
-  // It is not sold (`SHOP`): the owner took the bomb out of the upgrades. The row stays here so that a save which
-  // bought it keeps its charges and the rule stays whole and tested.
-  { id: 'bombs', icon: 'bomb', name: 'BLAST', what: 'BOMB: SHAKES ORE LOOSE', values: [0, 1, 2, 3, 4], gem: B.EMBER, ...levels([1, 2.8, 5, 7.4], 0.4), show: v => `${v}` },
 ];
-// The rows the shop shows and sells.
-export const SHOP = UPGRADES.filter(u => u.id !== 'bombs');
-// A charge clears a disc of this radius round the drill's cell, in cells, by the level of BLAST (the cells whose
-// middles lie that near: 21, 21, 37 and 69 of them). Only plain rock goes (`PLAIN`: soft and dense rock, ice,
-// basalt, glass and fault rock): ore, slate, slag and steel, hazards asleep, caches and whatever else was laid to be
-// found stand. So that what stands can be flown round, the plain rock round it goes too, `room` cells deep on
-// every side and at the corners, past the disc's edge where it stands near the edge; and a lump that runs on out
-// of the disc is followed `shake` cells past its edge. (Played with no hand on it, tools/sift.mjs,
-// 214 charges aimed where ore stands, on four worlds. As first planned, a plain disc with dense rock left standing,
-// two charges in three shook nothing loose: half the room stood, and a lump of ore nearly always runs on over the
-// disc's edge and holds to the wall. As it is, one in thirty-five. `room` is two cells because the drill is 0.68 of
-// a cell wide and cuts whatever it is pushed into: a lane one cell wide past a nugget is a nugget crushed.)
-export const SIFT = { radius: [0, 2.5, 2.5, 3.5, 4.5], shake: 2, room: 2 };
-const PLAIN = []; for (const k of [K.SOFT, K.DENSE, K.ICE, K.BASALT, K.GLASS, K.FAULT]) PLAIN[k] = true;
+// What the lab can know: each thing the bit can crush, by the sheet and frame it is drawn from (`Game.sampleOf`),
+// with its name, where it lies, and the lab's note on it. A thing crushed is a sample analysed, and what is known
+// of a thing makes every one of it hauled worth more: a hundredth more for the first sample, and a hundredth more
+// each time the count of samples doubles (`labLevel`). So the first few samples teach the most, and crushing ore
+// for its own sake soon stops paying. (A prism pays nothing itself, so there is nothing of it to learn.)
+export const LAB = [
+  { key: 'lode-items:oreA', name: 'COPPER', where: 'HOME GROUND AND EAST', note: 'SOFT RED METAL WITH A GREEN BLOOM. THE FIRST THING A NEW BIT LEARNS THE TASTE OF.' },
+  { key: 'lode-items:oreB', name: 'VIOLET QUARTZ', where: 'HOME GROUND AND EAST', note: 'A CRYSTAL THAT HOLDS A CHARGE. IT HUMS WHEN A SPARK VEIN IS NEAR.' },
+  { key: 'frost-items:oreA', name: 'RIME SALT', where: 'NORTH', note: 'BLUE SALT FROZEN SQUARE. IT KEEPS ITS COLD FOR A HUNDRED YEARS.' },
+  { key: 'frost-items:oreB', name: 'AURORA SPAR', where: 'NORTH', note: 'PINK AND GREEN NEEDLES, GROWN IN THE DARK UNDER THE ICE.' },
+  { key: 'ember-items:oreA', name: 'CINDER ORE', where: 'SOUTH', note: 'IRON STILL WARM FROM THE DEEP. IT NEVER QUITE COOLS.' },
+  { key: 'ember-items:oreB', name: 'SUNSTONE', where: 'SOUTH', note: 'A SPARK THAT FORGOT TO GO OUT. BRIGHTEST BESIDE LAVA.' },
+  { key: 'ember-items:steel', name: 'STEEL', where: 'SOUTH, WHERE LAVA MEETS SLAG', note: 'SLAG QUENCHED BY LAVA. DOWN HERE THE GROUND DOES ITS OWN SMELTING.' },
+  { key: 'mire-items:oreA', name: 'BOG GOLD', where: 'WEST', note: 'NUGGETS SWEATED OUT BY ROOTS. THE FUNGUS HAS NO USE FOR IT.' },
+  { key: 'mire-items:oreB', name: 'GLOWCAP', where: 'WEST', note: 'A MUSHROOM THAT EATS ROCK AND LIGHTS ITS OWN WAY THROUGH IT.' },
+  { key: 'minerals:amber', name: 'AMBER', where: 'AMBER HIVES', note: 'HONEY OF THE HIVE GONE TO STONE. EACH NUGGET HANGS BY ONE STALK.' },
+  { key: 'minerals:aerolite', name: 'AEROLITE', where: 'PUMICE DRIFTS', note: 'A STAR THAT FELL INTO PUMICE AND STAYED. LIGHT ENOUGH TO FLOAT.' },
+  { key: 'minerals:tektite', name: 'TEKTITE', where: 'ASH FLATS', note: 'BLACK GLASS FROM AN OLD IMPACT, LEFT LYING IN THE ASH.' },
+];
+const LAB_OF = Object.fromEntries(LAB.map(e => [e.key, e]));
+// The levels a count of samples has earned (0 for none; 1 for the first; one more at 2, 4, 8 ...), and the count
+// the next level comes at.
+export const labLevel = n => { let l = 0; while (n >> l) l++; return l; };
+export const labNext = n => 2 ** labLevel(n);
+// Text broken into lines no wider than `wide` pixels, at the spaces.
+const wrap = (words, wide) => {
+  const lines = [];
+  for (const word of words.split(' ')) {
+    const last = lines[lines.length - 1];
+    if (last !== undefined && textWidth(`${last} ${word}`) <= wide) lines[lines.length - 1] = `${last} ${word}`; else lines.push(word);
+  }
+  return lines;
+};
 // Where each direction's gems are found, for a price that cannot be met yet.
 const GEM_WHERE = [null, 'NORTH', 'SOUTH', 'WEST', 'EAST'];
 // What is called out the first time it is seen (`World.see` says what it is): the name that comes up, and the
@@ -164,7 +178,7 @@ export class Game {
     this.swept = 0;                         // cells the tether's sweeps have looked at, for tests of how much work is done
     this.effects = []; this.popups = []; this.hauls = []; this.clouds = []; this.sparks = new Map(); this.lavaVol = new Map(); this.frostOpen = [];
     this.parts = []; this.rings = []; this.motes = []; this.gloom = [10, 8, 7]; this.murk = 1; this.flash = 0; this.counted = 0; this.chime = 3; this.clock = 0;
-    this.shake = 0; this.twang = 0; this.edge = 0; this.hurt = 0; this.coreFlash = 0; this.banner = null; this.shop = false; this.shopRise = 0; this.confirmReset = 0;
+    this.shake = 0; this.twang = 0; this.edge = 0; this.hurt = 0; this.coreFlash = 0; this.banner = null; this.shop = false; this.shopRise = 0; this.lab = false; this.labRise = 0; this.labSel = null; this.labPage = 0; this.labFlash = 0; this.confirmReset = 0;
     this.buttons = []; this.panels = [];    // what can be tapped this frame; and the small panels up this frame, each [x, y, w, h]
     this.chunks = new Map(); this.version = 0;
     this.daylight = false;                  // no dark is laid over the ground: only a staged view asks for it (js/shot.js)
@@ -182,7 +196,7 @@ export class Game {
   // ------------------------------------------------------------ state
   fresh(seed, quiet = false) {
     this.S = { seed, grit: 0, gems: [0, 0, 0, 0, 0], lv: Object.fromEntries(UPGRADES.map(u => [u.id, 0])), relics: [0, 0, 0, 0], wrecks: [0, 0, 0, 0, 0, 0, 0, 0],
-      stats: { hauls: 0, best: 0, buys: 0, moves: 0, time: 0 }, won: false, met: {}, marks: [], visited: {}, spec: [0, 0, 0, 0, 0] };
+      stats: { hauls: 0, best: 0, buys: 0, moves: 0, time: 0 }, won: false, met: {}, marks: [], visited: {}, spec: [0, 0, 0, 0, 0], lab: {} };
     this.world.reset(seed);
     this.begin();
     if (!quiet) store().then(db => db.transaction('pieces', 'readwrite').objectStore('pieces').clear()).catch(() => {});
@@ -193,7 +207,6 @@ export class Game {
     this.parts.length = 0; this.rings.length = 0; this.effects.length = 0; this.popups.length = 0; this.hauls.length = 0; this.clouds.length = 0;
     this.sparks.clear(); this.lavaVol.clear(); this.quenched.clear(); this.frostOpen.length = 0; w.lava.clear(); w.dug.clear();
     this.drill = { x: HX, y: HY, px: HX, py: HY, vx: 0, vy: 0, ang: 0, mode: 'free', tx: 0, ty: 0, speed: 0, dig: -1, digT: 0, digDur: 1, stun: 0, squash: 0, run: 0, armed: true, cell: -1, home: true };
-    this.bombs = this.val('bombs');
     this.cam = { x: HX * T, y: HY * T };
     this.band = [[HX, HY], [HX, HY]];
     this.pieces = []; this.pieceOf = new Map(); this.taken.length = 0; this.homeKey = ''; this.homeEnd = [HX, HY];
@@ -205,7 +218,7 @@ export class Game {
     this.called.clear(); this.calledAt = {}; this.tickIn = 0;
     // The first piece, beside the core, lies loose from the start: the open cell between them tells of it.
     this.changed([C * N + C + 3]);
-    this.shop = false;
+    this.shop = false; this.lab = false; this.labSel = null; this.labPage = 0; this.labFlash = 0;
   }
   val(id) { const u = UPGRADES.find(u => u.id === id); return u.values[this.S.lv[id]]; }
   get di() { return Math.floor(this.drill.y) * N + Math.floor(this.drill.x); }
@@ -241,8 +254,8 @@ export class Game {
       } catch { rows = []; }
       this.S = S;
       // What a game saved before these were kept does not have: the wrecks' parts, the grounds met, the dots of
-      // things seen on the map, the pockets visited, the specimens of each direction.
-      S.wrecks ??= [0, 0, 0, 0, 0, 0, 0, 0]; S.met ??= {}; S.marks ??= []; S.visited ??= {}; S.spec ??= [0, 0, 0, 0, 0];
+      // things seen on the map, the pockets visited, the specimens of each direction, the lab's samples.
+      S.wrecks ??= [0, 0, 0, 0, 0, 0, 0, 0]; S.met ??= {}; S.marks ??= []; S.visited ??= {}; S.spec ??= [0, 0, 0, 0, 0]; S.lab ??= {};
       for (const u of UPGRADES) this.S.lv[u.id] = Math.min(this.S.lv[u.id] ?? 0, u.values.length - 1);
       this.world.reset(S.seed);
       for (const [id, p] of rows) this.world.chunks[id] = p;
@@ -269,7 +282,7 @@ export class Game {
     if (this.input.id !== null) return;
     const hit = this.buttons.find(b => x >= b.x && y >= b.y && x < b.x + b.w && y < b.y + b.h);
     if (hit) { hit.act(); return; }
-    if (this.shop) { this.shop = false; sfx.tap(); return; }
+    if (this.shop || this.lab) { this.shop = this.lab = false; sfx.tap(); return; }
     Object.assign(this.input, { id, ax: x, ay: y, px: x, py: y, m: 0 });
     this.drill.armed = true;
   }
@@ -286,14 +299,14 @@ export class Game {
   key(code, down) {
     const dir = { ArrowRight: 0, KeyD: 0, ArrowDown: 1, KeyS: 1, ArrowLeft: 2, KeyA: 2, ArrowUp: 3, KeyW: 3 }[code];
     if (dir !== undefined) {
-      if (down) { unlock(); if (this.shop) this.shop = false; if (!this.input.keys.size) this.drill.armed = true; this.input.keys.add(dir); } else this.input.keys.delete(dir);
+      if (down) { unlock(); this.shop = this.lab = false; if (!this.input.keys.size) this.drill.armed = true; this.input.keys.add(dir); } else this.input.keys.delete(dir);
       return true;
     }
     if (!down) return false;
     unlock();
-    if (code === 'KeyB' || code === 'KeyE' || code === 'Space') { this.blast(); return true; }
-    if (code === 'KeyU' || code === 'Enter') { if (this.atCore) this.shop = !this.shop; return true; }
-    if (code === 'Escape') { this.shop = false; return true; }
+    if (code === 'KeyU' || code === 'Enter') { if (this.atCore) { this.shop = !this.shop; this.lab = false; } return true; }
+    if (code === 'KeyL') { this.openLab(!this.lab); return true; }
+    if (code === 'Escape') { this.shop = this.lab = false; return true; }
     return false;
   }
   // Which way the player is steering, and how hard: [x, y, 0-1].
@@ -509,7 +522,7 @@ export class Game {
     });
   }
   // After the ground changed: which pieces lie loose, and how the tether settles. `opened` is every cell that was
-  // opened together (a cut and what burst beside it, a blast, a haul), `closed` every cell that grew back. Called
+  // opened together (a cut and what burst beside it, a haul), `closed` every cell that grew back. Called
   // with neither, the ground was changed by other hands and every loose piece is looked over.
   //
   // `pieces` is the loose pieces, each a list of cells; `pieceOf` says of every loose cell which piece it is in.
@@ -801,7 +814,7 @@ export class Game {
   fly(dt) {
     const w = this.world, d = this.drill;
     let [ix, iy, m] = this.steer();
-    if (d.stun > 0 || this.shop) m = 0;
+    if (d.stun > 0 || this.shop || this.lab) m = 0;
     // Just reeled home: it stays put until the thumb lets go.
     if (d.park) { if (m === 0) d.park = false; m = 0; }
     // Ground that grew back round the drill never holds it. Should its own cell have closed, the cell is opened
@@ -1006,7 +1019,6 @@ export class Game {
     }
     if (this.world.spotted.length) this.callOut();
     const home = this.atCore;
-    if (home && !d.home && this.bombs < this.val('bombs')) { this.bombs = this.val('bombs'); sfx.dock(); this.coreFlash = 0.25; }
     if (home && !d.home) { this.homecoming(); this.save(); }
     d.home = home;
   }
@@ -1144,7 +1156,7 @@ export class Game {
     this.effect('dust', 'dust', (x + 0.5) * T, (y + 0.5) * T);
     if (tough >= 2 || k === K.ICE) this.effect('shatter', 'shatter', (x + 0.5) * T, (y + 0.5) * T);
     // (Ploughing, the drill goes through a mineral every second or so: it says so no more often than that.)
-    if ((k === K.ORE_A || k === K.ORE_B || k === K.STEEL || k === K.PRISM || mineral) && (row.dig >= PLOUGH || this.time - this.crushedAt >= CRUSH_EVERY)) { this.crushedAt = this.time; this.popup(x, y, 'CRUSHED', '#9a94a8'); }
+    if (k === K.ORE_A || k === K.ORE_B || k === K.STEEL || k === K.PRISM || mineral) this.analyse(this.sampleOf(k, row), x, y, row.dig >= PLOUGH || this.time - this.crushedAt >= CRUSH_EVERY);
     this.shake = Math.max(this.shake, 1 + tough * 0.5);
     // The hazard that was cut into wakes, and a hazard beside the cut: each may open cells (its own; the slate an
     // arc shatters), and every cell opened goes to `changed` together.
@@ -1158,6 +1170,38 @@ export class Game {
     d.dig = -1; this.preview = [];
     w.see(x, y, 1);
     this.changed(opened);
+  }
+
+  // ------------------------------------------------------------ the lab
+  // What a cell of this kind in this ground is to the lab: the key of its row in `LAB` (the sheet and frame it is
+  // drawn from, so a cross's rich ore is its donor's here too), or null for what the lab does not study.
+  sampleOf(k, row) {
+    const P = row.pocket;
+    if (P !== null && k === (P.kind ?? K.MINERAL)) return `minerals:${P.mineral}`;
+    if (k === K.ORE_A) return `${row.items}:oreA`;
+    if (k === K.ORE_B) return `${row.itemsB}:oreB`;
+    if (k === K.STEEL) return `${HAZARDS.lava.sheet}:steel`;
+    return null;
+  }
+  // How much more such a cell is worth for what the lab knows of it: a hundredth for each level.
+  studied(k, row) { const key = this.sampleOf(k, row); return key && LAB_OF[key] ? labLevel(this.S.lab[key] ?? 0) / 100 : 0; }
+  // The bit went through something at cell (x, y): if the lab studies it, that is one more sample, and the cell
+  // says what was learnt (the thing's name and its new worth when a level is gained, always; otherwise its name and
+  // how far the count has come, where `say` allows). What the lab does not study is only crushed.
+  analyse(key, x, y, say = true) {
+    const e = LAB_OF[key];
+    if (!e) { if (say) { this.crushedAt = this.time; this.popup(x, y, 'CRUSHED', '#9a94a8'); } return; }
+    const n = this.S.lab[key] = (this.S.lab[key] ?? 0) + 1;
+    if ((n & (n - 1)) === 0) {
+      this.crushedAt = this.time; this.popup(x, y, `${e.name} +${labLevel(n)}%`, '#8cf2c4');
+      sfx.gem(labLevel(n)); this.labSel = key; this.labFlash = 3;
+    } else if (say) { this.crushedAt = this.time; this.popup(x, y, `${e.name} ${n}/${labNext(n)}`, '#9a94a8'); }
+  }
+  // The lab's notes are opened and shut by a tap on the top bar. They open at the thing last learnt about.
+  openLab(open) {
+    this.lab = open; this.shop = false;
+    if (open) { this.labSel ??= (LAB.find(e => this.S.lab[e.key]) ?? LAB[0]).key; this.labPage = -1; }
+    sfx.tap();
   }
 
   // ------------------------------------------------------------ hauling
@@ -1185,8 +1229,10 @@ export class Game {
     const one = (k, b, x, y) => {
       const row = rowOf(b), far = Math.hypot(x - C, y - C), rich = richness(far) * row.rich * row.worth, P = row.pocket;
       // Whose gems a cell pays is its kind's and its ground's to say; the home ground pays none.
-      grit += GRIT[k] * rich; gems[gemKin(k, row)] += GEMS[k] * row.gemx;
-      if (b === B.CRUST && (k === K.ORE_A || k === K.ORE_B)) grit += (k === K.ORE_B ? 20 : 4) * rich;
+      // What the lab knows of a thing makes it worth that much more (`studied`): its grit, its gems, its lump.
+      const study = 1 + this.studied(k, row);
+      grit += GRIT[k] * rich * study; gems[gemKin(k, row)] += GEMS[k] * row.gemx * study;
+      if (b === B.CRUST && (k === K.ORE_A || k === K.ORE_B)) grit += (k === K.ORE_B ? 20 : 4) * rich * study;
       if (k === K.RELIC) relic = w.relicAt.indexOf(y * N + x);
       // A cache holds what a quarter of a minute's cutting out here would earn; a wreck gives up its part.
       else if (k === K.CACHE) { caches++; lump += round2(income(Math.max(22, far)) * 12); }
@@ -1197,7 +1243,7 @@ export class Game {
       if (P !== null && k === (P.kind ?? K.MINERAL)) {
         minerals++; mineral = P.mineral ?? null;
         if (P.chain) chains = true;
-        lump += round2(income(Math.max(22, far)) * P.lump * (P.chain ? chain : 1));
+        lump += round2(income(Math.max(22, far)) * P.lump * (P.chain ? chain : 1) * study);
         spec[w.zoneOf(Math.floor((x - C) / ZONE), Math.floor((y - C) / ZONE))?.kin ?? row.kin] += P.spec;
       }
     };
@@ -1671,59 +1717,7 @@ export class Game {
     if (opened.length || closed.length) this.changed(opened, closed);
   }
 
-  // ------------------------------------------------------------ blast, shop
-  // The cells a charge set off in cell (cx, cy) would open, at this level of BLAST or for a disc of radius `r`
-  // (`SIFT` says what goes and what stands). Asking changes nothing. Nothing beyond the tether's reach opens.
-  sifts(cx, cy, r = SIFT.radius[this.S.lv.bombs]) {
-    const w = this.world, open = new Set(), stand = [], most = Math.ceil(r), far = (r + SIFT.shake) * (r + SIFT.shake);
-    for (let v = -most; v <= most; v++) for (let u = -most; u <= most; u++) {
-      if (u * u + v * v > r * r) continue;
-      const i = (cy + v) * N + cx + u, k = w.k(i);
-      if (k === K.EMPTY || HARD[k] >= 99 || !this.within(cx + u + 0.5, cy + v + 0.5)) continue;
-      if (PLAIN[k]) open.add(i); else stand.push(i);
-    }
-    // What stands in the disc, and as much of each lump as lies within `shake` cells of the disc's edge.
-    const lump = new Set(stand);
-    for (let n = 0; n < stand.length; n++) for (const s of SIDE) {
-      const j = stand[n] + s, u = (j % N) - cx, v = Math.floor(j / N) - cy, k = w.k(j);
-      if (k === K.EMPTY || PLAIN[k] || HARD[k] >= 99 || u * u + v * v > far || lump.has(j)) continue;
-      lump.add(j); stand.push(j);
-    }
-    // The plain rock round it, `room` cells deep on every side and at the corners: room to fly round it.
-    for (const i of stand) for (let v = -SIFT.room; v <= SIFT.room; v++) for (let u = -SIFT.room; u <= SIFT.room; u++) {
-      const j = i + v * N + u;
-      if (PLAIN[w.k(j)] && this.within((j % N) + 0.5, Math.floor(j / N) + 0.5)) open.add(j);
-    }
-    return [...open];
-  }
-  // A charge goes off where the drill is: the plain rock round it is gone, and everything it held stands as it
-  // stood, asleep if it slept (nothing is cut, so nothing wakes). The books of loose ground hear of all the cells
-  // at once, so every lump the rock was holding is known as loose. A charge that would open nothing is not spent,
-  // and says so; so does a tap with none left.
-  blast() {
-    const w = this.world, d = this.drill;
-    if (!this.val('bombs')) return;
-    if (this.bombs <= 0) { sfx.deny(); this.popup(d.x - 0.5, d.y - 1, 'NO BOMBS', '#ff7a5a'); return; }
-    const cx = Math.floor(d.x), cy = Math.floor(d.y), opened = this.sifts(cx, cy);
-    if (!opened.length) { sfx.deny(); this.popup(d.x - 0.5, d.y - 1, 'NO ROCK', '#ff7a5a'); return; }
-    this.bombs--;
-    const known = new Set(this.pieces);
-    for (const i of opened) {
-      const x = i % N, y = Math.floor(i / N);
-      if (this.onScreen(x, y)) this.chips(x, y, this.debris(w.k(i), w.b(i)), 3, null, 1.2);
-      w.setK(i, K.EMPTY);
-      if (w.row(i).freeze > 0) { w.dug.set(i, this.clock); this.frostOpen.push(i); }
-    }
-    this.effect('blast', 'fire-explosion', d.x * T, d.y * T);
-    this.shake = 9; sfx.blast();
-    w.see(cx, cy, Math.ceil(SIFT.radius[this.S.lv.bombs] + SIFT.shake) + SIFT.room + 1);
-    this.changed(opened);
-    // What the charge shook loose glints, a lump at a time.
-    for (const cells of this.pieces) {
-      if (known.has(cells) || cells.length > 400) continue;
-      for (const i of cells) if (cellHash(i % N, Math.floor(i / N), 5) < 0.5) this.sparkle((i % N + 0.5) * T, (Math.floor(i / N) + 0.5) * T, 2, '#fff6c8');
-    }
-  }
+  // ------------------------------------------------------------ shop
   cost(u) { const l = this.S.lv[u.id]; return l >= u.values.length - 1 ? null : { grit: u.grit[l], gems: u.gems[l] }; }
   // What can be spent is what has come home: grit and gems still on their way up the tether are not banked yet,
   // and the top bar never shows them (nor ever less than nothing).
@@ -1740,7 +1734,6 @@ export class Game {
     this.S.grit -= c.grit; this.S.gems[u.gem] -= c.gems; this.S.lv[u.id]++; this.S.stats.buys++;
     sfx.buy();
     this.ring(HX * T, HY * T, '#8ce060', 70); this.sparkle(HX * T, HY * T, 16, '#c8f4a0'); this.flash = 0.15;
-    if (u.id === 'bombs') this.bombs = this.val('bombs');
     if (u.id === 'scanner') { this.world.see(Math.floor(this.drill.x), Math.floor(this.drill.y), this.val('scanner')); this.version++; }
     this.bought = { id: u.id, t: 0.5 };
     this.save();
@@ -1827,9 +1820,10 @@ export class Game {
     this.shake = Math.max(0, this.shake - dt * 22);
     if (this.bought) { this.bought.t -= dt; if (this.bought.t <= 0) this.bought = null; }
     if (this.confirmReset > 0) this.confirmReset -= dt;
-    if (!this.shop) {
+    if (this.labFlash > 0) this.labFlash -= dt;
+    if (!this.shop && !this.lab) {
       // The clock the ground's own changes are timed by (a cut in the north icing over) stands still with the shop
-      // open, as the lava, the spores and the sparks do: nothing comes due behind the shop.
+      // or the lab's notes open, as the lava, the spores and the sparks do: nothing comes due behind them.
       this.clock += dt;
       this.fly(dt);
       this.tend();
@@ -2071,11 +2065,6 @@ export class Game {
     }
     this.drillDrawn = [dx, dy, d.ang, this.S.lv.drill, this.S.lv.momentum, d.dig >= 0 || speed > 1 ? now : -1, along, across];
     this.drawDrill(...this.drillDrawn);
-    // Blasts left, racked across the drill's tail.
-    for (let n = 0; n < this.bombs; n++) {
-      const side = (n - (this.bombs - 1) / 2) * 3, bx = Math.round(dx - Math.cos(d.ang) * 9 - Math.sin(d.ang) * side - 1), by = Math.round(dy - Math.sin(d.ang) * 9 + Math.cos(d.ang) * side - 1);
-      ctx.fillStyle = '#16121c'; ctx.fillRect(bx, by, 2, 2); ctx.fillStyle = '#ff5a3a'; ctx.fillRect(bx, by, 1, 1);
-    }
     if (this.hurt > 0 && ((now / 50) | 0) % 2) { ctx.globalAlpha = 0.5; ctx.fillStyle = '#ff5a4a'; ctx.fillRect(Math.round(dx) - 5, Math.round(dy) - 5, 10, 10); ctx.globalAlpha = 1; }
     for (const e of this.effects) {
       const f = frameAt(e.sheet, e.animation, e.t);
@@ -2159,7 +2148,7 @@ export class Game {
     o.setTransform(1, 0, 0, 1, 0, 0);
     if (this.ropeDirty) { const [x0, y0, x1, y1] = this.ropeDirty; o.clearRect(x0 * k, y0 * k, (x1 - x0) * k, (y1 - y0) * k); }
     this.ropeDirty = null;
-    if (!this.ropes.length || this.shopRise > 0.02) return;
+    if (!this.ropes.length || this.shopRise > 0.02 || this.labRise > 0.02) return;
     o.setTransform(k, 0, 0, k, 0, 0);
     o.lineJoin = 'round';
     let bx0 = Infinity, by0 = Infinity, bx1 = -Infinity, by1 = -Infinity;
@@ -2340,7 +2329,7 @@ export class Game {
     this.shine(C, C, 1 + this.coreFlash * 1.5 + Math.sin(this.time * 2) * 0.04, 8 + this.coreFlash * 10);
     let lavas = 0;
     for (const i of w.lava.keys()) { if (lavas++ > 40) break; this.shine(i % N, Math.floor(i / N), 0.85, 3.5); }
-    for (const e of this.effects) if (e.sheet === 'blast' || e.sheet === 'zap' || e.sheet === 'haul' || e.sheet === 'bank') this.shine(Math.floor(e.x / T), Math.floor(e.y / T), 1, 6);
+    for (const e of this.effects) if (e.sheet === 'zap' || e.sheet === 'haul' || e.sheet === 'bank') this.shine(Math.floor(e.x / T), Math.floor(e.y / T), 1, 6);
     for (const [i, sp] of this.sparks) if (sp.fuse > 0) this.shine(i % N, Math.floor(i / N), 0.9, 3);
     for (const i of this.quenched.keys()) this.shine(i % N, Math.floor(i / N), 0.8, 2.5);
     // Keystones that have been seen glint, so that they read from across the screen: the nearest dozen.
@@ -2511,6 +2500,15 @@ export class Game {
     const R = this.val('tether'), far = this.far, left = Math.max(0, R - far), label = compact(left), room = textWidth(label) + 10;
     this.bar(6, 29, W - 12 - room, 'tether', left / R, far / R > 0.93 ? '#ff7a5a' : '#f4ecd8', this.twang > 0);
     text(ctx, label, W - 6, 30, this.twang > 0 ? '#ff7a5a' : '#f4ecd8', 1);
+    // What the lab has analysed, of all it can: shown once there is a first sample, lit for a moment by a new
+    // level. A tap anywhere on the bar (but the sound) opens the lab's notes, and another shuts them.
+    const known = LAB.filter(e => S.lab[e.key]).length;
+    if (known) {
+      const count = `${known}/${LAB.length}`, lit = this.labFlash > 0 && ((now / 120) | 0) % 2 === 0;
+      text(ctx, count, W - 27, 6, lit ? '#ffffff' : '#8cf2c4', 1);
+      draw(ctx, 'icons', 'lab', W - 27 - textWidth(count) - 11, 5);
+    }
+    this.button(0, 0, W - 24, 42, () => this.openLab(!this.lab));
     draw(ctx, 'ui', isMuted() ? 'mute' : 'sound', W - 21, 2);
     this.button(W - 24, 0, 24, 20, () => { setMuted(!isMuted()); sfx.tap(); });
     // Start over: two taps, so a slip of the thumb does not cost a world.
@@ -2546,16 +2544,10 @@ export class Game {
       ctx.globalAlpha = 1;
     }
     this.drawMap(W - 54, H - 58);
-    // Bottom: the blast, and the shop when the drill is home.
+    // Bottom: the shop when the drill is home.
     const by = H - 46;
-    if (this.val('bombs') > 0) {
-      slice9(ctx, 'ui', this.bombs > 0 ? 'panel' : 'button-off', 4, by, 34, 34);
-      draw(ctx, 'upgrades', 'bomb', 12, by + 8);
-      text(ctx, `${this.bombs}`, 31, by + 22, '#ffffff', 1);
-      this.button(0, by - 6, 44, 46, () => this.blast());
-    }
-    const afford = SHOP.some(u => this.canBuy(u));
-    if (this.atCore && !this.shop && d.mode === 'free') {
+    const afford = UPGRADES.some(u => this.canBuy(u));
+    if (this.atCore && !this.shop && !this.lab && d.mode === 'free') {
       const w = 84, x = Math.round(W / 2 - w / 2) - 14, up = afford && ((now / 300) | 0) % 2;
       slice9(ctx, 'ui', afford ? (up ? 'button-down' : 'button') : 'panel', x, by + 6, w, 24);
       text(ctx, 'UPGRADES', x + w / 2, by + 13, afford ? '#ffffff' : '#9a94a8', 0.5);
@@ -2563,7 +2555,7 @@ export class Game {
       if (afford && S.stats.buys === 0) draw(ctx, 'ui', 'hand', x + w / 2 - 4, by + 18 + Math.round(Math.sin(now / 150) * 3));
     }
     // The idea, shown and not told: a hand draws a loop, as the tether must be drawn round the loose piece.
-    if (S.stats.hauls === 0 && !this.shop && this.input.id === null) {
+    if (S.stats.hauls === 0 && !this.shop && !this.lab && this.input.id === null) {
       const u = (now % 2200) / 2200, turn = u * 6.2832 - 1.5708, cx = W / 2 - 20, hx = cx - 6 + Math.cos(turn) * 20, hy = H * 0.72 + Math.sin(turn) * 14;
       ctx.fillStyle = '#ffffff';
       for (let n = 1; n < 14; n++) { const a = turn - n * 0.22; ctx.globalAlpha = 1 - n / 14; ctx.fillRect(Math.round(cx + Math.cos(a) * 20), Math.round(H * 0.72 + Math.sin(a) * 14) - 2, 2, 2); }
@@ -2572,7 +2564,7 @@ export class Game {
       if (S.stats.moves < 1.5) draw(ctx, 'logo', 'logo', W / 2 - 66, 62);
     }
     // Where the thumb is steering from, and which way.
-    if (this.input.id !== null && !this.shop) {
+    if (this.input.id !== null && !this.shop && !this.lab) {
       const { ax, ay, px, py } = this.input;
       ctx.globalAlpha = 0.5; ctx.fillStyle = '#ffffff';
       ctx.fillRect(Math.round(ax) - 1, Math.round(ay) - 1, 3, 3);
@@ -2581,6 +2573,8 @@ export class Game {
     }
     this.shopRise = this.shop ? Math.min(1, this.shopRise + 0.12) : 0;
     if (this.shop) this.drawShop();
+    this.labRise = this.lab ? Math.min(1, this.labRise + 0.12) : 0;
+    if (this.lab) this.drawLab();
   }
   // The map: everything within the tether's reach, the core in the middle. Ground that has been seen shows as
   // rock or open; the rest only as whose ground it is, so there is always somewhere to choose to go. Whose it is
@@ -2681,18 +2675,66 @@ export class Game {
     ctx.fillStyle = '#0c0a12'; ctx.fillRect(x + 11, y + 2, w - 11, 6);
     ctx.fillStyle = flash ? '#ffffff' : color; ctx.fillRect(x + 12, y + 3, Math.round((w - 13) * Math.max(0, Math.min(1, fill))), 4);
   }
+  // The lab's notes: everything it can know, a line each (what is not yet analysed is only a question mark), and
+  // under the list what it has to say of the line that was tapped. Where the list is longer than the screen it is
+  // turned a page at a time.
+  drawLab() {
+    const { ctx, W, H, S } = this, RH = 13, HEAD = 20, NOTE = 48;
+    ctx.globalAlpha = 0.6 * this.labRise; ctx.fillStyle = '#07060b'; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1;
+    const pw = Math.min(W - 8, 200), px = Math.round((W - pw) / 2);
+    const room = H - 48 - HEAD - NOTE - 4, paged = Math.floor(room / RH) < LAB.length, rows = paged ? Math.max(3, Math.floor((room - 14) / RH)) : LAB.length, pages = Math.ceil(LAB.length / rows);
+    const sel = LAB_OF[this.labSel] ?? LAB[0];
+    if (this.labPage < 0 || this.labPage >= pages) this.labPage = Math.floor(LAB.indexOf(sel) / rows);
+    const rise = 1 - this.labRise, ph = HEAD + rows * RH + NOTE + (paged ? 14 : 0) + 4, py = Math.max(44, Math.round((H - ph) / 2)) + Math.round(rise * rise * 60);
+    slice9(ctx, 'ui', 'panel', px, py, pw, ph);
+    this.button(px, py, pw, ph, () => {});
+    text(ctx, 'ANALYSIS', px + 8, py + 7, '#ffe14a');
+    text(ctx, `${LAB.filter(e => S.lab[e.key]).length}/${LAB.length}`, px + pw - 28, py + 7, '#8cf2c4', 1);
+    text(ctx, 'x', px + pw - 12, py + 6, '#ffffff');
+    this.buttons.unshift({ x: px + pw - 24, y: py, w: 24, h: HEAD, act: () => { this.lab = false; sfx.tap(); } });
+    LAB.slice(this.labPage * rows, this.labPage * rows + rows).forEach((e, r) => {
+      const y = py + HEAD + r * RH, n = S.lab[e.key] ?? 0, on = e === sel;
+      if (on) { ctx.fillStyle = '#3a3260'; ctx.fillRect(px + 4, y, pw - 8, RH - 1); }
+      if (n) {
+        const [sheet, frame] = e.key.split(':'), f = sheets[sheet].frames[frame];
+        ctx.drawImage(sheets[sheet].image, f[0] + 2, f[1] + 2, 12, 12, px + 6, y, 12, 12);
+        text(ctx, e.name, px + 22, y + 2, on ? '#ffe14a' : '#ffffff');
+        text(ctx, `+${labLevel(n)}%`, px + pw - 8, y + 2, '#8cf2c4', 1);
+      } else {
+        text(ctx, '?', px + 10, y + 2, '#6a6478');
+        text(ctx, '? ? ?', px + 22, y + 2, on ? '#bcb4cc' : '#6a6478');
+      }
+      this.buttons.unshift({ x: px + 4, y, w: pw - 8, h: RH, act: () => { this.labSel = e.key; sfx.tap(); } });
+    });
+    // What the lab says of the line chosen.
+    const ny = py + HEAD + rows * RH + 3, n = S.lab[sel.key] ?? 0;
+    ctx.fillStyle = '#4a4468'; ctx.fillRect(px + 6, ny - 2, pw - 12, 1);
+    if (n) {
+      text(ctx, `${compact(n)} CRUSHED, +1% AT ${compact(labNext(n))}`, px + 8, ny + 1, '#bfe6ff');
+      wrap(sel.note, pw - 16).slice(0, 3).forEach((line, l) => text(ctx, line, px + 8, ny + 12 + l * 10, '#d8d0c0'));
+    } else {
+      text(ctx, 'NOT ANALYSED YET', px + 8, ny + 1, '#bcb4cc');
+      wrap(`CRUSH ONE WITH THE BIT. FOUND: ${sel.where}.`, pw - 16).slice(0, 3).forEach((line, l) => text(ctx, line, px + 8, ny + 12 + l * 10, '#9a94a8'));
+    }
+    if (paged) {
+      const fy = py + ph - 16;
+      text(ctx, `< ${this.labPage + 1}/${pages} >`, px + pw / 2, fy + 2, '#bfe6ff', 0.5);
+      this.buttons.unshift({ x: px + 4, y: fy - 2, w: pw / 2 - 4, h: 16, act: () => { this.labPage = (this.labPage + pages - 1) % pages; sfx.tap(); } });
+      this.buttons.unshift({ x: px + pw / 2, y: fy - 2, w: pw / 2 - 4, h: 16, act: () => { this.labPage = (this.labPage + 1) % pages; sfx.tap(); } });
+    }
+  }
   drawShop() {
     const { ctx, W, H, S } = this;
     ctx.globalAlpha = 0.6 * this.shopRise; ctx.fillStyle = '#07060b'; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1;
-    const pw = Math.min(W - 8, 200), px = Math.round((W - pw) / 2), rh = Math.max(24, Math.min(32, Math.floor((H - 100) / SHOP.length)));
-    const rise = 1 - this.shopRise, ph = 22 + rh * SHOP.length + 22, py = Math.max(44, Math.round((H - ph) / 2)) + Math.round(rise * rise * 60);
+    const pw = Math.min(W - 8, 200), px = Math.round((W - pw) / 2), rh = Math.max(24, Math.min(32, Math.floor((H - 100) / UPGRADES.length)));
+    const rise = 1 - this.shopRise, ph = 22 + rh * UPGRADES.length + 22, py = Math.max(44, Math.round((H - ph) / 2)) + Math.round(rise * rise * 60);
     slice9(ctx, 'ui', 'panel', px, py, pw, ph);
     this.button(px, py, pw, ph, () => {});
     text(ctx, 'UPGRADES', px + 8, py + 7, '#ffe14a');
     if (this.shopNote && this.shopNote.t > 0) { this.shopNote.t -= 1 / 60; text(ctx, this.shopNote.text, px + pw - 28, py + 7, this.shopNote.color, 1); }
     text(ctx, 'x', px + pw - 12, py + 6, '#ffffff');
     this.buttons.unshift({ x: px + pw - 24, y: py, w: 24, h: 22, act: () => { this.shop = false; sfx.tap(); } });
-    SHOP.forEach((u, n) => {
+    UPGRADES.forEach((u, n) => {
       const y = py + 20 + n * rh, c = this.cost(u), can = this.canBuy(u), lit = this.bought?.id === u.id;
       slice9(ctx, 'ui', lit ? 'button-down' : !c ? 'button-max' : can ? 'button' : 'button-off', px + 4, y, pw - 8, rh - 1);
       // What it will look like once bought (or does now, at its last level).

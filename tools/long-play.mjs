@@ -14,7 +14,7 @@
 //   - Once the reach goes round the first keystone slab it cuts a ring round that, slab, crack and keys. Every
 //     fourth trip goes to the nearest pocket not yet visited that the reach goes round, and cuts a ring two thirds
 //     of its radius about its middle.
-// It never sets off a bomb, never goes for a wreck or a relic and never cuts round a single lump of ore, and it
+// It never goes for a wreck or a relic and never cuts round a single lump of ore, and it
 // flies straight at where it is going, cutting what is in the way and stepping aside when it is held up.
 //
 // What is printed: a line every `--every` seconds of the game's time (what is owned, banked and has been earned,
@@ -247,9 +247,9 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const seed = Number(arg('seed', 7)), minutes = Number(arg('minutes', 40)), every = Number(arg('every', 120)), began = Date.now();
   const r = await play(seed, minutes, every), clockOf = t => `${String(Math.floor(t / 60)).padStart(2)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
   console.log(`world ${seed}, ${minutes} minutes of the game's time (played in ${((Date.now() - began) / 1000).toFixed(0)} s)\n`);
-  console.log(' time  reach  bit winch scan ram blast   banked   earned   a second (model)   gems n/s/w/e          specimens   far  hauls  pockets  dearest on offer');
+  console.log(' time  reach  bit winch scan ram   banked   earned   a second (model)   gems n/s/w/e          specimens   far  hauls  pockets  dearest on offer');
   for (const s of r.samples) {
-    console.log(`${clockOf(s.t)}  ${String(s.reach).padStart(5)}   ${s.lv.drill}    ${s.lv.winch}     ${s.lv.scanner}    ${s.lv.momentum}    ${s.lv.bombs}   ${compact(s.banked).padStart(7)}  ${compact(s.earned).padStart(7)}  ${compact(s.rate).padStart(7)} (${compact(s.model).padStart(6)})   ${s.gems.join('/').padEnd(20)} ${s.spec.join('/').padEnd(10)} ${String(s.far).padStart(5)}  ${String(s.hauls).padStart(5)}  ${String(s.pockets).padStart(5)}    ${compact(s.dearest)}`);
+    console.log(`${clockOf(s.t)}  ${String(s.reach).padStart(5)}   ${s.lv.drill}    ${s.lv.winch}     ${s.lv.scanner}    ${s.lv.momentum}   ${compact(s.banked).padStart(7)}  ${compact(s.earned).padStart(7)}  ${compact(s.rate).padStart(7)} (${compact(s.model).padStart(6)})   ${s.gems.join('/').padEnd(20)} ${s.spec.join('/').padEnd(10)} ${String(s.far).padStart(5)}  ${String(s.hauls).padStart(5)}  ${String(s.pockets).padStart(5)}    ${compact(s.dearest)}`);
   }
   console.log('\nbought:');
   for (const b of r.bought) console.log(`  ${clockOf(b.t)}  ${b.name} ${b.level}${b.id === 'tether' ? ` (reach ${UPGRADES[0].values[b.level]})` : ''}: ${compact(b.grit)} grit${b.gems ? ` and ${b.gems} gems of the ${WAYS[b.gem]}` : ''}; ${compact(b.banked)} left`);

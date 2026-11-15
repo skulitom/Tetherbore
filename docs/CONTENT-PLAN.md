@@ -4,6 +4,8 @@ TETHERBORE CONTENT BUILD PLAN (biomes, mini zones, resources, upgrades)
 BUILT (the record of session one, written at its close; the plan below stands as it was written, with an AS BUILT note under each part that was built)
 ==============================================================
 
+SINCE THE BUILD (2026-11-15, by the owner's word): the bomb is taken out of the game altogether (its row, its rule `sifts`/`blast`, its button, tools/sift.mjs and the c4 tests; ITEM 4 below is history), and what the bit crushes is analysed (the lab: `LAB`, `sampleOf`, `studied`, `analyse`, `drawLab` in js/game.js, S.lab, test/regress/l-analysis.mjs; see the README).
+
 WHAT IS BUILT. Everything up to the cut line (section 3), on branch 'work':
 - S1 to S5: one table of kinds and one of grounds; one pay function and the light haul; where places lie (provinces, pockets, the allotted finds); specimens; names of places and callouts of finds.
 - Items 1 to 7: eight hand strains with a tell each; slag and steel, crackling ribs, vein frost; the cross generator (60 rows from 12 reviewed sheets, 54 of them laid); the bomb reworked; keystone slabs, cobble fields and the prism; pockets with the amber hive; the pumice drift and the ash flats.

@@ -19,7 +19,7 @@
 // tools/zone-budget.mjs takes from it how long a nugget takes.
 import { fileURLToPath } from 'node:url';
 import { makeGame, random, tetherFaults, UPGRADES, income, C, N, K, world } from '../test/harness.mjs';
-import { fly } from './sift.mjs';
+import { fly } from './fly.mjs';
 import { holds } from './slab-play.mjs';
 
 const { hiveChambers, rowOf } = world, HX = C + 0.5, HY = C + 0.5;

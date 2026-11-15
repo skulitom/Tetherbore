@@ -16,8 +16,7 @@ const here = fileURLToPath(new URL('.', import.meta.url)), only = process.argv[2
 const ARGS = {
   'a-fuzz-field': [[1, 400, 0], [1, 400, 1], [1, 400, 2], [1, 400, 3], [1, 400, 4]],
   'a-fuzz-keys': [[2, 300, 0, 4], [2, 300, 1, 4], [2, 300, 2, 4], [2, 300, 3, 4], [2, 300, 4, 4]],
-  // (The last number is the level of BLAST: the bomb's widest room, its narrowest, and none.)
-  'a-fuzz-soft': [[4, 500, 16, 2, 4], [14, 500, 16, 2, 4], [18, 500, 12, 0, 0], [5, 500, 16, 2, 1], [6, 500, 16, 2, 3]],
+  'a-fuzz-soft': [[4, 500, 16, 2], [14, 500, 16, 2], [18, 500, 12, 0], [5, 500, 16, 2], [6, 500, 16, 2]],
   'b-fuzz-fast': [[1, 100, 4, 80, 70, 60], [2, 100, 4, 80, 70, 30]],
   'e-hazard-fuzz': [[2, 500, 0, 170, 0.08], [1, 300, -170, 0, 0.08], [4, 300, 170, 0, 0.08],
     [3, 300, 0, 170, 0.08, 5, 'second'], [5, 300, -170, 0, 0.08, 5, 'second'], [6, 300, 170, 0, 0.08, 5, 'second'],
@@ -37,46 +36,46 @@ const ARGS = {
   'f-wreck': [[7, 0], [32, 0], [61, 0], [63, 0]],
   'g-far-wreck': [[7, 5, 60], [7, 7, 60]],
   'i-fuzz-play': [[45, 500, 5, 0, 0, 30], [33, 400, 5, 60, 210, 60], [60, 400, 5, 141, 141, 60], [50, 400, 5, 60, 210, 60], [57, 260, 9, -1061, 1061, 'mix'],
-    [39, 260, 1, 0, 0, 60, 'lowdrill,home'], [51, 260, 5, 141, 141, 60, 'bombs,forceshop'],
+    [39, 260, 1, 0, 0, 60, 'lowdrill,home'], [51, 260, 5, 141, 141, 60, 'forceshop'],
     // From a start inside a province of each strain (`node tools/strains.mjs --where 7` and `--where 11` say where):
     // firn, serac, scoria, forge, tangle, sporefall, redrock, loess.
-    [7, 300, 7, -128, -384, 60], [7, 300, 7, 128, -384, 'mix'], [7, 300, 7, -128, 384, 60], [7, 300, 7, 128, 384, 60, 'bombs'],
+    [7, 300, 7, -128, -384, 60], [7, 300, 7, 128, -384, 'mix'], [7, 300, 7, -128, 384, 60], [7, 300, 7, 128, 384, 60],
     [11, 300, 7, -384, 128, 60], [7, 300, 7, -384, -128, 60], [11, 300, 7, 384, -384, 60], [7, 300, 7, 384, -128, 30],
-    // The east's own ground, where arcs shatter slate (with bombs too, at mixed frame lengths), the south's own,
+    // The east's own ground, where arcs shatter slate (at mixed frame lengths too), the south's own,
     // where lava quenches its slag to steel, and the north's own, where a cut beside ore heals as ore.
-    [21, 300, 5, 190, 10, 60], [23, 300, 5, 190, 10, 'mix', 'bombs'], [22, 300, 5, 20, 180, 60], [24, 300, 5, 10, -190, 60],
+    [21, 300, 5, 190, 10, 60], [23, 300, 5, 190, 10, 'mix'], [22, 300, 5, 20, 180, 60], [24, 300, 5, 10, -190, 60],
     // From a start inside a province of a generated cross, one of each host with each donor between them and
     // each structure: buzzmire, hollow flashrock, thaw, crazed rimemoss, crazed quench, kilnstone, crazed tundra,
     // mouldstone, frothy hailstone, banded kilnstone.
-    [7, 300, 8, -640, -640, 60], [7, 300, 8, 384, 1152, 'mix', 'bombs'], [7, 300, 9, -128, -1408, 60], [7, 300, 9, -1408, -128, 60, 'bombs'],
+    [7, 300, 8, -640, -640, 60], [7, 300, 8, 384, 1152, 'mix'], [7, 300, 9, -128, -1408, 60], [7, 300, 9, -1408, -128, 60],
     [7, 300, 9, -128, 1920, 60], [7, 300, 8, 1152, 384, 30], [7, 300, 9, 384, -1408, 'mix'], [7, 300, 9, 1920, 640, 60],
     [7, 300, 9, -128, -1920, 60], [7, 300, 9, 1408, 384, 60],
-    // With bombs in the north's own ground (the room a charge leaves freezes over, and heals as ore beside ore),
-    // the south's (pockets of lava left standing asleep in their slag) and the west's (pods left hanging), and
-    // on the first reach but one from the core, with trips home to fill the rack.
-    [25, 300, 5, 10, -190, 60, 'bombs'], [26, 300, 5, 20, 180, 60, 'bombs'], [27, 300, 5, -190, 10, 'mix', 'bombs'], [29, 300, 1, 0, 0, 60, 'bombs,home'],
+    // Other flights in the north's own ground, the south's and the west's, and on the first reach but one from
+    // the core, with trips home. (These, and the flights below, were first flown with the bomb, since taken out
+    // of the game; they are kept as flights.)
+    [25, 300, 5, 10, -190, 60], [26, 300, 5, 20, 180, 60], [27, 300, 5, -190, 10, 'mix'], [29, 300, 1, 0, 0, 60, 'home'],
     // From a start in the crack of a keystone slab (`node tools/slabs.mjs --where 7` and `--where 11` say where they
-    // lie): the first slab of a new game on the reach that goes round it, a slab with three keys (with bombs, which
-    // open the rock a key holds to), the middle of a cobble field, and the widest slab there is (with bombs).
-    [7, 300, 3, 3, 44, 60], [7, 300, 7, 334, 375, 'mix', 'bombs'], [7, 300, 7, 192, -500, 60], [11, 300, 6, 222, 82, 60, 'bombs'],
+    // lie): the first slab of a new game on the reach that goes round it, a slab with three keys,
+    // the middle of a cobble field, and the widest slab there is.
+    [7, 300, 3, 3, 44, 60], [7, 300, 7, 334, 375, 'mix'], [7, 300, 7, 192, -500, 60], [11, 300, 6, 222, 82, 60],
     // From a start inside an amber hive (`node tools/zone-budget.mjs --where 7` says where pockets lie): the west's
-    // first, a great hive of forty chambers (with bombs, which open its wax and leave its nuggets hanging), one
-    // 23 cells in radius, and a middling one with bombs and trips home at thirty frames a second.
-    [7, 300, 6, -205, -11, 60], [7, 300, 7, -456, -72, 'mix', 'bombs'], [7, 300, 7, -464, 49, 60], [7, 300, 6, -209, 53, 30, 'bombs,home'],
+    // first, a great hive of forty chambers, one
+    // 23 cells in radius, and a middling one with trips home at thirty frames a second.
+    [7, 300, 6, -205, -11, 60], [7, 300, 7, -456, -72, 'mix'], [7, 300, 7, -464, 49, 60], [7, 300, 6, -209, 53, 30, 'home'],
     // From a start inside a pumice drift, among boulders that hang on nothing from the first: the north's first,
-    // the richest near the core (fifteen boulders, with bombs, which blow the pumice off the aerolite), and one of
-    // seven with bombs and trips home at thirty frames a second (its boulders leave the books and come back).
-    [7, 300, 5, 14, -165, 60], [7, 300, 7, 470, 431, 'mix', 'bombs'], [7, 300, 5, 174, -78, 30, 'bombs,home'],
-    // From a start inside an ash flat, where the drill ploughs: the south's first, and a great one with bombs
-    // (which blow the ash off the tektites) and with the best ram.
-    [7, 300, 5, -14, 165, 60], [7, 300, 6, -207, 211, 'mix', 'bombs'], [7, 300, 6, -207, 211, 60, 'ram'],
+    // the richest near the core (fifteen boulders), and one of
+    // seven with trips home at thirty frames a second (its boulders leave the books and come back).
+    [7, 300, 5, 14, -165, 60], [7, 300, 7, 470, 431, 'mix'], [7, 300, 5, 174, -78, 30, 'home'],
+    // From a start inside an ash flat, where the drill ploughs: the south's first, and a great one, also
+    // with the best ram.
+    [7, 300, 5, -14, 165, 60], [7, 300, 6, -207, 211, 'mix'], [7, 300, 6, -207, 211, 60, 'ram'],
     // The same grounds on two worlds more (the session's close flew every new ground on worlds 19 and 23, with
     // both fuzzes, and all were clean; these are kept): crosses of hosts, donors and structures the flights above
-    // have not (crazed thaw, banded flashrock with bombs, frothy sootfen, hollow kilnstone with bombs), a cobble
-    // field of thirty-two blocks with bombs, a hive 21 cells in radius, a drift rich in aerolite with bombs and
-    // trips home, and a great ash flat with bombs.
-    [19, 300, 9, 128, -1408, 60], [19, 300, 8, -384, 640, 60, 'bombs'], [23, 300, 8, -640, 640, 'mix'], [23, 300, 8, 1152, 384, 60, 'bombs'],
-    [23, 300, 6, -310, 49, 'mix', 'bombs'], [23, 300, 6, -330, -54, 60], [19, 300, 6, 300, -171, 30, 'bombs,home'], [19, 300, 7, -212, 341, 'mix', 'bombs']],
+    // have not (crazed thaw, banded flashrock, frothy sootfen, hollow kilnstone), a cobble
+    // field of thirty-two blocks, a hive 21 cells in radius, a drift rich in aerolite with trips home, and a
+    // great ash flat.
+    [19, 300, 9, 128, -1408, 60], [19, 300, 8, -384, 640, 60], [23, 300, 8, -640, 640, 'mix'], [23, 300, 8, 1152, 384, 60],
+    [23, 300, 6, -310, 49, 'mix'], [23, 300, 6, -330, -54, 60], [19, 300, 6, 300, -171, 30, 'home'], [19, 300, 7, -212, 341, 'mix']],
 };
 const tests = [];
 for (const file of readdirSync(here + 'regress').filter(name => name.endsWith('.mjs')).sort()) {

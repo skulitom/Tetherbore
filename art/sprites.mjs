@@ -447,6 +447,8 @@ const icons8 = {
   check: ['........', '......g.', '.....gg.', 'g...gg..', 'gg.gg...', '.ggg....', '..g.....', '........'],
   grit: ['........', '..ddd...', '.dllld..', 'dlllddd.', 'dlldddD.', '.ddDDD..', '........', '........'],
   tether: ['.yy.....', 'y..y....', 'y..y....', '.yy.y...', '....y...', '....y.y.', '.....y..', '........'],
+  // The lab: a flask, for what has been analysed.
+  lab: ['..www...', '..wiw...', '..wiw...', '.wiiiw..', '.wgggw..', 'wgggggw.', '.wwwww..', '........'],
 };
 const SPECIMEN = ['..aaa...', '.abaac..', 'abaaaac.', 'aaaaacc.', 'aaaaccc.', '.aaccc..', '..ccc...', '........'];
 export const icons = {

@@ -24,7 +24,7 @@
 // lap of a cobble field's joints, to it.
 import { fileURLToPath } from 'node:url';
 import { makeGame, random, tetherFaults, UPGRADES, C, N, K, world } from '../test/harness.mjs';
-import { fly } from './sift.mjs';
+import { fly } from './fly.mjs';
 import { slabsOf } from './slabs.mjs';
 
 const { HARD, DX, DY, digTime, hazOf } = world, HX = C + 0.5, HY = C + 0.5;

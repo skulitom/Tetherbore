@@ -1,5 +1,5 @@
 // A staged view of the world, for tools/shot.mjs to photograph and for looking at a far place by hand:
-//   index.html?shot&seed=7&at=0,-300&reach=6&zoom=4&lit&met&wake&bombs=3&blast&key&pocket&haul=1
+//   index.html?shot&seed=7&at=0,-300&reach=6&zoom=4&lit&met&wake&key&pocket&haul=1
 // js/main.js loads this file only when the address has `shot`; ordinary play never fetches it.
 //
 // The view is a fresh world on `seed` (7 if none is given). It reads no saved game and is never saved. The drill
@@ -13,9 +13,6 @@
 // stands in comes up on its plate and not, as the first time, across the screen. `wake` wakes the hazard nearest
 // the drill (within WAKE cells), as a cut beside it would: lava pours and quenches its slag, a pod bursts, a
 // crystal's fuse is lit; how far that has gone when the picture is taken is how long the view is stepped.
-// `bombs` gives the drill that level of BLAST, with its charges racked, and no room is carved: the drill stands in
-// the end of the tunnel with the ground round it as the seed laid it. `blast` then sets one charge off there, so
-// the same view with and without it is a charge's room before and after.
 // `key` is the last cut of a keystone slab: of the slab nearest `at` (within KEY cells; no cobble field) every key
 // is cut through but the one that faces the core, which is cut down to one line of cells across the crack, and the
 // drill stands in the crack beside that line, at the end of a tunnel from the core, pushing into it. Stepped a
@@ -147,7 +144,6 @@ export function stage(game, query) {
   let [dx = 0, dy = 0] = (query.get('at') ?? '').split(',').map(v => Math.round(+v) || 0);
   const zoom = Math.max(1, number('zoom', 1)), lit = query.has('lit') && query.get('lit') !== '0', met = query.has('met') && query.get('met') !== '0';
   const wake = query.has('wake') && query.get('wake') !== '0';
-  const bombs = Math.max(0, Math.min(4, Math.floor(number('bombs', 0)))), blast = bombs > 0 && query.has('blast') && query.get('blast') !== '0';
   const haul = Math.max(0, Math.min(9, Math.floor(number('haul', 0))));
 
   game.save = () => {};
@@ -160,7 +156,7 @@ export function stage(game, query) {
   if (pocket) { dx = pocket.at[0] - C; dy = pocket.at[1] - C; }
   const far = Math.hypot(dx, dy), least = reaches.findIndex(R => R >= far + (key ? key.slab.p * 2 + 6 : pocket ? pocket.zone.reach * 2 : 8));
   const level = Math.max(0, Math.min(reaches.length - 1, Math.floor(number('reach', least < 0 ? reaches.length - 1 : least))));
-  game.S.lv.tether = level; game.S.lv.bombs = bombs; game.bombs = bombs;
+  game.S.lv.tether = level;
   game.daylight = lit;
   if (met) for (const row of world.BIOMES) if (row) game.S.met[row.id] = 1;
   const d = game.drill, w = game.world;
@@ -177,7 +173,7 @@ export function stage(game, query) {
     // (And every cell the straight line from the core passes through there, so the tether lies in open ground
     // all the way: a way one cell wide, cut a cell at a time, does not hold a line that runs askew.)
     if (pocket) for (const i of world.cellsAlong(HX, HY, C + dx + 0.5, C + dy + 0.5, Math.ceil(far * 2) + 8)) w.setK(i, K.EMPTY);
-    if (!bombs && !key && !pocket) for (let v = -ROOM; v <= ROOM; v++) for (let u = -ROOM; u <= ROOM; u++) w.setK((C + dy + v) * N + C + dx + u, K.EMPTY);
+    if (!key && !pocket) for (let v = -ROOM; v <= ROOM; v++) for (let u = -ROOM; u <= ROOM; u++) w.setK((C + dy + v) * N + C + dx + u, K.EMPTY);
     d.x = d.px = C + dx + 0.5; d.y = d.py = C + dy + 0.5; d.mode = 'free';
     game.band = [[d.x, d.y], [HX, HY]];
     game.changed();
@@ -206,9 +202,6 @@ export function stage(game, query) {
       set: value => { Object.defineProperty(game.input, 'auto', { configurable: true, enumerable: true, writable: true, value }); },
     });
   }
-  // One charge, set off as a tap on the bomb sets it off.
-  const opened = blast ? game.sifts(Math.floor(d.x), Math.floor(d.y)).length : 0;
-  if (blast) game.blast();
   // Nuggets of the pocket's mineral, brought home as a loop round them would bring them.
   const hauled = pocket && haul ? nuggets(game, pocket.zone, haul) : [];
   if (hauled.length) { w.see(Math.floor(d.x), Math.floor(d.y), 12); game.haul(hauled); game.changed(hauled); }
@@ -239,7 +232,7 @@ export function stage(game, query) {
         seed, at: [dx, dy], level, reach: reaches[level], zoom: shown, lit,
         cells: [Math.round(game.W / T), Math.round(game.H / T)], canvas: [game.W, game.H],
         biome: b, ground: world.BIOMES[b]?.name ?? `${b}`,
-        loose: game.pieces.length, woke, bombs: game.bombs, opened,
+        loose: game.pieces.length, woke,
         // Inside a pocket: where its middle lies, its radius and its ground; and how many cells were hauled.
         pocket: pocket && { at: [pocket.zone.cx - C, pocket.zone.cy - C], radius: pocket.zone.rho, ground: world.BIOMES[pocket.zone.row].name, hauled: hauled.length, specimens: game.S.spec },
         // The last key of a slab: where the slab lies and how big it is, the cell of key the drill pushes into,

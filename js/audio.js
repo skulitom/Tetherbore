@@ -83,7 +83,6 @@ export const sfx = {
   hiss() { noise(0.6, { freq: 5200, to: 1300, gain: 0.14, q: 0.7, type: 'highpass' }); },
   puff() { noise(0.4, { freq: 420, to: 160, gain: 0.25, q: 0.8, type: 'lowpass' }); },
   freeze() { tone(1900, 0.12, { type: 'sine', gain: 0.07, to: 2700 }); },
-  blast() { noise(0.7, { freq: 1300, to: 50, gain: 0.6, q: 0.5, type: 'lowpass' }); tone(70, 0.6, { type: 'sine', gain: 0.6, to: 26 }); },
   relic() { [0, 2, 4, 5, 7, 9, 10, 12].forEach((s, i) => tone(note(5 + s), 0.6, { type: 'triangle', gain: 0.13, delay: i * 0.09 })); },
 };
 
