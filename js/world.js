@@ -3,19 +3,23 @@
 // kept. This module owns what each cell is and how the ground is laid out. It draws nothing.
 
 export const N = 16384, C = 8192, CH = 64, CW = N / CH;      // a cell is y * N + x; the core's middle cell is (C, C)
-export const K = { EMPTY: 0, CORE: 1, BEDROCK: 2, SOFT: 3, DENSE: 4, ORE_A: 5, ORE_B: 6, SLATE: 7, VAULT: 8, HAZARD: 9, RELIC: 10, ICE: 11, BASALT: 12 };
+export const K = { EMPTY: 0, CORE: 1, BEDROCK: 2, SOFT: 3, DENSE: 4, ORE_A: 5, ORE_B: 6, SLATE: 7, VAULT: 8, HAZARD: 9, RELIC: 10, ICE: 11, BASALT: 12, CACHE: 13, WRECK: 14 };
 export const B = { CRUST: 0, FROST: 1, EMBER: 2, MIRE: 3, LODE: 4 };
 // Far out, the ground to either side of each direction's middle turns into a richer, meaner kind of the same.
 export const BIOME_NAMES = ['crust', 'frost', 'ember', 'mire', 'lode', 'rime', 'magma', 'bloom', 'gilt'];
 export const base = b => b > 4 ? b - 4 : b;
 // What can be cut (99: nothing cuts it), and what a hauled cell pays in grit and in its direction's gem.
-export const HARD = [0, 99, 99, 1, 1, 1, 1, 1, 1, 1, 99, 1, 1];
-export const GRIT = [0, 0, 0, 1, 2, 2, 4, 4, 10, 3, 0, 0, 1];
-export const GEMS = [0, 0, 0, 0, 0, 1, 5, 0, 0, 2, 0, 0, 0];
+export const HARD = [0, 99, 99, 1, 1, 1, 1, 1, 1, 1, 99, 1, 1, 1, 99];
+export const GRIT = [0, 0, 0, 1, 2, 2, 4, 4, 10, 3, 0, 0, 1, 0, 0];
+export const GEMS = [0, 0, 0, 0, 0, 1, 5, 0, 0, 2, 0, 0, 0, 0, 0];
 export const DX = [1, 0, -1, 0], DY = [0, 1, 0, -1];
 // Plain home ground runs out to HOME_R before any direction's ground begins; the flanks turn strange past DEEP_R;
 // what each direction hides lies RELIC_R out; the world ends at WORLD_R.
 export const HOME_R = 130, DEEP_R = 900, RELIC_R = 2000, WORLD_R = 2400;
+// Things to find. The ground is laid out in sectors FIND cells across, and a sector may hold a geode (a shell of slate
+// round rich ore) or a cache (a crate buried in stone). Eight wrecks lie at set distances, each in a hollow of its
+// own with what is left of its hull; each holds a part of an older machine.
+export const FIND = 48, WRECK_R = [45, 90, 160, 300, 500, 800, 1200, 1700];
 export const onCore = (x, y) => Math.abs(x - C) <= 1 && Math.abs(y - C) <= 1;
 
 const hash = (x, y, s) => {
@@ -39,6 +43,33 @@ export class World {
     this.dug = new Map();                  // when the drill opened a cell of the north (for the ice to close it)
     this.seed = 1;
     this.relicAt = [0, 1, 2, 3].map(d => (C + DY[d] * RELIC_R) * N + C + DX[d] * RELIC_R);
+  }
+  // Where the eight wrecks lie in this world: [x, y] each, in a direction of its own.
+  get wrecks() {
+    if (this.wrecksFor !== this.seed) {
+      this.wrecksFor = this.seed;
+      this.wreckSpots = WRECK_R.map((r, n) => {
+        const ux = hash(n, 1, this.seed + 31) - 0.5, uy = hash(n, 2, this.seed + 31) - 0.5, len = Math.sqrt(ux * ux + uy * uy) || 1;
+        return [C + Math.round(ux / len * r), C + Math.round(uy / len * r)];
+      });
+    }
+    return this.wreckSpots;
+  }
+  // What a sector's find puts in a cell, or -1 where it puts nothing.
+  findAt(x, y) {
+    const seed = this.seed, sx = Math.floor((x - C) / FIND), sy = Math.floor((y - C) / FIND), what = hash(sx, sy, seed + 21);
+    if (what >= 0.7) return -1;
+    const fx = C + sx * FIND + 8 + Math.floor(hash(sx, sy, seed + 22) * (FIND - 16)), fy = C + sy * FIND + 8 + Math.floor(hash(sx, sy, seed + 23) * (FIND - 16));
+    if (Math.hypot(fx - C, fy - C) < 16) return -1;
+    const dx = x - fx, dy = y - fy;
+    if (what < 0.38) {
+      // A geode: slate outside, ore within, and in the bigger ones a hollow at the heart.
+      const size = hash(sx, sy, seed + 24) < 0.4 ? 4 : 3, far = Math.sqrt(dx * dx + dy * dy);
+      if (far > size - 0.2) return -1;
+      return far > size - 1.3 ? K.SLATE : size === 4 && far < 0.5 ? K.EMPTY : K.ORE_B;
+    }
+    const edge = Math.max(Math.abs(dx), Math.abs(dy));
+    return edge === 0 ? K.CACHE : edge === 1 ? K.DENSE : -1;
   }
   reset(seed) {
     this.seed = seed;
@@ -74,6 +105,14 @@ export class World {
       if (edge <= 3) return K.VAULT;
       if (edge <= 5) return K.SOFT;
     }
+    for (const [wx, wy] of this.wrecks) {
+      const edge = Math.max(Math.abs(x - wx), Math.abs(y - wy));
+      if (edge === 0) return K.WRECK;
+      if (edge === 1) return hash(x, y, seed + 32) < 0.55 ? K.SLATE : K.EMPTY;
+      if (edge <= 3) return K.EMPTY;
+    }
+    const find = r > 12 ? this.findAt(x, y) : -1;
+    if (find >= 0) return find;
     const h = hash(x, y, seed + 9), deep = b > 4, kin = base(b);
     let k = K.SOFT;
     if (b === B.CRUST) {

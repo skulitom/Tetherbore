@@ -685,7 +685,44 @@ export const cracks = {
   frames: [1, 2, 3, 4].map(n => ({ name: `crack-${n}`, ops: crackOps(n) })),
 };
 
-export const RECIPES = [cracks, dish, frost, ember, mire, lode, drill, core, icons, upgrades, ui, logo, tough];
+// Things found in the ground: a buried crate, and a part of an older machine.
+export const finds = {
+  version: 1, name: 'finds', width: 16, height: 16,
+  palette: { k: '#1c1420', y: '#ffd84a', Y: '#fff2a0', b: '#9a6638', o: '#5e3a22', S: '#8e98ac', s: '#e2e8f4', d: '#565e72', g: '#5cc4f0', G: '#c8f4ff' },
+  symbols: {
+    cache: [
+      '............',
+      '.kkkkkkkkkk.',
+      '.kYyyyyyyyk.',
+      '.kobbkkbbok.',
+      '.kobkYykbok.',
+      '.kkkkyykkkk.',
+      '.kobkyykbok.',
+      '.kobbkkbbok.',
+      '.kobbbbbbok.',
+      '.kyyyyyyyyk.',
+      '.kkkkkkkkkk.',
+      '............',
+    ],
+    part: [
+      '....kkkk....',
+      '.kk.kssk.kk.',
+      'ksskkSSkkssk',
+      'ksSSSSSSSSSk',
+      '.kSSSkkSSSk.',
+      'ksSSkGgkSSSk',
+      'kSSSkggkSSdk',
+      '.kSSSkkSSdk.',
+      'kSSSSSSSSddk',
+      'kSdkkSdkkddk',
+      '.kk.kddk.kk.',
+      '....kkkk....',
+    ],
+  },
+  frames: [frame('cache', 'cache'), frame('part', 'part')],
+};
+
+export const RECIPES = [finds, cracks, dish, frost, ember, mire, lode, drill, core, icons, upgrades, ui, logo, tough];
 
 // The home-screen icon: the core on dark ground, with the drill out on its tether.
 const shift = (ops, dx, dy) => ops.map(op => ({ ...op, x: op.x + dx, y: op.y + dy }));

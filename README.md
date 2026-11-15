@@ -13,6 +13,7 @@ Every sprite, tile set and effect is made with [Pixelbolt](https://github.com/sk
 - **Nothing is too hard to cut.** Dense rock, slate and the ancient stone only take longer, cracking as they go, and a better bit cuts everything faster.
 - **Home ground, then four directions.** Plain ground runs about 130 cells out from the core. Beyond it, north is ice, where cuts freeze over; south is basalt with lava pockets that pour into your tunnels; west is cave-ridden mire with spore pods; east is sandstone ribbed with slate and charged crystals. Far out, the flanks of each direction turn richer and meaner. Hazards wake when you cut beside them; lassoed asleep, they pay.
 - **Something is sealed** in ancient stone 2,000 cells out in each direction. Bring all four home.
+- **Things to find.** Geodes (a shell of slate round rich ore), caches buried in stone, and eight wrecks, each in a hollow of its own further out than the last. A cache pays a lump; each wreck gives up a part that makes every haul pay a tenth more, and wrecks within reach blink on the map. All of them only pay hauled, not drilled.
 - **The map**, bottom right, shows everything within reach. **Upgrades** are bought on the core, and each one changes how the drill, the tether or the station looks. **NEW**, top right, starts a fresh world (tap twice).
 
 Progress is saved on the device: what you own in local storage, the ground in the browser's database. There is no server and no account.

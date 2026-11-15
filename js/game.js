@@ -75,7 +75,7 @@ const TETHERS = [
   { a: '#a8fff0', b: '#30c8c0', dash: 0.5, thick: true }, { a: '#ffc8f4', b: '#b050d0', dash: 0.5, thick: true }, { a: '#ffffff', b: '#5cc4f0', dash: 0.5, thick: true },
 ];
 // Nothing is too hard to cut: tougher ground only takes longer, and a better bit cuts all of it faster.
-const DIG_TIME = [0, 0, 0, 0.24, 0.45, 0.24, 0.45, 1.0, 1.8, 0.24, 0, 0.18, 0.45];
+const DIG_TIME = [0, 0, 0, 0.24, 0.45, 0.24, 0.45, 1.0, 1.8, 0.24, 0, 0.18, 0.45, 0.6, 0];
 const SPEED = [1, 1.6, 2.4, 3.6, 5];
 const FLY = 9, BODY = 0.34;                     // cells a second in open ground; the drill's half-width in cells
 const LIGHT_STEP = [[1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, -1, 1], [1, 1, 1.41], [-1, 1, 1.41], [1, -1, 1.41], [-1, -1, 1.41]];
@@ -108,7 +108,7 @@ export class Game {
 
   // ------------------------------------------------------------ state
   fresh(seed, quiet = false) {
-    this.S = { seed, grit: 0, gems: [0, 0, 0, 0, 0], lv: Object.fromEntries(UPGRADES.map(u => [u.id, 0])), relics: [0, 0, 0, 0],
+    this.S = { seed, grit: 0, gems: [0, 0, 0, 0, 0], lv: Object.fromEntries(UPGRADES.map(u => [u.id, 0])), relics: [0, 0, 0, 0], wrecks: [0, 0, 0, 0, 0, 0, 0, 0],
       stats: { hauls: 0, best: 0, buys: 0, moves: 0, time: 0 }, won: false };
     this.world.reset(seed);
     this.begin();
@@ -479,7 +479,8 @@ export class Game {
   // ------------------------------------------------------------ hauling
   haul(cells) {
     const w = this.world, S = this.S, n = cells.length;
-    let grit = 0, relic = -1, cx = 0, cy = 0;
+    let grit = 0, relic = -1, cx = 0, cy = 0, caches = 0, lump = 0, parts = 0;
+    S.wrecks ??= [0, 0, 0, 0, 0, 0, 0, 0];
     const gems = [0, 0, 0, 0, 0], sprites = [], show = Math.max(1, Math.ceil(n / 400));
     cells.forEach((i, at) => {
       const x = i % N, y = Math.floor(i / N), k = w.k(i), b = w.b(i), far = Math.hypot(x - C, y - C), rich = richness(far) * (b > 4 ? 2 : 1);
@@ -487,13 +488,17 @@ export class Game {
       grit += GRIT[k] * rich; gems[base(b)] += gem;
       if (b === B.CRUST && (k === K.ORE_A || k === K.ORE_B)) grit += (k === K.ORE_B ? 20 : 4) * rich;
       if (k === K.RELIC) relic = w.relicAt.indexOf(i);
+      // A cache holds what a quarter of a minute's cutting out here would earn; a wreck gives up its part.
+      if (k === K.CACHE) { caches++; lump += round2(income(Math.max(22, far)) * 12); }
+      if (k === K.WRECK) { const which = w.wrecks.findIndex(([wx, wy]) => wx === x && wy === y); if (which >= 0 && !S.wrecks[which]) { S.wrecks[which] = 1; parts++; } }
       cx += x; cy += y;
       // A very large piece is shown by a share of its cells.
       if (at % show === 0) sprites.push({ x, y, tile: this.rockRect(x, y, k, b), over: this.overlay(k), gem: gem ? base(b) : 0, gems: gem * show, biome: b, far });
     });
     for (const i of cells) w.setK(i, K.EMPTY);
-    const mult = haulBonus(n, this.val('winch'));
-    grit = Math.round(grit * mult);
+    // Each part brought home from a wreck makes every haul pay a tenth more.
+    const mult = haulBonus(n, this.val('winch')) * (1 + 0.1 * S.wrecks.filter(Boolean).length);
+    grit = Math.round(grit * mult) + lump;
     for (let b = 1; b < 5; b++) gems[b] = Math.round(gems[b]);
     S.grit += grit; this.pending.grit += grit;
     for (let b = 1; b < 5; b++) { S.gems[b] += gems[b]; this.pending.gems[b] += gems[b]; }
@@ -512,7 +517,7 @@ export class Game {
       s.go = lift + (count > 1 ? i / (count - 1) : 0) * spread; s.left = per * per;
       const [u, k] = this.onRoute(h, (s.x + 0.5) * T, (s.y + 0.5) * T, 0, route.length);
       s.k = k; at += u / count;
-      if (s.over) { const items = this.itemSheet(s.biome), f = s.over === 'hazard' || s.over === 'relic' ? frameAt(items, s.over, 0) : sheets[items].frames[s.over]; s.item = [sheets[items].image, f]; }
+      if (s.over) { const items = this.itemSheet(s.biome, s.over), f = s.over === 'hazard' || s.over === 'relic' ? frameAt(items, s.over, 0) : sheets[items].frames[s.over]; s.item = [sheets[items].image, f]; }
     });
     // The rubble gathers on the tether beside where it lay. From here the haul has a rope of its own, and the drill
     // is free to go.
@@ -527,8 +532,9 @@ export class Game {
     this.flash = Math.min(0.5, 0.12 + n * 0.006);
     this.ring(cx, cy, '#fff6c8', 30 + Math.min(60, n * 1.5));
     for (const sp of sprites) if (count < 60 || cellHash(sp.x, sp.y, 9) < 0.4) this.chips(sp.x, sp.y, sp.tile[0], 2, null, 0.7);
-    const title = relic >= 0 ? 'RELIC!' : n >= 200 ? 'COLOSSAL!' : n >= 80 ? 'HUGE HAUL!' : n >= 30 ? 'BIG HAUL!' : n >= 10 ? 'NICE CUT!' : 'HAUL';
+    const title = relic >= 0 ? 'RELIC!' : parts ? 'WRECK PART! PAY +10%' : caches ? 'CACHE!' : n >= 200 ? 'COLOSSAL!' : n >= 80 ? 'HUGE HAUL!' : n >= 30 ? 'BIG HAUL!' : n >= 10 ? 'NICE CUT!' : 'HAUL';
     this.banner = { title, n, mult, grit, gems, t: 0, life: 2.2 + Math.min(1.2, n * 0.01) };
+    if (parts || caches) sfx.relic();
     if (relic >= 0) { S.relics[relic] = 1; sfx.relic(); if (S.relics.every(Boolean) && !S.won) { S.won = true; this.wonAt = this.time; } }
   }
   // A point `dist` pixels along a haul's route, from the drill's end toward the core.
@@ -868,7 +874,7 @@ export class Game {
     // A glint now and then on ore in view.
     for (let n = 0; n < 2; n++) {
       const x = Math.floor((this.cam.x + (Math.random() - 0.5) * W) / T), y = Math.floor((this.cam.y + (Math.random() - 0.5) * H) / T), kk = w.peek(x, y);
-      if ((kk === K.ORE_A || kk === K.ORE_B || kk === K.RELIC) && Math.random() < 0.5) this.parts.push({ x: (x + 0.25 + Math.random() * 0.5) * T, y: (y + 0.25 + Math.random() * 0.5) * T, vx: 0, vy: 0, t: 0, life: 0.35, color: '#ffffff', size: 1, star: true });
+      if ((kk === K.ORE_A || kk === K.ORE_B || kk === K.RELIC || kk === K.CACHE || kk === K.WRECK) && Math.random() < (kk >= K.CACHE ? 1 : 0.5)) this.parts.push({ x: (x + 0.25 + Math.random() * 0.5) * T, y: (y + 0.25 + Math.random() * 0.5) * T, vx: 0, vy: 0, t: 0, life: 0.35, color: '#ffffff', size: 1, star: true });
     }
     setAmbience(base(here), here > 4);
     this.chime -= dt;
@@ -926,8 +932,8 @@ export class Game {
     const sheet = this.rockSheet(k, b), rects = sheets[sheet].tiles[this.world.mask(x, y)];
     return [sheet, rects[(cellHash(x, y, 3) * rects.length) | 0]];
   }
-  overlay(k) { return k === K.DENSE ? 'dense' : k === K.ORE_A ? 'oreA' : k === K.ORE_B ? 'oreB' : k === K.HAZARD ? 'hazard' : k === K.RELIC ? 'relic' : null; }
-  itemSheet(b) { return b === B.CRUST ? 'lode-items' : `${BIOME_NAMES[base(b)]}-items`; }
+  overlay(k) { return k === K.DENSE ? 'dense' : k === K.ORE_A ? 'oreA' : k === K.ORE_B ? 'oreB' : k === K.HAZARD ? 'hazard' : k === K.RELIC ? 'relic' : k === K.CACHE ? 'cache' : k === K.WRECK ? 'part' : null; }
+  itemSheet(b, over) { return over === 'cache' || over === 'part' ? 'finds' : b === B.CRUST ? 'lode-items' : `${BIOME_NAMES[base(b)]}-items`; }
 
   render() {
     const { ctx, W, H, world: w } = this, d = this.drill, now = this.time * 1000;
@@ -1185,7 +1191,7 @@ export class Game {
       const ux = px - ((m & 4) ? 0 : 1), uy = py - ((m & 16) ? 0 : 1);
       if (k === K.SLATE || k === K.VAULT) draw(ctx, 'tough', k === K.SLATE ? 'slate' : 'vault', ux, uy);
       const over = this.overlay(k);
-      if (over && over !== 'hazard' && over !== 'relic') draw(ctx, this.itemSheet(b), over, ux, uy);
+      if (over && over !== 'hazard' && over !== 'relic') draw(ctx, this.itemSheet(b, over), over, ux, uy);
     }
   }
 
@@ -1436,6 +1442,11 @@ export class Game {
       const [mx, my] = at(HX + DX[dir] * RELIC_R, HY + DY[dir] * RELIC_R);
       ctx.fillStyle = GEM_COLOR[DIR_BIOME[dir]]; ctx.fillRect(Math.round(mx) - 1, Math.round(my) - 1, 3, 3);
     }
+    if (((this.time * 2) | 0) % 2) this.world.wrecks.forEach(([wx, wy], n) => {
+      if (this.S.wrecks?.[n] || Math.hypot(wx + 0.5 - HX, wy + 0.5 - HY) > R) return;
+      const [mx, my] = at(wx + 0.5, wy + 0.5);
+      ctx.fillStyle = '#ff9a3a'; ctx.fillRect(Math.round(mx) - 1, Math.round(my), 3, 1); ctx.fillRect(Math.round(mx), Math.round(my) - 1, 1, 3);
+    });
     ctx.fillStyle = '#84dcff'; ctx.fillRect(x + size / 2 - 1, y + size / 2 - 1, 3, 3);
     const [dx, dy] = at(d.x, d.y);
     ctx.fillStyle = ((this.time * 3) | 0) % 2 ? '#ffffff' : '#ffd83a'; ctx.fillRect(Math.round(dx) - 1, Math.round(dy) - 1, 3, 3);
