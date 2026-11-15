@@ -36,7 +36,16 @@ python -m http.server 4791
 node test/all.mjs
 ```
 
-The game runs with no browser under `test/harness.mjs`. `test/all.mjs` runs every script in `test/regress/` (each fails while the defect it was written for is there), `test/smoke.mjs`, which plays every direction unattended, and the tether fuzz `test/rope-fuzz.mjs`: about two minutes, one line a test. Among the regress scripts, `i-fuzz-play.mjs` plays the whole game at random (throws, bombs, the shop) and checks the tether, the books of loose ground, the hauls and the money after every frame. Tests of speed count work, not time: `game.swept` (cells the tether's sweeps look at) and the world's `sides`, `followed` and `made` (outline sides walked, cells followed, pieces of world made). `test/frame-time.mjs` times a frame over the fuzz's flight.
+The game runs with no browser under `test/harness.mjs`. `test/all.mjs` runs every script in `test/regress/` (each fails while the defect it was written for is there), `test/smoke.mjs`, which plays every direction unattended, and the tether fuzz `test/rope-fuzz.mjs`: about two minutes, one line a test. Among the regress scripts, `i-fuzz-play.mjs` plays the whole game at random (throws, bombs, the shop) and checks the tether, the books of loose ground, the hauls and the money after every frame. Tests of speed count work, not time: `game.swept` (cells the tether's sweeps look at) and the world's `sides`, `followed` and `made` (outline sides walked, cells followed, pieces of world made). `test/frame-time.mjs` times a frame over the fuzz's flight. Two of the regress scripts are about the tools below: `t-shot-stage.mjs` runs `js/main.js` on a stand-in page, with and without `?shot`, and `t-shot-tool.mjs` takes real pictures where a browser is installed.
+
+## Looking at it
+
+```bash
+node tools/shot.mjs out.png --at 0,-300
+node tools/shot.mjs out.png --at 0,-300 --size 1200x1200 --zoom 8 --lit
+```
+
+`tools/shot.mjs` takes a picture of the game with nobody at the browser. It serves this folder on a free loopback port, opens the game in an installed Edge or Chrome run headless on a profile of its own (no saved game is read or written), steps it and saves a PNG of the page; the browser and the server are closed whatever happens, and the last line printed is the path written. The picture is of a fresh world on `--seed` (7), with the drill `--at dx,dy` cells from the core: east and south are counted up, so 300 cells north is `0,-300`. Away from the core the drill stands in a small room at the end of a tunnel carved from the core, as the tether fuzz carves a far start, and all the ground in view is uncovered. `--reach` is the tether's level (the first that gets there, if not given), `--size` the page in CSS pixels (360x640, about 11 x 20 cells), `--zoom n` shows n times as many cells across in the same picture, `--frames` how long the game is stepped first (180: three seconds), and `--lit` leaves out the dark, which is what a zoomed picture of a whole province wants. The same view opens by hand at `index.html?shot&seed=7&at=0,-300&zoom=4&lit` (`js/shot.js`); it is held still until `tetherbore.resume()` is typed in the console.
 
 ## The art
 
