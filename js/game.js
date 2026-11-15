@@ -1244,7 +1244,7 @@ export class Game {
     // (A mineral that pays more in a chain rings at every haul, a note higher for each haul before it, as far as
     // the pay rises; any other rings when the whole count of specimens does.)
     if (specOf) this.specLine = { kin: specOf, t: 0, life: SPEC_LINE };
-    if (pay.chain ? true : specOf && specUp > 0) sfx.gem(Math.min(5, linked));
+    if (pay.chain || (specOf && specUp > 0)) sfx.gem(Math.min(5, linked));
     S.stats.hauls++; S.stats.best = Math.max(S.stats.best, n);
     sprites.sort((a, b) => a.far - b.far);
     const count = sprites.length, spread = Math.min(1.0, 0.2 + count * 0.012), lift = Math.min(0.5, 0.26 + count * 0.003);

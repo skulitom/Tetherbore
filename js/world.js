@@ -537,7 +537,8 @@ export const cellHash = hash;
 // hashes of the square it was last asked about: a piece of the world is made a row at a time, so most cells ask
 // about the square the cell before them did.
 // Layers and hash seeds in use (added to the world's seed): 1-3 and 14-17 whose ground a cell is; 4 the world's
-// edge; 5-13 and 18 the ground itself; 21-24 finds; 31-32 wrecks; 55 and 300 + a strain's number, provinces (56 and
+// edge; 5-13 and 18 the ground itself; 21-24 finds; 31-32 wrecks; 40-44 and 100 + a pocket's number, where pockets
+// lie and of what kind; 45-47 a hive, 48-50 a drift, 51 an ash flat; 55 and 300 + a strain's number, provinces (56 and
 // 57: which cross a province is); 58-59 a second hazard; 64 grapes, 65 lanes, 66 rivers, 67 bubbles (strata are on 11,
 // stretched); 68 slag among lava; 80-89 keystone slabs (84 the layer their cracks wander by). docs/CONTENT-PLAN.md
 // (S3) allots the rest: take a number from there, so that no two rules read the same layer.
