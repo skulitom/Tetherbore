@@ -33,7 +33,8 @@ try {
   else {
     check(first.status === 0, `tools/shot.mjs failed: ${(first.stdout + first.stderr).trim().slice(-600)}`);
     check(first.stdout.trim().split('\n').pop().trim() === dark, `the last line printed is not the path written: ${first.stdout.trim().split('\n').pop()}`);
-    check(/300 north of the core, in frost/.test(first.stdout), `the tool does not say where the drill stands: ${first.stdout.trim()}`);
+    // (On seed 7 that is in a province of firn, a strain of the north's ground.)
+    check(/300 north of the core, in firn/.test(first.stdout), `the tool does not say where the drill stands: ${first.stdout.trim()}`);
     const lit = path.join(folder, 'lit.png'), wide = path.join(folder, 'wide.png');
     check(run('shot.mjs', lit, '--at=0,-300', '--frames', '30', '--lit').status === 0, 'tools/shot.mjs --lit failed');
     check(run('shot.mjs', wide, '--at', '0,-300', '--frames', '0', '--size', '400x300', '--zoom', '4', '--lit').status === 0, 'tools/shot.mjs --zoom failed');

@@ -3,6 +3,10 @@
 // for every cell, hashes and all); js/world.js now skips what cannot matter and remembers what the cell before
 // asked about. Here pieces of the world from the game are compared, cell for cell, with the plain reading: at the
 // core, in each direction's ground, on the borders between them, at the wrecks, the relics and the world's edge.
+//
+// Ground that was laid on purpose since is in the plain reading too, written out as plainly: the provinces and the
+// eight strains laid in them (docs/CONTENT-PLAN.md S3 and content item 1), each strain's figures as a line of
+// `STRAIN` below and its tell as one line of `kindAt`. So this is also what holds those figures and tells.
 //   node test/regress/w-same-world.mjs
 import { world } from '../harness.mjs';
 const { World, N, C, CH, CW, K, B, HOME_R, DEEP_R, RELIC_R, WORLD_R, FIND, WRECK_R, DX, DY, base, cellHash: hash } = world;
@@ -12,6 +16,17 @@ const noise = (x, y, s) => {
   const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
   const a = hash(xi, yi, s), b = hash(xi + 1, yi, s), c = hash(xi, yi + 1, s), d = hash(xi + 1, yi + 1, s);
   return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+};
+// The strains: whose direction's ground each is a kind of, and what it has that its direction's has not.
+const STRAIN = {
+  17: { kin: 1, dense: 0.60, cave: 0.86, cavern: 0.84, rivers: 0.02 },
+  18: { kin: 1, lanes: 0.085 },
+  19: { kin: 2, lava: 0.80, bubbles: 0.8 },
+  20: { kin: 2, lava: 0.735, slate: 0.04 },
+  21: { kin: 3, cavern: 0.60 },
+  22: { kin: 3, oreA: 0.63, rate: 0.5, grapes: 0.85 },
+  23: { kin: 4, slate: 0, strata: 0.05 },
+  24: { kin: 4, dense: 0.76, oreA: 0.72, oreB: 0.80, slate: 0.02, rate: 0.5 },
 };
 const plain = seed => {
   const wrecks = WRECK_R.map((r, n) => {
@@ -41,7 +56,19 @@ const plain = seed => {
     const b = ax > ay ? (dx > 0 ? B.LODE : B.MIRE) : (dy < 0 ? B.FROST : B.EMBER);
     const deep = r > DEEP_R + (noise(x / 50, y / 50, seed + 14) - 0.5) * 200
       && Math.min(Math.abs(dx), Math.abs(dy)) > Math.max(Math.abs(dx), Math.abs(dy)) * 0.36 + (noise(x / 37, y / 37, seed + 15) - 0.5) * 60;
-    return deep ? b + 4 : b;
+    if (deep) return b + 4;
+    // Past the world's edge no province is asked for. Within it, the province the cell lies in, on borders that
+    // wander: its direction's own ground if its middle is under 220 out, and by its hash a cross's (none laid
+    // yet), a strain's (two thirds of the rest: the strain of this direction whose own hash is largest) or its
+    // direction's own.
+    if (r > WORLD_R + 2) return b;
+    const px = Math.floor((dx + (noise(x / 61, y / 61, seed + 1) - 0.5) * 120) / 256), py = Math.floor((dy + (noise(x / 61, y / 61, seed + 2) - 0.5) * 120) / 256);
+    const rc = Math.sqrt(((px + 0.5) * 256) ** 2 + ((py + 0.5) * 256) ** 2);
+    if (rc < 220) return b;
+    const X = Math.min(0.35, Math.max(0, (rc - 500) / 2500)), pick = hash(px, py, seed + 55);
+    if (pick < X || pick >= X + (1 - X) * 2 / 3) return b;
+    const one = 15 + b * 2, two = one + 1;
+    return hash(px, py, seed + 300 + two) > hash(px, py, seed + 300 + one) ? two : one;
   };
   const kindAt = (x, y, b) => {
     const dx = x - C, dy = y - C, r = Math.sqrt(dx * dx + dy * dy);
@@ -62,7 +89,7 @@ const plain = seed => {
     }
     const find = r > 12 ? findAt(x, y) : -1;
     if (find >= 0) return find;
-    const h = hash(x, y, seed + 9), deep = b > 4, kin = base(b);
+    const S = STRAIN[b] ?? {}, h = hash(x, y, seed + 9), deep = b > 4 && b < 9, kin = S.kin ?? base(b);
     let k = K.SOFT;
     if (b === B.CRUST) {
       if (r > 5 && noise(x / 4, y / 4, seed + 5) > 0.7) k = K.DENSE;
@@ -73,17 +100,31 @@ const plain = seed => {
       if (r > 60 && noise(x / 19, y / 19, seed + 18) > 0.76) k = K.EMPTY;
       return k;
     }
-    if (noise(x / 4, y / 4, seed + 5) > (kin === B.EMBER ? 0.64 : 0.68)) k = K.DENSE;
-    if (noise(x / 3, y / 3, seed + 6) > (deep ? 0.6 : 0.66) && h < 0.62) k = K.ORE_A;
-    if (noise(x / 3.5, y / 3.5, seed + 7) > (deep ? 0.66 : 0.74) && h < 0.5) k = K.ORE_B;
-    const more = deep ? 1.8 : 1;
-    if (kin === B.EMBER && noise(x / 2.5, y / 2.5, seed + 8) > (deep ? 0.72 : 0.78) && h > 0.45) k = K.HAZARD;
+    if (noise(x / 4, y / 4, seed + 5) > (S.dense ?? (kin === B.EMBER ? 0.64 : 0.68))) k = K.DENSE;
+    // Serac's lanes of ice lie where plain rock would; firn's rivers run through its ore as well.
+    if (S.lanes && Math.abs(noise(x / 6, y / 6, seed + 65) - 0.5) < S.lanes) k = K.ICE;
+    if (noise(x / 3, y / 3, seed + 6) > (S.oreA ?? (deep ? 0.6 : 0.66)) && h < 0.62) k = K.ORE_A;
+    if (noise(x / 3.5, y / 3.5, seed + 7) > (S.oreB ?? (deep ? 0.66 : 0.74)) && h < 0.5) k = K.ORE_B;
+    if (S.rivers && Math.abs(noise(x / 40, y / 40, seed + 66) - 0.5) < S.rivers) k = K.ICE;
+    const more = S.rate ?? (deep ? 1.8 : 1);
+    if (kin === B.EMBER && noise(x / 2.5, y / 2.5, seed + 8) > (S.lava ?? (deep ? 0.72 : 0.78)) && h > 0.45) k = K.HAZARD;
     if (kin === B.MIRE && hash(x, y, seed + 10) < 0.022 * more) k = K.HAZARD;
     if (kin === B.LODE && hash(x, y, seed + 10) < 0.026 * more) k = K.HAZARD;
-    if (Math.abs(noise(x / 9, y / 9, seed + 11) - 0.5) < (kin === B.LODE ? 0.05 : 0.03)) k = K.SLATE;
+    // Sporefall's bunches: a square of six cells has one where its hash is over the figure, the bunch's middle
+    // cell a cell or more inside the square, and the pods are that cell and those round it that their hash keeps.
+    if (S.grapes) {
+      const gx = Math.floor(x / 6), gy = Math.floor(y / 6), g = hash(gx, gy, seed + 64);
+      if (g >= S.grapes) {
+        const at = Math.floor((g - S.grapes) / (1 - S.grapes) * 16), ex = Math.abs(x - (gx * 6 + 1 + at % 4)), ey = Math.abs(y - (gy * 6 + 1 + Math.floor(at / 4)));
+        if (ex <= 1 && ey <= 1 && (ex + ey === 0 || hash(x, y, seed + 10) < 0.6)) k = K.HAZARD;
+      }
+    }
+    if (Math.abs(noise(x / 9, y / 9, seed + 11) - 0.5) < (S.slate ?? (kin === B.LODE ? 0.05 : 0.03))) k = K.SLATE;
+    if (S.strata && Math.abs(noise(x / 40, y / 3, seed + 11) - 0.5) < S.strata) k = K.SLATE;
     if (r > 600 && Math.abs(noise(x / 8, y / 8, seed + 12) - 0.5) < 0.028) k = K.VAULT;
-    if (noise(x / 5, y / 5, seed + 13) > (kin === B.MIRE ? 0.68 : 0.8)) k = K.EMPTY;
-    if (noise(x / 19, y / 19, seed + 18) > (kin === B.MIRE ? 0.7 : 0.78)) k = K.EMPTY;
+    if (S.bubbles && noise(x / 2, y / 2, seed + 67) > S.bubbles) k = K.EMPTY;
+    if (noise(x / 5, y / 5, seed + 13) > (S.cave ?? (kin === B.MIRE ? 0.68 : 0.8))) k = K.EMPTY;
+    if (noise(x / 19, y / 19, seed + 18) > (S.cavern ?? (kin === B.MIRE ? 0.7 : 0.78))) k = K.EMPTY;
     return k;
   };
   return { wrecks, biomeAt, kindAt };
@@ -99,6 +140,8 @@ for (const seed of [1, 7, 34, 99991, 123456789]) {
   for (const [wx, wy] of ref.wrecks) round(wx, wy);
   for (let d = 0; d < 4; d++) { round(C + DX[d] * RELIC_R, C + DY[d] * RELIC_R); round(C + DX[d] * WORLD_R, C + DY[d] * WORLD_R); round(C + DX[d] * 600, C + DY[d] * 600, 0); }
   for (const [x, y] of [[1700, 1700], [-1700, 1650], [900, -900], [-640, -700], [1000, 420], [-300, 1100], [700, -1900], [-1500, -200], [140, 60], [-90, -120], [1697, 1697]]) round(C + x, C + y);
+  // Provinces: a ring of pieces 320 and 1100 cells out, where strains of every direction lie.
+  for (const far of [320, 1100]) for (const [u, v] of [[1, 0], [1, 0.4], [0.4, 1], [0, 1], [-0.4, 1], [-1, 0.4], [-1, 0], [-1, -0.4], [-0.4, -1], [0, -1], [0.4, -1], [1, -0.4]]) round(C + Math.round(u * far), C + Math.round(v * far), 0);
   // Asked in the game's order (a piece at a time, as play makes them) and then a second time in another order, so
   // what the layers remember from the cell before is put to the test.
   for (const id of ids) {
@@ -118,4 +161,5 @@ for (const seed of [1, 7, 34, 99991, 123456789]) {
 }
 console.log(JSON.stringify({ pieces, cells, kindsSeen: kinds.size, biomesSeen: biomes.size, wrong }));
 console.log(wrong ? `DEFECT: the world a seed makes has changed: ${first}` : 'no defect');
-process.exit(wrong || kinds.size < 12 || biomes.size < 9 ? 1 : 0);
+if (!wrong && biomes.size < 17) console.log(`DEFECT: only ${biomes.size} of the 17 grounds were met: ${[...biomes].sort((a, b) => a - b)}`);
+process.exit(wrong || kinds.size < 12 || biomes.size < 17 ? 1 : 0);

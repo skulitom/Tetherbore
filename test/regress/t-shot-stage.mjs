@@ -48,7 +48,7 @@ check(JSON.parse(localStorage.getItem(SAVE)).grit === 5, 'an ordinary game no lo
 localStorage.setItem(SAVE, saved);
 check(await open('', 'example.org') === undefined, 'away from localhost an ordinary start shows the test hook');
 
-// 300 cells north.
+// 300 cells north: on seed 7 that is in a province of firn, a strain of the north's ground.
 {
   const t = await open('?shot&seed=7&at=0,-300', 'example.org'), game = t?.game, d = game?.drill, w = game?.world;
   check(t && t.shot, '`?shot` staged nothing');
@@ -70,7 +70,7 @@ check(await open('', 'example.org') === undefined, 'away from localhost an ordin
     check(!tetherFaults(game).length, `the tether after three seconds: ${tetherFaults(game).join('; ')}`);
     check(game.S.stats.hauls === 1 && !game.hauled, 'something was hauled in a view nobody touched');
     const facts = t.shot.facts();
-    check(facts.cells.join() === '11,20' && facts.ground === 'frost' && facts.zoom === 1, `what the view says of itself: ${JSON.stringify(facts)}`);
+    check(facts.cells.join() === '11,20' && facts.ground === 'firn' && facts.zoom === 1, `what the view says of itself: ${JSON.stringify(facts)}`);
     check(localStorage.getItem(SAVE) === saved, 'the staged view wrote over the saved game');
   }
 }
@@ -80,10 +80,10 @@ check(await open('', 'example.org') === undefined, 'away from localhost an ordin
 {
   const first = (await open('?shot&seed=7&at=0,-300')).game;
   globalThis.tetherbore.advance(100);
-  check(first.place?.title === 'FROST' && first.place.card === true, `the place named in a staged view: ${JSON.stringify(first.place)}`);
+  check(first.place?.title === 'FIRN' && first.place.card === true, `the place named in a staged view: ${JSON.stringify(first.place)}`);
   const again = (await open('?shot&seed=7&at=0,-300&met')).game;
   globalThis.tetherbore.advance(100);
-  check(again.place?.title === 'FROST' && again.place.card === false, `the place named in a view staged with \`met\`: ${JSON.stringify(again.place)}`);
+  check(again.place?.title === 'FIRN' && again.place.card === false, `the place named in a view staged with \`met\`: ${JSON.stringify(again.place)}`);
 }
 
 // At the core nothing is carved, and the first game's title is left as it is.

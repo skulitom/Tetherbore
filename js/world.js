@@ -94,10 +94,40 @@ const KIN_ITEMS = ['lode-items', 'frost-items', 'ember-items', 'mire-items', 'lo
 //                       (null: the home ground, which has rules of its own in `kindAt`)
 //   haz, haz2           its hazards, { type, rate, t } or null: K.HAZARD cells are the first, K.HAZARD2 the second
 //   lavaVol, freeze     how far a lava pocket of it pours; seconds until a cut closes with ice (0: never)
-//   glass, extras, pocket   for ground yet to come (docs/CONTENT-PLAN.md S1): nothing reads them yet
-// and `lay`, made from gen and the hazards: the same numbers as `kindAt` wants them, worked out once.
+//   extras              the names of what else is laid in it, each a rule of `TELLS`
+//   glass, pocket       for ground yet to come (docs/CONTENT-PLAN.md S1): nothing reads them yet
+// and `lay`, made from gen, the hazards and the extras: the same numbers as `kindAt` wants them, worked out once.
 export const BIOMES = [];
 const SCATTER = 2, POCKETS = 1;                 // how a hazard is laid: a cell at a time by its hash, or in pockets of noise
+// What a ground may have laid in it besides its standard ground (its row's `extras`), and the one figure each is
+// laid by. Each is a tell: a shape in the ground that says which place this is before its colour does.
+//   rivers   long winding rivers of ice through the rock, two to four cells wide: quick to cut, and worth nothing
+//   lanes    a mesh of lanes of ice two or three cells wide, round blocks of rock six to twelve cells across
+//   bubbles  open bubbles of one to three cells, everywhere
+//   grapes   the first hazard hung in bunches of three to six
+//   strata   slate in long level beds, a cell or two thick
+// The figure is how far to either side of the middle of its layer of noise the ice or slate lies (rivers, lanes,
+// strata), or what the layer must be over (bubbles, grapes). `OFF` is the figure of a ground with none of that.
+// The figures were set by counting (tools/strains.mjs) and by eye (tools/shot.mjs): rivers are 5 cells in a hundred
+// of firn, lanes 15 of serac, bubbles 5 of scoria beyond its caves; a square of sporefall in seven has a bunch;
+// redrock has as much slate as the east's own ground, 12 in a hundred, lying level.
+export const TELLS = { rivers: 0.02, lanes: 0.085, bubbles: 0.8, grapes: 0.85, strata: 0.05 };
+const OFF = { rivers: 0, lanes: 0, bubbles: 2, grapes: 2, strata: 0 };
+const river = (x, y, seed, w) => Math.abs(noise(x / 40, y / 40, seed + 66, 66) - 0.5) < w;
+const lane = (x, y, seed, w) => Math.abs(noise(x / 6, y / 6, seed + 65, 65) - 0.5) < w;
+const bubble = (x, y, seed, t) => noise(x / 2, y / 2, seed + 67, 67) > t;
+// Bunches hang on a grid of squares six cells across: a square has one or none, by its own hash, with its middle
+// cell at least a cell inside the square, so that a cell asks only about its own square. The pods are the middle
+// cell and, of the eight round it, those their own hash keeps: three to six for the most part.
+const grape = (x, y, seed, t) => {
+  const gx = Math.floor(x / 6), gy = Math.floor(y / 6), h = hash(gx, gy, seed + 64);
+  if (h < t) return false;
+  const at = Math.floor((h - t) / (1 - t) * 16), ex = x - gx * 6 - 1 - (at & 3), ey = y - gy * 6 - 1 - (at >> 2);
+  return ex >= -1 && ex <= 1 && ey >= -1 && ey <= 1 && ((ex === 0 && ey === 0) || hash(x, y, seed + 10) < 0.6);
+};
+const stratum = (x, y, seed, w) => Math.abs(noise(x / 40, y / 3, seed + 11, 11) - 0.5) < w;
+// The hand-made strains of each direction's ground (grounds 17 to 31), by kin: `biomeAt` lays them as provinces.
+const STRAINS = [[], [], [], [], []];
 const laid = (haz, what) => {
   if (!haz) return [0, 0];
   const type = HAZARDS[haz.type];
@@ -111,7 +141,14 @@ export function biome(f) {
   const { id, name } = f, kin = f.kin ?? 0;
   if (!Number.isInteger(id) || id < 0 || id > 255 || typeof name !== 'string') throw new Error(`a ground needs a number from 0 to 255 and a name: ${id} ${name}`);
   for (const need of ['gloom', 'mote', 'map', 'debris']) if (!Array.isArray(f[need])) throw new Error(`${name}: a ground says its ${need}`);
-  const [haz, hazT] = laid(f.haz, name), [haz2, haz2T] = laid(f.haz2, name), g = f.gen ?? null;
+  const [haz, hazT] = laid(f.haz, name), [haz2, haz2T] = laid(f.haz2, name), g = f.gen ?? null, tells = { ...OFF };
+  for (const extra of f.extras ?? []) {
+    if (!(extra in TELLS)) throw new Error(`${name}: there is no extra called ${extra}`);
+    if (!g || (extra === 'grapes' && !haz)) throw new Error(`${name}: ${extra} need ${g ? 'a hazard to hang' : 'standard ground to lie in'}`);
+    tells[extra] = TELLS[extra];
+  }
+  for (const list of STRAINS) if (list.includes(id)) list.splice(list.indexOf(id), 1);
+  if (id >= 17 && id <= 31 && kin) STRAINS[kin].push(id);
   return BIOMES[id] = {
     id, name, title: f.title ?? name.toUpperCase(), kin, gemA: f.gemA ?? kin, gemB: f.gemB ?? kin,
     rich: f.rich ?? 1, gemx: f.gemx ?? 1, worth: f.worth ?? 1, dig: f.dig ?? 1,
@@ -119,7 +156,7 @@ export function biome(f) {
     gloom: f.gloom, dark: f.dark ?? 1, mote: f.mote, map: f.map, debris: f.debris,
     gen: g, haz: f.haz ?? null, haz2: f.haz2 ?? null, lavaVol: f.lavaVol ?? 5, freeze: f.freeze ?? 0,
     glass: f.glass ?? false, extras: f.extras ?? [], pocket: f.pocket ?? null,
-    lay: g && { dense: g.dense, oreA: g.oreA, oreB: g.oreB, slate: g.slate, cave: g.cave, cavern: g.cavern, haz, hazT, haz2, haz2T },
+    lay: g && { dense: g.dense, oreA: g.oreA, oreB: g.oreB, slate: g.slate, cave: g.cave, cavern: g.cavern, haz, hazT, haz2, haz2T, ...tells },
   };
 }
 // The row of a ground's number: the home ground's for a number that has no row.
@@ -157,6 +194,30 @@ deep(5, 'rime', B.FROST, { gloom: [3, 18, 24], mote: ['#d8fff4', 'fall'], map: [
 deep(6, 'magma', B.EMBER, { gloom: [30, 5, 3], mote: ['#ffc040', 'rise'], map: [122, 36, 24], debris: ['#7a2418', '#e8743a', '#ffb040'] });
 deep(7, 'bloom', B.MIRE, { gloom: [26, 4, 28], mote: ['#ffa0e0', 'sway'], map: [138, 60, 140], debris: ['#8a3c8c', '#ffa0e0', '#7af0d0'] });
 deep(8, 'gilt', B.LODE, { gloom: [24, 18, 2], mote: ['#ffe680', 'still'], map: [110, 90, 52], debris: ['#6e5a34', '#ffe680', '#ffd040'] });
+// Two strains of each direction's ground, laid as provinces from a little way out (`biomeAt`), so that a long flight
+// keeps coming into somewhere else. Each is its direction's ground with a few figures changed and a tell of its own
+// in the shape of the ground; its floor, its dark, its motes, its ore and its hazard's kind are its direction's, so
+// that colour and icon still say whose gems it pays. `rich` follows the danger and the cutting time:
+// 1 + 0.4 x (how many times the hazard - 1) + 0.3 x (dig - 1), near enough.
+const strain = (id, name, of, f) => {
+  const kin = BIOMES[of];
+  return biome({ id, name, kin: of, floor: kin.floor, gloom: kin.gloom, mote: kin.mote, freeze: kin.freeze, haz: kin.haz, ...f, gen: { ...kin.gen, ...f.gen } });
+};
+// North. Firn: massive ice with few caves, crossed by long frozen rivers that are quick roads; a cut stays open
+// longer. Serac: shattered by a mesh of brittle lanes, so pieces come loose easily; a cut closes fast.
+strain(17, 'firn', B.FROST, { rich: 0.95, freeze: 45, gen: { dense: 0.60, cave: 0.86, cavern: 0.84 }, extras: ['rivers'],
+  map: [154, 180, 210], debris: ['#9ab4d2', '#a8c0dc', '#eef6ff'] });
+strain(18, 'serac', B.FROST, { rich: 1.05, freeze: 15, extras: ['lanes'], map: [234, 248, 255], debris: ['#eaf8ff', '#cfe8f8', '#6cb2e4'] });
+// South. Scoria: frothy, with bubbles everywhere and less lava. Forge: clinker, with more lava that pours further.
+strain(19, 'scoria', B.EMBER, { rich: 0.95, haz: { type: 'lava', rate: 1, t: 0.80 }, extras: ['bubbles'], map: [150, 88, 74], debris: ['#96584a', '#aa6c58', '#dc9c7c'] });
+strain(20, 'forge', B.EMBER, { rich: 1.25, haz: { type: 'lava', rate: 1, t: 0.735 }, lavaVol: 7, gen: { slate: 0.04 }, map: [102, 70, 68], debris: ['#664644', '#7e5a56', '#ff9a3a'] });
+// West. Tangle: great open caves with thin bridges between them. Sporefall: pods hang in bunches.
+strain(21, 'tangle', B.MIRE, { rich: 1, gen: { cavern: 0.60 }, map: [62, 90, 64], debris: ['#3e5a40', '#5a4a70', '#a8e070'] });
+strain(22, 'sporefall', B.MIRE, { rich: 1.2, haz: { type: 'spore', rate: 0.5 }, gen: { oreA: 0.63 }, extras: ['grapes'], map: [168, 136, 184], debris: ['#a888b8', '#b898c6', '#b4e878'] });
+// East. Redrock: its slate lies in level beds, so loops come out long and flat. Loess: pale silt that cuts in half
+// the time and holds little ore: the quick road.
+strain(23, 'redrock', B.LODE, { rich: 1, gen: { slate: 0 }, extras: ['strata'], map: [168, 90, 58], debris: ['#a85a3a', '#bc6e48', '#f0b080'] });
+strain(24, 'loess', B.LODE, { rich: 0.85, dig: 0.5, gen: { dense: 0.76, oreA: 0.72, oreB: 0.80, slate: 0.02 }, haz: { type: 'spark', rate: 0.5 }, map: [228, 220, 200], debris: ['#e4dcc8', '#f0ead8', '#ffffff'] });
 
 export const DX = [1, 0, -1, 0], DY = [0, 1, 0, -1];
 // The cell next to a cell on each side, as steps of its number: east, south, west, north (as DX, DY). And how far
@@ -180,6 +241,9 @@ export const FINDS = [[0.38, 'geode'], [0.70, 'cache'], [0.74, 'prism'], [0.80, 
 const GEODES = FINDS[0][0], CACHES = FINDS[1][0], PRISMS = FINDS[2][0], HELD = FINDS[FINDS.length - 1][0], PRISM_R = 130;
 // Pockets (mini zones) are laid out in sectors ZONE cells across, one pocket at the most in each.
 export const ZONE = 128;
+// Past the four pieces of ground round the core, each direction's ground is laid out in provinces PROVINCE cells
+// across, and a province may be a strain of the direction's ground (`World.province`).
+export const PROVINCE = 256;
 export const onCore = (x, y) => Math.abs(x - C) <= 1 && Math.abs(y - C) <= 1;
 
 const hash = (x, y, s) => {
@@ -193,8 +257,10 @@ export const cellHash = hash;
 // hashes of the square it was last asked about: a piece of the world is made a row at a time, so most cells ask
 // about the square the cell before them did.
 // Layers and hash seeds in use (added to the world's seed): 1-3 and 14-17 whose ground a cell is; 4 the world's
-// edge; 5-13 and 18 the ground itself; 21-24 finds; 31-32 wrecks; 58-59 a second hazard. docs/CONTENT-PLAN.md (S3)
-// allots the rest: take a number from there, so that no two rules read the same layer.
+// edge; 5-13 and 18 the ground itself; 21-24 finds; 31-32 wrecks; 55 and 300 + a strain's number, provinces (56 and
+// 57 are kept for crosses); 58-59 a second hazard; 64 grapes, 65 lanes, 66 rivers, 67 bubbles (strata are on 11,
+// stretched). docs/CONTENT-PLAN.md (S3) allots the rest: take a number from there, so that no two rules read the
+// same layer.
 const kept = new Float64Array(128 * 7).fill(NaN);
 const noise = (x, y, s, k = s & 127) => {
   const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi, m = k * 7;
@@ -222,6 +288,7 @@ export class World {
     this.sector = { sx: NaN, sy: NaN, seed: NaN, what: 1, fx: 0, fy: 0, size: 3 };      // the sector `findAt` last looked at
     this.asked = { sx: NaN, sy: NaN, seed: NaN, what: 1, fx: 0, fy: 0, size: 3 };       // and the one `findSpot` did
     this.spotted = [];                     // things seen for the first time and not yet called out: `see` adds, the game takes
+    this.provinces = new Uint8Array(4096).fill(255);      // the ground of each province and direction asked about (255: not yet)
     this.relicAt = [0, 1, 2, 3].map(d => (C + DY[d] * RELIC_R) * N + C + DX[d] * RELIC_R);
   }
   // Where the eight wrecks lie in this world: [x, y] each, in a direction of its own.
@@ -287,22 +354,66 @@ export class World {
     this.touched.clear(); this.lava.clear(); this.dug.clear();
     this.made = 0;
     this.spotted.length = 0;
+    this.provincesFor = NaN;
   }
 
-  // Whose ground a cell is, from the seed alone.
+  // Whose ground a cell is, from the seed alone. The rules, in the order they are asked (docs/CONTENT-PLAN.md S3):
+  // the first that holds is the answer.
+  //   1. a pocket          (not laid yet: `zoneOf`. Its place is here, before the home ground, for cells over 150 out)
+  //   2. the home ground
+  //   3. which direction's ground, on borders that wander
+  //   4. a seam along a diagonal   (not laid yet. Its place is after the direction is known and before the flanks)
+  //   5. a deep flank: strains and crosses never take the place of one
+  //   6. the province the cell lies in: a cross (not laid yet), a hand-made strain of the direction, or
+  //   7. the direction's own ground.
   biomeAt(x, y) {
     const seed = this.seed, dx = x - C, dy = y - C, r = Math.sqrt(dx * dx + dy * dy);
     if (r < HOME_R - 25 - SURE || (r < HOME_R + 25 + SURE && r < HOME_R + (noise(x / 30, y / 30, seed + 3, 3) - 0.5) * 50)) return B.CRUST;
     // The larger of the two distances, on a border that wanders in long sweeps and small wobbles.
-    const far = Math.min(90, r * 0.2), near = Math.min(8, r * 0.1);
-    const ax = Math.abs(dx) + (noise(x / 61, y / 61, seed + 1, 1) - 0.5) * far + (noise(x / 9, y / 9, seed + 16, 16) - 0.5) * near;
-    const ay = Math.abs(dy) + (noise(x / 61, y / 61, seed + 2, 2) - 0.5) * far + (noise(x / 9, y / 9, seed + 17, 17) - 0.5) * near;
+    const far = Math.min(90, r * 0.2), near = Math.min(8, r * 0.1), n1 = noise(x / 61, y / 61, seed + 1, 1), n2 = noise(x / 61, y / 61, seed + 2, 2);
+    const ax = Math.abs(dx) + (n1 - 0.5) * far + (noise(x / 9, y / 9, seed + 16, 16) - 0.5) * near;
+    const ay = Math.abs(dy) + (n2 - 0.5) * far + (noise(x / 9, y / 9, seed + 17, 17) - 0.5) * near;
     const b = ax > ay ? (dx > 0 ? B.LODE : B.MIRE) : (dy < 0 ? B.FROST : B.EMBER);
-    if (r <= DEEP_R - 100 - SURE) return b;
-    const least = Math.min(Math.abs(dx), Math.abs(dy)), flank = Math.max(Math.abs(dx), Math.abs(dy)) * 0.36;
-    if (least <= flank - 30 - SURE) return b;
-    const deep = r > DEEP_R + (noise(x / 50, y / 50, seed + 14, 14) - 0.5) * 200 && least > flank + (noise(x / 37, y / 37, seed + 15, 15) - 0.5) * 60;
-    return deep ? b + 4 : b;
+    if (r > DEEP_R - 100 - SURE) {
+      const least = Math.min(Math.abs(dx), Math.abs(dy)), flank = Math.max(Math.abs(dx), Math.abs(dy)) * 0.36;
+      if (least > flank - 30 - SURE && r > DEEP_R + (noise(x / 50, y / 50, seed + 14, 14) - 0.5) * 200 && least > flank + (noise(x / 37, y / 37, seed + 15, 15) - 0.5) * 60) return b + 4;
+      if (r > WORLD_R + 2) return b;           // past the world's edge there is only bedrock, and no province is asked for
+    }
+    // Provinces are PROVINCE cells across, on borders that wander with the same long sweeps as the directions' do.
+    // The four round the core are too near it to be anything but their direction's own ground, and are not asked.
+    const u = dx + (n1 - 0.5) * 120, v = dy + (n2 - 0.5) * 120;
+    if (u >= -PROVINCE && u < PROVINCE && v >= -PROVINCE && v < PROVINCE) return b;
+    return this.province(Math.floor(u / PROVINCE), Math.floor(v / PROVINCE), b);
+  }
+  // What the ground of direction `kin` is in province (px, py), provinces being counted from the core's cell.
+  // A province whose middle is under 220 cells out is its direction's own ground. Further out, by the province's
+  // own hash: a share `X` of provinces, none under 500 cells out and never more than 0.35, is kept for generated
+  // crosses (not laid yet: the direction's own ground until they are); two thirds of the rest are a hand-made
+  // strain of the direction, the one whose own hash for the province is largest, so that a strain added later
+  // takes few provinces from the others; the last third is the direction's own. A province on a border between
+  // two directions is asked for each. What is worked out is kept, a number for each province and direction.
+  province(px, py, kin) {
+    const seed = this.seed;
+    if (this.provincesFor !== seed) { this.provincesFor = seed; this.provinces.fill(255); }
+    const at = (((py + 16) & 31) << 7) | (((px + 16) & 31) << 2) | (kin - 1), known = this.provinces[at];
+    if (known !== 255) return known;
+    const mx = (px + 0.5) * PROVINCE, my = (py + 0.5) * PROVINCE, rc = Math.sqrt(mx * mx + my * my);
+    let b = kin;
+    if (rc >= 220) {
+      const X = Math.min(0.35, Math.max(0, (rc - 500) / 2500)), pick = hash(px, py, seed + 55);
+      if (pick >= X && pick < X + (1 - X) * 2 / 3) for (let n = 0, most = -1, list = STRAINS[kin]; n < list.length; n++) {
+        const h = hash(px, py, seed + 300 + list[n]);
+        if (h > most) { most = h; b = list[n]; }
+      }
+    }
+    return this.provinces[at] = b;
+  }
+  // Whose ground a cell is, as far as is known: what a piece of the world holds where it has been made (a saved
+  // game's older pieces may hold ground that is laid otherwise now), and from the seed alone where it has not.
+  // Asking never makes a piece.
+  biomeKnown(x, y) {
+    const p = this.chunks[((y >> 6) << 8) | (x >> 6)];
+    return p ? p.biome[((y & 63) << 6) | (x & 63)] : this.biomeAt(x, y);
   }
   // What a cell is before anything has touched it, from the seed alone.
   kindAt(x, y, b) {
@@ -345,17 +456,25 @@ export class World {
     }
     // Every other ground is laid the same way, by its row's own thresholds (`lay`), and in the same order: the
     // last of these to hold is what the cell is, as above. A second hazard has layers of its own (58, and 59 for
-    // the hash), so it never lies where the first does, and gives way to it.
+    // the hash), so it never lies where the first does, and gives way to it. What a row has besides (its extras,
+    // `TELLS`) is asked where it belongs: bubbles with the caves, strata with the slate, grapes with the first
+    // hazard, a river before the ore and lanes after it.
     if (noise(x / 19, y / 19, seed + 18, 18) > g.cavern) return K.EMPTY;
     if (noise(x / 5, y / 5, seed + 13, 13) > g.cave) return K.EMPTY;
+    if (g.bubbles < 1 && bubble(x, y, seed, g.bubbles)) return K.EMPTY;
     if (r > 600 && Math.abs(noise(x / 8, y / 8, seed + 12, 12) - 0.5) < 0.028) return K.VAULT;
-    if (Math.abs(noise(x / 9, y / 9, seed + 11, 11) - 0.5) < g.slate) return K.SLATE;
+    if (g.slate > 0 && Math.abs(noise(x / 9, y / 9, seed + 11, 11) - 0.5) < g.slate) return K.SLATE;
+    if (g.strata > 0 && stratum(x, y, seed, g.strata)) return K.SLATE;
     if (g.haz === SCATTER) { if (hash(x, y, seed + 10) < g.hazT) return K.HAZARD; }
     else if (g.haz === POCKETS && h > 0.45 && noise(x / 2.5, y / 2.5, seed + 8, 8) > g.hazT) return K.HAZARD;
+    if (g.grapes < 1 && grape(x, y, seed, g.grapes)) return K.HAZARD;
     if (g.haz2 === SCATTER) { if (hash(x, y, seed + 59) < g.haz2T) return K.HAZARD2; }
     else if (g.haz2 === POCKETS && h > 0.45 && noise(x / 2.5, y / 2.5, seed + 58, 58) > g.haz2T) return K.HAZARD2;
+    // A river runs through ore as through plain rock, or it would be no road; lanes lie only where plain rock would.
+    if (g.rivers > 0 && river(x, y, seed, g.rivers)) return K.ICE;
     if (h < 0.5 && noise(x / 3.5, y / 3.5, seed + 7, 7) > g.oreB) return K.ORE_B;
     if (h < 0.62 && noise(x / 3, y / 3, seed + 6, 6) > g.oreA) return K.ORE_A;
+    if (g.lanes > 0 && lane(x, y, seed, g.lanes)) return K.ICE;
     if (noise(x / 4, y / 4, seed + 5, 5) > g.dense) return K.DENSE;
     return K.SOFT;
   }
