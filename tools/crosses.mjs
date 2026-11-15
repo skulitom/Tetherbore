@@ -1,6 +1,6 @@
 // The generated ground, counted: crosses of a host direction's ground with a donor's (js/world.js: `crossRow`,
 // rows 128 to 187; docs/CONTENT-PLAN.md, section 4 (a)).
-//   node tools/crosses.mjs [--seeds 8] [--share 40] [--where 7] [--far 1500]
+//   node tools/crosses.mjs [--seeds 8] [--share 40] [--worth 12] [--where 7] [--far 1500]
 //
 //   (nothing)    for each of the twelve pairs and each of the five structures, counted over the seeds 1 to --seeds
 //                beside the host's own ground: how much of the ground is each kind of cell, how thick the donor's
@@ -8,6 +8,9 @@
 //   --share n    instead: how much of the ground is generated at each distance from the core, over seeds 1 to n,
 //                in cells (of all ground, and of ground that is no deep flank) and in provinces, beside the share
 //                the rule gives; and the least that is hand-made on any one seed.
+//   --worth n    instead: what a solid cell pays in grit at each distance (its kind's grit by its ground's `rich`
+//                and `worth`, the mean over rings of cells on seeds 1 to n), with the crosses and with every pair
+//                switched off: what generated ground adds to the income the prices are worked out from.
 //   --where s    instead: where on seed s a province of each pair, and of each structure, lies nearest the core,
 //                as cells east and south of the core: a place to send tools/shot.mjs (`--at`), test/rope-fuzz.mjs
 //                and test/regress/i-fuzz-play.mjs (their start), with the tether level that reaches it.
@@ -15,7 +18,7 @@
 //
 // It asks the world itself (`province`, `biomeAt`, `kindAt`) and makes no piece of it. A window of 96 x 96 cells in
 // the middle of a province is counted, if nine tenths of it and more are the province's own ground.
-import { World, C, K, B, BIOMES, PROVINCE, KIND_NAMES, GRIT, DONORS, STRUCTURES, CROSS_FROM, CROSS_MOST, WORLD_R, crossId } from '../js/world.js';
+import { World, C, K, B, BIOMES, PROVINCE, KIND_NAMES, GRIT, DONORS, STRUCTURES, CROSS_FROM, CROSS_MOST, CROSS_OK, WORLD_R, crossId } from '../js/world.js';
 
 const REACH = [12, 22, 40, 72, 130, 230, 420, 750, 1350, 2300], SIZE = 96;
 const SPAN = Math.ceil(WORLD_R / PROVINCE);
@@ -119,8 +122,32 @@ export const shares = (seeds = 40, step = 16) => {
   return rings;
 };
 
+// What a solid cell pays in grit, the mean over each ring: [{ from, to, with, without }], `without` being the same
+// cells of the same worlds with every pair switched off (each such province its direction's own ground). One cell
+// in every `step` x `step` is asked. The verdicts are put back as they were.
+export const worth = (seeds = 12, step = 12) => {
+  const kept = CROSS_OK.map(list => list.slice()), rings = RINGS.map(([from, to]) => ({ from, to, with: 0, without: 0 }));
+  for (const key of ['with', 'without']) {
+    CROSS_OK.forEach((list, host) => list.forEach((ok, donor) => { list[donor] = key === 'with' && kept[host][donor]; }));
+    const w = new World(), sums = RINGS.map(() => [0, 0]);
+    for (let seed = 1; seed <= seeds; seed++) {
+      w.reset(seed);
+      for (let y = -2300; y <= 2300; y += step) for (let x = -2300; x <= 2300; x += step) {
+        const r = Math.sqrt(x * x + y * y), n = RINGS.findIndex(([from, to]) => r >= from && r < to);
+        if (n < 0) continue;
+        const b = w.biomeAt(C + x, C + y), k = w.kindAt(C + x, C + y, b), row = BIOMES[b];
+        if (k === K.EMPTY || k === K.BEDROCK) continue;
+        sums[n][0] += GRIT[k] * row.rich * row.worth; sums[n][1]++;
+      }
+    }
+    sums.forEach(([grit, cells], n) => { rings[n][key] = grit / cells; });
+  }
+  CROSS_OK.forEach((list, host) => kept[host].forEach((ok, donor) => { list[donor] = ok; }));
+  return rings;
+};
+
 if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '/').split('/').pop())) {
-  const usage = 'node tools/crosses.mjs [--seeds 8] [--share 40] [--where 7] [--far 1500]', options = { seeds: '8', share: '', where: '', far: '1500' };
+  const usage = 'node tools/crosses.mjs [--seeds 8] [--share 40] [--worth 12] [--where 7] [--far 1500]', options = { seeds: '8', share: '', worth: '', where: '', far: '1500' };
   for (let args = process.argv.slice(2), i = 0; i < args.length; i++) {
     const name = args[i].replace(/^--/, '');
     if (!(name in options) || args[i + 1] === undefined) { console.error(usage); process.exit(2); }
@@ -143,6 +170,12 @@ if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '
     }
     console.log('\nthe nearest of each structure:');
     for (let s = 0; s < STRUCTURES.length; s++) { const c = found.find(c => BIOMES[c.id].cross.structure === s); if (c) say(STRUCTURES[s] || 'plain', c); else console.log(`${(STRUCTURES[s] || 'plain').padEnd(20)} none`); }
+    process.exit(0);
+  }
+  if (options.worth) {
+    console.log(`seeds 1 to ${options.worth}; a cell in every 12 x 12; grit of a solid cell by its ground's rich and worth\n`);
+    console.log('cells out      with crosses   without   more');
+    for (const t of worth(+options.worth)) console.log(`${`${t.from}-${t.to}`.padEnd(12)} ${t.with.toFixed(3).padStart(14)} ${t.without.toFixed(3).padStart(9)} ${((t.with / t.without - 1) * 100).toFixed(1).padStart(5)}%`);
     process.exit(0);
   }
   if (options.share) {
