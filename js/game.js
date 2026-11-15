@@ -258,6 +258,10 @@ export class Game {
     const area = (cx - px) * (ty - py) - (cy - py) * (tx - px);
     if (Math.abs(area) < 1e-12) return null;
     const side = area > 0 ? 1 : -1, tri = [[px, py], [cx, cy], [tx, ty]];
+    // No point of the triangle is further from the pivot than the further of its other two corners: the string
+    // does not reach beyond that. (Where the end has moved a few billionths of a cell the triangle's short edge is
+    // too short to tell which side of it a corner lies on, and this alone keeps out a corner past the string's end.)
+    const span = Math.max((cx - px) ** 2 + (cy - py) ** 2, (tx - px) ** 2 + (ty - py) ** 2) + 1e-9;
     let best = null, least = Infinity, reach = 0, looked = 0;
     for (let row = Math.floor(Math.min(py, cy, ty)) - 1; row <= Math.floor(Math.max(py, cy, ty)) + 1; row++) {
       // The stretch of this row the triangle crosses, a cell to spare either side.
@@ -291,6 +295,7 @@ export class Game {
           const key = (row * N + x) * 4 + c;
           if (skip.includes(key)) continue;
           const qx = x + ox, qy = row + oy;
+          if ((qx - px) ** 2 + (qy - py) ** 2 > span) continue;
           const off = side * ((cx - px) * (qy - py) - (cy - py) * (qx - px)), path = side * ((tx - cx) * (qy - cy) - (ty - cy) * (qx - cx));
           // A corner the string already lies along counts: whether it is caught is settled below, by which side its
           // cell is on.
