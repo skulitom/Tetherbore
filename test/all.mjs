@@ -59,6 +59,8 @@ for (const file of readdirSync(here + 'regress').filter(name => name.endsWith('.
   for (const args of ARGS[file.slice(0, -4)] ?? [[]]) tests.push({ name: `regress/${file}${args.length ? ' ' + args.join(' ') : ''}`, run: [`regress/${file}`, ...args] });
 }
 tests.push({ name: 'smoke.mjs', run: ['smoke.mjs'] });
+// Keystone slabs as they lie in the world's own cells, on 200 worlds: fifty to a run, so that four run side by side.
+for (let from = 1; from <= 151; from += 50) tests.push({ name: `slab-moat.mjs 50 ${from}`, run: ['slab-moat.mjs', 50, from] });
 for (let seed = 11; seed <= 18; seed++) tests.push({ name: `rope-fuzz.mjs ${seed} 600 5`, run: ['rope-fuzz.mjs', seed, 600, 5] });
 // North is up the screen: negative y.
 for (const [seed, x, y, way] of [[11, 0, -200, 'north'], [12, 0, 200, 'south'], [13, 200, 0, 'east'], [14, -200, 0, 'west']]) tests.push({ name: `rope-fuzz.mjs ${seed} 600 5 ${x} ${y} (${way})`, run: ['rope-fuzz.mjs', seed, 600, 5, x, y] });

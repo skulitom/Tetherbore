@@ -5,7 +5,8 @@
 //   - geodes and caches are where they were before the rest were allotted, cell for cell;
 //   - a prism never has its middle within 130 cells of the core, and no find within 16;
 //   - every find's middle lies eight cells or more inside its own sector;
-//   - the three that are allotted and not laid yet put nothing in the ground;
+//   - a prism is laid (content item 5): one cell of prism at its middle and plain ore in the eight round it;
+//   - the two that are allotted and not laid yet put nothing in the ground;
 //   - asking what a sector holds makes none of the world.
 //   node test/regress/s3-find-bands.mjs
 import { World, C, K, FIND, FINDS, cellHash as hash } from '../../js/world.js';
@@ -22,7 +23,7 @@ const was = (seed, sx, sy) => {
   return what < 0.38 ? ['geode', fx, fy, hash(sx, sy, seed + 24) < 0.4 ? 4 : 3] : ['cache', fx, fy, 1];
 };
 const counts = { geode: 0, cache: 0, prism: 0, twin: 0, fossil: 0, null: 0 };
-let sectors = 0, moved = 0, nearPrism = 0, nearAny = 0, outside = 0, laid = 0, unlaid = 0, checked = 0, far = 0;
+let sectors = 0, moved = 0, nearPrism = 0, nearAny = 0, outside = 0, laid = 0, unlaid = 0, checked = 0, far = 0, prisms = 0, badPrism = 0;
 const w = new World();
 for (const seed of [1, 7, 34]) {
   w.reset(seed);
@@ -42,7 +43,12 @@ for (const seed of [1, 7, 34]) {
     let cells = 0;
     for (let v = 0; v < FIND; v++) for (let u = 0; u < FIND; u++) if (w.findAt(C + sx * FIND + u, C + sy * FIND + v) >= 0) cells++;
     if (what === 'geode' || what === 'cache') { if (cells === 0 || w.findAt(fx, fy) !== (what === 'cache' ? K.CACHE : size === 4 ? K.EMPTY : K.ORE_B)) unlaid++; }
-    else if (cells) laid++;
+    else if (what === 'prism') {
+      prisms++;
+      let ore = 0;
+      for (let v = -1; v <= 1; v++) for (let u = -1; u <= 1; u++) if ((u || v) && w.findAt(fx + u, fy + v) === K.ORE_A) ore++;
+      if (cells !== 9 || w.findAt(fx, fy) !== K.PRISM || ore !== 8) badPrism++;
+    } else if (cells) laid++;
   }
 }
 const share = name => counts[name] / sectors;
@@ -54,7 +60,8 @@ check(nearAny === 0, `${nearAny} finds have their middle within 16 cells of the 
 check(nearPrism === 0 && counts.prism > 300, `${nearPrism} prisms have their middle within 130 cells of the core`);
 check(outside === 0 && far > sectors * 0.8, `${outside} finds have their middle outside their sector, or nearer its edge than eight cells`);
 check(checked > 400 && unlaid === 0, `${unlaid} geodes or caches are not laid in the ground at their middle`);
-check(laid === 0, `${laid} sectors of a prism, twin stones or a fossil have cells laid by findAt: until one is built its sector's ground is plain`);
+check(prisms > 20 && badPrism === 0, `${badPrism} of ${prisms} prisms are not one cell of prism with plain ore in the eight cells round it`);
+check(laid === 0, `${laid} sectors of twin stones or a fossil have cells laid by findAt: until one is built its sector's ground is plain`);
 // The sector hard by the core holds nothing, whatever its hash.
 {
   w.reset(7);
@@ -63,5 +70,5 @@ check(laid === 0, `${laid} sectors of a prism, twin stones or a fossil have cell
   check(near === 0, `${near} finds on 400 seeds lie within 16 cells of the core`);
 }
 
-console.log(fails.length ? `DEFECT: ${fails.join('\n        ')}` : 'ok: the range of a sector\'s hash is allotted to five finds, the first two laid where they always were, the rest waiting');
+console.log(fails.length ? `DEFECT: ${fails.join('\n        ')}` : 'ok: the range of a sector\'s hash is allotted to five finds, the first two laid where they always were, a prism in its ore, the last two waiting');
 process.exit(fails.length ? 1 : 0);

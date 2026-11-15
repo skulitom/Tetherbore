@@ -313,6 +313,28 @@ export const FIND = 48, WRECK_R = [45, 90, 160, 300, 500, 800, 1200, 1700];
 // plain.
 export const FINDS = [[0.38, 'geode'], [0.70, 'cache'], [0.74, 'prism'], [0.80, 'twin'], [0.86, 'fossil']];
 const GEODES = FINDS[0][0], CACHES = FINDS[1][0], PRISMS = FINDS[2][0], HELD = FINDS[FINDS.length - 1][0], PRISM_R = 130;
+// Keystone slabs. A slab is a great disc of ground that a natural crack already runs all the way round (its moat),
+// held to the world by two or three keystones of iron set across the crack: cut the keys and the whole disc hangs
+// on nothing. Slabs lie in whatever ground is there, laid out in sectors SLAB cells across, one at the most in a
+// sector (a share SLABS of them) and wholly inside it, so that a cell asks only about its own sector; and one more,
+// the first, lies at a set distance from the core in every world, where a new game comes on it early.
+//   p          a slab's radius, 8 to 16 cells (the first: 8). The crack wanders a cell and a half to either side.
+//   MOAT       half the width of the crack. PLUG: half the width of a key across it.
+//   COLLAR     how far beyond the crack's middle the ground is laid without caves, as the slab's own ground is:
+//              a cave inside would split the slab into parts no key holds, and the collar is what the keys hold to.
+//   LIFT       how much lower the ore's thresholds are inside a slab: it is worth the lap.
+//   COBBLES    the share of the sectors' slabs that are cobble fields instead: a disc four cells wider, cut by
+//              open joints into blocks four cells square, each block held to the next one east or south of it by
+//              one key in the joint between them (so every block hangs, through its neighbours, on the rock
+//              outside the field, and none on nothing).
+//   HOLD       a slab is laid only where the ground against the outside of its collar runs on unbroken this many
+//              cells further out (`World.held`): where it would stand in a great cavern on a stalk, it is not laid.
+//   FIRST_R    how far from the core the first slab's middle lies: all of it is within the fourth reach (72).
+// What a slab makes of a cell (`World.slabAt`): nothing (OUT), open crack or joint (GAP), a key (KEYS), its own
+// ground (INSIDE) or collar (COLLARED).
+export const SLAB = 144, FIRST_R = 52, HOLD = 48;
+const SLABS = 0.22, COBBLES = 0.35, MOAT = 1.1, PLUG = 1.2, COLLAR = 3.5, LIFT = 0.05;
+const OUT = 0, GAP = 1, KEYS = 2, INSIDE = 3, COLLARED = 4;
 // Pockets (mini zones) are laid out in sectors ZONE cells across, one pocket at the most in each.
 export const ZONE = 128;
 // Past the four pieces of ground round the core, each direction's ground is laid out in provinces PROVINCE cells
@@ -336,8 +358,8 @@ export const cellHash = hash;
 // Layers and hash seeds in use (added to the world's seed): 1-3 and 14-17 whose ground a cell is; 4 the world's
 // edge; 5-13 and 18 the ground itself; 21-24 finds; 31-32 wrecks; 55 and 300 + a strain's number, provinces (56 and
 // 57: which cross a province is); 58-59 a second hazard; 64 grapes, 65 lanes, 66 rivers, 67 bubbles (strata are on 11,
-// stretched); 68 slag among lava. docs/CONTENT-PLAN.md (S3) allots the rest: take a number from there, so that no
-// two rules read the same layer.
+// stretched); 68 slag among lava; 80-89 keystone slabs (84 the layer their cracks wander by). docs/CONTENT-PLAN.md
+// (S3) allots the rest: take a number from there, so that no two rules read the same layer.
 const kept = new Float64Array(128 * 7).fill(NaN);
 const noise = (x, y, s, k = s & 127) => {
   const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi, m = k * 7;
@@ -352,6 +374,62 @@ const noise = (x, y, s, k = s & 127) => {
 // Noise never leaves [0, 1) by more than rounding, so where a test against it is settled whatever it is, it is not
 // worked out at all: `SURE` is the margin kept for that rounding.
 const SURE = 1e-6;
+// The way that lies `q` quarters of a circle round from the first, as a unit vector [x, y], with no sine in it (the
+// same world on every engine): within a quarter the vector is (1 - t x t, 2t) / (1 + t x t), which is on the
+// circle for every t and sweeps the quarter, from an eighth of a circle one side of the quarter's middle to an
+// eighth the other, as t runs between -QUARTER / 2 and QUARTER / 2. It turns a little faster in the middle of a
+// quarter than at its ends, by a sixth at the most: two ways 0.8 of a quarter apart are over 64 degrees apart.
+const QUARTER = 2 * (Math.sqrt(2) - 1);
+export const heading = q => {
+  q -= Math.floor(q / 4) * 4;
+  const n = Math.floor(q), t = (q - n - 0.5) * QUARTER, c = (1 - t * t) / (1 + t * t), s = 2 * t / (1 + t * t);
+  return n === 0 ? [c, s] : n === 1 ? [-s, c] : n === 2 ? [-c, -s] : [s, -c];
+};
+
+// Whether the crack round a slab, with its keys cut, is one ring a drill can fly: its open cells, a cell joined to
+// the next along a side, go all the way round the slab's middle. `codes` is what the slab makes of every cell of
+// its box, `size` cells a side, the slab's middle in the box's. The crack is followed from one cell of it, keeping
+// for each cell how many times the way to it has crossed the line east from the middle (down counts one, up takes
+// one off): a cell come to with two different counts is come to both ways round.
+const ringed = (codes, size) => {
+  const mid = (size - 1) / 2, count = new Int8Array(size * size).fill(-128), stack = [];
+  for (let u = mid; u < size && !stack.length; u++) if (codes[mid * size + u] === GAP || codes[mid * size + u] === KEYS) stack.push(mid * size + u);
+  if (!stack.length) return false;
+  count[stack[0]] = 0;
+  while (stack.length) {
+    const at = stack.pop(), here = count[at], u = at % size, v = (at - u) / size;
+    for (let s = 0; s < 4; s++) {
+      const to = at + DX[s] + DY[s] * size;
+      if (codes[to] !== GAP && codes[to] !== KEYS) continue;
+      const next = here + (u > mid && s === 1 && v === mid - 1 ? 1 : u > mid && s === 3 && v === mid ? -1 : 0);
+      if (count[to] === -128) { count[to] = next; stack.push(to); } else if (count[to] !== next) return true;
+    }
+  }
+  return false;
+};
+// Whether every key of a slab holds it: each run of key cells, joined side to side, touches both the slab and its
+// collar, and there is one run for each of the slab's keys (`ways`). (A key lies where its way crosses the crack,
+// and where the crack runs askew a cell of it can stand apart from the rest, touching one side or neither.)
+const keyed = (codes, size, ways) => {
+  const seen = new Uint8Array(codes.length), stack = [];
+  let runs = 0;
+  for (let from = 0; from < codes.length; from++) {
+    if (codes[from] !== KEYS || seen[from]) continue;
+    let inner = false, outer = false;
+    seen[from] = 1; stack.push(from);
+    while (stack.length) {
+      const at = stack.pop();
+      for (let s = 0; s < 4; s++) {
+        const to = at + DX[s] + DY[s] * size, code = codes[to];
+        if (code === INSIDE) inner = true; else if (code === COLLARED) outer = true;
+        else if (code === KEYS && !seen[to]) { seen[to] = 1; stack.push(to); }
+      }
+    }
+    if (!inner || !outer) return false;
+    runs++;
+  }
+  return runs === ways;
+};
 
 export class World {
   constructor() {
@@ -366,6 +444,14 @@ export class World {
     this.asked = { sx: NaN, sy: NaN, seed: NaN, what: 1, fx: 0, fy: 0, size: 3 };       // and the one `findSpot` did
     this.spotted = [];                     // things seen for the first time and not yet called out: `see` adds, the game takes
     this.provinces = new Uint8Array(4096).fill(255);      // the ground of each province and direction asked about (255: not yet)
+    this.slabs = new Map();                // the slab of each sector asked about (null: none), and the sector asked last
+    this.slabLast = { sx: NaN, sy: NaN, seed: NaN, slab: null };
+    // Which slab the cells now being asked about may lie in, where that is known beforehand: null for none (the
+    // ground as it lies without slabs: `held`), a slab for that one alone (`piece`), undefined to ask for each cell.
+    this.slabHere = undefined;
+    this.tried = 0;                        // cells of ground asked about to see whether a slab would be held: for tests
+    // How many slabs were not laid, by what stood against each (`slabIn`, `slab`): for tests and tools/slabs.mjs.
+    this.refused = { core: 0, wreck: 0, first: 0, pocket: 0, cavern: 0, keys: 0, ring: 0, held: 0 };
     this.relicAt = [0, 1, 2, 3].map(d => (C + DY[d] * RELIC_R) * N + C + DX[d] * RELIC_R);
   }
   // Where the eight wrecks lie in this world: [x, y] each, in a direction of its own.
@@ -409,8 +495,10 @@ export class World {
     const sx = Math.floor((x - C) / FIND), sy = Math.floor((y - C) / FIND), S = this.sector;
     if (S.sx !== sx || S.sy !== sy || S.seed !== this.seed) this.find(sx, sy, S);
     const what = S.what;
-    if (what >= CACHES) return -1;
+    if (what >= PRISMS) return -1;
     const dx = x - S.fx, dy = y - S.fy;
+    // A prism: one clear crystal, set in plain ore on every side.
+    if (what >= CACHES) { const edge = Math.max(Math.abs(dx), Math.abs(dy)); return edge === 0 ? K.PRISM : edge === 1 ? K.ORE_A : -1; }
     if (what < GEODES) {
       // A geode: slate outside, ore within, and in the bigger ones a hollow at the heart.
       const size = S.size, far = Math.sqrt(dx * dx + dy * dy);
@@ -425,13 +513,206 @@ export class World {
   // whose direction its middle lies in. Null where the sector has none. (No pockets are laid yet,
   // docs/CONTENT-PLAN.md S3: until they are, no sector has one.)
   zoneOf(sx, sy) { return null; }
+  // Whether a disc of ground (its middle cell and how far it runs) meets a pocket: the one test that keeps slabs
+  // out of pockets. It asks `zoneOf` for every sector of ZONE cells the disc's box overlaps, and takes a pocket's
+  // record to give its middle as a cell of the world (`cx`, `cy`) and to run no further than 1.2 times its `rho`,
+  // the widest its wobbling edge goes (docs/CONTENT-PLAN.md S3). No pocket is laid yet, so today it never does:
+  // whoever lays pockets keeps this true to how far a pocket's cells can lie from its middle.
+  meetsPocket(cx, cy, reach) {
+    for (let zy = Math.floor((cy - reach - C) / ZONE), y1 = Math.floor((cy + reach - C) / ZONE); zy <= y1; zy++) {
+      for (let zx = Math.floor((cx - reach - C) / ZONE), x1 = Math.floor((cx + reach - C) / ZONE); zx <= x1; zx++) {
+        const z = this.zoneOf(zx, zy);
+        if (!z) continue;
+        const dx = z.cx - cx, dy = z.cy - cy, most = reach + z.rho * 1.2;
+        if (dx * dx + dy * dy < most * most) return true;
+      }
+    }
+    return false;
+  }
+
+  // ---------------------------------------------------------------- keystone slabs
+  // What a slab makes of a cell: OUT where it is not the slab's, else GAP (open: the crack round a slab, a joint
+  // of a cobble field), KEYS, INSIDE or COLLARED. The slab is a record as `slabIn` makes it.
+  //
+  // A slab: the crack's middle lies `p` cells from the slab's middle, pushed in and out a cell and a half by a
+  // layer of noise (84), and the crack is every cell within MOAT of that. Across the crack, where a key's way
+  // from the middle passes (within PLUG to either side of it), the cells are the key. Inside the crack is the
+  // slab; outside it, to COLLAR cells from its middle line, the collar.
+  // A cobble field: a disc of p + 4 cells with a collar two and a half cells wide. Every fifth row and column of
+  // cells, counted from the middle, is an open joint; the blocks between are four cells square. A block's one key
+  // lies in the joint on its east side or its south, by the block's own hash (86), against one of its four cells
+  // there, by another (87).
+  slabCell(S, x, y) {
+    const ex = x - S.cx, ey = y - S.cy, most = S.reach;
+    if (ex >= most || ex <= -most || ey >= most || ey <= -most) return OUT;
+    const dd = ex * ex + ey * ey;
+    if (dd >= most * most) return OUT;
+    const d = Math.sqrt(dd), p = S.p, seed = this.seed;
+    if (S.cobble) {
+      if (d >= p + 4) return COLLARED;
+      const u = ((ex % 5) + 5) % 5, v = ((ey % 5) + 5) % 5;
+      if (u !== 0 && v !== 0) return INSIDE;
+      if (u === 0 && v === 0) return GAP;
+      // The block this joint is the east side of, or the south side: known by the cell at its north-west corner.
+      const bx = x - (u === 0 ? 5 : u), by = y - (v === 0 ? 5 : v);
+      if ((hash(bx, by, seed + 86) < 0.5) !== (u === 0)) return GAP;
+      return Math.floor(hash(bx, by, seed + 87) * 4) === (u === 0 ? v : u) - 1 ? KEYS : GAP;
+    }
+    if (d < p - 1.5 - MOAT - SURE) return INSIDE;
+    const f = d - p - (noise(x / 6, y / 6, seed + 84, 84) - 0.5) * 3;
+    if (f < -MOAT) return INSIDE;
+    if (f >= MOAT) return f < COLLAR ? COLLARED : OUT;
+    for (let n = 0, ux = S.ux, uy = S.uy; n < ux.length; n++) {
+      const across = ex * uy[n] - ey * ux[n];
+      if (ex * ux[n] + ey * uy[n] > 0 && across < PLUG && across > -PLUG) return KEYS;
+    }
+    return GAP;
+  }
+  // A slab's record, from its middle cell, its radius, whether it is a cobble field, and the ways its keys lie from
+  // its middle (in quarters of a circle: `heading`): { cx, cy, p, cobble, reach, ux, uy, keys, fault }. `reach` is
+  // how far from its middle its cells may lie, `ux` and `uy` the keys' ways as unit vectors, `keys` every cell of
+  // key in it. `fault` is null where the slab is sound, and otherwise says what is wrong with it ('keys', 'ring'
+  // or 'held'): a slab with a fault is never laid. Soundness is asked of the ground as it lies without the slab:
+  //   the ground against the outside of the collar must run on, cell beside cell, HOLD cells beyond the furthest
+  //   the slab's own cells go (`held`: a collar on a stalk in a cavern is not held by the world);
+  //   round a slab the crack must be one ring of open cells joined side to side, when its keys are cut: a way
+  //   the drill can fly (`ringed`);
+  //   and each of its keys must join the slab to the collar, in one run of cells (`keyed`).
+  slab(cx, cy, p, cobble, turns) {
+    const S = { cx, cy, p, cobble, reach: cobble ? p + 6.5 : p + 1.5 + COLLAR, ux: [], uy: [], keys: [], fault: null };
+    for (const q of turns) { const [ux, uy] = heading(q); S.ux.push(ux); S.uy.push(uy); }
+    // What the slab makes of every cell of the box it lies in, with a cell of nothing all round the box.
+    const most = Math.ceil(S.reach) + 1, size = 2 * most + 1, codes = new Uint8Array(size * size), edge = [];
+    for (let v = 1; v < size - 1; v++) for (let u = 1; u < size - 1; u++) {
+      const code = codes[v * size + u] = this.slabCell(S, cx - most + u, cy - most + v);
+      if (code === KEYS) S.keys.push((cy - most + v) * N + cx - most + u);
+    }
+    // The ground just outside the slab's own, beside its collar.
+    for (let at = size; at < size * (size - 1); at++) if (codes[at] === OUT && (codes[at + 1] > KEYS || codes[at - 1] > KEYS || codes[at + size] > KEYS || codes[at - size] > KEYS)) edge.push(at);
+    S.fault = !cobble && !keyed(codes, size, turns.length) ? 'keys' : !cobble && !ringed(codes, size) ? 'ring' : !this.held(S, size, edge) ? 'held' : null;
+    return S;
+  }
+  // Whether the ground beside a slab's collar (`edge`: the cells just outside the slab's own, as places in its box
+  // of `size` cells a side) is held by the world: some of it runs on, cell beside cell through ground of any
+  // kind, to HOLD cells beyond the slab's furthest. The ground is asked for as the seed lays it without slabs
+  // (`slabHere`); no other slab lies that near. What is followed is what has to be: the way out is tried first, so
+  // in solid ground a few tens of cells are asked about, and only round a slab that would hang in a cavern
+  // everything that would hang with it.
+  held(S, size, edge) {
+    const far = S.reach + HOLD, most = Math.ceil(far) + 1, wide = 2 * most + 1, seen = new Uint8Array(wide * wide), stack = [], half = (size - 1) / 2, was = this.slabHere;
+    this.slabHere = null;
+    const solid = (x, y) => { this.tried++; return this.kindAt(x, y, this.biomeAt(x, y)) !== K.EMPTY; };
+    for (const at of edge) {
+      const u = at % size, x = S.cx - half + u, y = S.cy - half + (at - u) / size;
+      seen[(y - S.cy + most) * wide + x - S.cx + most] = 1;
+      if (solid(x, y)) stack.push(x, y);
+    }
+    let found = false;
+    while (stack.length) {
+      const y = stack.pop(), x = stack.pop(), ex = x - S.cx, ey = y - S.cy;
+      if (ex * ex + ey * ey >= far * far) { found = true; break; }
+      // The two sides that lead back toward the slab are put by first, so that the two that lead away are tried first.
+      const flat = Math.abs(ex) >= Math.abs(ey), a = flat ? (ex >= 0 ? 0 : 2) : (ey >= 0 ? 1 : 3), b = flat ? (ey >= 0 ? 1 : 3) : (ex >= 0 ? 0 : 2);
+      for (let n = 0; n < 4; n++) {
+        const s = n === 0 ? a ^ 2 : n === 1 ? b ^ 2 : n === 2 ? b : a, u = x + DX[s], v = y + DY[s], at = (v - S.cy + most) * wide + u - S.cx + most;
+        if (seen[at]) continue;
+        seen[at] = 1;
+        if (this.slabCell(S, u, v) === OUT && solid(u, v)) stack.push(u, v);
+      }
+    }
+    this.slabHere = was;
+    return found;
+  }
+  // The first slab: in every world, FIRST_R cells from the core, eight cells in radius with two keys, on a way
+  // from the core that the seed says. Where that would be within 25 cells of the first wreck, or would not be
+  // sound, it lies a quarter of a circle further round (and so on, round the four). Null if nowhere.
+  get firstSlab() {
+    const seed = this.seed;
+    if (this.firstFor !== seed) {
+      this.firstFor = seed; this.slab1 = null;
+      const [wx, wy] = this.wrecks[0], turn = hash(1, 1, seed + 89) * 4, key = hash(1, 1, seed + 86) * 4;
+      for (let n = 0; n < 4 && !this.slab1; n++) {
+        const [ux, uy] = heading(turn + n), cx = C + Math.round(ux * FIRST_R), cy = C + Math.round(uy * FIRST_R);
+        if ((cx - wx) * (cx - wx) + (cy - wy) * (cy - wy) < 25 * 25) continue;
+        const S = this.slab(cx, cy, 8, false, [key, key + 0.8 + hash(1, 1, seed + 87) * 2.4]);
+        if (!S.fault) this.slab1 = S;
+      }
+    }
+    return this.slab1;
+  }
+  // The slab laid in a sector of SLAB cells (sx, sy: the sector's place, counted from the core's), or null. Worked
+  // out once for each sector and kept. A sector has one where its hash (80) is under SLABS, with its radius by
+  // another (81), its middle 40 cells or more inside the sector on each side (82, 83) and, a share COBBLES of them,
+  // a cobble field instead (85). A slab has two keys, or three if it is over 12 cells in radius, at least 0.8 of a
+  // quarter of a circle apart (86 to 88). None is laid whose middle is within 60 cells of the core, or so far
+  // out that the last reach could not go round it; within 40 cells and its radius of a wreck or a relic's vault;
+  // within 44 and its radius of the first slab; where its disc and five cells more meet a pocket (`meetsPocket`);
+  // where its middle is in a great cavern or within 0.08, on the caverns' layer of noise, of being in one; or
+  // where it would not be sound (`slab`).
+  slabIn(sx, sy) {
+    const seed = this.seed, key = ((sy + 64) << 7) | (sx + 64);
+    if (this.slabsFor !== seed) { this.slabsFor = seed; this.slabs.clear(); }
+    let S = this.slabs.get(key);
+    if (S !== undefined) return S;
+    S = null;
+    if (hash(sx, sy, seed + 80) < SLABS) {
+      const p = 8 + Math.floor(hash(sx, sy, seed + 81) * 9), most = 40 + p;
+      const cx = C + sx * SLAB + 40 + Math.floor(hash(sx, sy, seed + 82) * (SLAB - 80)), cy = C + sy * SLAB + 40 + Math.floor(hash(sx, sy, seed + 83) * (SLAB - 80));
+      const far = Math.sqrt((cx - C) * (cx - C) + (cy - C) * (cy - C)), near = (x, y, r) => (cx - x) * (cx - x) + (cy - y) * (cy - y) < r * r;
+      // What stands against it, if anything: the first of these that does.
+      let why = far <= 60 || far + p + 6 > WORLD_R - 100 ? 'core' : null;
+      if (!why) for (const [wx, wy] of this.wrecks) if (near(wx, wy, most)) why = 'wreck';
+      if (!why) for (let d = 0; d < 4; d++) if (near(C + DX[d] * RELIC_R, C + DY[d] * RELIC_R, most)) why = 'wreck';
+      if (!why && far < FIRST_R + most + 6) { const first = this.firstSlab; if (first && near(first.cx, first.cy, most + 4)) why = 'first'; }
+      if (!why && this.meetsPocket(cx, cy, p + 5)) why = 'pocket';
+      if (!why) { const lay = (BIOMES[this.biomeAt(cx, cy)] ?? BIOMES[0]).lay; if (noise(cx / 19, cy / 19, seed + 18, 18) > (lay ? lay.cavern : 0.76) - 0.08) why = 'cavern'; }
+      if (!why) {
+        const turn = hash(sx, sy, seed + 86) * 4, a = 0.8 + hash(sx, sy, seed + 87) * (p > 12 ? 0.8 : 2.4);
+        S = this.slab(cx, cy, p, hash(sx, sy, seed + 85) < COBBLES, p > 12 ? [turn, turn + a, turn + a + 0.8 + hash(sx, sy, seed + 88) * 0.8] : [turn, turn + a]);
+        why = S.fault;
+      }
+      // (`unsound`, kept for tests: the slab that was tried last and not laid for a fault of its own.)
+      if (why) { this.refused[why]++; if (S) this.unsound = S; S = null; }
+    }
+    this.slabs.set(key, S);
+    return S;
+  }
+  // The slab that has cells in a box of cells, the first or that of a sector the box overlaps: null if none has,
+  // undefined if more than one.
+  slabOver(x0, y0, x1, y1) {
+    const over = S => S !== null && S.cx + S.reach > x0 && S.cx - S.reach < x1 && S.cy + S.reach > y0 && S.cy - S.reach < y1;
+    let one = null;
+    if (x1 > C - FIRST_R - 14 && x0 < C + FIRST_R + 14 && y1 > C - FIRST_R - 14 && y0 < C + FIRST_R + 14 && over(this.firstSlab)) one = this.firstSlab;
+    for (let sy = Math.floor((y0 - C) / SLAB), sy1 = Math.floor((y1 - C) / SLAB); sy <= sy1; sy++) {
+      for (let sx = Math.floor((x0 - C) / SLAB), sx1 = Math.floor((x1 - C) / SLAB); sx <= sx1; sx++) {
+        const S = this.slabIn(sx, sy);
+        if (!over(S)) continue;
+        if (one !== null) return undefined;
+        one = S;
+      }
+    }
+    return one;
+  }
+  // The slab a cell may lie in: the first, or its sector's. Null where there is none.
+  slabOf(x, y) {
+    const dx = x - C, dy = y - C;
+    if (dx < FIRST_R + 14 && dx > -FIRST_R - 14 && dy < FIRST_R + 14 && dy > -FIRST_R - 14) {
+      const first = this.firstSlab;
+      if (first && x - first.cx < 14 && first.cx - x < 14 && y - first.cy < 14 && first.cy - y < 14) return first;
+    }
+    const sx = Math.floor(dx / SLAB), sy = Math.floor(dy / SLAB), L = this.slabLast;
+    if (L.sx !== sx || L.sy !== sy || L.seed !== this.seed) { const slab = this.slabIn(sx, sy); L.sx = sx; L.sy = sy; L.seed = this.seed; L.slab = slab; }
+    return L.slab;
+  }
+  // What a slab makes of a cell (OUT: nothing).
+  slabAt(x, y) { const S = this.slabOf(x, y); return S === null ? OUT : this.slabCell(S, x, y); }
   reset(seed) {
     this.seed = seed;
     this.chunks = new Array(CW * CW);
     this.touched.clear(); this.lava.clear(); this.dug.clear();
     this.made = 0;
     this.spotted.length = 0;
-    this.provincesFor = NaN;
+    this.provincesFor = NaN; this.slabsFor = NaN; this.firstFor = NaN; this.slabLast.seed = NaN;
   }
 
   // Whose ground a cell is, from the seed alone. The rules, in the order they are asked (docs/CONTENT-PLAN.md S3):
@@ -523,18 +804,25 @@ export class World {
       if (edge === 1) return hash(x, y, seed + 32) < 0.55 ? K.SLATE : K.EMPTY;
       return K.EMPTY;
     }
-    const find = r > 12 ? this.findAt(x, y) : -1;
+    // A keystone slab: its crack is open and its keys are keys; its own ground and its collar are the ground of
+    // whatever lies there, laid with no caves in it (`bare`), the slab's own with more ore (`lift`), and no find
+    // lies in either (a geode may have a hollow heart).
+    const here = this.slabHere, slab = r <= 30 || here === null ? OUT : here !== undefined ? this.slabCell(here, x, y) : this.slabAt(x, y);
+    if (slab === GAP) return K.EMPTY;
+    if (slab === KEYS) return K.KEY;
+    const bare = slab !== OUT, lift = slab === INSIDE ? LIFT : 0;
+    const find = r > 12 && !bare ? this.findAt(x, y) : -1;
     if (find >= 0) return find;
     const h = hash(x, y, seed + 9), g = (BIOMES[b] ?? BIOMES[0]).lay;
     if (g === null) {
       // Home ground: soft, with stones to go round, nuggets worth lassoing, and further out seams of slate.
       // (The last of these to hold is what the cell is, so they are asked last first, and the first that holds
       // settles it: an open cell asks about nothing else.)
-      if (r > 60 && noise(x / 19, y / 19, seed + 18, 18) > 0.76) return K.EMPTY;      // great open caverns
-      if (r > 22 && noise(x / 5, y / 5, seed + 13, 13) > 0.8) return K.EMPTY;
+      if (!bare && r > 60 && noise(x / 19, y / 19, seed + 18, 18) > 0.76) return K.EMPTY;      // great open caverns
+      if (!bare && r > 22 && noise(x / 5, y / 5, seed + 13, 13) > 0.8) return K.EMPTY;
       if (r > 35 && Math.abs(noise(x / 9, y / 9, seed + 11, 11) - 0.5) < 0.022) return K.SLATE;
-      if (r > 55 && h < 0.5 && noise(x / 3.5, y / 3.5, seed + 7, 7) > 0.78) return K.ORE_B;
-      if (r > 4.5 && h < 0.6 && noise(x / 3, y / 3, seed + 6, 6) > 0.64) return K.ORE_A;
+      if (r > 55 && h < 0.5 && noise(x / 3.5, y / 3.5, seed + 7, 7) > 0.78 - lift) return K.ORE_B;
+      if (r > 4.5 && h < 0.6 && noise(x / 3, y / 3, seed + 6, 6) > 0.64 - lift) return K.ORE_A;
       if (r > 5 && noise(x / 4, y / 4, seed + 5, 5) > 0.7) return K.DENSE;
       return K.SOFT;
     }
@@ -544,9 +832,11 @@ export class World {
     // `TELLS`) is asked where it belongs: bubbles with the caves, strata with the slate, grapes with the first
     // hazard, a river before the ore and lanes after it. And what goes with a hazard (`HAZARDS`): crystals on the
     // flanks of slate with the charged crystals, slag last of all, where plain rock is left.
-    if (noise(x / 19, y / 19, seed + 18, 18) > g.cavern) return K.EMPTY;
-    if (noise(x / 5, y / 5, seed + 13, 13) > g.cave) return K.EMPTY;
-    if (g.bubbles < 1 && bubble(x, y, seed, g.bubbles)) return K.EMPTY;
+    if (!bare) {
+      if (noise(x / 19, y / 19, seed + 18, 18) > g.cavern) return K.EMPTY;
+      if (noise(x / 5, y / 5, seed + 13, 13) > g.cave) return K.EMPTY;
+      if (g.bubbles < 1 && bubble(x, y, seed, g.bubbles)) return K.EMPTY;
+    }
     if (r > 600 && Math.abs(noise(x / 8, y / 8, seed + 12, 12) - 0.5) < 0.028) return K.VAULT;
     // (`flank`: the cell is not slate, and lies within RIB of a rib's edge or a bed's.)
     let flank = false;
@@ -559,8 +849,8 @@ export class World {
     else if (g.haz2 === POCKETS && h > 0.45 && noise(x / 2.5, y / 2.5, seed + 58, 58) > g.haz2T) return K.HAZARD2;
     // A river runs through ore as through plain rock, or it would be no road; lanes lie only where plain rock would.
     if (g.rivers > 0 && river(x, y, seed, g.rivers)) return K.ICE;
-    if (h < 0.5 && noise(x / 3.5, y / 3.5, seed + 7, 7) > g.oreB) return K.ORE_B;
-    if (h < 0.62 && noise(x / 3, y / 3, seed + 6, 6) > g.oreA) return K.ORE_A;
+    if (h < 0.5 && noise(x / 3.5, y / 3.5, seed + 7, 7) > g.oreB - lift) return K.ORE_B;
+    if (h < 0.62 && noise(x / 3, y / 3, seed + 6, 6) > g.oreA - lift) return K.ORE_A;
     if (g.lanes > 0 && lane(x, y, seed, g.lanes)) return K.ICE;
     // Slag, only where plain rock would lie: a rind round each pocket of lava, where the lava's own layer is under
     // the pocket's threshold by less than `rind`, and half of the plain rock within the pocket.
@@ -577,11 +867,15 @@ export class World {
     if (p) return p;
     p = this.chunks[id] = { kind: new Uint8Array(CH * CH), biome: new Uint8Array(CH * CH), seen: new Uint8Array(CH * CH) };
     this.made++;
-    const x0 = (id % CW) * CH, y0 = ((id / CW) | 0) * CH;
+    const x0 = (id % CW) * CH, y0 = ((id / CW) | 0) * CH, was = this.slabHere;
+    // Most pieces have no slab in them, and nearly all the rest have one: which, is asked once for the piece, so
+    // that no cell of it has to ask.
+    if (was === undefined) this.slabHere = this.slabOver(x0, y0, x0 + CH - 1, y0 + CH - 1);
     for (let v = 0; v < CH; v++) for (let u = 0; u < CH; u++) {
       const b = this.biomeAt(x0 + u, y0 + v);
       p.biome[v * CH + u] = b; p.kind[v * CH + u] = this.kindAt(x0 + u, y0 + v, b);
     }
+    this.slabHere = was;
     return p;
   }
   k(i) { return this.piece(((i >>> 20) << 8) | ((i >>> 6) & 255)).kind[(((i >>> 14) & 63) << 6) | (i & 63)]; }
