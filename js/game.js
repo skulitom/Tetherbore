@@ -227,26 +227,27 @@ export class Game {
 
   // ------------------------------------------------------------ the tether
   // The tether is a string from the drill to the core: `band`, a line of points, the drill's end first. It runs
-  // straight and bends only where it lies against a corner of ground. A bend is [x, y, turn, cell, corner]: a point
-  // a hair off the corner, which way the string turns there (1 or -1), the cell whose corner it is, and which corner.
+  // straight and bends only where it lies against a corner of ground. A bend is [x, y, turn, cell, corner]: the
+  // rock's own corner (so whole numbers), which way the string turns there (1 or -1), the cell whose corner it is,
+  // and which of that cell's corners. The string is drawn a hair off the rock (`lay`); everything else is worked
+  // out on the corners themselves, so catching and letting go happen at exactly the same line.
   //
   // Nothing is nudged into place. When an end of the string moves, the string sweeps a triangle about the bend next
-  // to it, and any corner of ground inside that triangle is one the string has caught: it becomes a bend at once,
-  // exactly at the corner. When the string swings back until it no longer turns round a bend, the bend is let go.
-  // So the string is always the tight one for the way it has been led, and it never creeps.
+  // to it, and any corner of ground inside that triangle is one the string has caught: it becomes a bend at once.
+  // When the string swings back until it no longer turns round a bend, the bend is let go. So the string is always
+  // the tight one for the way it has been led, and it never creeps.
 
   // The first corner a string catches as its end moves from `cur` to `to` about `pivot`: [x, y, cell, corner], null
-  // when there is none, undefined when the triangle is too large to search. It is caught when the string meets the
-  // rock's own corner, and the bend is put a hair off it. `skip` is the corners the string is on already.
+  // when there is none, undefined when the triangle is too large to search. `skip` is corners the string is on.
   catchIn(pivot, cur, to, skip) {
-    const w = this.world, m = 0.14, px = pivot[0], py = pivot[1], cx = cur[0], cy = cur[1], tx = to[0], ty = to[1];
+    const w = this.world, px = pivot[0], py = pivot[1], cx = cur[0], cy = cur[1], tx = to[0], ty = to[1];
     const area = (cx - px) * (ty - py) - (cy - py) * (tx - px);
-    if (Math.abs(area) < 1e-9) return null;
+    if (Math.abs(area) < 1e-12) return null;
     const side = area > 0 ? 1 : -1, tri = [[px, py], [cx, cy], [tx, ty]];
     let best = null, least = Infinity, reach = 0, looked = 0;
-    for (let row = Math.floor(Math.min(py, cy, ty) - m) - 1; row <= Math.floor(Math.max(py, cy, ty) + m) + 1; row++) {
+    for (let row = Math.floor(Math.min(py, cy, ty)) - 1; row <= Math.floor(Math.max(py, cy, ty)) + 1; row++) {
       // The stretch of this row the triangle crosses, a cell to spare either side.
-      const ya = row - 0.3, yb = row + 1.3;
+      const ya = row - 0.01, yb = row + 1.01;
       let lo = Infinity, hi = -Infinity;
       for (let e = 0; e < 3; e++) {
         const a = tri[e], b = tri[(e + 1) % 3];
@@ -258,22 +259,27 @@ export class Game {
         }
       }
       if (lo > hi) continue;
-      const x0 = Math.floor(lo - m) - 1, x1 = Math.floor(hi + m) + 1;
+      const x0 = Math.floor(lo) - 1, x1 = Math.floor(hi) + 1;
       if ((looked += x1 - x0 + 1) > 400000) return undefined;
       for (let x = x0; x <= x1; x++) {
         if (w.k(row * N + x) === K.EMPTY) continue;
         for (let c = 0; c < 4; c++) {
-          // A corner that sticks out: the three other cells round it are open.
+          // A corner the string can lie against: the cells either side of it along this cell's edges are open.
+          // (The cell across the corner may be ground too: two cells touching at a point are two corners there.)
           const ox = c & 1, oy = c >> 1, nx = ox ? 1 : -1, ny = oy ? 1 : -1;
-          if (w.k(row * N + x + nx) !== K.EMPTY || w.k((row + ny) * N + x) !== K.EMPTY || w.k((row + ny) * N + x + nx) !== K.EMPTY) continue;
+          if (w.k(row * N + x + nx) !== K.EMPTY || w.k((row + ny) * N + x) !== K.EMPTY) continue;
           const key = (row * N + x) * 4 + c;
           if (skip.includes(key)) continue;
           const qx = x + ox, qy = row + oy;
           const off = side * ((cx - px) * (qy - py) - (cy - py) * (qx - px));
-          if (off <= 1e-7 || side * ((tx - cx) * (qy - cy) - (ty - cy) * (qx - cx)) < -1e-9 || side * ((px - tx) * (qy - ty) - (py - ty) * (qx - tx)) <= 1e-7) continue;
+          // A corner the string already lies along counts: whether it is caught is settled below, by which side its
+          // cell is on.
+          if ((qx === px && qy === py) || off < -1e-9 || side * ((tx - cx) * (qy - cy) - (ty - cy) * (qx - cx)) < -1e-9 || side * ((px - tx) * (qy - ty) - (py - ty) * (qx - tx)) <= 1e-9) continue;
+          // The string turns toward the cell it has run into, not away from it.
+          if (side * ((qx - px) * (row + 0.5 - qy) - (qy - py) * (x + 0.5 - qx)) <= 0) continue;
           // The one met first is the one least far round from where the string lay; of two in line, the further.
           const round = Math.atan2(off, (cx - px) * (qx - px) + (cy - py) * (qy - py)), far = (qx - px) ** 2 + (qy - py) ** 2;
-          if (round < least - 1e-9 || (round < least + 1e-9 && far > reach)) { least = round; reach = far; best = [qx, qy, row * N + x, key, qx + nx * m, qy + ny * m]; }
+          if (round < least - 1e-12 || (round < least + 1e-12 && far > reach)) { least = round; reach = far; best = [qx, qy, row * N + x, key]; }
         }
       }
     }
@@ -294,7 +300,7 @@ export class Game {
       const ax = q[0] - pivot[0], ay = q[1] - pivot[1], mx = to[0] - cur[0], my = to[1] - cur[1], den = mx * ay - my * ax;
       const t = den ? Math.max(0, Math.min(1, -((cur[0] - pivot[0]) * ay - (cur[1] - pivot[1]) * ax) / den)) : 0;
       cur = [cur[0] + mx * t, cur[1] + my * t];
-      pivot = [q[4], q[5], Math.sign(ax * (to[1] - q[1]) - ay * (to[0] - q[0])) || 1, q[2], q[3]];
+      pivot = [q[0], q[1], Math.sign(ax * (to[1] - q[1]) - ay * (to[0] - q[0])) || 1, q[2], q[3]];
       skip.push(q[3]);
       out.push(pivot);
     }
@@ -304,7 +310,7 @@ export class Game {
   tend() {
     const d = this.drill, P = this.band, to = [d.x, d.y];
     let cur = P[0];
-    for (let guard = 0; guard < 40 && P.length >= 2; guard++) {
+    for (let guard = 0; guard < 60 && P.length >= 2; guard++) {
       const pivot = P[1];
       let target = to, lift = false;
       if (P.length > 2 && pivot[2]) {
@@ -337,6 +343,20 @@ export class Game {
       P.splice(n, 1, ...got.reverse());
       n = Math.max(1, n - 1);
     }
+  }
+  // The string as it is drawn and as things ride along it: each bend stood a hair off its corner, on the outside of
+  // the turn, so the line never touches the rock.
+  lay() {
+    const P = this.band, m = 0.16;
+    return P.map((b, n) => {
+      if (n === 0 || n === P.length - 1 || b[4] === undefined) return [b[0], b[1]];
+      const a = P[n - 1], c = P[n + 1], al = Math.hypot(a[0] - b[0], a[1] - b[1]) || 1, cl = Math.hypot(c[0] - b[0], c[1] - b[1]) || 1;
+      let ux = -(a[0] - b[0]) / al - (c[0] - b[0]) / cl, uy = -(a[1] - b[1]) / al - (c[1] - b[1]) / cl;
+      const len = Math.hypot(ux, uy);
+      // Nearly straight: away from the cell, by its corner.
+      if (len < 0.05) { const k = b[4] % 4; ux = k & 1 ? 1 : -1; uy = k >> 1 ? 1 : -1; return [b[0] + ux * m * 0.7, b[1] + uy * m * 0.7]; }
+      return [b[0] + ux / len * m, b[1] + uy / len * m];
+    });
   }
   // After the ground changed: which pieces lie loose, how the tether settles, what the next cut would free.
   // `touched` is the cells that were opened.
@@ -612,7 +632,7 @@ export class Game {
     sprites.sort((a, b) => a.far - b.far);
     const count = sprites.length, spread = Math.min(1.0, 0.2 + count * 0.012), lift = Math.min(0.5, 0.26 + count * 0.003);
     // The rubble is drawn in along the tether as it lay when the loop closed.
-    const route = this.band.map(([x, y]) => [x * T, y * T]), cum = [0];
+    const route = this.lay().map(([x, y]) => [x * T, y * T]), cum = [0];
     for (let k = 1; k < route.length; k++) cum.push(cum[k - 1] + Math.hypot(route[k][0] - route[k - 1][0], route[k][1] - route[k - 1][1]));
     const length = cum[cum.length - 1];
     // Small pieces break fine, big ones coarse, so there are never too many bits of ground to push about.
@@ -832,7 +852,14 @@ export class Game {
     const lies = i => {
       if (!fresh) {
         fresh = true; this.under.clear();
-        for (let n = 1; n < this.band.length; n++) for (const c of cellsAlong(this.band[n - 1][0], this.band[n - 1][1], this.band[n][0], this.band[n][1])) this.under.add(c);
+        // Both as it is drawn and as it truly runs, corner to corner (taken a hair short of each corner, which
+        // belongs to four cells at once).
+        const L = this.lay(), P = this.band;
+        for (let n = 1; n < L.length; n++) {
+          for (const c of cellsAlong(L[n - 1][0], L[n - 1][1], L[n][0], L[n][1])) this.under.add(c);
+          const ex = (P[n][0] - P[n - 1][0]) * 1e-4, ey = (P[n][1] - P[n - 1][1]) * 1e-4;
+          for (const c of cellsAlong(P[n - 1][0] + ex, P[n - 1][1] + ey, P[n][0] - ex, P[n][1] - ey)) this.under.add(c);
+        }
       }
       return this.under.has(i);
     };
@@ -1456,7 +1483,7 @@ export class Game {
       }
       ctx.globalAlpha = 1;
     }
-    const pts = this.band.map(([x, y]) => [x * T - ox, y * T - oy]);
+    const pts = this.lay().map(([x, y]) => [x * T - ox, y * T - oy]);
     const wob = this.twang > 0 ? Math.sin(this.time * 90) * this.twang * 5 : 0;
     // Turned back at the edge it shows red; otherwise it is whatever the reach upgrades have made it.
     const own = TETHERS[this.S.lv.tether], style = this.twang > 0 ? { a: '#ff5a4a', b: '#ff5a4a', dash: 1, thick: own.thick } : own;
