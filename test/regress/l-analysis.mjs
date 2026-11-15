@@ -1,7 +1,7 @@
 // The lab. What the bit crushes is a sample analysed: the count is kept by the thing's own key (the sheet and frame
 // it is drawn from), a level is earned by the first sample and at every doubling of the count, each level makes
-// every one of that thing hauled worth a hundredth more (and nothing else worth more), the cell says what was
-// learnt, the count is saved and a game saved before the lab loads with none, and a new world starts with none.
+// every one of that thing hauled worth a hundredth more (and nothing else worth more), the cell says CRUSHED and,
+// under it, SAMPLE and the count or ANALYSED and the new worth, the count is saved and a game saved before the lab loads with none, and a new world starts with none.
 // The notes are opened and shut by a tap on the top bar, a line is chosen by a tap, and no note is wider than its
 // panel on the narrowest phone.
 import { makeGame, K, N, C } from '../harness.mjs';
@@ -26,7 +26,7 @@ const crushed = copper.pop();
 game.finishDig(crushed);
 const said = game.popups.map(p => p.label);
 check(game.S.lab['lode-items:oreA'] === 1 && Object.keys(game.S.lab).length === 1, `after one cell of copper crushed the lab holds ${JSON.stringify(game.S.lab)}`);
-check(said.includes('COPPER +1%') && !said.includes('CRUSHED'), `the cell said ${said}`);
+check(said.includes('CRUSHED') && said.includes('ANALYSED +1%'), `the cell said ${said}`);
 const one = pay(copper.concat(crushed)), near = (got, want) => Math.abs(got - want) <= 1;
 w.setK(crushed, K.ORE_A); copper.push(crushed);
 check(near(pay(copper), base.copper * 1.01), `fifty cells of copper paid ${base.copper} and pay ${pay(copper)} with one sample`);
@@ -39,7 +39,7 @@ for (const [count, level] of [[2, 2], [3, 2], [4, 3], [64, 7]]) {
 // A sample that earns no level says how far the count has come; one that does says the new worth.
 game.S.lab['lode-items:oreA'] = 4; game.popups.length = 0; game.crushedAt = -9;
 const again = copper.pop(); game.finishDig(again);
-check(game.S.lab['lode-items:oreA'] === 5 && game.popups.some(p => p.label === 'COPPER 5/8'), `the fifth sample said ${game.popups.map(p => p.label)}`);
+check(game.S.lab['lode-items:oreA'] === 5 && game.popups.some(p => p.label === 'CRUSHED') && game.popups.some(p => p.label === 'SAMPLE 5/8'), `the fifth sample said ${game.popups.map(p => p.label)}`);
 // Quartz is its own row, and a pocket's mineral pays its lump more.
 game.finishDig(quartz.pop());
 check(game.S.lab['lode-items:oreB'] === 1, `after quartz crushed the lab holds ${JSON.stringify(game.S.lab)}`);
@@ -79,7 +79,7 @@ game.openLab(false);
 // No name or note overflows the panel at 320 wide (172 pixels of panel, 156 of text).
 for (const e of LAB) {
   check(textWidth(e.name) + textWidth('+11%') + 22 + 14 <= 172, `${e.name} is too long for its line`);
-  for (const word of `${e.note} CRUSH ONE WITH THE BIT. FOUND: ${e.where}.`.split(' ')) check(textWidth(word) <= 156, `'${word}' is wider than the notes`);
+  for (const word of `${e.note} CUT THROUGH ONE WITH THE BIT. FOUND: ${e.where}.`.split(' ')) check(textWidth(word) <= 156, `'${word}' is wider than the notes`);
 }
 
 console.log(fails.length ? `DEFECT:\n  ${fails.join('\n  ')}` : 'no defect: what is crushed is analysed, what is known pays a hundredth more a level, and the notes open from the top bar');

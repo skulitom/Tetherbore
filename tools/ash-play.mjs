@@ -49,8 +49,7 @@ export async function play(seed = 7, pick = 0, share = 0.62, lv = {}) {
   const out = { flat: Z, levels, tektites, loop: R, hauled: [], n: 0, minerals: 0, cut: 0, crushed: 0, said: 0, t: 0, lap: 0, pace: 0, speed: 0, run: 0, grit: 0, rate: 0, worstMs: 0, faults: [], game };
   const finish = game.finishDig.bind(game), popup = game.popup.bind(game), haul = game.haul.bind(game);
   game.finishDig = i => { out.cut++; if (w.k(i) === Z.mineral) out.crushed++; finish(i); };
-  // (The lab's count of a sample, `TEKTITE 3/4`, is what is said of a tektite cut through; a level gained is not counted.)
-  game.popup = (x, y, label, ...rest) => { if (label === 'CRUSHED' || /[0-9][/][0-9]+$/.test(label)) out.said++; popup(x, y, label, ...rest); };
+  game.popup = (x, y, label, ...rest) => { if (label === 'CRUSHED') out.said++; popup(x, y, label, ...rest); };
   // (What a haul's tektites pay by themselves, worked out here from the cells before they go: half a second of
   // what cutting earns out there, each.)
   const round2 = n => { const unit = 10 ** Math.max(0, Math.floor(Math.log10(n)) - 1); return Math.round(n / unit) * unit; };

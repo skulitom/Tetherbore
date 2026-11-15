@@ -84,6 +84,14 @@ export const sfx = {
   puff() { noise(0.4, { freq: 420, to: 160, gain: 0.25, q: 0.8, type: 'lowpass' }); },
   freeze() { tone(1900, 0.12, { type: 'sine', gain: 0.07, to: 2700 }); },
   relic() { [0, 2, 4, 5, 7, 9, 10, 12].forEach((s, i) => tone(note(5 + s), 0.6, { type: 'triangle', gain: 0.13, delay: i * 0.09 })); },
+  // The hull: a knock that takes a pip (struck plate), the wreck (the motor running down, then the winch taking
+  // up the tether), and the mend at the core (two bright taps and a rising note).
+  knock() { tone(240, 0.16, { type: 'square', gain: 0.2, to: 90 }); noise(0.12, { freq: 2400, to: 600, gain: 0.22, q: 1.2 }); tone(1250, 0.09, { type: 'triangle', gain: 0.12, to: 800, delay: 0.02 }); },
+  wreck() {
+    tone(420, 0.7, { type: 'sawtooth', gain: 0.2, to: 40 }); noise(0.5, { freq: 900, to: 120, gain: 0.3, q: 0.6, type: 'lowpass' });
+    noise(1.6, { freq: 260, to: 1500, gain: 0.09, q: 2.5, delay: 0.5 }); tone(120, 1.6, { type: 'sawtooth', gain: 0.05, to: 330, delay: 0.5 });
+  },
+  mend() { tone(1320, 0.05, { type: 'triangle', gain: 0.14 }); tone(1320, 0.05, { type: 'triangle', gain: 0.14, delay: 0.07 }); tone(note(8), 0.3, { type: 'sine', gain: 0.16, to: note(11), delay: 0.14 }); },
 };
 
 // ---------------------------------------------------------------- the sound of the place

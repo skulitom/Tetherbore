@@ -59,6 +59,10 @@ export const UPGRADES = [
   { id: 'winch', icon: 'winch', name: 'WINCH', what: 'BIGGER HAULS AT FULL PAY', values: [1, 1.3, 1.6, 2, 2.5, 3], gem: B.FROST, ...levels([0.8, 2, 3.6, 5.4, 7.2], 0.5), show: v => `x${v}` },
   { id: 'scanner', icon: 'scanner', name: 'SCAN', what: 'SEES DEEPER IN ROCK', values: [3, 4, 5, 7, 9], gem: B.FROST, ...levels([0.4, 1.6, 3.4, 5.8], 0.3), show: v => `${v}` },
   { id: 'momentum', icon: 'momentum', name: 'RAM', what: 'FLIES FASTER', values: [1, 1.25, 1.5, 1.8, 2.2], gem: B.LODE, ...levels([0.7, 2.4, 4.2, 6.2], 0.4), show: v => `x${v}` },
+  // The hull: how many knocks the drill takes before it is wrecked and wound home (`hit`, `wreck`), a pip a level,
+  // each a plate more on the drill. Its first level is priced beside a reach that has only just met hazards and
+  // asks no gems; from there on it takes the south's, whose lava is the worst of what it is for.
+  { id: 'hull', icon: 'hull', name: 'HULL', what: 'TAKES MORE KNOCKS', values: [3, 4, 5, 6, 7], gem: B.EMBER, ...levels([4.5, 5.5, 6.5, 7.5], 0.5), show: v => `${v}` },
 ];
 // What the lab can know: each thing the bit can crush, by the sheet and frame it is drawn from (`Game.sampleOf`),
 // with its name, where it lies, and the lab's note on it. A thing crushed is a sample analysed, and what is known
@@ -93,6 +97,20 @@ const wrap = (words, wide) => {
   }
   return lines;
 };
+// After a knock nothing takes another pip, or stuns again, for SHIELD seconds: time to get clear. A wrecked drill
+// lies dead for `wait` seconds and is then wound home along its tether at `least` cells a second, or as fast as
+// brings it home within `most` seconds from however far.
+const SHIELD = 1.5;
+export const TOW = { wait: 0.5, least: 18, most: 3 };
+// How long each blow that knocks the hull stuns, in seconds: lava cut into, lava touched, an arc, a spore burst.
+// (Before there was a hull an arc stunned for 0.7 s and lava for 0.5: with a pip gone as well, and SHIELD running
+// from the blow, that left under a second to get clear.)
+const JOLT = { lava: 0.4, burn: 0.3, arc: 0.5, spore: 0.4 };
+// Where a wreck's middle may ride, as steps from the end of its string (`ride`); and what flies off a hull that
+// breaks.
+const RIDE = [[0, 0], [0.25, 0], [-0.25, 0], [0, 0.25], [0, -0.25], [0.25, 0.25], [-0.25, 0.25], [0.25, -0.25], [-0.25, -0.25]];
+const WRECKAGE = ['#ffd83a', '#e08a1c', '#8a94a8', '#3a3440'];
+const SMOKE = ['#4a4654', '#6a6474', '#2e2a36'];
 // Where each direction's gems are found, for a price that cannot be met yet.
 const GEM_WHERE = [null, 'NORTH', 'SOUTH', 'WEST', 'EAST'];
 // What is called out the first time it is seen (`World.see` says what it is): the name that comes up, and the
@@ -190,6 +208,9 @@ export class Game {
     this.pips = []; this.pipsFor = '';                                // the pockets the map marks, and what that list was made for
     this.drifts = new Map();                                          // the drifts whose boulders are in the books, by their keys
     this.crushedAt = -9;                                              // when ore cut into last said CRUSHED
+    this.dents = 0; this.shield = 0; this.tow = null;                 // knocks the hull has taken, how long nothing more knocks it, the wreck being wound home
+    this.knocked = 0; this.mended = 0; this.notice = null;            // a pip just lost and the hull just mended (seconds left to show it), and the word across the screen
+    this.smokeIn = 0; this.wrecks = 0; this.knocks = 0;               // until a hull in trouble next smokes; wrecks and knocks since the game began (for tests and tools)
     this.fresh((Math.random() * 1e9) | 0, true);
   }
 
@@ -211,6 +232,8 @@ export class Game {
     this.band = [[HX, HY], [HX, HY]];
     this.pieces = []; this.pieceOf = new Map(); this.taken.length = 0; this.homeKey = ''; this.homeEnd = [HX, HY];
     this.chain = null; this.hauled = null; this.specLine = null; this.pipsFor = ''; this.drifts.clear(); this.crushedAt = -9;
+    // The hull is whole on a new game and on a game loaded: what is saved is its level, never its dents.
+    this.dents = 0; this.shield = 0; this.tow = null; this.knocked = 0; this.mended = 0; this.notice = null; this.smokeIn = 0;
     w.see(C, C, this.val('scanner') + 4);
     // Where the game begins is where the player already is: its name does not come up, now or as a new place later.
     const here = this.placeAt(this.di);
@@ -220,7 +243,9 @@ export class Game {
     this.changed([C * N + C + 3]);
     this.shop = false; this.lab = false; this.labSel = null; this.labPage = 0; this.labFlash = 0;
   }
-  val(id) { const u = UPGRADES.find(u => u.id === id); return u.values[this.S.lv[id]]; }
+  val(id) { const u = UPGRADES.find(u => u.id === id); return u.values[this.S.lv[id] ?? 0]; }
+  // The pips the hull has left: what its level gives, less the knocks taken since it was last mended.
+  get hull() { return Math.max(0, this.val('hull') - this.dents); }
   get di() { return Math.floor(this.drill.y) * N + Math.floor(this.drill.x); }
   get far() { return Math.hypot(this.drill.x - HX, this.drill.y - HY); }
   get atCore() { return this.far < 1.7; }
@@ -304,7 +329,7 @@ export class Game {
     }
     if (!down) return false;
     unlock();
-    if (code === 'KeyU' || code === 'Enter') { if (this.atCore) { this.shop = !this.shop; this.lab = false; } return true; }
+    if (code === 'KeyU' || code === 'Enter') { if (this.atCore && this.drill.mode !== 'tow') { this.shop = !this.shop; this.lab = false; } return true; }
     if (code === 'KeyL') { this.openLab(!this.lab); return true; }
     if (code === 'Escape') { this.shop = this.lab = false; return true; }
     return false;
@@ -470,6 +495,8 @@ export class Game {
   // went round something, so the string is led the way the drill really went.
   tend() {
     const d = this.drill, P = this.band;
+    // (A wreck being wound home does not lead the string: the string leads it, `towed`.)
+    if (d.mode === 'tow') return;
     if (P[0][0] !== d.x || P[0][1] !== d.y) this.lead(P, [d.x, d.y]);
   }
   // Does the string, running from `c` to bend `b` and on to `a`, turn round the bend's ground: the ground is there,
@@ -759,7 +786,8 @@ export class Game {
   // the loop: it is reeled in there and then.
   reelIfRound() {
     const pts = this.band;
-    if (!this.pieces.length || pts.length < 3) return;
+    // (The loops of a wreck's tether are dropped as it is wound in: nothing is hauled by a dead drill.)
+    if (!this.pieces.length || pts.length < 3 || this.drill.mode === 'tow') return;
     // How many times the tether, closed by the straight line from the core back to the drill, winds round a point.
     const winds = (x, y) => {
       let turns = 0;
@@ -813,6 +841,8 @@ export class Game {
   }
   fly(dt) {
     const w = this.world, d = this.drill;
+    // A wreck is wound home by its tether, whatever the thumb does.
+    if (d.mode === 'tow') { this.towed(dt); return; }
     let [ix, iy, m] = this.steer();
     if (d.stun > 0 || this.shop || this.lab) m = 0;
     // Just reeled home: it stays put until the thumb lets go.
@@ -820,6 +850,8 @@ export class Game {
     // Ground that grew back round the drill never holds it. Should its own cell have closed, the cell is opened
     // again; then it is set in the middle of the cell it is in.
     if (d.mode === 'free' && !this.free(d.x, d.y)) {
+      // (Lava that has poured on to its body burns the hull: a wreck is wound home from where it lies.)
+      if (this.inLava(d.x, d.y) && this.hit(JOLT.burn) && d.mode === 'tow') return;
       const i = this.di, k = w.k(i);
       if (k !== K.EMPTY && HARD[k] < 99) {
         w.setK(i, K.EMPTY);
@@ -918,6 +950,9 @@ export class Game {
       if (m > 0 && (d.vx * (d.x - HX) + d.vy * (d.y - HY)) > 0 && this.edge <= 0) this.refuse();
       d.run = 0;
     }
+    // Pushed into lava, the hull burns. (Lava is shut to the drill, as rock is: a drill it has hemmed in can
+    // wait for it to drain or set, or push, and be wrecked and wound home.)
+    if (m > 0 && (hitX || hitY) && this.scalds(ix, iy, hitX, hitY) && this.hit(JOLT.burn) && d.mode === 'tow') { this.look(); return; }
     // Pushed into ground, it cuts.
     if (m > 0 && (hitX || hitY)) {
       // A cut in progress goes on while the drill is still pressed into that cell and the stick has not turned from
@@ -956,9 +991,11 @@ export class Game {
         }
       }
     } else { if (d.dig >= 0) this.preview = []; d.dig = -1; }
+    // (The cut may have been into a hazard, and the blow the hull's last.)
+    if (d.mode === 'tow') { this.look(); return; }
     // Close to the core and heading in, the tether takes over and reels the drill the rest of the way home.
     const near = this.far;
-    if (m > 0 && near < 3.3 && near > 0.4 && (d.vx * (HX - d.x) + d.vy * (HY - d.y)) > 0.5 * speed * near && near < far + 1e-6 && sight(w, d.x, d.y, HX, HY)) {
+    if (d.mode === 'free' && m > 0 && near < 3.3 && near > 0.4 && (d.vx * (HX - d.x) + d.vy * (HY - d.y)) > 0.5 * speed * near && near < far + 1e-6 && sight(w, d.x, d.y, HX, HY)) {
       d.mode = 'home'; d.tx = HX; d.ty = HY; d.speed = 22; sfx.slide(3);
     }
     if (m > 0 && speed > 1) this.S.stats.moves += dt;
@@ -981,6 +1018,20 @@ export class Game {
       if (first < 0) first = i;
     }
     return first;
+  }
+  // Is the drill being pushed into lava: is any of the places its body is pressed against, on the side it was
+  // stopped (the places `bite` looks for rock in), a cell of lava?
+  scalds(ix, iy, hitX, hitY) {
+    const w = this.world, d = this.drill, reach = BODY + 0.3, sx = Math.sign(d.vx) || Math.sign(ix) || 1, sy = Math.sign(d.vy) || Math.sign(iy) || 1;
+    if (hitX) for (const v of [0, -BODY, BODY]) if (w.lava.has(Math.floor(d.y + v) * N + Math.floor(d.x + sx * reach))) return true;
+    if (hitY) for (const u of [0, -BODY, BODY]) if (w.lava.has(Math.floor(d.y + sy * reach) * N + Math.floor(d.x + u))) return true;
+    return false;
+  }
+  // Does a body standing at (x, y) lie in lava?
+  inLava(x, y) {
+    const w = this.world;
+    for (const [u, v] of [[-BODY, -BODY], [BODY, -BODY], [-BODY, BODY], [BODY, BODY]]) if (w.lava.has(Math.floor(y + v) * N + Math.floor(x + u))) return true;
+    return false;
   }
   // From the core the drill can be thrown at any angle: it flies straight along the drag until ground, lava or
   // the end of its reach stops it. Returns false when it cannot leave that way.
@@ -1020,6 +1071,8 @@ export class Game {
     if (this.world.spotted.length) this.callOut();
     const home = this.atCore;
     if (home && !d.home) { this.homecoming(); this.save(); }
+    // Riding on to the core mends the hull. (A wreck is mended when it docks: `dock`.)
+    if (home && this.dents && d.mode !== 'tow') this.mend();
     d.home = home;
   }
   // The place a cell lies in: the row of its ground, and the key the place is known by. A pocket is a place of
@@ -1185,17 +1238,21 @@ export class Game {
   }
   // How much more such a cell is worth for what the lab knows of it: a hundredth for each level.
   studied(k, row) { const key = this.sampleOf(k, row); return key && LAB_OF[key] ? labLevel(this.S.lab[key] ?? 0) / 100 : 0; }
-  // The bit went through something at cell (x, y): if the lab studies it, that is one more sample, and the cell
-  // says what was learnt (the thing's name and its new worth when a level is gained, always; otherwise its name and
-  // how far the count has come, where `say` allows). What the lab does not study is only crushed.
+  // The bit went through something at cell (x, y). The cell says CRUSHED, as it always has (where `say` allows: in
+  // ploughed ground no more than once a second). If the lab studies the thing, that was one more sample of it, and
+  // under CRUSHED the cell says what the lab made of it: SAMPLE and how far the count has come towards the next
+  // analysis, or, when this sample completes one, ANALYSED and what the thing is now worth more by. An analysis
+  // is always said, with a sparkle and a note.
   analyse(key, x, y, say = true) {
     const e = LAB_OF[key];
-    if (!e) { if (say) { this.crushedAt = this.time; this.popup(x, y, 'CRUSHED', '#9a94a8'); } return; }
+    if (say) { this.crushedAt = this.time; this.popup(x, y, 'CRUSHED', '#9a94a8'); }
+    if (!e) return;
     const n = this.S.lab[key] = (this.S.lab[key] ?? 0) + 1;
     if ((n & (n - 1)) === 0) {
-      this.crushedAt = this.time; this.popup(x, y, `${e.name} +${labLevel(n)}%`, '#8cf2c4');
+      this.popup(x, y + 0.7, `ANALYSED +${labLevel(n)}%`, '#8cf2c4');
+      this.sparkle((x + 0.5) * T, (y + 0.5) * T, 6, '#8cf2c4');
       sfx.gem(labLevel(n)); this.labSel = key; this.labFlash = 3;
-    } else if (say) { this.crushedAt = this.time; this.popup(x, y, `${e.name} ${n}/${labNext(n)}`, '#9a94a8'); }
+    } else if (say) this.popup(x, y + 0.7, `SAMPLE ${n}/${labNext(n)}`, '#6fa894');
   }
   // The lab's notes are opened and shut by a tap on the top bar. They open at the thing last learnt about.
   openLab(open) {
@@ -1507,7 +1564,7 @@ export class Game {
       w.setK(i, K.EMPTY); w.lava.set(i, 9); this.lavaVol.set(i, w.row(i).lavaVol);
       sfx.hiss(); this.effect('steam', 'smoke-puff', (x + 0.5) * T, (y + 0.5) * T);
       this.quench(i);
-      if (direct) { this.jolt(0.5); this.shake = 5; }
+      if (direct) { this.hit(JOLT.lava); this.shake = 5; }
       return [i];
     }
     if (haz === 'spore') {
@@ -1551,7 +1608,7 @@ export class Game {
     const w = this.world, d = this.drill;
     this.effect('zap', 'impact', (x + 0.5) * T, (y + 0.5) * T);
     sfx.zap();
-    if (Math.max(Math.abs(d.x - x - 0.5), Math.abs(d.y - y - 0.5)) <= 3.5) { this.jolt(0.7); this.shake = Math.max(this.shake, 5); this.twang = 0.3; }
+    if (Math.max(Math.abs(d.x - x - 0.5), Math.abs(d.y - y - 0.5)) <= 3.5) { this.hit(JOLT.arc); this.shake = Math.max(this.shake, 5); this.twang = 0.3; }
     for (let v = -3; v <= 3; v++) for (let u = -3; u <= 3; u++) {
       const j = (y + v) * N + x + u;
       if ((u || v) && w.hazAt(j) === 'spark' && !this.sparks.has(j)) this.sparks.set(j, { fuse: 0.3 + cellHash(u, v, 7) * 0.3, cool: 0 });
@@ -1607,6 +1664,117 @@ export class Game {
   }
   // A hazard's bite: the drill is knocked senseless for a moment.
   jolt(time) { const d = this.drill; d.stun = Math.max(d.stun, time); this.hurt = time; d.vx = d.vy = 0; d.dig = -1; }
+
+  // ------------------------------------------------------------ the hull
+  // What knocks the hull, and what does not. A knock is lava (cut into, pushed into, or poured on to the drill's
+  // body), the arc of a charged crystal within its reach, and the burst of a spore pod beside the drill. Frost
+  // does not: ice only closes a cut behind the drill, and never on it. Nor does moss growing back, slag turning to
+  // steel, the end of the tether's reach, a throw that fetches up against rock, rubble on its way home, or the
+  // drill's own charge.
+  //
+  // A blow that lands takes a pip and stuns for a moment (`jolt`), and for SHIELD seconds after nothing lands
+  // again, pip or stun: time to get clear, and the drill blinks to say so. With one pip left it smokes. With the
+  // last gone it is a wreck (`wreck`). Returns whether the blow landed.
+  hit(time) {
+    const d = this.drill;
+    if (d.mode === 'tow' || this.shield > 0) return false;
+    this.jolt(time);
+    this.dents++; this.knocks++; this.shield = SHIELD; this.knocked = 0.5;
+    this.shake = Math.max(this.shake, 4);
+    sfx.knock();
+    this.effect('sparks', 'sparks', d.x * T, d.y * T);
+    if (this.hull <= 0) this.wreck();
+    return true;
+  }
+  // The last pip is gone. The drill goes dark and its own tether winds it home (`towed`). That costs the trip and
+  // whatever loops the tether was drawing, and nothing else: nothing banked or bought is lost, nothing runs out,
+  // and hauls already on their way come home and pay. The screen says what happened, by name.
+  wreck() {
+    const d = this.drill, P = this.band;
+    let len = 0;
+    for (let n = 1; n < P.length; n++) len += Math.hypot(P[n][0] - P[n - 1][0], P[n][1] - P[n - 1][1]);
+    d.mode = 'tow'; d.stun = 0; d.dig = -1; d.vx = d.vy = 0; d.run = 0; d.speed = Math.max(TOW.least, len / TOW.most);
+    this.preview = []; this.shield = 0;
+    this.tow = { t: 0, len, from: [d.x, d.y] };
+    this.wrecks++;
+    this.banner = null; this.notice = { title: 'HULL GONE', colour: '#ff7a5a', t: 0, life: 2.4 };
+    this.shake = Math.max(this.shake, 8); this.smokeIn = 0;
+    sfx.wreck();
+    this.effect('steam', 'smoke-puff', d.x * T, d.y * T);
+    this.chips(d.x - 0.5, d.y - 0.5, WRECKAGE, 14, null, 1);
+  }
+  // A wreck is wound home. It lies dead for a moment; then the tether is drawn in at the core and the drill comes
+  // with it along the string's own line, bend by bend, each bend let go as the drill comes to it: the string is
+  // never led anywhere it did not already lie, so it is sound at every step, and nothing can stop it, since
+  // nothing is asked of the ground on the way but where the dead drill's middle may ride (`ride`). However the
+  // ground changes meanwhile, the string settles as it always does (`retighten`) and the drill goes on along what
+  // is left. At the core it docks (`dock`).
+  towed(dt) {
+    const d = this.drill, P = this.band, tow = this.tow;
+    tow.t += dt;
+    d.px = d.x; d.py = d.y;
+    if (tow.t > TOW.wait) {
+      const speed = d.speed * Math.min(1, (tow.t - TOW.wait) / 0.25);
+      let go = speed * dt;
+      for (;;) {
+        if (P.length < 2) { this.dock(); return; }
+        const a = P[0], b = P[1], left = Math.hypot(b[0] - a[0], b[1] - a[1]);
+        if (left > go) {
+          const u = go / left;
+          P[0] = [a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u];
+          // It is drawn in tail first.
+          let turn = Math.atan2(a[1] - b[1], a[0] - b[0]) - d.ang;
+          turn = Math.atan2(Math.sin(turn), Math.cos(turn));
+          d.ang += turn * Math.min(1, dt * 12);
+          d.vx = (b[0] - a[0]) / left * speed; d.vy = (b[1] - a[1]) / left * speed;
+          break;
+        }
+        go -= left;
+        if (P.length === 2) { this.dock(); return; }
+        P.splice(0, 2, [b[0], b[1]]);
+      }
+      const at = this.ride(P[0][0], P[0][1]);
+      if (at) { d.x = at[0]; d.y = at[1]; }
+    }
+    this.look();
+  }
+  // Where a wreck's middle rides when the end of the string is at (x, y): there, if that is open ground with a
+  // little room round it; else the best of eight places a quarter of a cell off (the string's end runs on the very
+  // corners and faces of rock, where a middle would lie in the rock); null where none of them is open, and then
+  // it stays where it was.
+  ride(x, y) {
+    const w = this.world, open = (u, v) => w.k(Math.floor(v) * N + Math.floor(u)) === K.EMPTY;
+    let best = null, most = 0;
+    for (const [u, v] of RIDE) {
+      const px = x + u, py = y + v;
+      if (!open(px, py)) continue;
+      const room = 1 + open(px - 0.12, py - 0.12) + open(px + 0.12, py - 0.12) + open(px - 0.12, py + 0.12) + open(px + 0.12, py + 0.12);
+      if (room > most) { most = room; best = [px, py]; }
+      if (room === 5) break;
+    }
+    return best;
+  }
+  // A wreck is home: it stands in the middle of the core, mended, its tether wound in, and is handed back. As
+  // after any coming home, it stays put until the thumb lets go, and leaves on a fresh stroke.
+  dock() {
+    const d = this.drill;
+    d.x = d.px = HX; d.y = d.py = HY; d.vx = d.vy = 0; d.mode = 'free'; d.run = 0; d.speed = 0; d.armed = false; d.park = true; d.squash = 0.14;
+    this.band = [[HX, HY], [HX, HY]]; this.homeEnd = [HX, HY]; this.taken.length = 0;
+    this.tow = null;
+    sfx.dock(); this.ring(HX * T, HY * T, '#84dcff', 30);
+    this.mend();
+    this.look();
+  }
+  // The hull is made whole, for nothing: whenever the drill rides on to the core, and when a wreck docks there.
+  // Returns whether there was anything to mend.
+  mend() {
+    if (!this.dents) return false;
+    const d = this.drill;
+    this.dents = 0; this.shield = 0; this.knocked = 0; this.mended = 0.7; this.smokeIn = 0;
+    sfx.mend();
+    this.ring(d.x * T, d.y * T, '#bfe6ff', 18); this.sparkle(d.x * T, d.y * T, 8, '#eaf6ff');
+    return true;
+  }
   updateHazards(dt) {
     const w = this.world, d = this.drill, here = this.di, dcx = Math.floor(d.x), dcy = Math.floor(d.y);
     // The cells that open and that grow back in this pass, for `changed`.
@@ -1632,7 +1800,7 @@ export class Game {
         }
         // A drill thrown or being reeled home: nothing closes on the line of its flight, as wide as it is, or where
         // it will come down.
-        if (d.mode !== 'free') {
+        if (d.mode === 'fling' || d.mode === 'home') {
           const sx = d.tx - d.x, sy = d.ty - d.y, len = Math.hypot(sx, sy) || 1;
           for (const side of [0, BODY, -BODY]) along(d.x - sy / len * side, d.y + sx / len * side, d.tx - sy / len * side, d.ty + sx / len * side);
           for (const [u, v] of [[-BODY, -BODY], [BODY, -BODY], [-BODY, BODY], [BODY, BODY]]) under.add(Math.floor(d.ty + v) * N + Math.floor(d.tx + u));
@@ -1675,7 +1843,7 @@ export class Game {
     // younger.)
     for (const c of this.clouds) {
       c.t += dt;
-      if (Math.max(Math.abs(dcx - c.x), Math.abs(dcy - c.y)) <= 1 && c.t < 0.2) this.jolt(0.4);
+      if (Math.max(Math.abs(dcx - c.x), Math.abs(dcy - c.y)) <= 1 && c.t < 0.2) this.hit(JOLT.spore);
       if (!c.spread && c.t >= POD_CHAIN) {
         c.spread = true;
         for (let v = -1; v <= 1; v++) for (let u = -1; u <= 1; u++) { const j = (c.y + v) * N + c.x + u; if (w.hazAt(j) === 'spore') opened.push(...this.trigger(j, 'spore', false)); }
@@ -1818,6 +1986,18 @@ export class Game {
     this.twang = Math.max(0, this.twang - dt); this.coreFlash = Math.max(0, this.coreFlash - dt); this.hurt = Math.max(0, this.hurt - dt);
     this.edge = Math.max(0, this.edge - dt); d.stun = Math.max(0, d.stun - dt); d.squash = Math.max(0, d.squash - dt);
     this.shake = Math.max(0, this.shake - dt * 22);
+    this.shield = Math.max(0, this.shield - dt); this.knocked = Math.max(0, this.knocked - dt); this.mended = Math.max(0, this.mended - dt);
+    if (this.notice) { this.notice.t += dt; if (this.notice.t > this.notice.life) this.notice = null; }
+    // A hull with one knock left in it smokes and spits sparks, so the bar need not be read; a wreck trails smoke.
+    if (d.mode === 'tow' || (this.dents > 0 && this.hull === 1)) {
+      this.smokeIn -= dt;
+      if (this.smokeIn <= 0) {
+        const wreck = d.mode === 'tow';
+        this.smokeIn = wreck ? 0.09 : 0.32;
+        if (this.parts.length < 400) for (let n = 0; n < 2; n++) this.parts.push({ x: d.x * T + (Math.random() - 0.5) * 6, y: d.y * T + (Math.random() - 0.5) * 6, vx: (Math.random() - 0.5) * 14, vy: -10 - Math.random() * 16, t: 0, life: 0.5 + Math.random() * 0.5, color: SMOKE[(Math.random() * SMOKE.length) | 0], size: 2 });
+        if (!wreck && Math.random() < 0.5) this.effect('sparks', 'sparks', d.x * T, d.y * T);
+      }
+    }
     if (this.bought) { this.bought.t -= dt; if (this.bought.t <= 0) this.bought = null; }
     if (this.confirmReset > 0) this.confirmReset -= dt;
     if (this.labFlash > 0) this.labFlash -= dt;
@@ -1831,7 +2011,7 @@ export class Game {
       let met = this.taken.length > 0 && this.discover(this.taken.splice(0), 600, this.walked);
       this.reelTick = (this.reelTick ?? 0) + dt;
       // And ground the line home has passed over: is any of that loose?
-      if (this.sweepHome(this.reelTick > 0.1)) met = true;
+      if (d.mode !== 'tow' && this.sweepHome(this.reelTick > 0.1)) met = true;
       if (met || this.reelTick > 0.1) { this.reelTick = 0; this.reelIfRound(); }
       this.updateHazards(dt);
       this.listen(dt);
@@ -2063,8 +2243,11 @@ export class Game {
       for (let g = 3; g >= 1; g--) { ctx.globalAlpha = 0.34 - g * 0.09; this.drawDrill(dx - d.vx / speed * g * 7, dy - d.vy / speed * g * 7, d.ang, this.S.lv.drill, this.S.lv.momentum, -1, along, across); }
       ctx.globalAlpha = 1;
     }
-    this.drillDrawn = [dx, dy, d.ang, this.S.lv.drill, this.S.lv.momentum, d.dig >= 0 || speed > 1 ? now : -1, along, across];
+    this.drillDrawn = [dx, dy, d.ang, this.S.lv.drill, this.S.lv.momentum, d.mode !== 'tow' && (d.dig >= 0 || speed > 1) ? now : -1, along, across];
+    // A wreck is dark; a drill that has just been knocked blinks for as long as nothing can knock it again.
+    ctx.globalAlpha = d.mode === 'tow' ? 0.5 : this.shield > 0 && ((now / 70) | 0) % 2 === 0 ? 0.35 : 1;
     this.drawDrill(...this.drillDrawn);
+    ctx.globalAlpha = 1;
     if (this.hurt > 0 && ((now / 50) | 0) % 2) { ctx.globalAlpha = 0.5; ctx.fillStyle = '#ff5a4a'; ctx.fillRect(Math.round(dx) - 5, Math.round(dy) - 5, 10, 10); ctx.globalAlpha = 1; }
     for (const e of this.effects) {
       const f = frameAt(e.sheet, e.animation, e.t);
@@ -2128,13 +2311,13 @@ export class Game {
 
   // The drill as its upgrades have made it (the bit's metal, whatever the ram has bolted on), drawn about its
   // middle at any heading, `along` and `across` times its size.
-  drawDrill(x, y, ang, bit, ram, now, along = 1, across = 1, ctx = this.ctx) {
+  drawDrill(x, y, ang, bit, ram, now, along = 1, across = 1, ctx = this.ctx, plates = this.S.lv.hull) {
     const body = now >= 0 ? frameAt('drill', `right-${bit}`, now) : `right-a-${bit}`, s = sheets.drill;
     ctx.save();
     ctx.translate(Math.round(x), Math.round(y));
     ctx.rotate(ang);
     ctx.scale(along, across);
-    for (const frame of ram > 0 ? [`ram-right-${ram}`, body] : [body]) {
+    for (const frame of [...(ram > 0 ? [`ram-right-${ram}`] : []), body, ...(plates > 0 ? [`plate-right-${plates}`] : [])]) {
       const r = typeof frame === 'string' ? s.frames[frame] : frame;
       ctx.drawImage(s.image, r[0], r[1], r[2], r[3], -8, -8, 16, 16);
     }
@@ -2465,6 +2648,12 @@ export class Game {
       if (prism) text(ctx, prism, W / 2, ly + 12, GEM_COLOR[1 + ((now / 240) | 0) % 4], 0.5);
       ctx.globalAlpha = 1;
     }
+    if (this.notice) {
+      const note = this.notice, pop = Math.min(1, note.t / 0.12);
+      ctx.globalAlpha = Math.min(1, (note.life - note.t) * 3);
+      text(ctx, note.title, W / 2, Math.round(H * 0.2 - (1 - pop) * 8), note.colour, 0.5, 2 + (note.t < 0.07 ? 1 : 0));
+      ctx.globalAlpha = 1;
+    }
     if (S.won && this.wonAt !== undefined && this.time - this.wonAt < 6) text(ctx, 'CORE RESTORED', W / 2, H * 0.36, '#ffe14a', 0.5, 2);
     // A ground met for the first time: its name alone, large, a little under where a haul's banner goes (and under
     // the banner itself, if one is up). A name too long for the screen is set on two lines, or small.
@@ -2500,10 +2689,19 @@ export class Game {
     const R = this.val('tether'), far = this.far, left = Math.max(0, R - far), label = compact(left), room = textWidth(label) + 10;
     this.bar(6, 29, W - 12 - room, 'tether', left / R, far / R > 0.93 ? '#ff7a5a' : '#f4ecd8', this.twang > 0);
     text(ctx, label, W - 6, 30, this.twang > 0 ? '#ff7a5a' : '#f4ecd8', 1);
+    // The hull: a pip for each knock it can take, after the grit. One just lost shows red for a moment, the last
+    // one left stays red, and a hull just mended shows white.
+    const pips = this.val('hull'), sound = this.hull, hx = 18 + textWidth(compact(S.grit - this.pending.grit)) + 7;
+    for (let n = 0; n < pips; n++) {
+      const x = hx + n * 5, full = n < sound, lost = n === sound && this.knocked > 0;
+      ctx.fillStyle = '#16121c'; ctx.fillRect(x, 6, 4, 7);
+      ctx.fillStyle = lost ? '#ff5a4a' : !full ? '#3a3450' : this.mended > 0 ? '#ffffff' : sound === 1 ? '#ff7a5a' : '#bfe6ff';
+      ctx.fillRect(x + 1, 7, 2, 5);
+    }
     // What the lab has analysed, of all it can: shown once there is a first sample, lit for a moment by a new
     // level. A tap anywhere on the bar (but the sound) opens the lab's notes, and another shuts them.
     const known = LAB.filter(e => S.lab[e.key]).length;
-    if (known) {
+    if (known && hx + pips * 5 + 4 < W - 27 - textWidth(`${known}/${LAB.length}`) - 11) {
       const count = `${known}/${LAB.length}`, lit = this.labFlash > 0 && ((now / 120) | 0) % 2 === 0;
       text(ctx, count, W - 27, 6, lit ? '#ffffff' : '#8cf2c4', 1);
       draw(ctx, 'icons', 'lab', W - 27 - textWidth(count) - 11, 5);
@@ -2710,11 +2908,11 @@ export class Game {
     const ny = py + HEAD + rows * RH + 3, n = S.lab[sel.key] ?? 0;
     ctx.fillStyle = '#4a4468'; ctx.fillRect(px + 6, ny - 2, pw - 12, 1);
     if (n) {
-      text(ctx, `${compact(n)} CRUSHED, +1% AT ${compact(labNext(n))}`, px + 8, ny + 1, '#bfe6ff');
+      text(ctx, `${compact(n)} SAMPLES. NEXT +1% AT ${compact(labNext(n))}`, px + 8, ny + 1, '#bfe6ff');
       wrap(sel.note, pw - 16).slice(0, 3).forEach((line, l) => text(ctx, line, px + 8, ny + 12 + l * 10, '#d8d0c0'));
     } else {
       text(ctx, 'NOT ANALYSED YET', px + 8, ny + 1, '#bcb4cc');
-      wrap(`CRUSH ONE WITH THE BIT. FOUND: ${sel.where}.`, pw - 16).slice(0, 3).forEach((line, l) => text(ctx, line, px + 8, ny + 12 + l * 10, '#9a94a8'));
+      wrap(`CUT THROUGH ONE WITH THE BIT. FOUND: ${sel.where}.`, pw - 16).slice(0, 3).forEach((line, l) => text(ctx, line, px + 8, ny + 12 + l * 10, '#9a94a8'));
     }
     if (paged) {
       const fy = py + ph - 16;
@@ -2745,6 +2943,7 @@ export class Game {
       else if (u.id === 'tether') { for (const pass of TETHERS[next].thick ? [1, 0] : [0]) this.drawSpan(vx + 1, vy + 12 + pass, vx + 14, vy + 3 + pass, TETHERS[next]); }
       else if (u.id === 'winch') drawScaled(ctx, 'core', `core-a-${next}`, vx, vy, 16, 16);
       else if (u.id === 'scanner') draw(ctx, 'dish', `dish-${next}`, vx, vy);
+      else if (u.id === 'hull') this.drawDrill(vx + 8, vy + 8, 0, S.lv.drill, S.lv.momentum, -1, 1, 1, ctx, next);
       else { draw(ctx, 'upgrades', u.icon, vx + 2, vy + 2); text(ctx, `${u.values[next]}`, vx + 15, vy + 7, '#ffffff', 1); }
       // What it is, what it does, and what the next level changes.
       text(ctx, u.name, px + 25, y + 2, '#ffffff');

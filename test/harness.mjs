@@ -35,18 +35,24 @@ globalThis.fetch = async url => { const text = await readFile(new URL(String(url
 
 const atlas = await import(new URL('js/atlas.js', root));
 await atlas.loadAtlas('assets/');
-const { Game, UPGRADES, income, richness, haulBonus } = await import(new URL('js/game.js', root));
+const { Game, UPGRADES, TOW, income, richness, haulBonus } = await import(new URL('js/game.js', root));
 const world = await import(new URL('js/world.js', root));
 
 export const { N, C, K, B, sight, cellsAlong, HOME_R } = world;
-export { Game, UPGRADES, income, richness, haulBonus, world };
+export { Game, UPGRADES, TOW, income, richness, haulBonus, world };
 
 // A fresh game on world `seed`, with the title screen already left.
-export async function makeGame(seed = 7, levels = {}) {
+//
+// The hull takes no harm unless `hull` is asked for: a blow lands as it does in play (the stun, the moment after in
+// which nothing lands again), and the pip it took is given back at once, so the drill is never wrecked and wound
+// home. The flights and the pilots written before there was a hull are of a drill that stays out in the ground it
+// was set down in, whatever it flies into; with `{ hull: true }` the game is exactly the one that is played.
+export async function makeGame(seed = 7, levels = {}, { hull = false } = {}) {
   const game = new Game(canvas());
   game.fresh(seed, true);
   game.resize(360, 640, 1);
   Object.assign(game.S.lv, levels);
+  if (!hull) { const hit = game.hit.bind(game); game.hit = time => { const landed = hit(time); game.dents = 0; return landed; }; }
   return game;
 }
 

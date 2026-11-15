@@ -358,16 +358,27 @@ const RAMS = [1, 2, 3, 4].map(level => {
   if (level >= 4) { put(g, 1, 3, 5, 'y'); put(g, 14, 3, 5, 'y'); put(g, 0, 3, 4, 'k'); put(g, 15, 3, 4, 'k'); put(g, 7, 0, 0, 'y'); put(g, 8, 0, 0, 'y'); }
   return g.map(row => row.join(''));
 });
+// The hull's plates are riveted over the body: a band of steel behind the bit, a second at the tail, then a rim
+// along both flanks, then bright rivets on every band.
+const PLATES = [1, 2, 3, 4].map(level => {
+  const g = blank();
+  for (let y = 4; y <= 11; y++) g[y][9] = y === 4 ? 'P' : 'p';
+  if (level >= 2) for (let y = 4; y <= 11; y++) g[y][3] = y === 4 ? 'P' : 'p';
+  if (level >= 3) { put(g, 4, 3, 9, 'P'); put(g, 11, 3, 9, 'p'); }
+  if (level >= 4) for (const [x, y] of [[9, 6], [9, 9], [3, 6], [3, 9], [6, 4], [6, 11]]) g[y][x] = 'R';
+  return g.map(row => row.join(''));
+});
 export const drill = {
   version: 1, name: 'drill', width: 16, height: 16,
-  palette: { k: '#1c1420', b: '#ffd83a', d: '#e08a1c', c: '#3ab8e8', w: '#eafcff', s: '#eef2f8', S: '#8c96a8', r: '#ff5a3a', y: '#ffe14a' },
-  symbols: { drill: DRILL, ...Object.fromEntries(RAMS.map((rows, n) => [`ram${n + 1}`, rows])) },
+  palette: { k: '#1c1420', b: '#ffd83a', d: '#e08a1c', c: '#3ab8e8', w: '#eafcff', s: '#eef2f8', S: '#8c96a8', r: '#ff5a3a', y: '#ffe14a', p: '#77829a', P: '#aab4c8', R: '#ffffff' },
+  symbols: { drill: DRILL, ...Object.fromEntries(RAMS.map((rows, n) => [`ram${n + 1}`, rows])), ...Object.fromEntries(PLATES.map((rows, n) => [`plate${n + 1}`, rows])) },
   frames: [
     ...BITS.flatMap((bit, level) => DIRS.flatMap((dir, i) => [
       { name: `${dir}-a-${level}`, duration: 70, palette: bit, ops: [{ op: 'stamp', symbol: 'drill', x: 0, y: 0, ...(i && { rotate: i * 90 }) }] },
       { name: `${dir}-b-${level}`, duration: 70, palette: bit, ops: [{ op: 'stamp', symbol: 'drill', x: 0, y: 0, ...(i && { rotate: i * 90 }), remap: SPIN }] },
     ])),
     ...RAMS.flatMap((rows, n) => DIRS.map((dir, i) => ({ name: `ram-${dir}-${n + 1}`, ops: [{ op: 'stamp', symbol: `ram${n + 1}`, x: 0, y: 0, ...(i && { rotate: i * 90 }) }] }))),
+    ...PLATES.map((rows, n) => ({ name: `plate-right-${n + 1}`, ops: [{ op: 'stamp', symbol: `plate${n + 1}`, x: 0, y: 0 }] })),
   ],
   animations: Object.fromEntries(BITS.flatMap((bit, level) => DIRS.map(dir => [`${dir}-${level}`, { frames: [`${dir}-a-${level}`, `${dir}-b-${level}`] }]))),
 };

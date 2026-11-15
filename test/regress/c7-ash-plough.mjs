@@ -10,8 +10,7 @@
 //     ram, faster as the run builds, where the other ground gives under eight (and soft rock four);
 //   - a tektite takes the time its kind takes times the ash's own fifth (0.09 s with the first bit), not the 0.45 s
 //     of a mineral in ordinary ground;
-//   - ploughing through a tektite every other cell, the lab's count of them (TEKTITE 3/4) comes up no more than
-//     once a second, though a level gained (TEKTITE +2%) always does; ore cut into
+//   - ploughing through a tektite every other cell, CRUSHED comes up no more than once a second; ore cut into
 //     in ground that is not ploughed says so every time;
 //   - out of the ash and into ordinary rock, the first push breaks the run as it always did.
 //   node test/regress/c7-ash-plough.mjs
@@ -37,8 +36,7 @@ const strip = async (b, ore, off = 0) => {
   game.band = [[d.x, d.y], [HX, HY]];
   game.changed();
   const said = [], popup = game.popup.bind(game);
-  // (What a cell says of a sample: `up` where it is a level gained, which is always said.)
-  game.popup = (x, y, label, ...rest) => { if (label === 'CRUSHED' || /[%0-9]$/.test(label)) said.push({ t: game.time, up: label.endsWith('%') }); popup(x, y, label, ...rest); };
+  game.popup = (x, y, label, ...rest) => { if (label === 'CRUSHED') said.push(game.time); popup(x, y, label, ...rest); };
   return { game, w, d, said };
 };
 const east = (game, seconds, each) => { for (let f = 0; f < Math.round(seconds * 60); f++) { game.input.auto = [1, 0, 1]; game.update(1 / 60); each?.(); } game.input.auto = null; };
@@ -79,10 +77,8 @@ const out = {};
   ash.game.finishDig = i => { if (ash.w.k(i) === K.MINERAL) { crushed++; time = ash.d.digDur; } finish(i); };
   east(ash.game, 2.6);
   check(Math.abs(time - 0.09) < 1e-9, `the cut through a tektite was to take ${time} s`);
-  // (The first, second and fourth tektites each gain a level, and say so. A count is said only a second after
-  // anything was, so in these 2.6 s there may be none.)
-  const gaps = ash.said.map((s, n) => s.up || n === 0 ? 9 : s.t - ash.said[n - 1].t);
-  check(crushed >= 6 && ash.said.filter(s => s.up).length === 3 && ash.said.length <= 5 && gaps.every(g => g >= 1 - 1e-9), `ploughing through ${crushed} tektites in 2.6 s, the lab spoke ${ash.said.length} times (${ash.said.filter(s => s.up).length} of them levels), ${gaps.map(g => g.toFixed(2))} s apart`);
+  const gaps = ash.said.slice(1).map((t, n) => t - ash.said[n]);
+  check(crushed >= 6 && ash.said.length >= 2 && ash.said.length <= 3 && gaps.every(g => g >= 1 - 1e-9), `ploughing through ${crushed} tektites in 2.6 s, CRUSHED came up ${ash.said.length} times, ${gaps.map(g => g.toFixed(2))} s apart`);
   let ore = 0;
   const done = other.game.finishDig.bind(other.game);
   other.game.finishDig = i => { if (other.w.k(i) === K.ORE_A) ore++; done(i); };
