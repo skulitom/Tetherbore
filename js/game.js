@@ -1,6 +1,6 @@
 // Tetherbore: the game. A drill on a tether cuts ground round a fixed core; a piece cut wholly free is reeled in.
 // Logic moves by whole cells and at once; what is drawn catches up, so input never waits on an animation.
-import { World, N, C, K, B, HARD, GRIT, GEMS, DX, DY, BIOME_NAMES, base, cellHash, taut, sight } from './world.js';
+import { World, N, C, K, B, HARD, GRIT, GEMS, DX, DY, BIOME_NAMES, base, cellHash, taut, sight, onCore } from './world.js';
 import { sheets, draw, drawScaled, frameAt, duration, slice9, text, textWidth } from './atlas.js';
 import { sfx, unlock, isMuted, setMuted } from './audio.js';
 
@@ -68,7 +68,7 @@ export class Game {
   }
   val(id) { const u = UPGRADES.find(u => u.id === id); return u.values[this.S.lv[id]]; }
   get di() { return this.drill.y * N + this.drill.x; }
-  get atCore() { return this.world.dist[this.di] === 0; }
+  get atCore() { return onCore(this.drill.x, this.drill.y); }
 
   save() {
     try {
@@ -84,6 +84,7 @@ export class Game {
       for (const u of UPGRADES) this.S.lv[u.id] = Math.min(this.S.lv[u.id] ?? 0, u.values.length - 1);
       this.world.generate(S.seed);
       unb64(kind, this.world.kind); unb64(seen, this.world.seen);
+      for (let i = 0; i < this.world.kind.length; i++) if (this.world.kind[i] === K.CORE) this.world.kind[i] = K.EMPTY;
       this.begin();
       return true;
     } catch { return false; }
@@ -183,6 +184,7 @@ export class Game {
         const i = (y + DY[dir]) * N + x + DX[dir];
         if (w.kind[i] !== K.EMPTY || w.lava[i] > 0 || w.dist[i] < 0 || w.dist[i] > L) break;
         x += DX[dir]; y += DY[dir]; steps++;
+        if (x === C && y === C) break;      // the middle of the core is a place to stop
       }
       if (!steps) { this.taut(nx, ny); return; }
       d.x = x; d.y = y; d.mode = 'slide'; d.speed = 24; d.wait = 0.13;
@@ -359,7 +361,7 @@ export class Game {
         for (let s = 0; s < 4; s++) {
           const j = (y + DY[(s + start) % 4]) * N + x + DX[(s + start) % 4];
           if (w.kind[j] === K.HAZARD && base(w.biome[j]) === B.EMBER) { this.trigger(j, B.EMBER, false); moved = true; continue; }
-          if (vol > 1 && w.kind[j] === K.EMPTY && w.lava[j] <= 0 && j !== this.di && w.seen[j]) {
+          if (vol > 1 && w.kind[j] === K.EMPTY && w.lava[j] <= 0 && j !== this.di && w.seen[j] && !onCore(j % N, (j / N) | 0)) {
             w.lava[j] = 8; this.lavaVol.set(j, vol - 1); this.lavaVol.set(i, 1);
             break;
           }
@@ -382,7 +384,7 @@ export class Game {
       if (c.t >= c.life) {
         for (let v = -1; v <= 1; v++) for (let u = -1; u <= 1; u++) {
           const j = (c.y + v) * N + c.x + u;
-          if (w.kind[j] === K.EMPTY && !w.onPath[j] && w.lava[j] <= 0 && Math.max(Math.abs(d.x - c.x - u), Math.abs(d.y - c.y - v)) > 1) {
+          if (w.kind[j] === K.EMPTY && !onCore(c.x + u, c.y + v) && !w.onPath[j] && w.lava[j] <= 0 && Math.max(Math.abs(d.x - c.x - u), Math.abs(d.y - c.y - v)) > 1) {
             w.kind[j] = K.SOFT; w.biome[j] = B.MIRE; moved = true;
           }
         }
@@ -477,7 +479,7 @@ export class Game {
 
   // ------------------------------------------------------------ small things
   effect(sheet, animation, x, y) { this.effects.push({ sheet, animation, x, y, t: 0 }); }
-  popup(cx, cy, label, color, icon) { this.popups.push({ x: (cx + 0.5) * T, y: cy * T, label, color, icon, t: 0 }); }
+  popup(cx, cy, label, color, icon) { this.popups = this.popups.filter(p => p.label !== label); this.popups.push({ x: (cx + 0.5) * T, y: cy * T, label, color, icon, t: 0 }); }
   onScreen(x, y) { const sx = x * T - this.cam.x + this.W / 2, sy = y * T - this.cam.y + this.H / 2; return sx > -T && sy > -T && sx < this.W && sy < this.H; }
 
   // ------------------------------------------------------------ update

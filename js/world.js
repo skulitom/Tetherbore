@@ -12,6 +12,7 @@ export const DEEP_R = 23;
 export const HARD = [0, 99, 99, 1, 2, 1, 2, 3, 4, 1, 99, 1, 2];
 export const GRIT = [0, 0, 0, 1, 2, 2, 4, 4, 10, 3, 0, 0, 1];
 export const GEMS = [0, 0, 0, 0, 0, 1, 5, 0, 0, 2, 0, 0, 0];
+export const onCore = (x, y) => Math.abs(x - C) <= 1 && Math.abs(y - C) <= 1;
 export const DX = [1, 0, -1, 0], DY = [0, 1, 0, -1];
 export const RELIC_R = 36, WORLD_R = 61;
 
@@ -89,7 +90,8 @@ export class World {
       this.relicAt.push(cy * N + cx);
     }
     // The core, the gap round it, and a first piece all but cut free, to show what a cut does.
-    for (let y = -2; y <= 2; y++) for (let x = -2; x <= 2; x++) kind[(C + y) * N + C + x] = Math.max(Math.abs(x), Math.abs(y)) <= 1 ? K.CORE : K.EMPTY;
+    // The core is a platform: the drill rides onto it. Its nine cells and the gap round them are open ground.
+    for (let y = -2; y <= 2; y++) for (let x = -2; x <= 2; x++) kind[(C + y) * N + C + x] = K.EMPTY;
     for (let x = 3; x <= 5; x++) kind[(C - 2) * N + C + x] = K.EMPTY;
     for (let y = -2; y <= 1; y++) kind[(C + y) * N + C + 5] = K.EMPTY;
     kind[(C - 1) * N + C + 3] = K.ORE_A; kind[(C - 1) * N + C + 4] = K.SOFT;
@@ -106,11 +108,7 @@ export class World {
     const { kind, dist, parent, queue, reached, seen } = this;
     dist.fill(-1);
     let head = 0, tail = 0, fresh = 0;
-    for (let y = -2; y <= 2; y++) for (let x = -2; x <= 2; x++) {
-      if (Math.max(Math.abs(x), Math.abs(y)) !== 2 || (Math.abs(x) === 2 && Math.abs(y) === 2)) continue;
-      const i = (C + y) * N + C + x;
-      if (kind[i] === K.EMPTY) { dist[i] = 0; parent[i] = -1; queue[tail++] = i; }
-    }
+    { const i = C * N + C; dist[i] = 0; parent[i] = -1; queue[tail++] = i; }
     while (head < tail) {
       const i = queue[head++], x = i % N, d = dist[i] + 1;
       if (!reached[i]) {
