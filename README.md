@@ -6,10 +6,10 @@ Every sprite, tile set and effect is made with [Pixelbolt](https://github.com/sk
 
 ## How it plays
 
-- **Press anywhere and drag** to steer. The drill slides to the next piece of ground in that direction; keep holding to cut into it. Arrow keys or WASD work on a desktop.
+- **Press anywhere and drag** to steer. Heading away from the core, the drill snaps to the next piece of ground in that direction; any other way it moves a cell at a time. Keep holding to cut. Arrow keys or WASD work on a desktop.
 - **Only hauls pay.** Drilling through ore crushes it. Cut round a piece instead, and when it no longer touches the rest of the world it flies home. The bigger the piece, the bigger the multiplier. Ground that is one cut from coming free glows.
 - **The tether is the limit.** It is a real string: it runs straight and bends only where it is pulled round a corner. When it is all paid out the drill stops. A longer tether is the first upgrade.
-- **The house button** reels the drill home along the tether. At the core the cell recharges and the upgrades are for sale; the same button then sends the drill back to where it was.
+- **After a haul** the drill rides the tether home with it. **The house button** does the same at any time. At the core the cell recharges and the upgrades are for sale; the same button then sends the drill back to where it was.
 - **Each direction is a different place.** North is ice, where cuts freeze over unless you are quick. South is basalt with lava pockets that pour into your tunnels. West is soft, cave-ridden mire with spore pods. East is sandstone ribbed with hard slate and charged crystals. Far out, the flanks of each direction turn richer and meaner. Hazards wake when you cut beside them; hauled asleep inside a piece, they pay.
 - **Something is sealed** in ancient stone a long way out in each direction. Bring all four home.
 

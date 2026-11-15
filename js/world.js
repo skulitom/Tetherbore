@@ -9,7 +9,7 @@ export const BIOME_NAMES = ['crust', 'frost', 'ember', 'mire', 'lode', 'rime', '
 export const base = b => b > 4 ? b - 4 : b;
 export const DEEP_R = 23;
 // What bit a cell needs (99: no bit cuts it), and what a hauled cell pays in grit and in its biome's gem.
-export const HARD = [0, 99, 99, 1, 2, 1, 2, 3, 4, 1, 99, 1, 2];
+export const HARD = [0, 99, 99, 1, 1, 1, 1, 2, 3, 1, 99, 1, 1];
 export const GRIT = [0, 0, 0, 1, 2, 2, 4, 4, 10, 3, 0, 0, 1];
 export const GEMS = [0, 0, 0, 0, 0, 1, 5, 0, 0, 2, 0, 0, 0];
 export const onCore = (x, y) => Math.abs(x - C) <= 1 && Math.abs(y - C) <= 1;

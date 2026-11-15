@@ -14,16 +14,16 @@ const GEM_COLOR = [null, '#bfe6ff', '#ffb060', '#b8f06a', '#d8b8ff'];
 // `values` is what each level gives; `grit` and `gems` what the next level costs; `gem` whose gems it takes.
 export const UPGRADES = [
   { id: 'tether', icon: 'string', name: 'TETHER', values: [14, 19, 25, 32, 40, 52, 66, 82, 100, 120], gem: B.MIRE,
-    grit: [8, 30, 70, 150, 280, 480, 800, 1300, 2000], gems: [0, 0, 2, 6, 14, 28, 48, 80, 120], show: v => `${v}` },
-  { id: 'drill', icon: 'drill', name: 'BIT', values: [1, 2, 3, 4], gem: B.LODE, grit: [45, 320, 1300], gems: [0, 8, 36], show: v => `MK${v}` },
+    grit: [8, 30, 90, 240, 600, 1400, 3200, 7000, 15000], gems: [0, 0, 3, 8, 20, 45, 90, 170, 300], show: v => `${v}` },
+  { id: 'drill', icon: 'drill', name: 'BIT', values: [1, 2, 3], gem: B.LODE, grit: [400, 4000], gems: [12, 90], show: v => `MK${v}` },
   { id: 'battery', icon: 'battery', name: 'CELL', values: [60, 85, 115, 150, 200, 270, 360], gem: B.EMBER,
-    grit: [15, 50, 120, 240, 460, 850], gems: [0, 2, 6, 14, 28, 50], show: v => `${v}` },
-  { id: 'winch', icon: 'winch', name: 'WINCH', values: [1, 1.5, 2, 2.75, 3.5, 4.5], gem: B.FROST,
-    grit: [40, 150, 420, 1000, 2400], gems: [0, 3, 8, 20, 40], show: v => `x${v}` },
-  { id: 'scanner', icon: 'scanner', name: 'SCAN', values: [2, 3, 4, 5, 6], gem: B.FROST, grit: [25, 90, 260, 700], gems: [0, 3, 10, 26], show: v => `${v}` },
-  { id: 'momentum', icon: 'momentum', name: 'RAM', values: [0, 2, 4, 7, 12], gem: B.LODE, grit: [50, 160, 450, 1100], gems: [0, 4, 12, 30], show: v => `${v}` },
-  { id: 'shield', icon: 'shield', name: 'GUARD', values: [1, 0.7, 0.45, 0.25], gem: B.MIRE, grit: [80, 300, 900], gems: [2, 8, 20], show: v => `${Math.round((1 - v) * 100)}%` },
-  { id: 'bombs', icon: 'bomb', name: 'BLAST', values: [0, 1, 2, 3, 4], gem: B.EMBER, grit: [60, 200, 500, 1200], gems: [0, 5, 14, 30], show: v => `${v}` },
+    grit: [20, 70, 200, 550, 1500, 4000], gems: [0, 4, 12, 30, 70, 150], show: v => `${v}` },
+  { id: 'winch', icon: 'winch', name: 'WINCH', values: [1, 1.3, 1.6, 2, 2.5, 3], gem: B.FROST,
+    grit: [50, 220, 800, 2600, 8000], gems: [0, 6, 20, 60, 150], show: v => `x${v}` },
+  { id: 'scanner', icon: 'scanner', name: 'SCAN', values: [2, 3, 4, 5, 6], gem: B.FROST, grit: [30, 150, 700, 3000], gems: [0, 5, 25, 80], show: v => `${v}` },
+  { id: 'momentum', icon: 'momentum', name: 'RAM', values: [0, 2, 4, 7, 12], gem: B.LODE, grit: [60, 300, 1200, 5000], gems: [0, 8, 30, 90], show: v => `${v}` },
+  { id: 'shield', icon: 'shield', name: 'GUARD', values: [1, 0.7, 0.45, 0.25], gem: B.MIRE, grit: [100, 600, 3000], gems: [3, 20, 70], show: v => `${Math.round((1 - v) * 100)}%` },
+  { id: 'bombs', icon: 'bomb', name: 'BLAST', values: [0, 1, 2, 3, 4], gem: B.EMBER, grit: [80, 400, 1600, 6000], gems: [0, 10, 40, 110], show: v => `${v}` },
 ];
 const DIG_TIME = [0, 0, 0, 0.11, 0.2, 0.11, 0.2, 0.36, 0.6, 0.11, 0, 0.09, 0.2];
 const DIG_COST = [0, 0, 0, 1, 1, 1, 1, 2, 3, 1, 0, 1, 1];
@@ -106,11 +106,11 @@ export class Game {
     const hit = this.buttons.find(b => x >= b.x && y >= b.y && x < b.x + b.w && y < b.y + b.h);
     if (hit) { hit.act(); return; }
     if (this.shop) { this.shop = false; sfx.tap(); return; }
-    Object.assign(this.input, { id, ax: x, ay: y, px: x, py: y, held: null });
+    Object.assign(this.input, { id, ax: x, ay: y, px: x, py: y, held: null, lock: false });
   }
   pointerMove(id, x, y) {
     const inp = this.input;
-    if (inp.id !== id) return;
+    if (inp.id !== id || inp.lock) return;
     inp.px = x; inp.py = y;
     let dx = x - inp.ax, dy = y - inp.ay;
     const far = Math.hypot(dx, dy);
@@ -179,15 +179,17 @@ export class Game {
     const nx = d.x + DX[dir], ny = d.y + DY[dir], ni = ny * N + nx, k = w.at(nx, ny);
     if (k === K.EMPTY) {
       if (w.lava[ni] > 0) { this.bump(); sfx.hiss(); return; }
+      // Heading away from the core the drill snaps to the next ground; any other way it goes a cell at a time.
+      const away = this.atCore || (d.x - C) * DX[dir] + (d.y - C) * DY[dir] > 0;
       let x = d.x, y = d.y, steps = 0;
       for (;;) {
         const i = (y + DY[dir]) * N + x + DX[dir];
         if (w.kind[i] !== K.EMPTY || w.lava[i] > 0 || w.dist[i] < 0 || w.dist[i] > L) break;
         x += DX[dir]; y += DY[dir]; steps++;
-        if (x === C && y === C) break;      // the middle of the core is a place to stop
+        if (!away || (x === C && y === C)) break;      // the middle of the core is a place to stop
       }
       if (!steps) { this.taut(nx, ny); return; }
-      d.x = x; d.y = y; d.mode = 'slide'; d.speed = 24; d.wait = 0.13;
+      d.x = x; d.y = y; d.mode = 'slide'; d.speed = away ? 24 : 15; d.wait = away || w.at(x + DX[dir], y + DY[dir]) !== K.EMPTY ? 0.13 : 0;
       sfx.slide(steps);
       this.retether(); this.arrive();
       return;
@@ -219,11 +221,12 @@ export class Game {
     this.charge = Math.max(0, this.charge - DIG_COST[k]);
     w.kind[i] = K.EMPTY;
     if (base(b) === B.FROST) { w.dugAt[i] = this.time; this.frostOpen.push(i); }
-    sfx.dig(HARD[k]);
+    const tough = k === K.DENSE || k === K.ORE_B || k === K.BASALT ? 2 : HARD[k] + (HARD[k] > 1 ? 1 : 0);
+    sfx.dig(tough);
     this.effect('dust', 'dust', (x + 0.5) * T, (y + 0.5) * T);
-    if (HARD[k] >= 2 || k === K.ICE) this.effect('shatter', 'shatter', (x + 0.5) * T, (y + 0.5) * T);
+    if (tough >= 2 || k === K.ICE) this.effect('shatter', 'shatter', (x + 0.5) * T, (y + 0.5) * T);
     if (k === K.ORE_A || k === K.ORE_B) this.popup(x, y, 'CRUSHED', '#9a94a8');
-    this.shake = Math.max(this.shake, 1 + HARD[k] * 0.5);
+    this.shake = Math.max(this.shake, 1 + tough * 0.5);
     let enter = true;
     if (k === K.HAZARD) enter = this.trigger(i, b, true);
     for (let s = 0; s < 4; s++) {
@@ -254,7 +257,7 @@ export class Game {
       sprites.push({ x, y, tile: this.rockRect(x, y, k, b, i), over: this.overlay(k, b), gem: gem ? base(b) : 0, gems: gem, biome: b, far: Math.hypot(x - C, y - C) });
     }
     for (const i of cells) w.kind[i] = K.EMPTY;
-    const mult = 1 + (n - 1) * 0.04 * this.val('winch');
+    const mult = 1 + (n - 1) * 0.02 * this.val('winch');
     grit = Math.round(grit * mult);
     S.grit += grit; this.pending.grit += grit;
     for (let b = 1; b < 5; b++) { S.gems[b] += gems[b]; this.pending.gems[b] += gems[b]; }
@@ -272,7 +275,7 @@ export class Game {
     const title = relic >= 0 ? 'RELIC!' : n >= 200 ? 'COLOSSAL!' : n >= 80 ? 'HUGE HAUL!' : n >= 30 ? 'BIG HAUL!' : n >= 10 ? 'NICE CUT!' : 'HAUL';
     this.banner = { title, n, mult, grit, gems, t: 0, life: 2.2 + Math.min(1.2, n * 0.01) };
     if (relic >= 0) { S.relics[relic] = 1; sfx.relic(); if (S.relics.every(Boolean) && !S.won) { S.won = true; this.wonAt = this.time; } }
-    this.drill.bore = 0;
+    this.drill.bore = 0; this.homeAfter = true;
   }
   updateHauls(dt) {
     for (const h of this.hauls) {
@@ -516,7 +519,8 @@ export class Game {
       }
       if (d.mode === 'idle') {
         d.wait -= dt;
-        if (d.next) { d.next = false; this.attempt(d.dir, false); }
+        if (this.homeAfter) { this.homeAfter = false; if (!this.atCore) { Object.assign(inp, { queued: null, held: null, lock: true }); inp.keys.clear(); this.recall(); } }
+        else if (d.next) { d.next = false; this.attempt(d.dir, false); }
         else if (inp.queued !== null) { const q = inp.queued; inp.queued = null; this.attempt(q, true); }
         else if (inp.held !== null && d.wait <= 0) this.attempt(inp.held, true);
         else if (this.charge <= 0 && !this.atCore) { this.emptyFor = (this.emptyFor ?? 0) + dt; if (this.emptyFor > 0.7) { this.emptyFor = 0; sfx.low(); this.recall(); } }

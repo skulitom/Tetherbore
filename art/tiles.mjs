@@ -7,14 +7,16 @@ const rock = (name, palette, fill, seed) => ({
   terrain: {
     seed,
     fill,
+    // A block fills its cell, so one block alone is as wide as each of two side by side: no margin on the lit
+    // faces, one pixel on the dark ones for the shadow it casts.
     edges: {
-      all: { depth: 2, jitter: 1, size: 5, bands: ['k', 'D'] },
+      all: { depth: 0, jitter: 0, bands: ['k', 'D'] },
       n: { bands: ['k', 'L'] },
       w: { bands: ['k', 'L'] },
-      s: { depth: 3, bands: ['k', 'D'], outside: ['s'] },
-      e: { bands: ['k', 'D'], outside: ['s'] },
+      s: { depth: 1, bands: ['k', 'D'], outside: ['s'] },
+      e: { depth: 1, bands: ['k', 'D'], outside: ['s'] },
     },
-    round: 2, inner: 1,
+    round: 1, inner: 1,
   },
   frame: `${name}-{mask}-{variant}`,
   variants: [
