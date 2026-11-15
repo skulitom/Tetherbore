@@ -13,9 +13,9 @@ const GEM_COLOR = [null, '#bfe6ff', '#ffb060', '#b8f06a', '#d8b8ff'];
 // ---------------------------------------------------------------- upgrades
 // `values` is what each level gives; `grit` and `gems` what the next level costs; `gem` whose gems it takes.
 export const UPGRADES = [
-  { id: 'tether', icon: 'string', name: 'TETHER', values: [14, 19, 25, 32, 40, 52, 66, 82, 100, 120], gem: B.MIRE,
+  { id: 'tether', icon: 'string', name: 'TETHER', values: [20, 26, 33, 41, 50, 60, 72, 86, 102, 120], gem: B.MIRE,
     grit: [8, 30, 90, 240, 600, 1400, 3200, 7000, 15000], gems: [0, 0, 3, 8, 20, 45, 90, 170, 300], show: v => `${v}` },
-  { id: 'drill', icon: 'drill', name: 'BIT', values: [1, 2, 3], gem: B.LODE, grit: [400, 4000], gems: [12, 90], show: v => `MK${v}` },
+  { id: 'drill', icon: 'drill', name: 'BIT', values: [1, 2, 3, 4, 5], gem: B.LODE, grit: [60, 400, 1800, 7000], gems: [0, 10, 40, 120], show: v => `MK${v}` },
   { id: 'battery', icon: 'battery', name: 'CELL', values: [60, 85, 115, 150, 200, 270, 360], gem: B.EMBER,
     grit: [20, 70, 200, 550, 1500, 4000], gems: [0, 4, 12, 30, 70, 150], show: v => `${v}` },
   { id: 'winch', icon: 'winch', name: 'WINCH', values: [1, 1.3, 1.6, 2, 2.5, 3], gem: B.FROST,
@@ -25,9 +25,10 @@ export const UPGRADES = [
   { id: 'shield', icon: 'shield', name: 'GUARD', values: [1, 0.7, 0.45, 0.25], gem: B.MIRE, grit: [100, 600, 3000], gems: [3, 20, 70], show: v => `${Math.round((1 - v) * 100)}%` },
   { id: 'bombs', icon: 'bomb', name: 'BLAST', values: [0, 1, 2, 3, 4], gem: B.EMBER, grit: [80, 400, 1600, 6000], gems: [0, 10, 40, 110], show: v => `${v}` },
 ];
-const DIG_TIME = [0, 0, 0, 0.11, 0.2, 0.11, 0.2, 0.36, 0.6, 0.11, 0, 0.09, 0.2];
+// Nothing is too hard to cut: tougher ground only takes longer, and a better bit cuts all of it faster.
+const DIG_TIME = [0, 0, 0, 0.11, 0.26, 0.11, 0.26, 0.8, 1.6, 0.11, 0, 0.09, 0.26];
 const DIG_COST = [0, 0, 0, 1, 1, 1, 1, 2, 3, 1, 0, 1, 1];
-const SPEED = [1, 1.25, 1.55, 1.9];
+const SPEED = [1, 1.6, 2.4, 3.6, 5];
 
 const compact = n => n < 1000 ? `${Math.floor(n)}` : n < 10000 ? `${(Math.floor(n / 100) / 10).toFixed(1)}K` : n < 1e6 ? `${Math.floor(n / 1000)}K` : `${(Math.floor(n / 1e5) / 10).toFixed(1)}M`;
 const b64 = bytes => { let s = ''; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000)); return btoa(s); };
@@ -155,7 +156,7 @@ export class Game {
     if (w.dist[this.di] + 1 > L) return;
     for (let dir = 0; dir < 4; dir++) {
       const i = (d.y + DY[dir]) * N + d.x + DX[dir], k = w.kind[i];
-      if (k === K.EMPTY || HARD[k] > tier) continue;
+      if (k === K.EMPTY || HARD[k] >= 99) continue;
       w.kind[i] = K.EMPTY; w.dist[i] = 1;
       const found = w.islands();
       w.kind[i] = k; w.dist[i] = -1;
@@ -195,10 +196,9 @@ export class Game {
       return;
     }
     const hard = HARD[k];
-    if (hard > this.val('drill')) {
+    if (hard >= 99) {
       this.bump(); sfx.clink();
       this.effect('sparks', 'sparks', (d.x + 0.5 + DX[dir] * 0.5) * T, (d.y + 0.5 + DY[dir] * 0.5) * T);
-      if (hard < 99) this.popup(nx, ny, `MK${hard}`, '#ff8a6a', 'lock');
       d.bore = 0;
       return;
     }
@@ -221,7 +221,7 @@ export class Game {
     this.charge = Math.max(0, this.charge - DIG_COST[k]);
     w.kind[i] = K.EMPTY;
     if (base(b) === B.FROST) { w.dugAt[i] = this.time; this.frostOpen.push(i); }
-    const tough = k === K.DENSE || k === K.ORE_B || k === K.BASALT ? 2 : HARD[k] + (HARD[k] > 1 ? 1 : 0);
+    const tough = k === K.SLATE ? 3 : k === K.VAULT ? 4 : k === K.DENSE || k === K.ORE_B || k === K.BASALT ? 2 : 1;
     sfx.dig(tough);
     this.effect('dust', 'dust', (x + 0.5) * T, (y + 0.5) * T);
     if (tough >= 2 || k === K.ICE) this.effect('shatter', 'shatter', (x + 0.5) * T, (y + 0.5) * T);
@@ -457,7 +457,7 @@ export class Game {
     this.bombs--;
     for (let v = -r; v <= r; v++) for (let u = -r; u <= r; u++) {
       const i = (d.y + v) * N + d.x + u;
-      if (w.kind[i] !== K.EMPTY && HARD[w.kind[i]] <= tier) {
+      if (w.kind[i] !== K.EMPTY && HARD[w.kind[i]] < 99) {
         w.kind[i] = K.EMPTY;
         if (base(w.biome[i]) === B.FROST) { w.dugAt[i] = this.time; this.frostOpen.push(i); }
       }
@@ -585,6 +585,7 @@ export class Game {
       if (k === K.CORE) continue;
       const sheet = this.rockSheet(k, b), rects = sheets[sheet].tiles[m];
       draw(ctx, sheet, rects[(cellHash(x, y, 3) * rects.length) | 0], px, py);
+      if (k === K.SLATE || k === K.VAULT) draw(ctx, 'tough', k === K.SLATE ? 'slate' : 'vault', px - ((m & 4) ? 0 : 1), py - ((m & 16) ? 0 : 1));
       const over = this.overlay(k, b);
       if (over) {
         const items = this.itemSheet(b), ux = px - ((m & 4) ? 0 : 1), uy = py - ((m & 16) ? 0 : 1);
@@ -647,6 +648,11 @@ export class Game {
     let dx = d.fx * T - ox, dy = d.fy * T - oy;
     if (d.mode === 'dig') { const push = 3 + Math.sin(d.t * 70) * 1.2; dx += DX[d.dir] * push; dy += DY[d.dir] * push; }
     if (d.mode === 'bump') { const push = Math.sin(Math.min(1, d.t / 0.14) * Math.PI) * 3; dx += DX[d.dir] * push; dy += DY[d.dir] * push; }
+    if (d.mode === 'dig' && d.dur > 0.3) {
+      const cx = (d.target % N) * T - ox, cy = ((d.target / N) | 0) * T - oy;
+      ctx.fillStyle = '#0c0a12'; ctx.fillRect(cx + 2, cy + 12, 12, 3);
+      ctx.fillStyle = '#ffe14a'; ctx.fillRect(cx + 3, cy + 13, Math.round(10 * Math.min(1, d.t / d.dur)), 1);
+    }
     const busy = d.mode === 'dig' || d.mode === 'slide' || d.mode === 'recall' || d.mode === 'launch';
     draw(ctx, 'drill', busy ? frameAt('drill', dirName, now) : `${dirName}-a`, dx, dy);
     if (this.hurt > 0 && ((now / 50) | 0) % 2) { ctx.globalAlpha = 0.5; ctx.fillStyle = '#ff5a4a'; ctx.fillRect(Math.round(dx) + 3, Math.round(dy) + 3, 10, 10); ctx.globalAlpha = 1; }

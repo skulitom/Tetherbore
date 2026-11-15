@@ -31,16 +31,16 @@ export const frost = {
   symbols: {
     dense: [
       '............',
-      '.dddd...ddd.',
-      'dlllld.dllld',
-      'dllddd.dlddd',
-      '.dddd...ddd.',
+      '.kkkk...kkk.',
+      'kllldk.klldk',
+      'kllddk.klddk',
+      '.kkkk...kkk.',
       '............',
-      '...ddddd....',
-      '..dlllldd...',
-      '..dllddd.dd.',
-      '...dddd.dlld',
-      '.........dd.',
+      '...kkkkk....',
+      '..kllllkk...',
+      '..klldddkkk.',
+      '...kkkk.kldk',
+      '.........kk.',
       '............',
     ],
     oreA: [
@@ -84,16 +84,16 @@ export const ember = {
   symbols: {
     dense: [
       '............',
-      '.dddd...ddd.',
-      'dlllld.dllld',
-      'dllddd.dlddd',
-      '.dddd...ddd.',
+      '.kkkk...kkk.',
+      'kllldk.klldk',
+      'kllddk.klddk',
+      '.kkkk...kkk.',
       '............',
-      '...ddddd....',
-      '..dlllldd...',
-      '..dllddd.dd.',
-      '...dddd.dlld',
-      '.........dd.',
+      '...kkkkk....',
+      '..kllllkk...',
+      '..klldddkkk.',
+      '...kkkk.kldk',
+      '.........kk.',
       '............',
     ],
     oreA: [
@@ -153,16 +153,16 @@ export const mire = {
   symbols: {
     dense: [
       '............',
-      '.dddd...ddd.',
-      'dlllld.dllld',
-      'dllddd.dlddd',
-      '.dddd...ddd.',
+      '.kkkk...kkk.',
+      'kllldk.klldk',
+      'kllddk.klddk',
+      '.kkkk...kkk.',
       '............',
-      '...ddddd....',
-      '..dlllldd...',
-      '..dllddd.dd.',
-      '...dddd.dlld',
-      '.........dd.',
+      '...kkkkk....',
+      '..kllllkk...',
+      '..klldddkkk.',
+      '...kkkk.kldk',
+      '.........kk.',
       '............',
     ],
     oreA: [
@@ -222,16 +222,16 @@ export const lode = {
   symbols: {
     dense: [
       '............',
-      '.dddd...ddd.',
-      'dlllld.dllld',
-      'dllddd.dlddd',
-      '.dddd...ddd.',
+      '.kkkk...kkk.',
+      'kllldk.klldk',
+      'kllddk.klddk',
+      '.kkkk...kkk.',
       '............',
-      '...ddddd....',
-      '..dlllldd...',
-      '..dllddd.dd.',
-      '...dddd.dlld',
-      '.........dd.',
+      '...kkkkk....',
+      '..kllllkk...',
+      '..klldddkkk.',
+      '...kkkk.kldk',
+      '.........kk.',
       '............',
     ],
     oreA: [
@@ -603,7 +603,28 @@ export const logo = {
   ] }],
 };
 
-export const RECIPES = [frost, ember, mire, lode, drill, core, icons, upgrades, ui, logo];
+// Ground that takes longer to cut wears armour: a riveted plate on slate, a doubled one with a boss on ancient stone.
+const plate = [
+  { op: 'rect', x: 2, y: 2, w: 12, h: 12, color: 'k' },
+  { op: 'rect', x: 3, y: 3, w: 10, h: 1, color: 'l', filled: true },
+  { op: 'rect', x: 3, y: 3, w: 1, h: 10, color: 'l', filled: true },
+  ...[[4, 4], [10, 4], [4, 10], [10, 10]].flatMap(([x, y]) => [
+    { op: 'rect', x, y, w: 2, h: 2, color: 'k', filled: true }, { op: 'pixel', x, y, color: 'w' },
+  ]),
+];
+export const tough = {
+  version: 1, name: 'tough', width: 16, height: 16,
+  palette: { k: '#0c0a12b0', l: '#ffffff50', w: '#ffffffd0', g: '#ffe14a' },
+  frames: [
+    { name: 'slate', ops: plate },
+    { name: 'vault', ops: [...plate,
+      { op: 'rect', x: 5, y: 5, w: 6, h: 6, color: 'k' },
+      { op: 'rect', x: 7, y: 7, w: 2, h: 2, color: 'g', filled: true },
+    ] },
+  ],
+};
+
+export const RECIPES = [frost, ember, mire, lode, drill, core, icons, upgrades, ui, logo, tough];
 
 // The home-screen icon: the core on dark ground, with the drill out on its tether.
 const shift = (ops, dx, dy) => ops.map(op => ({ ...op, x: op.x + dx, y: op.y + dy }));
