@@ -67,7 +67,7 @@ check(await open('', 'example.org') === undefined, 'away from localhost an ordin
     t.advance(3000);
     check(d.x === C + 0.5 && d.y === C - 300 + 0.5, `after three seconds untouched the drill is at ${d.x - C - 0.5},${d.y - C - 0.5}`);
     check(!tetherFaults(game).length, `the tether after three seconds: ${tetherFaults(game).join('; ')}`);
-    check(game.S.stats.hauls === 1 && !game.banner, 'something was hauled in a view nobody touched');
+    check(game.S.stats.hauls === 1 && !game.hauled, 'something was hauled in a view nobody touched');
     const facts = t.shot.facts();
     check(facts.cells.join() === '11,20' && facts.ground === 'frost' && facts.zoom === 1, `what the view says of itself: ${JSON.stringify(facts)}`);
     check(localStorage.getItem(SAVE) === saved, 'the staged view wrote over the saved game');

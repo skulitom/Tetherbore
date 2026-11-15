@@ -167,6 +167,8 @@ export const HOME_R = 130, DEEP_R = 900, RELIC_R = 2000, WORLD_R = 2400;
 // round rich ore) or a cache (a crate buried in stone). Eight wrecks lie at set distances, each in a hollow of its
 // own with what is left of its hull; each holds a part of an older machine.
 export const FIND = 48, WRECK_R = [45, 90, 160, 300, 500, 800, 1200, 1700];
+// Pockets (mini zones) are laid out in sectors ZONE cells across, one pocket at the most in each.
+export const ZONE = 128;
 export const onCore = (x, y) => Math.abs(x - C) <= 1 && Math.abs(y - C) <= 1;
 
 const hash = (x, y, s) => {
@@ -245,6 +247,11 @@ export class World {
     const edge = Math.max(Math.abs(dx), Math.abs(dy));
     return edge === 0 ? K.CACHE : edge === 1 ? K.DENSE : -1;
   }
+  // The pocket laid in a sector of ZONE cells (sx, sy: the sector's place, counted from the core's), as
+  // { key, row, cx, cy, rho, kin }: the key it is known by, its ground's number, its middle, how far it runs and
+  // whose direction its middle lies in. Null where the sector has none. (No pockets are laid yet,
+  // docs/CONTENT-PLAN.md S3: until they are, no sector has one.)
+  zoneOf(sx, sy) { return null; }
   reset(seed) {
     this.seed = seed;
     this.chunks = new Array(CW * CW);

@@ -21,7 +21,7 @@ const before = { stemIsIceNow: w.k(at(16, -5)) === K.ICE, registered: game.piece
 console.log(JSON.stringify(before));
 go([[21, 4], [21, -5]]);                                 // under the block and up its far side: nothing is cut
 idle(game, 1);
-const after = { drill: where(game), band: bandRel(game), hauls: game.S.stats.hauls, banner: game.banner && { n: game.banner.n, grit: game.banner.grit },
+const after = { drill: where(game), band: bandRel(game), hauls: game.S.stats.hauls, banner: game.hauled && { n: game.hauled.n, grit: game.hauled.grit },
   blockCellsLeft: piece.filter(i => w.k(i)).length, iceLeftHangingFromTheRoof: w.k(at(16, -5)) === K.ICE };
 console.log(JSON.stringify(after));
 const bad = (before.registered.length > 0 && !before.registeredPieceIsLoose) || after.hauls === 1;

@@ -8,7 +8,7 @@ const game = await makeGame(7);
 const S = game.S, shown = () => S.grit - game.pending.grit;
 const log = [];
 let hauledAt = -1, frames = 0;
-const each = () => { frames++; if (hauledAt < 0 && S.stats.hauls) { hauledAt = frames; log.push({ frame: frames, event: 'hauled', banner: game.banner.grit, n: game.banner.n, grit: S.grit, pending: game.pending.grit, shown: shown(), drill: where(game) }); } };
+const each = () => { frames++; if (hauledAt < 0 && S.stats.hauls) { hauledAt = frames; log.push({ frame: frames, event: 'hauled', banner: game.hauled.grit, n: game.hauled.n, grit: S.grit, pending: game.pending.grit, shown: shown(), drill: where(game) }); } };
 for (const [x, y] of [[2, -2], [6, -2], [6, 1], [3, 1], [0, 0]]) { if (flyTo(game, x, y, { each, tol: x === 0 ? 0.05 : 0.2 }) < 0) throw new Error(`never reached ${x},${y} from ${where(game)}`); }
 log.push({ frame: frames, event: 'home', atCore: game.atCore, mode: game.drill.mode, grit: S.grit, pending: game.pending.grit, shown: shown(), hauls: game.hauls.length });
 game.key('Enter', true);                 // the shop

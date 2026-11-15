@@ -1,6 +1,6 @@
 // Tetherbore: the game. A drill flies free on a tether from a fixed core, cuts whatever ground it is pushed into,
 // and reels in any piece of ground it has drawn the tether round.
-import { World, N, C, K, B, HARD, GRIT, GEMS, DX, DY, BIOMES, HAZARDS, rowOf, hazOf, gemKin, digTime, cellHash, sight, cellsAlong, RELIC_R, HOME_R } from './world.js';
+import { World, N, C, K, B, HARD, GRIT, GEMS, DX, DY, BIOMES, HAZARDS, ZONE, rowOf, hazOf, gemKin, digTime, cellHash, sight, cellsAlong, RELIC_R, HOME_R } from './world.js';
 import { sheets, draw, drawScaled, frameAt, duration, slice9, text, textWidth } from './atlas.js';
 import { sfx, unlock, isMuted, setMuted, setAmbience } from './audio.js';
 
@@ -36,6 +36,9 @@ const WINCH_LOAD = [150, 400, 1000, 2300, 5000, 12000];
 export const overload = (n, level) => n <= WINCH_LOAD[level] ? 1 : (WINCH_LOAD[level] / n) ** 0.35;
 export const income = R => { const side = Math.max(4, Math.min(48, R / 3)); return side * PACE / 4 * WORTH * richness(R * 0.7) * haulBonus(side * side); };
 const round2 = n => { const unit = 10 ** Math.max(0, Math.floor(Math.log10(n)) - 1); return Math.round(n / unit) * unit; };
+// A haul of fewer cells than LIGHT, with nothing in it to make a show of, is a light one: it stops nothing and
+// says what it paid where it lay. A haul made within CHAIN seconds of the one before is a link in a chain.
+const LIGHT = 12, CHAIN = 8;
 // What the step up from each level of reach costs: the first is within the first haul, then 1.5 minutes of income
 // rising to 7.
 const REACH_COST = REACH.slice(0, -1).map((R, l) => l === 0 ? 15 : round2(income(R) * (40 + 50 * l)));
@@ -131,6 +134,7 @@ export class Game {
     this.cam = { x: HX * T, y: HY * T };
     this.band = [[HX, HY], [HX, HY]];
     this.pieces = []; this.pieceOf = new Map(); this.taken.length = 0; this.homeKey = ''; this.homeEnd = [HX, HY];
+    this.chain = null; this.hauled = null;
     w.see(C, C, this.val('scanner') + 4);
     // The first piece, beside the core, lies loose from the start: the open cell between them tells of it.
     this.changed([C * N + C + 3]);
@@ -953,30 +957,73 @@ export class Game {
   }
 
   // ------------------------------------------------------------ hauling
-  haul(cells) {
-    const w = this.world, S = this.S, n = cells.length;
-    let grit = 0, relic = -1, cx = 0, cy = 0, caches = 0, lump = 0, parts = 0;
-    S.wrecks ??= [0, 0, 0, 0, 0, 0, 0, 0];
-    const gems = [0, 0, 0, 0, 0], sprites = [], show = Math.max(1, Math.ceil(n / 400));
-    cells.forEach((i, at) => {
-      const x = i % N, y = Math.floor(i / N), k = w.k(i), b = w.b(i), row = rowOf(b), far = Math.hypot(x - C, y - C), rich = richness(far) * row.rich * row.worth;
+  // What a haul of these cells would pay, were it made now. Asking changes nothing: the haul itself asks and then
+  // does as this says, and so may anything that shows what a piece is worth before it is hauled, which then cannot
+  // say otherwise than the haul will. `extra` is cells that are no longer in the world but come home with the haul,
+  // each { k, b, x, y } (a kind, a ground and where it lay): counted in the haul's size and paid at its multiplier.
+  //   n                 how many cells, the extra ones among them
+  //   grit, gems        what is paid: grit in all, and gems of each direction (1 north, 2 south, 3 west, 4 east)
+  //   lump              the part of the grit paid as it stands, whatever the size of the haul: caches, and the
+  //                     mineral of a pocket (which pays more for each haul before it in a chain)
+  //   spec, minerals    specimens of each direction, and how many cells of a pocket's mineral there are
+  //   mineral           the name of that mineral (the last met), or null
+  //   prisms, shine     cells of prism, and what they multiply every gem by: half as much again each, to three
+  //   relic             which direction's relic is among the cells, or -1
+  //   caches, parts     caches; and wreck parts not held yet (`wrecks`: which wrecks they are)
+  //   mult, over        what the cells' grit is multiplied by, and the share of it left by a piece over the winch's load
+  payOf(cells, extra = []) {
+    const w = this.world, S = this.S, n = cells.length + extra.length, gems = [0, 0, 0, 0, 0], spec = [0, 0, 0, 0, 0], wrecks = [], held = S.wrecks ?? [];
+    const chain = 1 + 0.2 * Math.min(5, this.chain && this.time - this.chain.t <= CHAIN ? this.chain.n : 0);
+    let grit = 0, lump = 0, relic = -1, caches = 0, minerals = 0, mineral = null, prisms = 0;
+    const one = (k, b, x, y) => {
+      const row = rowOf(b), far = Math.hypot(x - C, y - C), rich = richness(far) * row.rich * row.worth, P = row.pocket;
       // Whose gems a cell pays is its kind's and its ground's to say; the home ground pays none.
-      const gem = GEMS[k] * row.gemx, kin = gemKin(k, row);
-      grit += GRIT[k] * rich; gems[kin] += gem;
+      grit += GRIT[k] * rich; gems[gemKin(k, row)] += GEMS[k] * row.gemx;
       if (b === B.CRUST && (k === K.ORE_A || k === K.ORE_B)) grit += (k === K.ORE_B ? 20 : 4) * rich;
-      if (k === K.RELIC) relic = w.relicAt.indexOf(i);
+      if (k === K.RELIC) relic = w.relicAt.indexOf(y * N + x);
       // A cache holds what a quarter of a minute's cutting out here would earn; a wreck gives up its part.
-      if (k === K.CACHE) { caches++; lump += round2(income(Math.max(22, far)) * 12); }
-      if (k === K.WRECK) { const which = w.wrecks.findIndex(([wx, wy]) => wx === x && wy === y); if (which >= 0 && !S.wrecks[which]) { S.wrecks[which] = 1; parts++; } }
+      else if (k === K.CACHE) { caches++; lump += round2(income(Math.max(22, far)) * 12); }
+      else if (k === K.WRECK) { const which = w.wrecks.findIndex(([wx, wy]) => wx === x && wy === y); if (which >= 0 && !held[which] && !wrecks.includes(which)) wrecks.push(which); }
+      else if (k === K.PRISM) prisms++;
+      // A pocket's mineral pays so many seconds of what cutting out here would earn, and specimens of the
+      // direction the pocket lies in.
+      if (P !== null && k === (P.kind ?? K.MINERAL)) {
+        minerals++; mineral = P.mineral ?? null;
+        lump += round2(income(Math.max(22, far)) * P.lump * chain);
+        spec[w.zoneOf(Math.floor((x - C) / ZONE), Math.floor((y - C) / ZONE))?.kin ?? row.kin] += P.spec;
+      }
+    };
+    for (const i of cells) one(w.k(i), w.b(i), i % N, Math.floor(i / N));
+    for (const e of extra) one(e.k, e.b, e.x, e.y);
+    // Each part brought home from a wreck makes every haul pay a tenth more, the haul that brings it too.
+    const parts = wrecks.length, over = overload(n, S.lv.winch), mult = haulBonus(n, this.val('winch')) * (1 + 0.1 * (held.filter(Boolean).length + parts)) * over;
+    const shine = 1 + 0.5 * Math.min(prisms, 3);
+    for (let b = 1; b < 5; b++) gems[b] = Math.round(gems[b] * shine);
+    return { n, grit: Math.round(grit * mult) + lump, gems, lump, spec, minerals, mineral, prisms, shine, relic, caches, parts, wrecks, mult, over };
+  }
+  // The tether is round these cells: they go, and what they are worth is on its way home.
+  haul(cells) {
+    // (A haul of nothing would never be over: it ends when the last of its rubble is home.)
+    if (!cells.length) return;
+    const w = this.world, S = this.S, n = cells.length, pay = this.payOf(cells), { grit, gems, relic, caches, parts, mult, over } = pay;
+    S.wrecks ??= [0, 0, 0, 0, 0, 0, 0, 0];
+    for (const which of pay.wrecks) S.wrecks[which] = 1;
+    // A very large piece is shown by a share of its cells.
+    const sprites = [], show = Math.max(1, Math.ceil(n / 400));
+    let cx = 0, cy = 0;
+    for (let at = 0; at < n; at++) {
+      const i = cells[at], x = i % N, y = Math.floor(i / N);
       cx += x; cy += y;
-      // A very large piece is shown by a share of its cells.
-      if (at % show === 0) sprites.push({ x, y, tile: this.rockRect(x, y, k, b), over: this.overlay(k, row), debris: this.debris(k, b), gem: gem ? kin : 0, gems: gem * show, far });
-    });
+      if (at % show) continue;
+      const k = w.k(i), b = w.b(i), row = rowOf(b), gem = GEMS[k] * row.gemx * pay.shine, kin = gemKin(k, row);
+      sprites.push({ x, y, tile: this.rockRect(x, y, k, b), over: this.overlay(k, row), debris: this.debris(k, b), gem: gem ? kin : 0, gems: gem * show, far: Math.hypot(x - C, y - C) });
+    }
     for (const i of cells) w.setK(i, K.EMPTY);
-    // Each part brought home from a wreck makes every haul pay a tenth more.
-    const over = overload(n, S.lv.winch), mult = haulBonus(n, this.val('winch')) * (1 + 0.1 * S.wrecks.filter(Boolean).length) * over;
-    grit = Math.round(grit * mult) + lump;
-    for (let b = 1; b < 5; b++) gems[b] = Math.round(gems[b]);
+    // A haul made soon after another is a link in a chain: `n` is how many came before it.
+    const linked = this.chain && this.time - this.chain.t <= CHAIN ? this.chain.n : 0;
+    this.chain = { t: this.time, n: linked + 1 };
+    // Small, and with nothing in it to make a show of, it is a light haul: flight is not stopped for it.
+    const light = n < LIGHT && relic < 0 && !caches && !parts;
     S.grit += grit; this.pending.grit += grit;
     for (let b = 1; b < 5; b++) { S.gems[b] += gems[b]; this.pending.gems[b] += gems[b]; }
     S.stats.hauls++; S.stats.best = Math.max(S.stats.best, n);
@@ -986,9 +1033,10 @@ export class Game {
     const route = this.lay().map(([x, y]) => [x * T, y * T]), cum = [0];
     for (let k = 1; k < route.length; k++) cum.push(cum[k - 1] + Math.hypot(route[k][0] - route[k - 1][0], route[k][1] - route[k - 1][1]));
     const length = cum[cum.length - 1];
-    // Small pieces break fine, big ones coarse, so there are never too many bits of ground to push about.
-    const per = count <= 24 ? 4 : count <= 140 ? 2 : 1, size = T / per, h = { sprites, t: 0, n, count, grit, gems, left: grit, paid: 0, lift, relic, route, cum, length,
-      bits: [], total: count * per * per, size, v: 0, hole: 0, gathered: lift + spread + 0.3 };
+    // Small pieces break fine, big ones coarse, so there are never too many bits of ground to push about; and
+    // in a chain, where one heap of rubble follows another, none break fine.
+    const per = count <= 24 && !linked ? 4 : count <= 140 ? 2 : 1, size = T / per, h = { sprites, t: 0, n, count, grit, gems, left: grit, paid: 0, lift, relic, route, cum, length,
+      bits: [], total: count * per * per, size, v: 0, hole: 0, gathered: lift + spread + 0.3, light };
     let at = 0;
     sprites.forEach((s, i) => {
       s.go = lift + (count > 1 ? i / (count - 1) : 0) * spread; s.left = per * per;
@@ -1000,17 +1048,29 @@ export class Game {
     // is free to go.
     h.S = at;
     this.hauls.push(h);
-    cx = (cx / n + 0.5) * T; cy = (cy / n + 0.5) * T;
+    const mx = cx / n, my = cy / n;
+    cx = (mx + 0.5) * T; cy = (my + 0.5) * T;
     this.effect('haul', 'impact', cx, cy);
-    if (n >= 20) this.effect('bank', 'area', cx, cy);
-    this.shake = Math.max(this.shake, Math.min(9, 2.5 + n * 0.12));
-    this.hitstop = Math.min(0.16, 0.05 + n * 0.002);
     sfx.crack(n);
-    this.flash = Math.min(0.5, 0.12 + n * 0.006);
-    this.ring(cx, cy, '#fff6c8', 30 + Math.min(60, n * 1.5));
     for (const sp of sprites) if (count < 60 || cellHash(sp.x, sp.y, 9) < 0.4) this.chips(sp.x, sp.y, sp.debris, 2, null, 0.7);
     const title = relic >= 0 ? 'RELIC!' : parts ? 'WRECK PART! PAY +10%' : caches ? 'CACHE!' : n >= 200 ? 'COLOSSAL!' : n >= 80 ? 'HUGE HAUL!' : n >= 30 ? 'BIG HAUL!' : n >= 10 ? 'NICE CUT!' : 'HAUL';
-    this.banner = { title, n, mult, over, grit, gems, t: 0, life: 2.2 + Math.min(1.2, n * 0.01) };
+    // What the last haul was and paid (`hauled`). Any but a light one says so across the screen, with a flash and
+    // a beat of stillness. A light one says what it paid where it lay, and leaves the banner of a bigger haul up.
+    this.hauled = { title, n, mult, over, grit, gems, light, t: 0, life: 2.2 + Math.min(1.2, n * 0.01) };
+    if (light) {
+      this.shake = Math.max(this.shake, Math.min(1.5, 0.7 + n * 0.08));
+      this.ring(cx, cy, '#fff6c8', 12 + n);
+      this.popup(mx, my - 0.6, `+${compact(grit)}`, '#ffe14a', 'grit');
+      let up = 1;
+      for (let g = 1; g < 5; g++) if (gems[g] > 0) this.popup(mx, my - 0.6 - 0.6 * up++, `+${compact(gems[g])}`, GEM_COLOR[g], GEM_ICON[g]);
+    } else {
+      if (n >= 20) this.effect('bank', 'area', cx, cy);
+      this.shake = Math.max(this.shake, Math.min(9, 2.5 + n * 0.12));
+      this.hitstop = Math.min(0.16, 0.05 + n * 0.002);
+      this.flash = Math.min(0.5, 0.12 + n * 0.006);
+      this.ring(cx, cy, '#fff6c8', 30 + Math.min(60, n * 1.5));
+      this.banner = this.hauled;
+    }
     if (parts || caches) sfx.relic();
     if (relic >= 0) { S.relics[relic] = 1; sfx.relic(); if (S.relics.every(Boolean) && !S.won) { S.won = true; this.wonAt = this.time; } }
   }
@@ -1153,7 +1213,7 @@ export class Game {
         if (h.paid >= h.total && h.doneAt === undefined) {
           h.doneAt = h.t;
           sfx.banked(h.n);
-          this.effect('bank', 'area', HX * T, HY * T);
+          if (!h.light) this.effect('bank', 'area', HX * T, HY * T);
           this.save();
         }
       }
@@ -1398,7 +1458,9 @@ export class Game {
 
   // ------------------------------------------------------------ small things
   effect(sheet, animation, x, y) { this.effects.push({ sheet, animation, x, y, t: 0 }); }
-  popup(cx, cy, label, color, icon) { this.popups = this.popups.filter(p => p.label !== label); this.popups.push({ x: (cx + 0.5) * T, y: cy * T, label, color, icon, t: 0 }); }
+  // Words that rise from a cell and fade (with an icon of the `icons` sheet before them). The same words in the
+  // same colour take the place of those already up.
+  popup(cx, cy, label, color, icon) { this.popups = this.popups.filter(p => p.label !== label || p.color !== color); this.popups.push({ x: (cx + 0.5) * T, y: cy * T, label, color, icon, t: 0 }); }
   onScreen(x, y) { const sx = x * T - this.cam.x + this.W / 2, sy = y * T - this.cam.y + this.H / 2; return sx > -T && sy > -T && sx < this.W && sy < this.H; }
 
   // ------------------------------------------------------------ update
