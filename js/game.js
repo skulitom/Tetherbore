@@ -38,7 +38,7 @@ export const income = R => { const side = Math.max(4, Math.min(48, R / 3)); retu
 const round2 = n => { const unit = 10 ** Math.max(0, Math.floor(Math.log10(n)) - 1); return Math.round(n / unit) * unit; };
 // A haul of fewer cells than LIGHT, with nothing in it to make a show of, is a light one: it stops nothing and
 // says what it paid where it lay. A haul made within CHAIN seconds of the one before is a link in a chain.
-const LIGHT = 12, CHAIN = 8;
+const LIGHT = 12, CHAIN = 6;
 // What the step up from each level of reach costs: the first is within the first haul, then 1.5 minutes of income
 // rising to 7.
 const REACH_COST = REACH.slice(0, -1).map((R, l) => l === 0 ? 15 : round2(income(R) * (40 + 50 * l)));
@@ -100,6 +100,10 @@ const QUENCH = 0.12;
 // How long a charged crystal's fuse burns when it is woken by a cut beside it, in seconds: at the slowest the drill
 // flies (9 cells a second) that is seven cells, twice the reach of the arc.
 const FUSE = 0.8;
+// The boulders of a drift (a pocket whose row's `twist` is 'drift') are in the books of loose ground while the
+// drill is in the drift or near it, and leave them once it is out and they are AWAY cells off the screen: so the
+// books do not grow by a drift's boulders for every drift crossed.
+const AWAY = 6;
 // What flies off the kinds of rock that look the same in every ground, by the sheet each is drawn from. A ground's
 // own rock sheds the colours in its row (js/world.js: BIOMES), where the dark it lies in, its motes and its colour
 // on the map are too.
@@ -161,6 +165,7 @@ export class Game {
     this.quenched = new Map();                                        // slag just turned to steel: how long each cell still shows white
     this.specLine = null;                                             // the count of specimens just banked, on show under the top bar
     this.pips = []; this.pipsFor = '';                                // the pockets the map marks, and what that list was made for
+    this.drifts = new Map();                                          // the drifts whose boulders are in the books, by their keys
     this.fresh((Math.random() * 1e9) | 0, true);
   }
 
@@ -182,7 +187,7 @@ export class Game {
     this.cam = { x: HX * T, y: HY * T };
     this.band = [[HX, HY], [HX, HY]];
     this.pieces = []; this.pieceOf = new Map(); this.taken.length = 0; this.homeKey = ''; this.homeEnd = [HX, HY];
-    this.chain = null; this.hauled = null; this.specLine = null; this.pipsFor = '';
+    this.chain = null; this.hauled = null; this.specLine = null; this.pipsFor = ''; this.drifts.clear();
     w.see(C, C, this.val('scanner') + 4);
     // Where the game begins is where the player already is: its name does not come up, now or as a new place later.
     const here = this.placeAt(this.di);
@@ -569,11 +574,48 @@ export class Game {
     if (marks.length && marks.some(m => { const k = w.laid(m[0]); return k >= 0 && k !== m[1]; })) this.S.marks = marks.filter(m => { const k = w.laid(m[0]); return k < 0 || k === m[1]; });
   }
   // A piece of loose ground goes into the books. Ground known as loose before that lies within it is part of it now.
+  // (A drift's boulder: its drift is one whose boulders are in the books, until the drill is well away: `driftsOut`.)
   enter(cells) {
     const of = this.pieceOf, within = new Set();
     for (const c of cells) { const piece = of.get(c); if (piece) within.add(piece); of.set(c, cells); }
     if (within.size) this.pieces = this.pieces.filter(piece => !within.has(piece));
     this.pieces.push(cells);
+    const w = this.world, i = cells[0];
+    if (w.row(i).pocket?.twist === 'drift') { const Z = w.pocketOf(i % N, Math.floor(i / N)); if (Z !== null && Z.row === w.b(i)) this.drifts.set(Z.key, Z); }
+  }
+  // The drill has come into a drift: every boulder that stands in it is in the books of loose ground from now,
+  // seen or not, and shows its edge through the dark. What stands there is asked of the cells themselves, each
+  // looked at as ground that comes into view is (`spot`): the pocket's record says only where to look.
+  driftIn(Z) {
+    const w = this.world, most = Math.ceil(Z.reach);
+    for (let y = Z.cy - most; y <= Z.cy + most; y++) for (let x = Z.cx - most; x <= Z.cx + most; x++) {
+      const i = y * N + x;
+      if (w.k(i) !== K.EMPTY && w.b(i) === Z.row) this.spot(i);
+    }
+    this.drifts.set(Z.key, Z);
+  }
+  // The drifts whose boulders are in the books and that the drill has left behind, out of the drift and AWAY
+  // cells further off than the screen shows: their boulders go out of the books, so that the books hold no more
+  // for every drift crossed. A boulder the tether lies against stays (the lasso may yet close on it), and its
+  // drift is asked about again. A boulder left out is no less loose: it is found again when it next comes into
+  // view, when the drill comes back in, or when the tether is drawn round it (`spot`, `discover`, `sweepHome`).
+  driftsOut() {
+    const w = this.world, d = this.drill, of = this.pieceOf, away = Math.hypot(this.W, this.H) / 2 / T + AWAY;
+    for (const [key, Z] of this.drifts) {
+      if (key === this.placeKey || Math.hypot(Z.cx + 0.5 - d.x, Z.cy + 0.5 - d.y) <= Z.reach + away) continue;
+      const held = new Set(), most = Z.reach + 1;
+      for (const b of this.band) { const piece = b[3] === undefined ? undefined : of.get(b[3]); if (piece) held.add(piece); }
+      let kept = false;
+      this.pieces = this.pieces.filter(cells => {
+        // (Only a piece that lies wholly in this drift's own ground: a boulder, or what is left of one.)
+        const x = cells[0] % N - Z.cx, y = Math.floor(cells[0] / N) - Z.cy;
+        if (x > most || x < -most || y > most || y < -most || cells.length > 64 || !cells.every(c => w.b(c) === Z.row)) return true;
+        if (held.has(cells)) { kept = true; return true; }
+        for (const c of cells) if (of.get(c) === cells) of.delete(c);
+        return false;
+      });
+      if (!kept) this.drifts.delete(key);
+    }
   }
   // One cell of ground is looked at: is it part of an island nobody knew, ground the world itself made standing
   // free or that grew in the open? If so the island is entered among the loose pieces. Only ground the world has
@@ -942,6 +984,7 @@ export class Game {
       // Ground that has come into view is looked at: an island among it is known as loose from the first sight.
       for (let v = y - r; v <= y + r; v++) for (let u = x - r; u <= x + r; u++) if (Math.abs(u - px) > r || Math.abs(v - py) > r) this.spot(v * N + u);
       this.arrive(cell);
+      if (this.drifts.size) this.driftsOut();
     }
     if (this.world.spotted.length) this.callOut();
     const home = this.atCore;
@@ -968,6 +1011,8 @@ export class Game {
     const S = this.S, row = here.row, card = !S.met[row.id];
     S.met[row.id] = 1;
     if (here.zone) S.visited[here.key] = 1;
+    // (In a drift everything lies loose already, and is in the books from the moment the drill comes in.)
+    if (here.zone && row.pocket.twist === 'drift') this.driftIn(here.zone);
     // (A pocket's plate has its mineral on it, where the mineral has a picture; any other place its direction's gem.)
     this.place = { title: row.title, icon: GEM_ICON[row.kin] ?? 'grit', mineral: this.mineralOf(row), also: row.gemB !== row.kin ? GEM_ICON[row.gemB] ?? null : null, colour: bright(row.map), t: 0, card, life: card ? CARD : PLATE };
     // (A border that wanders is crossed many times in a few cells: the name changes each time, the sound does not.)
@@ -1106,6 +1151,8 @@ export class Game {
   //   lump              the part of the grit paid as it stands, whatever the size of the haul: caches, and the
   //                     mineral of a pocket (which, in a pocket whose row says `chain`, pays more for each haul
   //                     before it in a chain)
+  //   chain             what such a mineral's lump was multiplied by for the hauls before this one: 1 with none
+  //                     before it, and 0 where no cell is a mineral that pays more in a chain
   //   spec, minerals    specimens of each direction, and how many cells of a pocket's mineral there are
   //   mineral           the name of that mineral (the last met), or null
   //   prisms, shine     cells of prism, and what they multiply every gem by: half as much again each, to three
@@ -1115,7 +1162,7 @@ export class Game {
   payOf(cells, extra = []) {
     const w = this.world, S = this.S, n = cells.length + extra.length, gems = [0, 0, 0, 0, 0], spec = [0, 0, 0, 0, 0], wrecks = [], held = S.wrecks ?? [];
     const chain = 1 + 0.2 * Math.min(5, this.chain && this.time - this.chain.t <= CHAIN ? this.chain.n : 0);
-    let grit = 0, lump = 0, relic = -1, caches = 0, minerals = 0, mineral = null, prisms = 0;
+    let grit = 0, lump = 0, relic = -1, caches = 0, minerals = 0, mineral = null, prisms = 0, chains = false;
     const one = (k, b, x, y) => {
       const row = rowOf(b), far = Math.hypot(x - C, y - C), rich = richness(far) * row.rich * row.worth, P = row.pocket;
       // Whose gems a cell pays is its kind's and its ground's to say; the home ground pays none.
@@ -1130,6 +1177,7 @@ export class Game {
       // direction the pocket lies in.
       if (P !== null && k === (P.kind ?? K.MINERAL)) {
         minerals++; mineral = P.mineral ?? null;
+        if (P.chain) chains = true;
         lump += round2(income(Math.max(22, far)) * P.lump * (P.chain ? chain : 1));
         spec[w.zoneOf(Math.floor((x - C) / ZONE), Math.floor((y - C) / ZONE))?.kin ?? row.kin] += P.spec;
       }
@@ -1140,7 +1188,7 @@ export class Game {
     const parts = wrecks.length, over = overload(n, S.lv.winch), mult = haulBonus(n, this.val('winch')) * (1 + 0.1 * (held.filter(Boolean).length + parts)) * over;
     const shine = 1 + 0.5 * Math.min(prisms, 3);
     for (let b = 1; b < 5; b++) gems[b] = Math.round(gems[b] * shine);
-    return { n, grit: Math.round(grit * mult) + lump, gems, lump, spec, minerals, mineral, prisms, shine, relic, caches, parts, wrecks, mult, over };
+    return { n, grit: Math.round(grit * mult) + lump, gems, lump, spec, minerals, mineral, prisms, shine, relic, caches, parts, wrecks, mult, over, chain: chains ? chain : 0 };
   }
   // The tether is round these cells: they go, and what they are worth is on its way home.
   haul(cells) {
@@ -1178,7 +1226,10 @@ export class Game {
       S.spec[b] += pay.spec[b];
       if (!specOf || pay.spec[b] > pay.spec[specOf]) { specOf = b; specUp = Math.floor(S.spec[b] + 1e-9) - had; }
     }
-    if (specOf) { this.specLine = { kin: specOf, t: 0, life: SPEC_LINE }; if (specUp > 0) sfx.gem(Math.min(5, linked)); }
+    // (A mineral that pays more in a chain rings at every haul, a note higher for each haul before it, as far as
+    // the pay rises; any other rings when the whole count of specimens does.)
+    if (specOf) this.specLine = { kin: specOf, t: 0, life: SPEC_LINE };
+    if (pay.chain ? true : specOf && specUp > 0) sfx.gem(Math.min(5, linked));
     S.stats.hauls++; S.stats.best = Math.max(S.stats.best, n);
     sprites.sort((a, b) => a.far - b.far);
     const count = sprites.length, spread = Math.min(1.0, 0.2 + count * 0.012), lift = Math.min(0.5, 0.26 + count * 0.003);
@@ -1210,7 +1261,7 @@ export class Game {
     // What the last haul was and paid (`hauled`). Any but a light one says so across the screen, with a flash and
     // a beat of stillness. A light one says what it paid where it lay, and leaves the banner of a bigger haul up.
     const mineral = pay.mineral && sheets.minerals?.frames[pay.mineral] ? pay.mineral : null;
-    this.hauled = { title, n, mult, over, grit, gems, light, shine: pay.shine, minerals: pay.minerals, mineral, spec: specUp, specOf, t: 0, life: 2.2 + Math.min(1.2, n * 0.01) };
+    this.hauled = { title, n, mult, over, grit, gems, light, shine: pay.shine, minerals: pay.minerals, mineral, spec: specUp, specOf, chain: pay.chain, t: 0, life: 2.2 + Math.min(1.2, n * 0.01) };
     if (light) {
       this.shake = Math.max(this.shake, Math.min(1.5, 0.7 + n * 0.08));
       this.ring(cx, cy, '#fff6c8', 12 + n);
