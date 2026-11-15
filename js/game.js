@@ -1,6 +1,6 @@
 // Tetherbore: the game. A drill flies free on a tether from a fixed core, cuts whatever ground it is pushed into,
 // and reels in any piece of ground it has drawn the tether round.
-import { World, N, C, K, B, HARD, GRIT, GEMS, DX, DY, BIOME_NAMES, base, cellHash, sight, cellsAlong, RELIC_R } from './world.js';
+import { World, N, C, K, B, HARD, GRIT, GEMS, DX, DY, BIOME_NAMES, base, cellHash, sight, cellsAlong, RELIC_R, HOME_R } from './world.js';
 import { sheets, draw, drawScaled, frameAt, duration, slice9, text, textWidth } from './atlas.js';
 import { sfx, unlock, isMuted, setMuted, setAmbience } from './audio.js';
 
@@ -11,19 +11,50 @@ const DIR_BIOME = [B.LODE, B.EMBER, B.MIRE, B.FROST];
 const GEM_ICON = [null, 'frost', 'ember', 'mire', 'lode'];
 const GEM_COLOR = [null, '#bfe6ff', '#ffb060', '#b8f06a', '#d8b8ff'];
 
+// ---------------------------------------------------------------- the economy
+// Everything here is worked out from one model of how fast a player earns, so that prices keep pace with income
+// however far out the game goes.
+//
+// Ground is worth more the further out it lies, in proportion to the distance (`richness`). A haul pays the worth of
+// its cells times a bonus for its size that grows with the logarithm of the size (`haulBonus`): cutting a big piece is
+// already quicker per cell than cutting small ones, so a bonus in proportion to size would pay with its square.
+//
+// A player with reach R cuts loops about R / 3 across, 48 at most. A loop of side s takes 4 s cells of cutting and
+// frees s x s cells, so at `PACE` cells cut a second it earns about s x PACE / 4 cells a second (`income`). The price
+// of a level of reach is that income for a set time (`MINUTES`), longer at each level. Every other upgrade is priced
+// as a share of the reach it belongs beside (`beside`, in levels of reach), and takes gems only once that reach is
+// well into the ground the gems come from.
+const REACH = [12, 22, 40, 72, 130, 230, 420, 750, 1350, 2300];
+const PACE = 0.9, WORTH = 1.6;                  // cells cut a second, turning and flying counted in; grit in an average cell
+const GEM_REACH = 5;                            // the level of reach (230) from which upgrades may ask for gems
+export const richness = r => Math.max(1, r / 12);
+export const haulBonus = (n, winch = 1) => 1 + winch * Math.log2(Math.max(1, n)) / 8;
+export const income = R => { const side = Math.max(4, Math.min(48, R / 3)); return side * PACE / 4 * WORTH * richness(R * 0.7) * haulBonus(side * side); };
+const round2 = n => { const unit = 10 ** Math.max(0, Math.floor(Math.log10(n)) - 1); return Math.round(n / unit) * unit; };
+// What the step up from each level of reach costs: the first is within the first haul, then 1.5 minutes of income
+// rising to 7.
+const REACH_COST = REACH.slice(0, -1).map((R, l) => l === 0 ? 15 : round2(income(R) * (40 + 50 * l)));
+// The price of something that belongs beside level `at` of reach (it may lie between two), and its gems.
+const priced = (at, share) => {
+  const lo = Math.min(REACH_COST.length - 1, Math.floor(at)), hi = Math.min(REACH_COST.length - 1, lo + 1);
+  return round2(share * Math.exp(Math.log(REACH_COST[lo]) + (Math.log(REACH_COST[hi]) - Math.log(REACH_COST[lo])) * (at - lo)));
+};
+const gemsFor = at => at < GEM_REACH ? 0 : round2(150 * 2 ** (at - GEM_REACH));
+const levels = (beside, share) => ({ beside, grit: beside.map(at => priced(at, share)), gems: beside.map(gemsFor) });
+
 // ---------------------------------------------------------------- upgrades
 // `values` is what each level gives; `grit` and `gems` what the next level costs; `gem` whose gems it takes.
 export const UPGRADES = [
   // The tether's reach: how far from the core the drill may go, by any road. Each level nearly doubles it.
-  { id: 'tether', icon: 'string', name: 'REACH', what: 'TETHER GOES FURTHER', values: [12, 22, 40, 72, 130, 230, 420, 750, 1350, 2400, 4300], gem: B.MIRE,
-    grit: [20, 150, 900, 5000, 26000, 130000, 650000, 3200000, 16000000, 80000000], gems: [0, 0, 0, 0, 0, 30, 150, 600, 2500, 10000], show: v => `${v}` },
-  { id: 'drill', icon: 'drill', name: 'BIT', what: 'CUTS FASTER', values: [1, 2, 3, 4, 5], gem: B.LODE, grit: [80, 1500, 30000, 600000], gems: [0, 0, 40, 600], show: v => `MK${v}` },
-  { id: 'winch', icon: 'winch', name: 'WINCH', what: 'BIG HAULS PAY MORE', values: [1, 1.3, 1.6, 2, 2.5, 3], gem: B.FROST,
-    grit: [60, 800, 10000, 120000, 1500000], gems: [0, 0, 30, 300, 3000], show: v => `x${v}` },
-  { id: 'scanner', icon: 'scanner', name: 'SCAN', what: 'SEES DEEPER IN ROCK', values: [3, 4, 5, 7, 9], gem: B.FROST, grit: [40, 600, 8000, 100000], gems: [0, 0, 20, 250], show: v => `${v}` },
-  { id: 'momentum', icon: 'momentum', name: 'RAM', what: 'FLIES FASTER', values: [1, 1.25, 1.5, 1.8, 2.2], gem: B.LODE, grit: [70, 900, 12000, 150000], gems: [0, 0, 25, 300], show: v => `x${v}` },
-  { id: 'bombs', icon: 'bomb', name: 'BLAST', what: 'BOMB: CLEARS ROCK', values: [0, 1, 2, 3, 4], gem: B.EMBER, grit: [90, 1200, 15000, 200000], gems: [0, 0, 25, 300], show: v => `${v}` },
+  { id: 'tether', icon: 'string', name: 'REACH', what: 'TETHER GOES FURTHER', values: REACH, gem: B.MIRE, ...levels(REACH.slice(0, -1).map((R, l) => l), 1), show: v => `${v}` },
+  { id: 'drill', icon: 'drill', name: 'BIT', what: 'CUTS FASTER', values: [1, 2, 3, 4, 5], gem: B.LODE, ...levels([0.6, 2.2, 4.4, 6.6], 0.6), show: v => `MK${v}` },
+  { id: 'winch', icon: 'winch', name: 'WINCH', what: 'BIG HAULS PAY MORE', values: [1, 1.3, 1.6, 2, 2.5, 3], gem: B.FROST, ...levels([0.8, 2, 3.6, 5.4, 7.2], 0.5), show: v => `x${v}` },
+  { id: 'scanner', icon: 'scanner', name: 'SCAN', what: 'SEES DEEPER IN ROCK', values: [3, 4, 5, 7, 9], gem: B.FROST, ...levels([0.4, 1.6, 3.4, 5.8], 0.3), show: v => `${v}` },
+  { id: 'momentum', icon: 'momentum', name: 'RAM', what: 'FLIES FASTER', values: [1, 1.25, 1.5, 1.8, 2.2], gem: B.LODE, ...levels([0.7, 2.4, 4.2, 6.2], 0.4), show: v => `x${v}` },
+  { id: 'bombs', icon: 'bomb', name: 'BLAST', what: 'BOMB: CLEARS ROCK', values: [0, 1, 2, 3, 4], gem: B.EMBER, ...levels([1, 2.8, 5, 7.4], 0.35), show: v => `${v}` },
 ];
+// Where each direction's gems are found, for a price that cannot be met yet.
+const GEM_WHERE = [null, 'NORTH', 'SOUTH', 'WEST', 'EAST'];
 // What flies off each kind of ground when it is cut, the dark each direction's ground lies in, its motes, and its
 // colour on the map.
 const DEBRIS = {
@@ -51,8 +82,6 @@ const LIGHT_STEP = [[1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, -1, 1], [1, 1, 1.41], 
 
 const compact = n => n < 1000 ? `${Math.floor(n)}` : n < 10000 ? `${(Math.floor(n / 100) / 10).toFixed(1)}K` : n < 1e6 ? `${Math.floor(n / 1000)}K`
   : n < 1e9 ? `${(Math.floor(n / 1e5) / 10).toFixed(1)}M` : `${(Math.floor(n / 1e8) / 10).toFixed(1)}B`;
-// How rich ground is, by how far out it lies: it doubles about as often as the tether's reach does.
-const richness = r => 2 ** Math.max(0, Math.floor(Math.log(Math.max(12, r) / 12) / Math.log(1.8)));
 const store = () => new Promise((resolve, reject) => {
   const open = indexedDB.open('tetherbore', 1);
   open.onupgradeneeded = () => open.result.createObjectStore('pieces');
@@ -454,7 +483,7 @@ export class Game {
     const gems = [0, 0, 0, 0, 0], sprites = [], show = Math.max(1, Math.ceil(n / 400));
     cells.forEach((i, at) => {
       const x = i % N, y = Math.floor(i / N), k = w.k(i), b = w.b(i), far = Math.hypot(x - C, y - C), rich = richness(far) * (b > 4 ? 2 : 1);
-      const gem = b ? GEMS[k] * (b > 4 ? 2 : 1) * Math.max(1, rich / 32) : 0;
+      const gem = b ? GEMS[k] * (b > 4 ? 2 : 1) : 0;
       grit += GRIT[k] * rich; gems[base(b)] += gem;
       if (b === B.CRUST && (k === K.ORE_A || k === K.ORE_B)) grit += (k === K.ORE_B ? 20 : 4) * rich;
       if (k === K.RELIC) relic = w.relicAt.indexOf(i);
@@ -463,7 +492,7 @@ export class Game {
       if (at % show === 0) sprites.push({ x, y, tile: this.rockRect(x, y, k, b), over: this.overlay(k), gem: gem ? base(b) : 0, gems: gem * show, biome: b, far });
     });
     for (const i of cells) w.setK(i, K.EMPTY);
-    const mult = 1 + (n - 1) * 0.02 * this.val('winch');
+    const mult = haulBonus(n, this.val('winch'));
     grit = Math.round(grit * mult);
     for (let b = 1; b < 5; b++) gems[b] = Math.round(gems[b]);
     S.grit += grit; this.pending.grit += grit;
@@ -768,7 +797,12 @@ export class Game {
   cost(u) { const l = this.S.lv[u.id]; return l >= u.values.length - 1 ? null : { grit: u.grit[l], gems: u.gems[l] }; }
   canBuy(u) { const c = this.cost(u); return !!c && this.S.grit >= c.grit && this.S.gems[u.gem] >= c.gems; }
   buy(u) {
-    if (!this.canBuy(u)) { sfx.deny(); return; }
+    if (!this.canBuy(u)) {
+      // Says what is missing, and where gems are to be had.
+      const c = this.cost(u);
+      if (c) this.shopNote = { t: 2.5, color: c.gems > this.S.gems[u.gem] ? GEM_COLOR[u.gem] : '#ff7a5a', text: c.gems > this.S.gems[u.gem] ? `GEMS: ${GEM_WHERE[u.gem]}, PAST ${HOME_R}` : 'NOT ENOUGH GRIT' };
+      sfx.deny(); return;
+    }
     const c = this.cost(u);
     this.S.grit -= c.grit; this.S.gems[u.gem] -= c.gems; this.S.lv[u.id]++; this.S.stats.buys++;
     sfx.buy();
@@ -866,7 +900,7 @@ export class Game {
       // The station makes a trickle of grit of its own: however a world has been spent, the next reach is never out
       // of reach for good.
       this.trickle = (this.trickle ?? 0) + dt;
-      if (this.trickle >= 2) { this.trickle -= 2; this.S.grit += richness(this.val('tether') / 2); }
+      if (this.trickle >= 2) { this.trickle -= 2; this.S.grit += Math.ceil(richness(this.val('tether') / 2)); }
       this.saveTick = (this.saveTick ?? 0) + dt;
       if (this.saveTick > 20) { this.saveTick = 0; this.save(); }
     }
@@ -1421,6 +1455,7 @@ export class Game {
     slice9(ctx, 'ui', 'panel', px, py, pw, ph);
     this.button(px, py, pw, ph, () => {});
     text(ctx, 'UPGRADES', px + 8, py + 7, '#ffe14a');
+    if (this.shopNote && this.shopNote.t > 0) { this.shopNote.t -= 1 / 60; text(ctx, this.shopNote.text, px + pw - 28, py + 7, this.shopNote.color, 1); }
     text(ctx, 'x', px + pw - 12, py + 6, '#ffffff');
     this.buttons.unshift({ x: px + pw - 24, y: py, w: 24, h: 22, act: () => { this.shop = false; sfx.tap(); } });
     UPGRADES.forEach((u, n) => {
@@ -1449,7 +1484,8 @@ export class Game {
           draw(ctx, 'icons', GEM_ICON[u.gem], cx, cy - 1);
           text(ctx, compact(c.gems), cx - 2, cy, S.gems[u.gem] >= c.gems ? GEM_COLOR[u.gem] : '#ff7a5a', 1);
         }
-        if (!wide) text(ctx, u.what, px + 25, y + rh - 12, '#c8c2d4');
+        const short = c.gems > 0 && S.gems[u.gem] < c.gems;
+        if (!wide) text(ctx, short ? `${GEM_WHERE[u.gem]}, PAST ${HOME_R}` : u.what, px + 25, y + rh - 12, short ? GEM_COLOR[u.gem] : '#c8c2d4');
       } else text(ctx, u.what, px + 25, y + rh - 12, '#e8c070');
       this.buttons.unshift({ x: px + 4, y, w: pw - 8, h: rh - 1, act: () => this.buy(u) });
     });

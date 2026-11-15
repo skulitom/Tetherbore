@@ -15,7 +15,7 @@ export const GEMS = [0, 0, 0, 0, 0, 1, 5, 0, 0, 2, 0, 0, 0];
 export const DX = [1, 0, -1, 0], DY = [0, 1, 0, -1];
 // Plain home ground runs out to HOME_R before any direction's ground begins; the flanks turn strange past DEEP_R;
 // what each direction hides lies RELIC_R out; the world ends at WORLD_R.
-export const HOME_R = 130, DEEP_R = 900, RELIC_R = 2000, WORLD_R = 4700;
+export const HOME_R = 130, DEEP_R = 900, RELIC_R = 2000, WORLD_R = 2400;
 export const onCore = (x, y) => Math.abs(x - C) <= 1 && Math.abs(y - C) <= 1;
 
 const hash = (x, y, s) => {
