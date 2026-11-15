@@ -512,7 +512,7 @@ Seen with tools/shot.mjs on seed 7: the west's first hive whole, lit and in the 
 Not done, or done otherwise:
 - The heralds of the north, east and south are hives until item 7's rows exist (above).
 - Nobody has flown a hive by hand: the lap of a two-cell lane with a thumb, and whether a one-cell door is worth aiming for, are unseen. The light haul's popups were seen staged (`--haul`), not after a real lap.
-- A hive that stands wholly in a cavern would be one loose piece from first sight, walls and nuggets and all; none was found in four worlds, and nothing prevents it.
+- A hive that stands clear of the rock in a great cavern is one loose piece from first sight, walls and nuggets and all, to be lassoed whole: 4 of the 522 hives of four worlds do (small ones, of three to seven chambers). Nothing prevents it, as the slabs' `held` does for slabs; it pays no more than the hive holds.
 - No glint or glow on amber: in the dark outside a hive its comb is dim gold.
 - The sounds at a nugget's haul (sfx.gem when the whole count rises) have not been heard by anyone.
 

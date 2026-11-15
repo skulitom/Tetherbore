@@ -5,8 +5,9 @@
 //     amber and no more than its two of stalk, with no amber crushed and the tether sound all the way;
 //   - each nugget pays nine lumps, of 0.8 seconds of what cutting earns out there, and no more for coming close
 //     behind another (the hive has no chain), and nine quarters of a specimen;
-//   - the specimens are the direction's the hive lies in: the west's, and from the north's first hive the north's,
-//     though a hive is the west's kind of pocket;
+//   - the specimens are the direction's the hive lies in: the west's, and from a hive that is another direction's
+//     first pocket that direction's, though a hive is the west's kind of pocket (while there is such a hive: the
+//     other directions' first pockets are hives only until their own kinds are made);
 //   - the hive is a place of its own: its ground is met, its record visited, and its amber called out by name;
 //   - a bigger hive further out is played the same way.
 //   node test/regress/c6-hive-play.mjs
@@ -19,7 +20,10 @@ const probe = new world.World(); probe.reset(7);
 const hives = hivesOf(probe), which = test => hives.findIndex(test);
 const out = [];
 
-for (const [name, pick, kin] of [['the west\'s first hive', which(Z => Z.herald && Z.kin === B.MIRE), B.MIRE], ['the north\'s first hive', which(Z => Z.herald && Z.kin === B.FROST), B.FROST], ['a hive 15 cells in radius', which(Z => !Z.herald && Z.rho > 14), B.MIRE]]) {
+const elsewhere = which(Z => Z.herald && Z.kin !== B.MIRE);
+const plays = [['the west\'s first hive', which(Z => Z.herald && Z.kin === B.MIRE), B.MIRE], ['a hive 15 cells in radius', which(Z => !Z.herald && Z.rho > 14), B.MIRE]];
+if (elsewhere >= 0) plays.push(['another direction\'s first hive', elsewhere, hives[elsewhere].kin]);
+for (const [name, pick, kin] of plays) {
   const r = await play(7, pick), Z = r.hive, game = r.game, S = game.S, w = game.world, P = world.rowOf(Z.row).pocket;
   out.push({ name, at: [Z.cx - C, Z.cy - C], nuggets: r.nuggets, took: r.took.length, spec: r.spec[kin], seconds: +r.t.toFixed(1), crushed: r.crushed });
   check(pick >= 0 && Z.kin === kin && r.nuggets >= 2, `${name}: hive ${pick} of world 7 lies in direction ${Z.kin} and has ${r.nuggets} nuggets`);

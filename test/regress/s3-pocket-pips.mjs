@@ -37,7 +37,8 @@ check(pips.every(Z => far(Z) <= 230 && !S.visited[Z.key]) && pips.length === wit
     const pip = squares.findIndex(s => s[0] === BIOMES[Z.row].pocket.pip && s[1] === mx - 1 && s[2] === my - 1 && s[3] === 2 && s[4] === 2);
     check(pip > 0 && squares[pip - 1][0] === '#0c0a12' && squares[pip - 1][1] === mx - 2 && squares[pip - 1][3] === 4, `the pocket at ${Z.cx - C},${Z.cy - C} is not drawn as a pip at ${mx},${my}`);
   }
-  check(squares.filter(s => s[0] === '#ffb020' && s[3] === 2 && s[4] === 2).length === pips.length, `${squares.filter(s => s[0] === '#ffb020' && s[3] === 2).length} pips are drawn for ${pips.length} pockets`);
+  const colours = new Set(pips.map(Z => BIOMES[Z.row].pocket.pip)), all = squares.filter(s => colours.has(s[0]) && s[3] === 2 && s[4] === 2).length;
+  check(all === pips.length && colours.has('#ffb020'), `${all} pips are drawn for ${pips.length} pockets, in ${[...colours]}`);
   delete game.ctx.fillRect;
 }
 

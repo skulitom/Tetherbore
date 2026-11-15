@@ -12,7 +12,9 @@
 //     often as another, and two cells of room all round but for the stalk; the wall the stalk hangs from has no
 //     door there;
 //   - cut either cell of the stalk and exactly the nugget hangs loose (with the other cell of stalk, where that is
-//     the one against it); a nugget whose stalk is whole hangs on the wall;
+//     the one against it); a nugget whose stalk is whole hangs on the wall. (But in a hive that itself hangs on
+//     nothing: one that stands clear of the rock in a great cavern is one loose piece, walls, nuggets and all,
+//     and is not asked: with whatever rock it stands on, if that hangs too. About one hive in a hundred does.)
 //   - doors: at the corner where a chamber's west wall meets the wall over it, in 35 corners of a hundred the west
 //     wall has one and in 35 the wall overhead has, in its half next the corner; never both, never the other half
 //     of the wall overhead, and only between two chambers of the hive, so the hive's outside wall is whole;
@@ -41,15 +43,17 @@ const out = {};
 const w = new World();
 const kindOf = (x, y) => w.kindAt(x, y, w.biomeAt(x, y)), isHive = (x, y) => w.biomeAt(x, y) === 32;
 let hives = 0, chambers = 0, withNugget = 0, solid = 0, empty = 0, odd = 0, middles = 0, strays = 0, open = 0, roomless = 0, doorAtStalk = 0, expected = 0;
-let corners = 0, west = 0, over = 0, both = 0, badDoor = 0, outer = 0, apart = 0, cutNear = 0, cutFar = 0, badCut = 0, heldWrong = 0;
+let corners = 0, west = 0, over = 0, both = 0, badDoor = 0, outer = 0, apart = 0, cutNear = 0, cutFar = 0, badCut = 0, heldWrong = 0, adrift = 0;
 const sides = [0, 0, 0, 0], perRadius = [];
 for (const seed of [1, 7, 34, 99]) {
   w.reset(seed);
-  for (const Z of w.pocketsWithin(1400).filter(Z => Z.row === 32)) {
+  for (const Z of w.pocketsWithin(2300).filter(Z => Z.row === 32)) {
     hives++;
     const list = hiveChambers(Z), mine = new Set(), most = Math.ceil(Z.reach) + 2;
     check(list[0][0] === Z.cx && list[0][1] === Z.cy, `seed ${seed}: the hive at ${Z.cx - C},${Z.cy - C} has no chamber at its middle`);
-    let amber = 0;
+    let amber = 0, whole = 0, hangs = false;
+    for (const [mx, my] of list) for (let v = -4; v <= 4; v++) for (let u = -4; u <= 4; u++) mine.add((my + v) * N + mx + u);
+    for (const i of mine) if (kindOf(i % N, Math.floor(i / N)) !== K.EMPTY) whole++;
     for (const [mx, my] of list) {
       chambers++;
       const ex = mx - Z.cx, ey = my - Z.cy, row = ey / 8;
@@ -76,8 +80,12 @@ for (const seed of [1, 7, 34, 99]) {
       if (withNugget % 6) continue;
       const cell = (u, v) => (my + v) * N + mx + u, nugget = [];
       for (let v = -1; v <= 1; v++) for (let u = -1; u <= 1; u++) nugget.push(cell(u, v));
-      // (Uncut, nothing hangs: asked from the open cell against the nugget's far side, nothing is loose.)
-      if (w.freed([cell(-2 * sx, -2 * sy)]).length) heldWrong++;
+      // (Uncut, nothing hangs: asked from the open cell against the nugget's far side, nothing is loose. Unless
+      // the whole hive is: then what is loose is all of it, and its stalks are not asked about.)
+      if (hangs) continue;
+      const loose = w.freed([cell(-2 * sx, -2 * sy)], 4000);
+      if (loose.length === 1 && loose[0].length >= whole && loose[0].filter(i => mine.has(i)).length === whole) { hangs = true; adrift++; continue; }
+      if (loose.length) heldWrong++;
       const same = (pieces, want) => pieces.length === 1 && pieces[0].length === want.length && want.every(i => pieces[0].includes(i));
       const near = cell(2 * sx, 2 * sy), away = cell(3 * sx, 3 * sy);
       if (same(w.freed([near]), nugget)) cutNear++; else badCut++;
@@ -114,7 +122,7 @@ for (const seed of [1, 7, 34, 99]) {
   }
 }
 const nuggetChambers = chambers - middles;
-out.counted = { hives, chambers, withNugget, solid, empty, corners, west, over, sides, cutNear, cutFar };
+out.counted = { hives, adrift, chambers, withNugget, solid, empty, corners, west, over, sides, cutNear, cutFar };
 check(hives > 80 && chambers > 1500, `${hives} hives and ${chambers} chambers looked at`);
 check(odd === 0, `${odd} chambers are not where a chamber lies, or hold something that is no nugget, no wax and not nothing`);
 check(strays === 0, `${strays} cells are a chamber's and not the hive's ground, or the hive's ground and no chamber's`);
@@ -132,6 +140,7 @@ check(outer === 0, `${outer} cells of a hive's outside wall are not wax`);
 check(apart === 0, `${apart} cells of a hive's walls, nuggets and stalks are not joined to the rest of it`);
 check(badCut === 0 && cutNear > 80 && cutFar > 80, `a stalk cut did not free exactly its nugget ${badCut} times (${cutNear} and ${cutFar} did)`);
 check(heldWrong === 0, `${heldWrong} nuggets hang loose with their stalks whole`);
+check(adrift <= hives * 0.02, `${adrift} of ${hives} hives hang on nothing`);
 // What a hive holds against its radius: the mean of the small, the middling and the great.
 for (const [lo, hi] of [[8, 12], [12, 18], [18, 31]]) {
   const band = perRadius.filter(([rho]) => rho >= lo && rho < hi), per = band.reduce((s, [rho, amber]) => s + amber, 0) / band.reduce((s, [rho]) => s + rho, 0);

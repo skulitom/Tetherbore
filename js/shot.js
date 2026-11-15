@@ -40,8 +40,10 @@ const KEY = 80;                                 // how far from `at` the middle 
 const POCKET = 150;                             // and the middle of a pocket to stand the drill in
 
 // The pocket nearest (ax, ay) and where the drill may stand in it: { zone, at: [x, y] }, or null where none is
-// near. The place is the open cell nearest the core among those three cells from the pocket's middle (in a hive,
-// the lane of the middle chamber), or failing that among all the pocket's cells.
+// near. The place is an open cell among those three cells from the pocket's middle (in a hive, the lane of the
+// middle chamber), or failing that among all the pocket's cells: the one the straight way to which from the core
+// goes through the fewest cells of the pocket's mineral and its stalks (the way in is bitten through whatever lies
+// on it), and of those the nearest the core.
 function inPocket(game, ax, ay) {
   const w = game.world, near = [];
   for (let v = -2; v <= 2; v++) for (let u = -2; u <= 2; u++) near.push(w.zoneOf(Math.floor((ax - C) / world.ZONE) + u, Math.floor((ay - C) / world.ZONE) + v));
@@ -54,7 +56,13 @@ function inPocket(game, ax, ay) {
     for (let v = -most; v <= most && !(best && !ring); v++) for (let u = -most; u <= most; u++) {
       const x = Z.cx + u, y = Z.cy + v, far = Math.hypot(x - C, y - C);
       if ((ring && Math.max(Math.abs(u), Math.abs(v)) !== 3) || w.b(y * N + x) !== Z.row || w.k(y * N + x) !== K.EMPTY) continue;
-      if (!best || far < best.far) best = { far, at: [x, y] };
+      let cost = 0;
+      for (let s = Math.max(0, far - 2 * Z.reach - 6), last = -1; s <= far; s += 0.5) {
+        const i = (C + Math.round((y - C) * s / far)) * N + C + Math.round((x - C) * s / far), k = i === last ? K.EMPTY : w.k(i);
+        if (k === Z.mineral || k === K.NODE) cost++;
+        last = i;
+      }
+      if (!best || cost < best.cost || (cost === best.cost && far < best.far)) best = { far, cost, at: [x, y] };
     }
     if (best) break;
   }
