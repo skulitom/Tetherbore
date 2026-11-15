@@ -589,7 +589,13 @@ export class Game {
         if (base(w.b(i)) === B.FROST) { w.dug.set(i, this.clock); this.frostOpen.push(i); }
         this.changed([i]);
       }
-      if (w.k(i) === K.EMPTY && this.free(Math.floor(d.x) + 0.5, Math.floor(d.y) + 0.5)) { d.x = Math.floor(d.x) + 0.5; d.y = Math.floor(d.y) + 0.5; this.tend(); }
+      if (w.k(i) === K.EMPTY && this.free(Math.floor(d.x) + 0.5, Math.floor(d.y) + 0.5)) {
+        d.x = Math.floor(d.x) + 0.5; d.y = Math.floor(d.y) + 0.5;
+        // No further out than the tether reaches, where it fits there (it is the same cell still).
+        const out = this.far, R = this.val('tether'), x = HX + (d.x - HX) / out * R, y = HY + (d.y - HY) / out * R;
+        if (out > R && this.free(x, y)) { d.x = x; d.y = y; }
+        this.tend();
+      }
     }
     d.px = d.x; d.py = d.y;
     const far = this.far;
@@ -639,11 +645,20 @@ export class Game {
       const sx = d.x, sy = d.y, nx = d.x + d.vx * dt / steps, ny = d.y + d.vy * dt / steps;
       if (this.free(nx, d.y)) d.x = nx; else hitX = true;
       if (this.free(d.x, ny)) d.y = ny; else hitY = true;
-      // The end of the tether's reach.
+      // The end of the tether's reach: a move that ends beyond it is drawn back on to it. The reach never pins the
+      // drill, though. Should it stand beyond the reach already (set in the middle of a cell out there when ground
+      // grew back on it) and the place drawn back to be shut, any move that takes it no further out stands: so it
+      // can always come back in, or be pushed against what is in its way there and cut it.
       const out = Math.hypot(d.x - HX, d.y - HY);
       if (out > R) {
-        d.x = HX + (d.x - HX) / out * R; d.y = HY + (d.y - HY) / out * R;
-        if (!this.free(d.x, d.y)) { d.x = sx; d.y = sy; }
+        const mx = d.x, my = d.y, was = Math.hypot(sx - HX, sy - HY);
+        d.x = HX + (mx - HX) / out * R; d.y = HY + (my - HY) / out * R;
+        if (!this.free(d.x, d.y)) {
+          if (out <= was) { d.x = mx; d.y = my; }
+          else if (mx !== sx && Math.hypot(mx - HX, sy - HY) <= was) { d.x = mx; d.y = sy; }
+          else if (my !== sy && Math.hypot(sx - HX, my - HY) <= was && this.free(sx, my)) { d.x = sx; d.y = my; }
+          else { d.x = sx; d.y = sy; }
+        }
         held = true;
       }
       this.tend();
@@ -655,7 +670,11 @@ export class Game {
     // Pushed into ground, it cuts.
     if (m > 0 && (hitX || hitY)) {
       d.run = 0;
-      const i = this.bite(ix, iy, hitX, hitY);
+      // A cut in progress goes on while the drill is still pressed into that cell and the stick has not turned from
+      // where it was when the cut began (a new direction cancels it). In a notch, pushed into two cells at once on
+      // the diagonal, which of them the stick favours changes with a hair's turn of the thumb, and with the drill's
+      // own squaring up to the cell it cuts: without this neither would ever be cut through.
+      const i = this.bite(ix, iy, hitX, hitY, d.dig >= 0 && ix * d.digX + iy * d.digY > 0.94 ? d.dig : -1);
       if (i < 0) { d.dig = -1; if (hitX) d.vx = 0; if (hitY) d.vy = 0; }
       else {
         const k = w.k(i);
@@ -664,15 +683,15 @@ export class Game {
           d.dig = -1;
         } else if (!this.within((i % N) + 0.5, Math.floor(i / N) + 0.5)) { if (this.edge <= 0) this.refuse(); d.dig = -1; }
         else {
-          if (d.dig !== i) { d.dig = i; d.digT = 0; d.digDur = DIG_TIME[k] / SPEED[this.S.lv.drill]; this.foresee(i); }
+          if (d.dig !== i) { d.dig = i; d.digT = 0; d.digDur = DIG_TIME[k] / SPEED[this.S.lv.drill]; d.digX = ix; d.digY = iy; this.foresee(i); }
           const before = d.digT;
           d.digT += dt;
           if (((d.digT * 30) | 0) !== ((before * 30) | 0) && d.digDur > 0.15) { sfx.grind(); if (d.digDur > 0.4) this.shake = Math.max(this.shake, 1.2); }
           if (((d.digT * 18) | 0) !== ((before * 18) | 0)) this.chips(i % N, Math.floor(i / N), this.rockSheet(k, w.b(i)), 2, d.ang, 0.6);
-          // Cutting draws the drill square on to the block, so tunnels come out clean.
-          const cx = (i % N) + 0.5, cy = Math.floor(i / N) + 0.5;
-          if (Math.abs(cx - d.x) > Math.abs(cy - d.y)) { const ny = d.y + (cy - d.y) * Math.min(1, dt * 6); if (this.free(d.x, ny)) d.y = ny; }
-          else { const nx = d.x + (cx - d.x) * Math.min(1, dt * 6); if (this.free(nx, d.y)) d.x = nx; }
+          // Cutting draws the drill square on to the block, so tunnels come out clean: never past the tether's reach.
+          const cx = (i % N) + 0.5, cy = Math.floor(i / N) + 0.5, inReach = (x, y) => { const to = Math.hypot(x - HX, y - HY); return to <= R || to <= Math.hypot(d.x - HX, d.y - HY); };
+          if (Math.abs(cx - d.x) > Math.abs(cy - d.y)) { const ny = d.y + (cy - d.y) * Math.min(1, dt * 6); if (this.free(d.x, ny) && inReach(d.x, ny)) d.y = ny; }
+          else { const nx = d.x + (cx - d.x) * Math.min(1, dt * 6); if (this.free(nx, d.y) && inReach(nx, d.y)) d.x = nx; }
           this.tend();
           if (d.digT >= d.digDur) this.finishDig(i);
         }
@@ -686,16 +705,23 @@ export class Game {
     if (m > 0 && speed > 1) this.S.stats.moves += dt;
     this.look();
   }
-  // The cell the bit is pressed into: the ground that stopped it, on the side it is being pushed.
-  bite(ix, iy, hitX, hitY) {
+  // The cell the bit is pressed into: the ground that stopped it, on the side it is being pushed. `keep` is a cell
+  // to stay with if it is among them (the cut in progress).
+  bite(ix, iy, hitX, hitY, keep = -1) {
     const w = this.world, d = this.drill, reach = BODY + 0.3, tries = [];
     const sx = Math.sign(ix) || 1, sy = Math.sign(iy) || 1;
     const across = [[d.x + sx * reach, d.y], [d.x + sx * reach, d.y - BODY], [d.x + sx * reach, d.y + BODY]];
     const down = [[d.x, d.y + sy * reach], [d.x - BODY, d.y + sy * reach], [d.x + BODY, d.y + sy * reach]];
     if (hitX && (!hitY || Math.abs(ix) >= Math.abs(iy))) tries.push(...across, ...(hitY ? down : []));
     else tries.push(...down, ...(hitX ? across : []));
-    for (const [x, y] of tries) { const i = Math.floor(y) * N + Math.floor(x); if (w.k(i) !== K.EMPTY) return i; }
-    return -1;
+    let first = -1;
+    for (const [x, y] of tries) {
+      const i = Math.floor(y) * N + Math.floor(x);
+      if (w.k(i) === K.EMPTY) continue;
+      if (keep < 0 || i === keep) return i;
+      if (first < 0) first = i;
+    }
+    return first;
   }
   // From the core the drill can be thrown at any angle: it flies straight along the drag until ground, lava or
   // the end of its reach stops it. Returns false when it cannot leave that way.
