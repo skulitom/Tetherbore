@@ -162,9 +162,9 @@ export const STRAINS = [
 // ---- the pockets
 // Small places with ground of their own, a mineral and one rule each. A pocket has to read at a glance as somewhere
 // else: its ground looks like none of the directions' grounds, and it lies over a floor of its own, which is drawn
-// too (three variants: a floor is only ever seen dark).
-const drawnFloor = (name, palette, seed, draw) => {
-  const [first, ...rest] = drawn(seed, draw).slice(0, 3);
+// too (three variants unless more are asked for: a floor is only ever seen dark).
+const drawnFloor = (name, palette, seed, draw, variants = 3) => {
+  const [first, ...rest] = drawn(seed, draw).slice(0, variants);
   return { ...floor(name, palette, { pattern: first }, seed), variants: [
     { name: 'a' },
     ...rest.map((pattern, n) => ({ name: VARIANTS[n + 1], terrain: { fill: { pattern } } })),
@@ -192,6 +192,9 @@ const cell = (fill, which, key, glint) => {
   if (glint) fill.set(x0 + 1, y0 + 3, glint).set(x0 + 2, y0 + 2, glint);
 };
 
+// The same set with its outer corners cut rounder.
+const rounded = (round, set) => ({ ...set, terrain: { ...set.terrain, round } });
+
 export const POCKETS = [
   // Amber Hive (west): beeswax comb. The cell walls are pale and stand proud of the hollows; a cell here and there
   // is full of dark honey, or capped over. Nothing in the wax is as orange as the amber that lies in it.
@@ -202,6 +205,13 @@ export const POCKETS = [
     if (n === 3) cell(fill, 'lower', 'h', 'H');
     for (const [x, y] of fill.places(2, 5, 1)) if (onComb(x, y)) fill.set(x, y, 'c');
   }),
+  // Pumice Drift (anywhere): boulders of grey froth lying loose in open dark, their corners worn round. Full of
+  // holes, each dark under its near lip and lit on its far one.
+  rounded(3, strain('pumice', { k: '#2a2630', D: '#5a5466', L: '#e8e2f0', s: '#00000059', f: '#a8a0b4', a: '#948ca2', b: '#bdb6c8', c: '#d8d2e4', p: '#4e485c', q: '#6e6880' }, 167, fill => {
+    fill.clumps('a', 0.24, 4).clumps('b', 0.12, 3);
+    const HOLES = [['.pp.', 'pppc', 'pqqc', '.cc.'], ['pp.', 'pqc', '.cc'], ['pq', 'qc'], ['p.', '.c'], ['q.', '.c'], ['q']];
+    fill.places(6, 4, 1).forEach(([x, y], i) => { const rows = HOLES[i]; fill.stamp(Math.min(x, 15 - rows.length), Math.min(y, 15 - rows.length), rows); });
+  })),
 ];
 
 export const POCKET_FLOORS = [
@@ -210,6 +220,12 @@ export const POCKET_FLOORS = [
     fill.clumps('a', 0.25, 5);
     comb(fill, 'b');
   }),
+  // The drift's cavern: night blue with a few far stars, so the open reads as sky.
+  drawnFloor('pumice-floor', { f: '#0e1420', a: '#0a101a', b: '#141c2c', s: '#3c5486', S: '#8cb0ea' }, 17, (fill, n) => {
+    fill.clumps('a', 0.25, 6).clumps('b', 0.1, 3);
+    fill.dots('s', [2, 1, 3, 0, 2][n], 2);
+    if (n === 0 || n === 2) fill.dots('S', 1, 3);
+  }, 5),
 ];
 
 export const FLOORS = [

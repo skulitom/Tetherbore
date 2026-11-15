@@ -815,7 +815,8 @@ const STALK = [
 ];
 export const minerals = {
   version: 1, name: 'minerals', width: 16, height: 16,
-  palette: { k: '#3a2208', a: '#ff9a1a', A: '#ffd070', B: '#a85a10', w: '#fff6d8', s: '#f4dc9a', S: '#fff4c8', t: '#d0a050', e: '#7a4a10' },
+  palette: { k: '#3a2208', a: '#ff9a1a', A: '#ffd070', B: '#a85a10', w: '#fff6d8', s: '#f4dc9a', S: '#fff4c8', t: '#d0a050', e: '#7a4a10',
+    o: '#2a6cc0', r: '#7fd0ff', c: '#e8fbff', W: '#ffffff', n: '#6e6880', h: '#d8d2e4', N: '#4a4458' },
   symbols: {
     amber: [
       '.....kk.....',
@@ -831,11 +832,26 @@ export const minerals = {
       '..kaBBBBBk..',
       '...kkkkkk...',
     ],
+    // A four-point star set in a knob of the pumice it lies in.
+    aerolite: [
+      '.....o......',
+      '....oro.....',
+      '...horoh....',
+      '..hnoconn...',
+      '.ooorcrooo..',
+      'orrccWccrro.',
+      '.ooorcrooo..',
+      '..nnoconN...',
+      '...NoroN....',
+      '....oro.....',
+      '.....o......',
+      '............',
+    ],
     stalk: STALK,
     // The same strand turned upright, lit on its left as the level one is on its top.
     upright: STALK.map((row, y) => [...row].map((_, x) => STALK[x][y]).join('')),
   },
-  frames: [frame('amber', 'amber'),
+  frames: [frame('amber', 'amber'), frame('aerolite', 'aerolite'),
     { name: 'stalk-h', duration: 300, ops: [{ op: 'stamp', symbol: 'stalk', x: 0, y: 0 }] },
     { name: 'stalk-v', duration: 300, ops: [{ op: 'stamp', symbol: 'upright', x: 0, y: 0 }] }],
 };

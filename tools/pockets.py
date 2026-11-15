@@ -55,7 +55,7 @@ def hive(u, v, seed):
 
 def drift(u, v, seed, rho):
     gx, gy = math.floor(u / 7), math.floor(v / 7)
-    if hash2(gx, gy, seed + 48) >= 0.8: return None
+    if hash2(gx + 40, gy + 40, seed + 48) >= 0.8: return None
     bx = gx * 7 + 3.5 + (hash2(gx, gy, seed + 49) - 0.5) * 1.6
     by = gy * 7 + 3.5 + (hash2(gy, gx, seed + 49) - 0.5) * 1.6
     r = 1.2 + 0.8 * hash2(gx, gy, seed + 50)
