@@ -30,19 +30,22 @@ check(pips.every(Z => far(Z) <= 230 && !S.visited[Z.key]) && pips.length === wit
 // ---- drawn: two pixels in the pocket's colour on four of dark, where it lies
 {
   // (The map shows the ground near the drill, a cell and a half to a pixel; a pocket off it is at its edge.)
+  // (The drill is stood twenty cells from the nearest of them, so that one at least lies on the map.)
+  const nearest = pips.slice().sort((a, b) => far(a) - far(b))[0];
+  game.drill.x = nearest.cx + 20.5; game.drill.y = nearest.cy + 0.5;
   const size = 46, per = 1.5, [mapX, mapY] = [game.W - 54, game.H - 58], squares = [], dx = Math.floor(game.drill.x) + 0.5, dy = Math.floor(game.drill.y) + 0.5;
   game.ctx.fillRect = (x, y, wide, high) => { squares.push([game.ctx.fillStyle, x, y, wide, high]); };
   game.render();
+  let on = 0;
   for (const Z of pips) {
-    let ox = (Z.cx + 0.5 - dx) / per, oy = (Z.cy + 0.5 - dy) / per;
-    const off = Math.max(Math.abs(ox), Math.abs(oy)), edge = size / 2 - 3;
-    if (off > edge) { ox = ox * edge / off; oy = oy * edge / off; }
-    const mx = Math.round(mapX + size / 2 + ox), my = Math.round(mapY + size / 2 + oy);
+    const ox = (Z.cx + 0.5 - dx) / per, oy = (Z.cy + 0.5 - dy) / per, mx = Math.round(mapX + size / 2 + ox), my = Math.round(mapY + size / 2 + oy);
     const pip = squares.findIndex(s => s[0] === BIOMES[Z.row].pocket.pip && s[1] === mx - 1 && s[2] === my - 1 && s[3] === 2 && s[4] === 2);
+    if (Math.max(Math.abs(ox), Math.abs(oy)) > size / 2 - 2) { check(pip < 0, `the pocket at ${Z.cx - C},${Z.cy - C}, off the map, is drawn on it`); continue; }
+    on++;
     check(pip > 0 && squares[pip - 1][0] === '#0c0a12' && squares[pip - 1][1] === mx - 2 && squares[pip - 1][3] === 4, `the pocket at ${Z.cx - C},${Z.cy - C} is not drawn as a pip at ${mx},${my}`);
   }
   const colours = new Set(pips.map(Z => BIOMES[Z.row].pocket.pip)), all = squares.filter(s => colours.has(s[0]) && s[3] === 2 && s[4] === 2).length;
-  check(all === pips.length && colours.has('#ffb020'), `${all} pips are drawn for ${pips.length} pockets, in ${[...colours]}`);
+  check(all === on && on > 0 && colours.has('#ffb020'), `${all} pips are drawn for the ${on} pockets on the map, of ${pips.length} marked, in ${[...colours]}`);
   delete game.ctx.fillRect;
 }
 

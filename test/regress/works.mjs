@@ -172,5 +172,25 @@ for (const coil of [0, 1]) {
   game.openLab(false);
 }
 
+// ---- the first tab's levels ask for things found, and a piece past the winch's load pays little more for its size
+{
+  const game = await makeGame(7), reach = UPGRADES[0], winch = UPGRADES.find(u => u.id === 'winch');
+  game.S.grit = 1e12; game.S.gems = game.S.gems.map(() => 1e6);
+  for (let l = 0; l < 3; l++) game.buy(reach);
+  check(game.S.lv.tether === 3 && game.val('tether') === 72, `the first three levels of reach ask for nothing found: level ${game.S.lv.tether}`);
+  game.buy(reach);
+  check(game.S.lv.tether === 3 && game.shopNote?.text === 'NEEDS 0/1 WRECK PARTS', `the step past a reach of 72 with no wreck part ${game.S.lv.tether > 3 ? 'was bought' : 'was refused'}: '${game.shopNote?.text}'`);
+  game.S.wrecks[0] = 1; game.buy(reach);
+  check(game.S.lv.tether === 4 && game.lacks(reach) === 'NEEDS 1/2 WRECK PARTS', `with the first wreck's part the reach is ${game.val('tether')}, and the next step says '${game.lacks(reach)}'`);
+  game.buy(winch); game.buy(winch);
+  check(game.S.lv.winch === 1 && game.lacks(winch) === 'NEEDS 1/3 PLACES MET', `with only the home ground met the winch is at level ${game.S.lv.winch}: '${game.lacks(winch)}'`);
+  game.S.met[1] = 1; game.S.met[2] = 1; game.buy(winch);
+  check(game.S.lv.winch === 2, `with three places met the winch is at level ${game.S.lv.winch}`);
+  game.shop = true; game.shopRise = 1; game.shopTab = 'rig'; game.render(); game.shop = false;
+  const { overload } = await import('../../js/game.js');
+  const total = n => n * overload(n, 0);
+  check(overload(150, 0) === 1 && total(60000) < total(150) * 8 && total(60000) > total(6000) && total(6000) > total(600), `a piece of 60,000 cells on the first winch pays as ${Math.round(total(60000))} cells at full pay, one of 600 as ${Math.round(total(600))}`);
+}
+
 console.log(fails.length ? `DEFECT:\n  ${fails.join('\n  ')}` : 'no defect: the second tab sells four things for specimens, each turns a hazard, and the stats say what the drill is');
 process.exit(fails.length ? 1 : 0);

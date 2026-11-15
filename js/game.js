@@ -1,6 +1,6 @@
 // Tetherbore: the game. A drill flies free on a tether from a fixed core, cuts whatever ground it is pushed into,
 // and reels in any piece of ground it has drawn the tether round.
-import { World, N, C, K, B, HARD, GRIT, GEMS, DX, DY, BIOMES, HAZARDS, ZONE, FIND, rowOf, hazOf, gemKin, digTime, cellHash, sight, cellsAlong, RELIC_R, HOME_R } from './world.js';
+import { World, N, C, K, B, HARD, GRIT, GEMS, DX, DY, BIOMES, HAZARDS, ZONE, FIND, WRECK_R, rowOf, hazOf, gemKin, digTime, cellHash, sight, cellsAlong, RELIC_R, HOME_R } from './world.js';
 import { sheets, draw, drawScaled, frameAt, duration, slice9, text, textWidth } from './atlas.js';
 import { sfx, unlock, isMuted, setMuted, setAmbience } from './audio.js';
 
@@ -30,10 +30,13 @@ const PACE = 0.9, WORTH = 1.6;                  // cells cut a second, turning a
 const GEM_REACH = 5;                            // the level of reach (230) from which upgrades may ask for gems
 export const richness = r => Math.max(1, r / 12);
 export const haulBonus = (n, winch = 1) => 1 + winch * Math.log2(Math.max(1, n)) / 8;
-// The winch draws in so many cells at full pay; a piece beyond that pays less for each cell, though never less in all,
-// so the biggest loop a player can cut is a little better than a middling one and not many times better.
+// The winch draws in so many cells at full pay. A piece beyond that pays as its load does and a little more for
+// every doubling of its size past the load (the load times 1 + ln(n / load)), never less in all, in grit and in
+// gems alike: so the biggest loop a player can cut is a little better than one of the winch's load, and not many
+// times better. (It was (load / n) ** 0.35 a cell, and on grit alone: a tunnel that cut a whole quarter of the
+// ground off paid for half the shop in one haul, and its gems were not thinned at all.)
 const WINCH_LOAD = [150, 400, 1000, 2300, 5000, 12000];
-export const overload = (n, level) => n <= WINCH_LOAD[level] ? 1 : (WINCH_LOAD[level] / n) ** 0.35;
+export const overload = (n, level) => n <= WINCH_LOAD[level] ? 1 : WINCH_LOAD[level] * (1 + Math.log(n / WINCH_LOAD[level])) / n;
 export const income = R => { const side = Math.max(4, Math.min(48, R / 3)); return side * PACE / 4 * WORTH * richness(R * 0.7) * haulBonus(side * side); };
 const round2 = n => { const unit = 10 ** Math.max(0, Math.floor(Math.log10(n)) - 1); return Math.round(n / unit) * unit; };
 // A haul of fewer cells than LIGHT, with nothing in it to make a show of, is a light one: it stops nothing and
@@ -51,18 +54,25 @@ const gemsFor = at => at < GEM_REACH ? 0 : round2(150 * 2 ** (at - GEM_REACH));
 const levels = (beside, share) => ({ beside, grit: beside.map(at => priced(at, share)), gems: beside.map(gemsFor) });
 
 // ---------------------------------------------------------------- upgrades
+// Grit and gems are not enough for the levels of the first tab: each level also asks that something has been
+// found, so that the rig grows no faster than the ground is explored. `needs` on a row is [what, how many for each
+// level]: 'parts', parts of the older machine brought home from its wrecks, which lie one to each stretch of
+// ground (45, 90, 160 ... cells out); 'kinds', kinds of thing the lab has analysed, two in each direction's own
+// ground and the rest in lava and in pockets; 'places', grounds met, of which the strains, the pockets and the
+// crosses lie further and further out. (`Game.need` counts what is held.)
+const NEEDS = { parts: 'WRECK PARTS', kinds: 'KINDS ANALYSED', places: 'PLACES MET' };
 // `values` is what each level gives; `grit` and `gems` what the next level costs; `gem` whose gems it takes.
 export const UPGRADES = [
   // The tether's reach: how far from the core the drill may go, by any road. Each level nearly doubles it.
-  { id: 'tether', icon: 'string', name: 'REACH', what: 'TETHER GOES FURTHER', values: REACH, gem: B.MIRE, ...levels(REACH.slice(0, -1).map((R, l) => l), 1), show: v => `${v}` },
-  { id: 'drill', icon: 'drill', name: 'BIT', what: 'CUTS FASTER', values: [1, 2, 3, 4, 5], gem: B.LODE, ...levels([0.6, 2.2, 4.4, 6.6], 0.6), show: v => `MK${v}` },
-  { id: 'winch', icon: 'winch', name: 'WINCH', what: 'BIGGER HAULS AT FULL PAY', values: [1, 1.3, 1.6, 2, 2.5, 3], gem: B.FROST, ...levels([0.8, 2, 3.6, 5.4, 7.2], 0.5), show: v => `x${v}` },
-  { id: 'scanner', icon: 'scanner', name: 'SCAN', what: 'SEES DEEPER IN ROCK', values: [3, 4, 5, 7, 9], gem: B.FROST, ...levels([0.4, 1.6, 3.4, 5.8], 0.3), show: v => `${v}` },
-  { id: 'momentum', icon: 'momentum', name: 'RAM', what: 'FLIES FASTER', values: [1, 1.25, 1.5, 1.8, 2.2], gem: B.LODE, ...levels([0.7, 2.4, 4.2, 6.2], 0.4), show: v => `x${v}` },
+  { id: 'tether', icon: 'string', name: 'REACH', what: 'TETHER GOES FURTHER', values: REACH, gem: B.MIRE, needs: ['parts', REACH.slice(0, -1).map(R => WRECK_R.filter(r => r <= R).length)], ...levels(REACH.slice(0, -1).map((R, l) => l), 1), show: v => `${v}` },
+  { id: 'drill', icon: 'drill', name: 'BIT', what: 'CUTS FASTER', values: [1, 2, 3, 4, 5], gem: B.LODE, needs: ['kinds', [0, 2, 5, 9]], ...levels([0.6, 2.2, 4.4, 6.6], 0.6), show: v => `MK${v}` },
+  { id: 'winch', icon: 'winch', name: 'WINCH', what: 'BIGGER HAULS AT FULL PAY', values: [1, 1.3, 1.6, 2, 2.5, 3], gem: B.FROST, needs: ['places', [1, 3, 5, 8, 12]], ...levels([0.8, 2, 3.6, 5.4, 7.2], 0.5), show: v => `x${v}` },
+  { id: 'scanner', icon: 'scanner', name: 'SCAN', what: 'SEES DEEPER IN ROCK', values: [3, 4, 5, 7, 9], gem: B.FROST, needs: ['parts', [0, 1, 2, 4]], ...levels([0.4, 1.6, 3.4, 5.8], 0.3), show: v => `${v}` },
+  { id: 'momentum', icon: 'momentum', name: 'RAM', what: 'FLIES FASTER', values: [1, 1.25, 1.5, 1.8, 2.2], gem: B.LODE, needs: ['places', [1, 2, 4, 7]], ...levels([0.7, 2.4, 4.2, 6.2], 0.4), show: v => `x${v}` },
   // The hull: how many knocks the drill takes before it is wrecked and wound home (`hit`, `wreck`), a pip a level,
   // each a plate more on the drill. Its first level is priced beside a reach that has only just met hazards and
   // asks no gems; from there on it takes the south's, whose lava is the worst of what it is for.
-  { id: 'hull', icon: 'hull', name: 'HULL', what: 'TAKES MORE KNOCKS', values: [3, 4, 5, 6, 7], gem: B.EMBER, ...levels([4.5, 5.5, 6.5, 7.5], 0.5), show: v => `${v}` },
+  { id: 'hull', icon: 'hull', name: 'HULL', what: 'TAKES MORE KNOCKS', values: [3, 4, 5, 6, 7], gem: B.EMBER, needs: ['kinds', [1, 3, 6, 10]], ...levels([4.5, 5.5, 6.5, 7.5], 0.5), show: v => `${v}` },
 ];
 // What the lab can know: each thing the bit can crush, by the sheet and frame it is drawn from (`Game.sampleOf`),
 // with its name, where it lies, and the lab's note on it. A thing crushed is a sample analysed, and what is known
@@ -1352,7 +1362,7 @@ export class Game {
     // are worth nothing themselves, as a loop of ash is, nothing is lost and nothing is said.)
     const parts = wrecks.length, over = grit > 0 ? overload(n, S.lv.winch) : 1, mult = haulBonus(n, this.val('winch')) * (1 + 0.1 * (held.filter(Boolean).length + parts)) * over;
     const shine = 1 + 0.5 * Math.min(prisms, 3);
-    for (let b = 1; b < 5; b++) gems[b] = Math.round(gems[b] * shine);
+    for (let b = 1; b < 5; b++) gems[b] = Math.round(gems[b] * shine * over);
     return { n, grit: Math.round(grit * mult) + lump, gems, lump, spec, minerals, mineral, prisms, shine, relic, caches, parts, wrecks, mult, over, chain: chains ? chain : 0 };
   }
   // The tether is round these cells: they go, and what they are worth is on its way home.
@@ -1900,19 +1910,37 @@ export class Game {
 
   // ------------------------------------------------------------ shop
   cost(u) { const l = this.S.lv[u.id]; return l >= u.values.length - 1 ? null : { grit: u.grit[l], gems: u.gems[l], spec: u.spec ? u.spec[l] : 0 }; }
+  // What a row's next level asks to have been found, and what is held of it: { what, have, need }, or null where
+  // it asks nothing (or there is no next level). A wreck the seed did not lay whole (another thing lies where it
+  // should) is not asked for: nothing that cannot be found is ever needed.
+  need(u) {
+    const l = this.S.lv[u.id];
+    if (!u.needs || l >= u.values.length - 1) return null;
+    const [what, counts] = u.needs, S = this.S, w = this.world;
+    let need = counts[l], have = 0;
+    if (what === 'parts') {
+      const held = S.wrecks ?? [];
+      have = held.filter(Boolean).length;
+      for (let n = 0; n < counts[l] && n < w.wrecks.length; n++) { const [x, y] = w.wrecks[n]; if (!held[n] && w.kindAt(x, y, w.biomeAt(x, y)) !== K.WRECK) need--; }
+    } else if (what === 'kinds') have = LAB.filter(e => S.lab[e.key]).length;
+    else have = Object.keys(S.met).length;
+    return need > 0 ? { what, have, need } : null;
+  }
+  // What is still to be found before a row's next level can be bought, as the shop says it; or null.
+  lacks(u) { const q = this.need(u); return q && q.have < q.need ? `NEEDS ${q.have}/${q.need} ${NEEDS[q.what]}` : null; }
   // The whole specimens of a direction that are in hand.
   specs(kin) { return Math.floor((this.S.spec[kin] ?? 0) + 1e-9); }
   // What can be spent is what has come home: grit and gems still on their way up the tether are not banked yet,
   // and the top bar never shows them (nor ever less than nothing).
   banked(gem) { return gem === undefined ? this.S.grit - this.pending.grit : this.S.gems[gem] - this.pending.gems[gem]; }
-  canBuy(u) { const c = this.cost(u); return !!c && this.banked() >= c.grit && this.banked(u.gem) >= c.gems && (!c.spec || this.specs(u.kin) >= c.spec); }
+  canBuy(u) { const c = this.cost(u); return !!c && this.banked() >= c.grit && this.banked(u.gem) >= c.gems && (!c.spec || this.specs(u.kin) >= c.spec) && !this.lacks(u); }
   buy(u) {
     if (!this.canBuy(u)) {
       // Says what is missing, and where gems are to be had.
       const c = this.cost(u);
       if (c) {
-        const gems = c.gems > this.banked(u.gem), spec = c.spec > 0 && this.specs(u.kin) < c.spec;
-        this.shopNote = { t: 2.5, color: gems ? GEM_COLOR[u.gem] : spec ? GEM_COLOR[u.kin] : '#ff7a5a', text: gems ? `GEMS: ${GEM_WHERE[u.gem]}, PAST ${HOME_R}` : spec ? `${GEM_WHERE[u.kin]} POCKETS` : 'NOT ENOUGH GRIT' };
+        const gems = c.gems > this.banked(u.gem), spec = c.spec > 0 && this.specs(u.kin) < c.spec, lack = this.lacks(u);
+        this.shopNote = { t: 2.5, color: lack ? '#ff9a6a' : gems ? GEM_COLOR[u.gem] : spec ? GEM_COLOR[u.kin] : '#ff7a5a', text: lack ?? (gems ? `GEMS: ${GEM_WHERE[u.gem]}, PAST ${HOME_R}` : spec ? `${GEM_WHERE[u.kin]} POCKETS` : 'NOT ENOUGH GRIT') };
       }
       sfx.deny(); return;
     }
@@ -2893,16 +2921,16 @@ export class Game {
       const [mx, my] = at(HX + DX[dir] * RELIC_R, HY + DY[dir] * RELIC_R);
       ctx.fillStyle = GEM_COLOR[DIR_BIOME[dir]]; ctx.fillRect(Math.round(mx) - 1, Math.round(my) - 1, 3, 3);
     }
-    // The first keystone slab, a ring of its own size, until it hangs by no key: somewhere to go. While the reach
-    // is too short for the map to show where it lies (the map shows a little more than the reach), the ring is
-    // drawn small at the map's edge, on the way to it.
+    // The first keystone slab, a ring of its own size, until it hangs by no key: somewhere to go, once it is near
+    // enough to lie on the map (or on the chart, which shows the whole reach).
     const slab = this.firstRing();
     if (slab) {
-      let [mx, my] = at(slab.cx + 0.5, slab.cy + 0.5), r = Math.max(1.5, slab.p / per);
-      const ox = mx - x - size / 2, oy = my - y - size / 2, off = Math.max(Math.abs(ox), Math.abs(oy)), edge = size / 2 - 4;
-      if (off > edge) { mx = Math.floor(x + size / 2 + ox * edge / off) + 0.5; my = Math.floor(y + size / 2 + oy * edge / off) + 0.5; r = 2; }
-      ctx.fillStyle = SPOT.key[1];
-      for (let a = 0; a < 6.283; a += 0.7 / r) ctx.fillRect(Math.round(mx + Math.cos(a) * r - 0.5), Math.round(my + Math.sin(a) * r - 0.5), 1, 1);
+      const [mx, my] = at(slab.cx + 0.5, slab.cy + 0.5), r = Math.max(1.5, slab.p / per);
+      // (Where its middle lies on the map: nothing beyond the map is marked at its edge.)
+      if (Math.max(Math.abs(mx - x - size / 2), Math.abs(my - y - size / 2)) <= size / 2 - 2) {
+        ctx.fillStyle = SPOT.key[1];
+        for (let a = 0; a < 6.283; a += 0.7 / r) ctx.fillRect(Math.round(mx + Math.cos(a) * r - 0.5), Math.round(my + Math.sin(a) * r - 0.5), 1, 1);
+      }
     }
     // Things seen and not yet taken, each a dot in its own colour.
     for (const [cell, , colour] of this.S.marks) {
@@ -2924,11 +2952,10 @@ export class Game {
       ctx.fillStyle = SPOT[what][1]; ctx.fillRect(Math.round(mx) - 1, Math.round(my) - 1, 2, 2);
     }
     // Pockets within reach that the drill has not been into: a pip each, in the pocket's own colour.
-    // (One that lies off the map is drawn at the map's edge, on the way to it.)
+    // (Only those that lie on the map: the map in the corner shows the drill's surroundings and nothing beyond.)
     for (const Z of this.pocketPips()) {
-      let [mx, my] = at(Z.cx + 0.5, Z.cy + 0.5);
-      const pox = mx - x - size / 2, poy = my - y - size / 2, poff = Math.max(Math.abs(pox), Math.abs(poy)), pedge = size / 2 - 3;
-      if (poff > pedge) { mx = x + size / 2 + pox * pedge / poff; my = y + size / 2 + poy * pedge / poff; }
+      const [mx, my] = at(Z.cx + 0.5, Z.cy + 0.5);
+      if (Math.max(Math.abs(mx - x - size / 2), Math.abs(my - y - size / 2)) > size / 2 - 2) continue;
       ctx.fillStyle = '#0c0a12'; ctx.fillRect(Math.round(mx) - 2, Math.round(my) - 2, 4, 4);
       ctx.fillStyle = rowOf(Z.row).pocket.pip ?? bright(rowOf(Z.row).map); ctx.fillRect(Math.round(mx) - 1, Math.round(my) - 1, 2, 2);
     }
@@ -3023,6 +3050,7 @@ export class Game {
       ['SPORES', this.val('sporedrive') ? `SPEED x${BOOST.by}` : 'KNOCK', this.val('sporedrive') > 0],
       ['ARCS', this.val('arccoil') ? 'MEND A PIP' : 'KNOCK', this.val('arccoil') > 0],
       ['HAUL PAY', `+${parts * 10}% (${parts}/8 PARTS)`, parts > 0],
+      ['PLACES MET', `${Object.keys(S.met).length}`],
       ['ANALYSED', known.length ? `${known.length}/${LAB.length}, UP TO +${best}%` : `0/${LAB.length}`, known.length > 0],
       ['SPECIMENS', [1, 2, 3, 4].map(k => this.specs(k)).join(' / ')],
       ['MAP', `${Math.round(this.val('maprange') * 46)} CELLS, ${MAPS[1].show(this.val('maplens'))}`, this.S.lv.maprange + this.S.lv.maplens > 0],
@@ -3130,7 +3158,10 @@ export class Game {
       // (A thing fitted once has no levels to show: it is FITTED or it is not.)
       const once = u.values.length === 2, steps = once ? (c ? '' : 'FITTED') : c ? `${u.show(u.values[l])}>${u.show(u.values[l + 1])}` : `${u.show(u.values[l])} MAX`;
       text(ctx, steps, px + 31 + textWidth(u.name), y + 2, c ? '#bfe6ff' : '#ffe14a');
-      if (c) {
+      const lack = c ? this.lacks(u) : null;
+      // What must be found first is said on the second line, and no price is shown until it has been.
+      if (lack) text(ctx, lack, px + 25, y + rh - 12, '#ff9a6a');
+      else if (c) {
         // The cost sits on the second line when the first is full. It is lit by what has come home (`banked`), as
         // the purchase itself is judged: never shown as enough while the tap would be refused.
         let cx = px + pw - 18;

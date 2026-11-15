@@ -87,21 +87,15 @@ const fails = [], check = (ok, what) => { if (!ok) fails.push(what); };
   };
   const grey = () => ring().n;
   check(S && S.keys.every(i => w.peek(i % N, Math.floor(i / N)) < 0), 'the first slab\'s keys are seen before the drill has been near them');
-  check(game.firstRing() === S && grey() >= 6, 'a new game has no ring on its map where the first slab lies');
-  // On the first reach (12) the slab lies four times as far out as the map shows: its ring is small, at the
-  // map's edge and inside it, on the way to the slab (seed 7's lies due south). On the fourth (72) the map shows
-  // the place itself, and the ring is the slab's own size there (8 cells of radius at 3.5 cells a pixel).
+  // The map in the corner shows the drill's surroundings, a cell and a half to a pixel, and nothing beyond them:
+  // from the core, 52 cells off, the slab has no ring on it (nothing is marked at the map's edge). Twelve cells
+  // north of the slab's middle the ring is the slab's own size, eight pixels below the map's middle; the rest of
+  // this is seen from there.
+  check(game.firstRing() === S && grey() === 0, `from the core the map marks the slab with ${grey()} pixels`);
+  game.drill.x = S.cx + 0.5; game.drill.y = S.cy - 11.5;
   {
-    const small = ring(), half = 23;
-    check(small.x1 - small.x0 === 4 && small.y1 - small.y0 === 4, `on the first reach the ring is ${small.x1 - small.x0 + 1} by ${small.y1 - small.y0 + 1} pixels`);
-    check(small.y1 < half && small.y0 > half - 8 && Math.abs(small.x0 + small.x1) <= 4, `on the first reach the ring is drawn at ${JSON.stringify(small)} from the map's middle, which is ${half} pixels from its edge`);
-    // (The map shows the ground near the drill, a cell and a half to a pixel. Twelve cells north of the slab's
-    // middle the ring is the slab's own size, eight pixels below the map's middle.)
-    const home = [game.drill.x, game.drill.y];
-    game.drill.x = S.cx + 0.5; game.drill.y = S.cy - 11.5;
     const there = ring(), wide = S.p / 1.5 * 2;
     check(Math.abs((there.x0 + there.x1) / 2) <= 1.5 && Math.abs((there.y0 + there.y1) / 2 - 8) <= 1.5 && Math.abs(there.y1 - there.y0 - wide) <= 2, `twelve cells north of the slab the ring is drawn at ${JSON.stringify(there)}, where the slab is ${wide.toFixed(1)} pixels across, 8 below the middle`);
-    [game.drill.x, game.drill.y] = home;
   }
   w.see(S.cx, S.cy, 14);
   check(S.keys.every(i => w.k(i) === K.KEY) && game.firstRing() === S, 'with its keys seen the first slab has no ring');
