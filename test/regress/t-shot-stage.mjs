@@ -9,7 +9,9 @@
 //   would, and nothing is woken without it; `bombs` gives the drill that level of BLAST and carves no room, and
 //   `blast` sets one charge off there; `key` stands the drill at the last key of the slab nearest, the other keys
 //   cut through, pushing into it, so that stepped half a second the cut's glow holds the whole slab and stepped two
-//   the slab hangs loose and the drill has let go; and stepped for three seconds, nothing
+//   the slab hangs loose and the drill has let go; `pocket` stands the drill inside the pocket nearest, in the lane
+//   beside the nugget at a hive's middle, with no room carved and the hive's amber left standing, and `haul` brings
+//   that many nuggets home from there, which banks their specimens; and stepped for three seconds, nothing
 //   has moved the drill, nothing is wrong with the tether, and the saved game is as it was.
 import { makeGame, tetherFaults, sight, C, N, K } from '../harness.mjs';
 
@@ -182,6 +184,29 @@ check(await open('', 'example.org') === undefined, 'away from localhost an ordin
   const none = await open('?shot&seed=7&at=3,36'), far = await open('?shot&seed=7&at=0,-300&key');
   check(none.shot.facts().key === null && none.game.world.firstSlab.keys.every(i => none.game.world.k(i) === K.KEY), 'a view staged without `key` cut keys');
   check(far.shot.facts().key === null && far.game.drill.y === C - 300 + 0.5 && far.game.input.auto === null, 'with no slab within reach of `at`, `key` staged something');
+}
+
+// `pocket` and `haul`: inside the west's first hive on seed 7, which lies at -205,-14.
+{
+  const t = await open('?shot&seed=7&at=-200,-10&pocket&met'), game = t.game, w = game.world, d = game.drill, f = t.shot.facts();
+  const Z = w.zoneOf(-2, -1), x = Math.floor(d.x), y = Math.floor(d.y);
+  check(f.pocket && f.pocket.at[0] === Z.cx - C && f.pocket.at[1] === Z.cy - C && f.pocket.ground === 'hive' && f.pocket.hauled === 0 && f.ground === 'hive', `staged with pocket: ${JSON.stringify(f.pocket)}, in ${f.ground}`);
+  check(Math.max(Math.abs(x - Z.cx), Math.abs(y - Z.cy)) === 3 && w.k(y * N + x) === K.EMPTY, `the drill stands ${x - Z.cx},${y - Z.cy} from the hive's middle`);
+  // The nugget at the middle stands, and no room was carved: wax or amber within two cells of the drill.
+  let amber = 0, near = 0;
+  for (let v = -1; v <= 1; v++) for (let u = -1; u <= 1; u++) if (w.k((Z.cy + v) * N + Z.cx + u) === K.MINERAL) amber++;
+  for (let v = -2; v <= 2; v++) for (let u = -2; u <= 2; u++) if (w.k((y + v) * N + x + u) !== K.EMPTY) near++;
+  check(amber === 9 && near > 0, `${amber} cells of the middle nugget stand, ${near} cells of ground within two of the drill`);
+  check(tetherFaults(game).length === 0, `the tether into the hive: ${tetherFaults(game).join('; ')}`);
+  t.advance(500);
+  check(game.place && game.place.title === 'AMBER HIVE' && game.place.card === false && game.place.mineral === 'amber' && game.S.spec.every(n => n === 0), `half a second on: ${JSON.stringify(game.place)}`);
+  const one = await open('?shot&seed=7&at=-200,-10&pocket&haul=1'), two = await open('?shot&seed=7&at=-200,-10&pocket&haul=2');
+  check(one.shot.facts().pocket.hauled >= 9 && one.shot.facts().pocket.hauled <= 11 && one.game.S.spec[3] === 2.25 && one.game.hauled.light && one.game.specLine, `staged with haul=1: ${JSON.stringify(one.shot.facts().pocket)}`);
+  check(two.shot.facts().pocket.hauled >= 18 && two.game.S.spec[3] === 4.5 && !two.game.hauled.light && two.game.banner && two.game.bannerSays(two.game.banner)[2] === '+4', `staged with haul=2: ${JSON.stringify(two.shot.facts().pocket)}`);
+  const none = await open('?shot&seed=7&at=0,-10&pocket&haul=1');
+  check(none.shot.facts().pocket === null && none.game.drill.y === C - 10 + 0.5 && none.game.hauled === null && none.game.S.spec.every(n => n === 0), 'with no pocket near `at`, `pocket` staged something');
+  const plain = await open('?shot&seed=7&at=-200,-10&haul=1');
+  check(plain.shot.facts().pocket === null && plain.game.S.spec.every(n => n === 0), '`haul` without `pocket` hauled something');
 }
 
 if (fails.length) { console.log(`FAIL: ${fails.join('\n      ')}`); process.exit(1); }

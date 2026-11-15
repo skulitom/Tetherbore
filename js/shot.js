@@ -1,5 +1,5 @@
 // A staged view of the world, for tools/shot.mjs to photograph and for looking at a far place by hand:
-//   index.html?shot&seed=7&at=0,-300&reach=6&zoom=4&lit&met&wake&bombs=3&blast&key
+//   index.html?shot&seed=7&at=0,-300&reach=6&zoom=4&lit&met&wake&bombs=3&blast&key&pocket&haul=1
 // js/main.js loads this file only when the address has `shot`; ordinary play never fetches it.
 //
 // The view is a fresh world on `seed` (7 if none is given). It reads no saved game and is never saved. The drill
@@ -21,6 +21,12 @@
 // drill stands in the crack beside that line, at the end of a tunnel from the core, pushing into it. Stepped a
 // little way (`tetherbore.advance(500)`), the cut is half made and its glow holds the whole slab; stepped for two
 // seconds, the slab hangs loose.
+// `pocket` stands the drill inside the pocket nearest `at` (within POCKET cells): in the open cell of its middle
+// that is nearest the core (of a hive, in the lane of the chamber at its middle, beside the nugget), at the end
+// of a tunnel from the core that stops short of the pocket and a way one cell wide bitten on from there; no room
+// is carved. `haul=n` then brings home the n nuggets of the pocket's mineral nearest the drill, as a loop drawn
+// round them would: one is a light haul, which says what it paid where it lay, and two have a banner; either
+// brings out the count of specimens under the top bar.
 //
 // The view is held still: `tetherbore.advance(ms)` steps it, `tetherbore.resume()` lets it play.
 import * as world from './world.js';
@@ -31,6 +37,43 @@ const ROOM = 2;                                 // the room is this many cells o
 const MOST = 8192;                              // the widest the zoomed canvas may be, in its own pixels
 const WAKE = 12;                                // how far from the drill a hazard to wake is looked for, in cells
 const KEY = 80;                                 // how far from `at` the middle of a slab to stage the last key of may lie
+const POCKET = 150;                             // and the middle of a pocket to stand the drill in
+
+// The pocket nearest (ax, ay) and where the drill may stand in it: { zone, at: [x, y] }, or null where none is
+// near. The place is the open cell nearest the core among those three cells from the pocket's middle (in a hive,
+// the lane of the middle chamber), or failing that among all the pocket's cells.
+function inPocket(game, ax, ay) {
+  const w = game.world, near = [];
+  for (let v = -2; v <= 2; v++) for (let u = -2; u <= 2; u++) near.push(w.zoneOf(Math.floor((ax - C) / world.ZONE) + u, Math.floor((ay - C) / world.ZONE) + v));
+  let Z = null;
+  for (const z of near) if (z && Math.hypot(z.cx - ax, z.cy - ay) <= POCKET && (!Z || Math.hypot(z.cx - ax, z.cy - ay) < Math.hypot(Z.cx - ax, Z.cy - ay))) Z = z;
+  if (!Z) return null;
+  let best = null;
+  for (const ring of [true, false]) {
+    const most = ring ? 3 : Math.ceil(Z.reach);
+    for (let v = -most; v <= most && !(best && !ring); v++) for (let u = -most; u <= most; u++) {
+      const x = Z.cx + u, y = Z.cy + v, far = Math.hypot(x - C, y - C);
+      if ((ring && Math.max(Math.abs(u), Math.abs(v)) !== 3) || w.b(y * N + x) !== Z.row || w.k(y * N + x) !== K.EMPTY) continue;
+      if (!best || far < best.far) best = { far, at: [x, y] };
+    }
+    if (best) break;
+  }
+  return best && { zone: Z, at: best.at };
+}
+// The cells of the `count` nuggets of a pocket's mineral that lie nearest the drill: each the cells of mineral
+// joined to one another and whatever special cells (a stalk) are joined to those.
+function nuggets(game, Z, count) {
+  const w = game.world, d = game.drill, seen = new Set(), found = [], most = Math.ceil(Z.reach);
+  for (let v = -most; v <= most; v++) for (let u = -most; u <= most; u++) {
+    const i = (Z.cy + v) * N + Z.cx + u;
+    if (seen.has(i) || w.b(i) !== Z.row || w.k(i) !== Z.mineral) continue;
+    const cells = [i];
+    seen.add(i);
+    for (const c of cells) for (const s of [1, N, -1, -N]) { const j = c + s, k = w.k(j); if (!seen.has(j) && w.b(j) === Z.row && (k === Z.mineral || k === K.NODE)) { seen.add(j); cells.push(j); } }
+    found.push({ cells, far: Math.hypot((i % N) + 1.5 - d.x, Math.floor(i / N) + 1.5 - d.y) });
+  }
+  return found.sort((a, b) => a.far - b.far).slice(0, count).flatMap(n => n.cells);
+}
 
 // The last key of the slab nearest (ax, ay): the others are cut through and this one cut down to one line of
 // cells across the crack. Returns { slab, at: [x, y] (the open cell of the crack the drill stands in), into: [x, y]
@@ -85,13 +128,17 @@ export function stage(game, query) {
   const zoom = Math.max(1, number('zoom', 1)), lit = query.has('lit') && query.get('lit') !== '0', met = query.has('met') && query.get('met') !== '0';
   const wake = query.has('wake') && query.get('wake') !== '0';
   const bombs = Math.max(0, Math.min(4, Math.floor(number('bombs', 0)))), blast = bombs > 0 && query.has('blast') && query.get('blast') !== '0';
+  const haul = Math.max(0, Math.min(9, Math.floor(number('haul', 0))));
 
   game.save = () => {};
   game.fresh(seed, true);
   // The last key of a slab: the drill's place is the crack beside it, wherever `at` was.
   const key = query.has('key') && query.get('key') !== '0' ? lastKey(game, C + dx, C + dy) : null;
   if (key) { dx = key.at[0] - C; dy = key.at[1] - C; }
-  const far = Math.hypot(dx, dy), least = reaches.findIndex(R => R >= far + (key ? key.slab.p * 2 + 6 : 8));
+  // Inside a pocket: likewise.
+  const pocket = !key && query.has('pocket') && query.get('pocket') !== '0' ? inPocket(game, C + dx, C + dy) : null;
+  if (pocket) { dx = pocket.at[0] - C; dy = pocket.at[1] - C; }
+  const far = Math.hypot(dx, dy), least = reaches.findIndex(R => R >= far + (key ? key.slab.p * 2 + 6 : pocket ? pocket.zone.reach * 2 : 8));
   const level = Math.max(0, Math.min(reaches.length - 1, Math.floor(number('reach', least < 0 ? reaches.length - 1 : least))));
   game.S.lv.tether = level; game.S.lv.bombs = bombs; game.bombs = bombs;
   game.daylight = lit;
@@ -100,12 +147,14 @@ export function stage(game, query) {
   if (dx || dy) {
     // (To a slab's last key the tunnel is one cell wide where it comes through the collar, and leaves the slab
     // and the key be; and there is no room.)
+    // (Into a pocket the tunnel is one cell wide from where it comes within three cells of the pocket's own.)
     for (let s = 0; s <= far; s += 0.5) for (let u = -1; u <= 1; u++) for (let v = -1; v <= 1; v++) {
       const x = C + Math.round(dx * s / far) + u, y = C + Math.round(dy * s / far) + v;
       if (key && ((u || v) && w.slabCell(key.slab, x, y) || key.line.has(y * N + x) || w.slabCell(key.slab, x, y) === 3)) continue;
+      if (pocket && (u || v) && Math.hypot(x - pocket.zone.cx, y - pocket.zone.cy) < pocket.zone.reach + 3) continue;
       w.setK(y * N + x, K.EMPTY);
     }
-    if (!bombs && !key) for (let v = -ROOM; v <= ROOM; v++) for (let u = -ROOM; u <= ROOM; u++) w.setK((C + dy + v) * N + C + dx + u, K.EMPTY);
+    if (!bombs && !key && !pocket) for (let v = -ROOM; v <= ROOM; v++) for (let u = -ROOM; u <= ROOM; u++) w.setK((C + dy + v) * N + C + dx + u, K.EMPTY);
     d.x = d.px = C + dx + 0.5; d.y = d.py = C + dy + 0.5; d.mode = 'free';
     game.band = [[d.x, d.y], [HX, HY]];
     game.changed();
@@ -137,6 +186,9 @@ export function stage(game, query) {
   // One charge, set off as a tap on the bomb sets it off.
   const opened = blast ? game.sifts(Math.floor(d.x), Math.floor(d.y)).length : 0;
   if (blast) game.blast();
+  // Nuggets of the pocket's mineral, brought home as a loop round them would bring them.
+  const hauled = pocket && haul ? nuggets(game, pocket.zone, haul) : [];
+  if (hauled.length) { w.see(Math.floor(d.x), Math.floor(d.y), 12); game.haul(hauled); game.changed(hauled); }
 
   let shown = 1;                                // the zoom as it came out: no canvas is made wider than MOST
   return {
@@ -165,6 +217,8 @@ export function stage(game, query) {
         cells: [Math.round(game.W / T), Math.round(game.H / T)], canvas: [game.W, game.H],
         biome: b, ground: world.BIOMES[b]?.name ?? `${b}`,
         loose: game.pieces.length, woke, bombs: game.bombs, opened,
+        // Inside a pocket: where its middle lies, its radius and its ground; and how many cells were hauled.
+        pocket: pocket && { at: [pocket.zone.cx - C, pocket.zone.cy - C], radius: pocket.zone.rho, ground: world.BIOMES[pocket.zone.row].name, hauled: hauled.length, specimens: game.S.spec },
         // The last key of a slab: where the slab lies and how big it is, the cell of key the drill pushes into,
         // and how many cells the glow of the cut in hand holds (0: no cut in hand).
         key: key && { slab: [key.slab.cx - C, key.slab.cy - C], radius: key.slab.p, into: [key.into[0] - C, key.into[1] - C], glow: game.drill.dig >= 0 && game.preview.length ? game.preview[0].cells.length : 0 },

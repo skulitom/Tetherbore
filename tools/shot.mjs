@@ -1,6 +1,6 @@
 // Photographs the game, so that ground and art can be judged by eye with no hand on a browser:
 //   node tools/shot.mjs <out.png> [--seed 7] [--at dx,dy] [--reach level] [--size 360x640] [--zoom n] [--frames n] [--lit] [--met] [--wake]
-//                                 [--bombs level] [--blast] [--key]
+//                                 [--bombs level] [--blast] [--key] [--pocket] [--haul n]
 //
 //   --at dx,dy    where the drill stands, in cells from the core: east and south are counted up, so 300 cells north
 //                 is `--at 0,-300`. Away from the core it stands in a small room at the end of a tunnel carved from
@@ -28,6 +28,13 @@
 //                 tools/slabs.mjs --where <seed>` lists them) every key is cut through but the one that faces the
 //                 core, and the drill stands in the crack beside what is left of that one, pushing into it.
 //                 `--frames 30`: the cut half made, its glow on the whole slab; 180: the slab hanging loose.
+//   --pocket      the drill stands inside the pocket nearest `--at` (within 150 cells; `node tools/zone-budget.mjs
+//                 --where <seed>` lists them): of a hive, in the lane of the chamber at its middle, beside the
+//                 nugget, at the end of a way one cell wide bitten in from the tunnel. `--frames 30` catches the
+//                 pocket's name as it comes up (with `--met`, on its plate, with its mineral).
+//   --haul n      with --pocket: the n nuggets of the pocket's mineral nearest the drill (1 to 9) are brought home
+//                 as a loop round them would bring them. One is a light haul, which says what it paid where it
+//                 lay; two have a banner. `--frames 20`: the count of specimens out under the top bar.
 //   --browser p   the Edge or Chrome to use, if the installed one is not to be.
 //
 // It serves this checkout on a free loopback port (static files, read only), opens `index.html?shot&...` in an
@@ -49,11 +56,11 @@ import { WORLD_R } from '../js/world.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
-const usage = 'node tools/shot.mjs <out.png> [--seed 7] [--at dx,dy] [--reach level] [--size 360x640] [--zoom n] [--frames n] [--lit] [--met] [--wake] [--bombs level] [--blast] [--key] [--browser path]';
+const usage = 'node tools/shot.mjs <out.png> [--seed 7] [--at dx,dy] [--reach level] [--size 360x640] [--zoom n] [--frames n] [--lit] [--met] [--wake] [--bombs level] [--blast] [--key] [--pocket] [--haul n] [--browser path]';
 const wrong = why => { console.error(`${why}\n  ${usage}`); process.exit(2); };
 
 // ---------------------------------------------------------------- what was asked for
-const options = { seed: '7', at: '0,0', reach: '', size: '360x640', zoom: '1', frames: '180', lit: false, met: false, wake: false, bombs: '0', blast: false, key: false, browser: '' };
+const options = { seed: '7', at: '0,0', reach: '', size: '360x640', zoom: '1', frames: '180', lit: false, met: false, wake: false, bombs: '0', blast: false, key: false, pocket: false, haul: '0', browser: '' };
 let out = null;
 for (let args = process.argv.slice(2), i = 0; i < args.length; i++) {
   const arg = args[i];
@@ -75,7 +82,8 @@ const whole = (name, least, most) => {
   return n;
 };
 const seed = whole('seed', 0, 2 ** 31 - 1), frames = whole('frames', 0, 36000), level = options.reach === '' ? null : whole('reach', 0, 9);
-const zoom = Number(options.zoom), bombs = whole('bombs', 0, 4);
+const zoom = Number(options.zoom), bombs = whole('bombs', 0, 4), haul = whole('haul', 0, 9);
+if (haul && !options.pocket) wrong('--haul brings home nuggets of the pocket the drill stands in: say --pocket too.');
 if (options.blast && !bombs) wrong('--blast sets off a charge of the level --bombs gives: say which, 1 to 4.');
 if (!(zoom >= 1 && zoom <= 64)) wrong(`--zoom is a number from 1 to 64, not ${options.zoom}.`);
 const at = options.at.split(',').map(Number), size = options.size.toLowerCase().split('x').map(Number);
@@ -219,6 +227,8 @@ async function take() {
   if (bombs) query.set('bombs', `${bombs}`);
   if (options.blast) query.set('blast', '1');
   if (options.key) query.set('key', '1');
+  if (options.pocket) query.set('pocket', '1');
+  if (haul) query.set('haul', String(haul));
   await page('Page.navigate', { url: `${origin}/index.html?${query}` });
   await processes();
   // The page says when the view is staged; if its scripts failed it never will, and what it said instead is told.
@@ -237,7 +247,7 @@ async function take() {
   if (told()) console.error(`The page complained:\n  ${told()}`);
   const narrowed = facts.zoom < zoom ? ` (zoom ${+facts.zoom.toFixed(2)}, not ${zoom}: no canvas is made wider than ${Math.max(...facts.canvas)} pixels)` : '';
   console.log(`seed ${facts.seed}: the drill ${compass(facts.at)}, in ${facts.ground} (ground ${facts.biome}), reach ${facts.reach} (level ${facts.level}); ${facts.cells[0]} x ${facts.cells[1]} cells in view${narrowed}`
-    + `${facts.lit ? ', lit' : ''}, ${facts.loose} loose piece${facts.loose === 1 ? '' : 's'} known${options.wake ? `, ${facts.woke ?? 'no hazard near to be'} woken` : ''}${options.key ? (facts.key ? `, at the last key of the slab at ${facts.key.slab} (radius ${facts.key.radius}), the cut's glow on ${facts.key.glow} cells` : ', no slab near to stand at the last key of') : ''}${bombs ? `, BLAST at level ${bombs}${options.blast ? `: one charge set off, ${facts.opened} cells opened` : ''}, ${facts.bombs} charge${facts.bombs === 1 ? '' : 's'} left` : ''}; ${frames} frame${frames === 1 ? '' : 's'}; ${png.readUInt32BE(16)} x ${png.readUInt32BE(20)} pixels`);
+    + `${facts.lit ? ', lit' : ''}, ${facts.loose} loose piece${facts.loose === 1 ? '' : 's'} known${options.wake ? `, ${facts.woke ?? 'no hazard near to be'} woken` : ''}${options.key ? (facts.key ? `, at the last key of the slab at ${facts.key.slab} (radius ${facts.key.radius}), the cut's glow on ${facts.key.glow} cells` : ', no slab near to stand at the last key of') : ''}${options.pocket ? (facts.pocket ? `, inside the ${facts.pocket.ground} at ${facts.pocket.at} (radius ${+facts.pocket.radius.toFixed(1)})${haul ? `, ${facts.pocket.hauled} cells hauled, specimens ${JSON.stringify(facts.pocket.specimens)}` : ''}` : ', no pocket near to stand in') : ''}${bombs ? `, BLAST at level ${bombs}${options.blast ? `: one charge set off, ${facts.opened} cells opened` : ''}, ${facts.bombs} charge${facts.bombs === 1 ? '' : 's'} left` : ''}; ${frames} frame${frames === 1 ? '' : 's'}; ${png.readUInt32BE(16)} x ${png.readUInt32BE(20)} pixels`);
   console.log(out);
 }
 
