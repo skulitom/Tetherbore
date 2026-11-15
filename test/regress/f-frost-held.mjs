@@ -14,9 +14,9 @@ rect(game, 16, -8, 16, -3, K.SOFT);                      // its stem, up to the 
 game.changed();
 const go = pts => { for (const [x, y] of pts) if (flyTo(game, x, y) < 0) throw new Error(`never reached ${x},${y} from ${where(game)}`); };
 go([[9, 0], [13, -5], [16, -5]]);                        // cut the stem at (16,-5) from the west
+const piece = game.pieces[0].slice();                    // registered by the cut
 go([[13, -5], [12, 6]]);                                 // away to a far corner of the cavern
 idle(game, 32);
-const piece = game.pieces[0].slice();
 const before = { stemIsIceNow: w.k(at(16, -5)) === K.ICE, registered: game.pieces.map(p => p.length), registeredPieceIsLoose: isLoose(game, piece), cutsSoFar: 1 };
 console.log(JSON.stringify(before));
 go([[21, 4], [21, -5]]);                                 // under the block and up its far side: nothing is cut
@@ -24,6 +24,6 @@ idle(game, 1);
 const after = { drill: where(game), band: bandRel(game), hauls: game.S.stats.hauls, banner: game.banner && { n: game.banner.n, grit: game.banner.grit },
   blockCellsLeft: piece.filter(i => w.k(i)).length, iceLeftHangingFromTheRoof: w.k(at(16, -5)) === K.ICE };
 console.log(JSON.stringify(after));
-const bad = !before.registeredPieceIsLoose && after.hauls === 1;
+const bad = (before.registered.length > 0 && !before.registeredPieceIsLoose) || after.hauls === 1;
 console.log(bad ? 'DEFECT: ground frozen back on to the roof is still counted loose, and is hauled while it is held' : 'no defect');
 process.exit(bad ? 1 : 0);

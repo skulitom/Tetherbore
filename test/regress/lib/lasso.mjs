@@ -8,10 +8,13 @@ export const rel = i => [(i % N) - C, Math.floor(i / N) - C];
 export function rect(game, x0, y0, x1, y1, kind, biome) {
   for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { game.world.setK(at(x, y), kind); if (biome !== undefined) game.world.setB(at(x, y), biome); }
 }
-// A solid block of soft ground round the core with the core's own 5 x 5 left open, and everything seen.
+// A solid block of soft ground round the core with the core's own 5 x 5 left open, and everything seen. The first
+// loose piece beside the core is buried by it, so the game is told it has no loose pieces: ground laid by hand goes
+// round `changed`, which is how the game hears of ground that grows.
 export function arena(game, r = 30, kind = K.SOFT, biome = B.CRUST) {
   rect(game, -r, -r, r, r, kind, biome);
   rect(game, -2, -2, 2, 2, K.EMPTY);
+  game.pieces = [];
   game.world.see(C, C, r + 2);
 }
 // Make the game's own randomness repeatable (it only dresses effects and rubble).

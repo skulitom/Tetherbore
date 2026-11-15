@@ -37,7 +37,7 @@ const lasso = game => {
   return `known loose pieces ${game.pieces.length}, hauls ${game.S.stats.hauls}, block ${game.world.k(at(0, 9)) === K.EMPTY ? 'reeled in' : 'still there'}, bends ${game.band.length - 2}, drill ${game.far.toFixed(1)} cells from the core`;
 };
 const first = await stage();
-console.log(`before a reload: the game knows ${first.pieces.length} loose piece(s), ${first.looseSet.has(at(0, 9)) ? 'the block among them' : 'not the block'}`);
+console.log(`before a reload: the game knows ${first.pieces.length} loose piece(s), ${first.pieceOf.has(at(0, 9)) ? 'the block among them' : 'not the block'}`);
 first.save();
 await new Promise(r => setTimeout(r, 20));
 console.log(`  flown round the block without a reload:  ${lasso(await stage())}`);
@@ -45,7 +45,7 @@ const canvas = { width: 0, height: 0, style: {}, getContext: () => new Proxy({},
 const again = new Game(canvas);
 const ok = await again.restore();
 again.resize(360, 640, 1);
-console.log(`restore() returned ${ok}; the block is ${again.world.k(at(0, 9)) === K.EMPTY ? 'gone' : 'in the ground as saved'}; the game knows ${again.pieces.length} loose piece(s), ${again.looseSet.has(at(0, 9)) ? 'the block among them' : 'not the block'}`);
+console.log(`restore() returned ${ok}; the block is ${again.world.k(at(0, 9)) === K.EMPTY ? 'gone' : 'in the ground as saved'}; the game knows ${again.pieces.length} loose piece(s), ${again.pieceOf.has(at(0, 9)) ? 'the block among them' : 'not the block'}`);
 const told = lasso(again);
 console.log(`  flown round the block after the reload:  ${told}`);
 process.exit(again.world.k(at(0, 9)) === K.EMPTY ? 0 : 1);

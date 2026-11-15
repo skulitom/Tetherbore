@@ -1,6 +1,8 @@
 // A far wreck fetched along a staircase corridor (as if dug before): out, right round the wreck, and home the same
-// way. How long does the frame of the homecoming take, and why?
-//   node test/hunt/lasso/far-wreck.mjs [seed] [which wreck] [cells per stair]
+// way. How long does the frame of the homecoming take, and why? Fails when the part is not fetched, or when a
+// frame of coming home (the first, or any of three later hops out and back) looks at more than 300,000 cells of
+// ground: the old search flooded the mainland from every bend, 400,000 cells a flood.
+//   node test/regress/g-far-wreck.mjs [seed] [which wreck] [cells per stair]
 import { makeGame } from '../harness.mjs';
 import { fixRandom, flyTo, idle, where, bandRel, at, rect, C, N, K } from './lib/lasso.mjs';
 
@@ -15,14 +17,15 @@ for (let n = 1; n <= steps; n++) { const x = Math.round(ex * n / steps), y = Mat
 for (let n = 1; n < pts.length; n++) rect(game, Math.min(pts[n - 1][0], pts[n][0]), Math.min(pts[n - 1][1], pts[n][1]), Math.max(pts[n - 1][0], pts[n][0]), Math.max(pts[n - 1][1], pts[n][1]), K.EMPTY);
 rect(game, -2, -2, 2, 2, K.EMPTY);
 game.changed();
-let calls = 0, inside = 0, cellsFlooded = 0;
+let calls = 0, inside = 0, looked = 0, lookedMost = 0;
+const kind = w.k; w.k = function (i) { looked++; return kind.call(this, i); };
 const real = w.pieceIn.bind(w);
 w.pieceIn = (...a) => { const t = performance.now(), r = real(...a); inside += performance.now() - t; calls++; return r; };
 let worst = 0, worstAt = '', frame = 0, phase = 'out';
 const each = () => {};
 const fly = (x, y, tol = 0.2) => { const d = game.drill, tx = C + x + 0.5, ty = C + y + 0.5;
   for (let f = 0; f < 40000; f++) { const dx = tx - d.x, dy = ty - d.y, far = Math.hypot(dx, dy); if (far < tol && d.mode === 'free') return; game.input.auto = [dx / far, dy / far, far > 3 ? 1 : Math.max(0.55, far / 3)];
-    const t = performance.now(); game.update(1 / 60); const ms = performance.now() - t; frame++; if (ms > worst) { worst = ms; worstAt = `${phase}, frame ${frame}, drill ${where(game)}, hauls ${game.S.stats.hauls}`; } }
+    const l0 = looked, t = performance.now(); game.update(1 / 60); const ms = performance.now() - t; frame++; if (phase === 'homecoming' || phase === 'hop home') lookedMost = Math.max(lookedMost, looked - l0); if (ms > worst) { worst = ms; worstAt = `${phase}, frame ${frame}, drill ${where(game)}, hauls ${game.S.stats.hauls}`; } }
   throw new Error(`never reached ${x},${y} from ${where(game)} (${phase})`); };
 for (const [x, y] of pts.slice(1)) fly(x, y);
 phase = 'round the wreck';
@@ -45,4 +48,5 @@ for (let n = 0; n < 3; n++) {
 worst = first;
 console.log(JSON.stringify({ laterHopsOutAndHome: again, partAfterHops: game.S.wrecks[which] }));
 console.log(JSON.stringify({ seed, wreck: [wx, wy], corners: pts.length - 2, framesFlown: frame, worstFrameGoingOutMs: Math.round(outWorst), worstFrameComingBackMs: Math.round(backWorst),
-  bendsOnTheTetherNearHome: bendsNearHome, worstHomecomingFrameMs: Math.round(worst), at: worstAt, pieceInCalls: firstCalls, msInsidePieceIn: firstInside, partHeld: partFirst, hauls: haulsFirst, tetherPointsAfter: game.band.length }));
+  bendsOnTheTetherNearHome: bendsNearHome, mostCellsLookedAtInAHomecomingFrame: lookedMost, worstHomecomingFrameMs: Math.round(worst), at: worstAt, pieceInCalls: firstCalls, msInsidePieceIn: firstInside, partHeld: partFirst, hauls: haulsFirst, tetherPointsAfter: game.band.length }));
+process.exit(!game.S.wrecks[which] || lookedMost > 300000 ? 1 : 0);

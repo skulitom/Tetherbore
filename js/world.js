@@ -13,6 +13,10 @@ export const HARD = [0, 99, 99, 1, 1, 1, 1, 1, 1, 1, 99, 1, 1, 1, 99];
 export const GRIT = [0, 0, 0, 1, 2, 2, 4, 4, 10, 3, 0, 0, 1, 0, 0];
 export const GEMS = [0, 0, 0, 0, 0, 1, 5, 0, 0, 2, 0, 0, 0, 0, 0];
 export const DX = [1, 0, -1, 0], DY = [0, 1, 0, -1];
+// The cell next to a cell on each side, as steps of its number: east, south, west, north (as DX, DY). And how far
+// `freed` walks outlines: OUTLINE sides round the last flood left going, to see whether it is an island, and JOIN
+// sides from each flood before any flooding, to see which of them are one piece of ground.
+const STEP = [1, N, -1, -N], OUTLINE = 600, JOIN = 4000;
 // Plain home ground runs out to HOME_R before any direction's ground begins; the flanks turn strange past DEEP_R;
 // what each direction hides lies RELIC_R out; the world ends at WORLD_R.
 export const HOME_R = 130, DEEP_R = 900, RELIC_R = 2000, WORLD_R = 2400;
@@ -170,48 +174,119 @@ export class World {
   solid(x, y) { return this.k(y * N + x) !== K.EMPTY; }
   lavaAt(i) { return this.lava.get(i) ?? 0; }
 
-  // The ground that hangs on nothing once cell `i` is open (or would, were it cut): each neighbouring piece is
-  // followed until it proves larger than `limit` cells or to reach the world's edge. A list of pieces, each a list
-  // of cells.
-  freed(i, limit = 700) {
-    // Every piece of ground beside the cell is flooded at once, a cell each in turn. Floods that meet are one piece.
-    // One that runs out is cut off; the last one still going is the rest of the world and need not be finished, so
-    // the work is in proportion to the piece cut off, however large, and next to nothing when nothing is.
-    const owner = new Map([[i, -1]]), parent = [], queues = [], heads = [], held = [];
-    const find = g => { while (parent[g] !== g) g = parent[g] = parent[parent[g]]; return g; };
-    for (const start of [i + 1, i - 1, i + N, i - N]) {
-      if (this.k(start) === K.EMPTY || owner.has(start)) continue;
-      owner.set(start, parent.length); parent.push(parent.length); queues.push([start]); heads.push(0); held.push(false);
+  // An outline is walked a side at a time, the ground always on the same hand. A side is a cell of ground and which
+  // of its sides faces open ground (0 east, 1 south, 2 west, 3 north), held as one number: the cell's, times four,
+  // plus the side. This is the side after `at`. Ground counts as joined along sides only, never across a corner.
+  // `gone` is a set of cells to take as open.
+  along(at, gone = null) {
+    const c = at >> 2, f = at & 3, r = (f + 1) & 3, a = c + STEP[r], b = a + STEP[f];
+    if ((gone !== null && gone.has(a)) || this.k(a) === K.EMPTY) return c * 4 + r;                    // round this cell's own corner
+    if ((gone !== null && gone.has(b)) || this.k(b) === K.EMPTY) return a * 4 + f;                    // straight on, along the next cell
+    return b * 4 + ((f + 3) & 3);                                                                     // into an inside corner
+  }
+  // Whether the ground a cell belongs to is an island: ground that hangs on nothing. `s` is a cell of ground and
+  // `d` the side of it that faces open ground. Its outline is walked from there (`along`). An outline that comes
+  // back to where it began having turned outward four times more than inward is the outside of a piece, so the
+  // piece is an island, whatever its area: the work is in proportion to the outline, not to the ground inside it.
+  // One that runs to `most` sides without closing, touches the world's bedrock, or closes the other way round (the
+  // wall of a hollow, with the ground on its outside) is not known to be one.
+  // `walked`, kept between calls, holds the sides of outlines that were not an island's, so none is walked twice.
+  island(s, d, most, gone = null, walked = null) {
+    if ((gone !== null && gone.has(s)) || this.k(s) === K.EMPTY) return false;
+    if (!(gone !== null && gone.has(s + STEP[d])) && this.k(s + STEP[d]) !== K.EMPTY) return false;
+    const first = s * 4 + d;
+    for (let n = 0, at = first, turns = 0; n < most; n++) {
+      if (walked !== null) { if (walked.has(at)) return false; walked.add(at); }
+      const next = this.along(at, gone);
+      // The side turns outward (+1), goes straight on (0) or turns inward (-1).
+      turns += (((next & 3) - (at & 3) + 1) & 3) - 1;
+      at = next;
+      if (this.k(at >> 2) === K.BEDROCK) return false;
+      if (at === first) return turns === 4;
     }
-    for (let spent = 0; ;) {
-      const going = new Set(), all = new Set();
-      for (let q = 0; q < queues.length; q++) { const root = find(q); all.add(root); if (!held[root] && heads[q] < queues[q].length) going.add(root); }
-      if (!going.size || (going.size === 1 && all.size === 1)) break;
-      if (going.size === 1 && [...all].every(root => going.has(root) || !held[root])) { held[[...going][0]] = true; break; }
-      if (spent > limit) { for (const root of going) held[root] = true; break; }
-      for (let q = 0; q < queues.length; q++) {
-        if (heads[q] >= queues[q].length || held[find(q)]) continue;
-        const c = queues[q][heads[q]++];
-        spent++;
-        for (const j of [c + 1, c - 1, c + N, c - N]) {
-          const o = owner.get(j);
-          if (o !== undefined) {
-            if (o >= 0 && find(o) !== find(q)) { const a = find(o), b = find(q); parent[a] = b; held[b] = held[b] || held[a]; }
-            continue;
-          }
-          const kind = this.k(j);
-          if (kind === K.EMPTY) continue;
-          if (kind === K.BEDROCK) { held[find(q)] = true; continue; }
-          owner.set(j, q); queues[q].push(j);
-        }
+    return false;
+  }
+  // The ground that hangs on nothing once `cells` are open (or would, were they cut): one cell or a list of cells
+  // opened together, which need not be open in the world yet. `open` is a set of further cells to take as open.
+  // A list of pieces, each a list of cells.
+  //
+  // Every piece of ground beside an opened cell is flooded at once, a cell each in turn. Floods that meet are one
+  // piece. One that runs out is cut off: an island, and it is returned. One that touches bedrock, or grows past
+  // `limit` cells of its own, is held. The last one still going, with nothing beside it known to be held, is the
+  // rest of the world and need not be finished, so the work is in proportion to what is cut off, however large,
+  // and next to nothing when nothing is. But it may be an island too (the only ground beside the cut, or the other
+  // half of a piece cut in two), so its outline is walked a little way first (`island`); if that closes it is
+  // followed to its end like any other.
+  //
+  // Before any flooding the floods' outlines are walked, a side each in turn, from the sides that face the opened
+  // cells. An outline that comes to another flood's side is the same ground, so the two are one from the start. That
+  // is known for the length of the wall between them, not the ground behind it: a cut that breaks through into a
+  // cave has the same ground on both sides of it, joined only round the cave, and two floods would each have to
+  // fill a great deal of the world before they met.
+  freed(cells, limit = 700, open = null) {
+    const opened = typeof cells === 'number' ? [cells] : cells, gone = new Set(opened);
+    if (open) for (const j of open) gone.add(j);
+    // Of each flood: the cells found, how many have been followed, the side its first cell turns to an opened cell.
+    // Of each piece (a flood, or several that met): whether it is held, its cells, and how many are yet to follow.
+    const owner = new Map(), parent = [], queues = [], heads = [], face = [], held = [], size = [], left = [];
+    const find = g => { while (parent[g] !== g) g = parent[g] = parent[parent[g]]; return g; };
+    for (const i of opened) for (let s = 0; s < 4; s++) {
+      const start = i + STEP[s];
+      if (gone.has(start) || owner.has(start)) continue;
+      const kind = this.k(start);
+      if (kind === K.EMPTY) continue;
+      owner.set(start, parent.length); parent.push(parent.length); queues.push([start]); heads.push(0); face.push((s + 2) & 3);
+      held.push(kind === K.BEDROCK); size.push(1); left.push(1);
+    }
+    if (parent.length > 1) {
+      const sides = new Map(), at = queues.map((cells, q) => cells[0] * 4 + face[q]);
+      for (let q = 0; q < at.length; q++) sides.set(at[q], q);
+      for (let n = 0, apart = at.length; n < JOIN && apart > 1; n++) for (let q = 0; q < at.length && apart > 1; q++) {
+        if (at[q] < 0) continue;
+        at[q] = this.along(at[q], gone);
+        const o = sides.get(at[q]);
+        if (o === q) at[q] = -1;                                      // all the way round: nothing more to meet
+        else if (o !== undefined && find(o) !== find(q)) { const a = find(o), b = find(q); parent[a] = b; held[b] = held[b] || held[a]; size[b] += size[a]; left[b] += left[a]; apart--; }
       }
     }
-    // What ran out is cut off. What was still going (everything met, so nothing was split) or was held is not.
-    const pieces = new Map(), open = new Set();
-    for (let q = 0; q < queues.length; q++) if (heads[q] < queues[q].length) open.add(find(q));
+    for (let sure = -1; ;) {
+      let going = 0, last = -1, anyHeld = false;
+      for (let q = 0; q < parent.length; q++) {
+        if (parent[q] !== q) continue;
+        if (held[q]) anyHeld = true; else if (left[q] > 0) { going++; last = q; }
+      }
+      if (!going) break;
+      if (going === 1 && !anyHeld && sure !== last) {
+        if (!this.island(queues[last][0], face[last], OUTLINE, gone)) { held[last] = true; break; }
+        sure = last;
+      }
+      for (let q = 0; q < queues.length; q++) {
+        if (heads[q] >= queues[q].length) continue;
+        let root = find(q);
+        if (held[root]) continue;
+        const c = queues[q][heads[q]++];
+        left[root]--;
+        for (let s = 0; s < 4; s++) {
+          const j = c + STEP[s], o = owner.get(j);
+          if (o !== undefined) {
+            const other = find(o);
+            if (other !== root) { parent[other] = root; held[root] = held[root] || held[other]; size[root] += size[other]; left[root] += left[other]; }
+            continue;
+          }
+          if (gone.has(j)) continue;
+          const kind = this.k(j);
+          if (kind === K.EMPTY) continue;
+          if (kind === K.BEDROCK) { held[root] = true; continue; }
+          owner.set(j, q); queues[q].push(j); size[root]++; left[root]++;
+        }
+        if (size[root] > limit) held[root] = true;
+      }
+    }
+    // What ran out is cut off. What was held, or still going when the rest was settled, is not.
+    const pieces = new Map();
     for (let q = 0; q < queues.length; q++) {
       const root = find(q);
-      if (held[root] || open.has(root)) continue;
+      if (held[root] || left[root] > 0) continue;
       if (!pieces.has(root)) pieces.set(root, []);
       const into = pieces.get(root);
       for (const c of queues[q]) into.push(c);

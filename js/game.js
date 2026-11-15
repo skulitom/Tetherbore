@@ -105,7 +105,8 @@ export class Game {
     this.W = 180; this.H = 320;
     this.time = 0;
     this.input = { id: null, ax: 0, ay: 0, px: 0, py: 0, vx: 0, vy: 0, m: 0, keys: new Set(), auto: null };
-    this.band = []; this.pieces = []; this.loose = []; this.looseSet = new Set(); this.preview = []; this.under = new Set();
+    this.band = []; this.pieces = []; this.loose = []; this.pieceOf = new Map(); this.preview = []; this.under = new Set();
+    this.taken = []; this.walked = new Set(); this.boxes = new WeakMap(); this.cuts = 0; this.homeKey = '';
     this.effects = []; this.popups = []; this.hauls = []; this.clouds = []; this.sparks = new Map(); this.lavaVol = new Map(); this.frostOpen = [];
     this.parts = []; this.rings = []; this.motes = []; this.gloom = [10, 8, 7]; this.flash = 0; this.counted = 0; this.chime = 3; this.clock = 0;
     this.shake = 0; this.twang = 0; this.edge = 0; this.hurt = 0; this.coreFlash = 0; this.banner = null; this.shop = false; this.shopRise = 0; this.confirmReset = 0;
@@ -131,8 +132,9 @@ export class Game {
     this.bombs = this.val('bombs');
     this.cam = { x: HX * T, y: HY * T };
     this.band = [[HX, HY], [HX, HY]];
-    this.pieces = [];
+    this.pieces = []; this.pieceOf = new Map(); this.loose = []; this.taken.length = 0; this.homeKey = '';
     w.see(C, C, this.val('scanner') + 4);
+    // The first piece, beside the core, lies loose from the start: the open cell between them tells of it.
     this.changed([C * N + C + 3]);
     this.shop = false;
   }
@@ -351,7 +353,11 @@ export class Game {
         }
       }
       const got = this.caught(pivot, cur, target, n + 2 < P.length && P[n + 2][4] !== undefined ? [P[n + 2][4]] : []);
-      if (got.length) P.splice(n + 1, 0, ...got.reverse()); else if (lift) P.splice(n + 1, 1);
+      if (got.length) {
+        P.splice(n + 1, 0, ...got.reverse());
+        // Ground the string has newly come to lie against is looked at soon, in case it is loose (`discover`).
+        for (const b of got) if (this.taken.length < 64) this.taken.push(b);
+      } else if (lift) P.splice(n + 1, 1);
       cur = target;
       if (!lift) break;
     }
@@ -412,37 +418,100 @@ export class Game {
       return [b[0] + ux / len * m, b[1] + uy / len * m];
     });
   }
-  // After the ground changed: which pieces lie loose, how the tether settles, what the next cut would free.
-  // `touched` is the cells that were opened.
-  changed(touched = []) {
-    const w = this.world;
-    this.version++;
+  // After the ground changed: which pieces lie loose, and how the tether settles. `opened` is every cell that was
+  // opened together (a cut and what burst beside it, a blast, a haul), `closed` every cell that grew back. Called
+  // with neither, the ground was changed by other hands and every loose piece is looked over.
+  //
+  // `pieces` is the loose pieces, each a list of cells; `pieceOf` says of every loose cell which piece it is in;
+  // `loose` is all their cells in one list, for drawing.
+  changed(opened = [], closed = []) {
+    const w = this.world, was = this.pieceOf;
+    const index = list => { const of = new Map(); for (const cells of list) for (const c of cells) of.set(c, cells); return of; };
+    this.version++; this.cuts++;
+    this.walked.clear();
     // A loose piece that has been cut into is whatever is left of it, which may be several pieces now.
-    const was = this.looseSet, pieces = [];
-    for (const cells of this.pieces) {
-      if (cells.every(i => w.k(i) !== K.EMPTY)) { pieces.push(cells); continue; }
-      const left = new Set(cells.filter(i => w.k(i) !== K.EMPTY));
-      for (const start of left) {
-        const part = [start];
-        left.delete(start);
-        for (let head = 0; head < part.length; head++) for (const j of [part[head] + 1, part[head] - 1, part[head] + N, part[head] - N]) if (left.delete(j)) part.push(j);
-        pieces.push(part);
+    const all = !opened.length && !closed.length, hit = new Set();
+    for (const i of opened) { const piece = was.get(i); if (piece) hit.add(piece); }
+    let pieces = this.pieces, set = was;
+    if (all || hit.size) {
+      pieces = [];
+      for (const cells of this.pieces) {
+        if (!(all || hit.has(cells)) || cells.every(i => w.k(i) !== K.EMPTY)) { pieces.push(cells); continue; }
+        const left = new Set(cells.filter(i => w.k(i) !== K.EMPTY));
+        for (const start of left) {
+          const part = [start];
+          left.delete(start);
+          for (let head = 0; head < part.length; head++) for (const j of [part[head] + 1, part[head] - 1, part[head] + N, part[head] - N]) if (left.delete(j)) part.push(j);
+          pieces.push(part);
+        }
       }
+      set = index(pieces);
     }
-    this.pieces = pieces;
-    this.looseSet = new Set(pieces.flat());
-    // A cut into ground that was held may have cut a piece off, of any size.
-    for (const i of touched) {
-      if (was.has(i)) continue;
-      for (const cells of w.freed(i, 120000)) {
-        if (this.looseSet.has(cells[0])) continue;
-        this.pieces.push(cells);
-        for (const c of cells) this.looseSet.add(c);
+    // Ground that grew back against a loose piece (ice over a cut, basalt, moss) may have joined it to ground that
+    // is held, or to another piece. Each piece so touched is followed afresh: what it now belongs to takes its
+    // place if that still hangs on nothing, and it is loose no longer if not.
+    if (closed.some(j => set.has(j + 1) || set.has(j - 1) || set.has(j + N) || set.has(j - N))) {
+      const grown = new Set(closed), kept = [], done = new Set();
+      for (const cells of pieces) {
+        if (done.has(cells[0])) continue;                    // grown on to a piece followed before it: part of that
+        if (!cells.some(i => grown.has(i + 1) || grown.has(i - 1) || grown.has(i + N) || grown.has(i - N))) { kept.push(cells); continue; }
+        const whole = w.pieceIn(cells[0], -Infinity, -Infinity, Infinity, Infinity, set.size + closed.length + 64);
+        if (!whole) continue;
+        for (const c of whole) done.add(c);
+        kept.push(whole);
       }
+      pieces = kept;
+      set = index(pieces);
     }
-    this.loose = this.pieces.flat();
+    // A cut into ground that was held may have cut a piece off, of any size. All the cells opened together are
+    // asked about at once: a piece is cut off by them all, not by any one.
+    const cut = opened.filter(i => !was.has(i));
+    if (cut.length) for (const cells of w.freed(cut, 120000)) {
+      // Known already, cell for cell: nothing new.
+      if (cells.every(c => set.has(c))) continue;
+      // It takes in ground that was known as loose: that is part of this piece now.
+      if (cells.some(c => set.has(c))) { const now = new Set(cells); pieces = pieces.filter(p => !now.has(p[0])); }
+      if (pieces === this.pieces) pieces = pieces.slice();
+      pieces.push(cells);
+      for (const c of cells) set.set(c, cells);
+    }
+    if (pieces !== this.pieces) { this.pieces = pieces; this.pieceOf = set; this.loose = pieces.flat(); }
     this.retighten();
+    this.discover(this.taken.splice(0), 600, this.walked);
     this.reelIfRound();
+  }
+  // Ground the tether lies against that hangs on nothing, though nobody knew it: a wreck in its hollow, a rock
+  // standing free in a cavern, a piece cut loose before the game was loaded. The ground of each of these bends is
+  // looked at by walking its outline, `most` sides at the most (`World.island`), and an island is taken in among the
+  // loose pieces, no more than `limit` cells of it. `walked` is shared between looks while the ground stays as it
+  // is, so the same wall is not walked again for every bend on it. Returns whether anything was found.
+  discover(bends, most, walked, limit = 120000) {
+    const w = this.world;
+    let found = false;
+    for (const b of bends) {
+      const i = b[3];
+      if (i === undefined || this.pieceOf.has(i) || w.k(i) === K.EMPTY) continue;
+      // The side of the bend's cell that faces open ground, beside its corner.
+      const east = b[4] & 1, south = (b[4] >> 1) & 1;
+      const face = w.k(i + (east ? 1 : -1)) === K.EMPTY ? (east ? 0 : 2) : w.k(i + (south ? N : -N)) === K.EMPTY ? (south ? 1 : 3) : -1;
+      if (face < 0 || !w.island(i, face, most, null, walked)) continue;
+      const cells = w.pieceIn(i, -Infinity, -Infinity, Infinity, Infinity, limit);
+      if (!cells) continue;
+      this.pieces.push(cells); found = true;
+      for (const c of cells) this.pieceOf.set(c, cells);
+    }
+    if (found) this.loose = this.pieces.flat();
+    return found;
+  }
+  // The box a piece lies in, [x0, y0, x1, y1], worked out once for each.
+  boxOf(cells) {
+    let box = this.boxes.get(cells);
+    if (!box) {
+      box = [Infinity, Infinity, -Infinity, -Infinity];
+      for (const i of cells) { const x = i % N, y = Math.floor(i / N); if (x < box[0]) box[0] = x; if (y < box[1]) box[1] = y; if (x > box[2]) box[2] = x; if (y > box[3]) box[3] = y; }
+      this.boxes.set(cells, box);
+    }
+    return box;
   }
   // A loose piece is lassoed once the tether has gone far enough round it that the straight way home would close
   // the loop: it is reeled in there and then.
@@ -459,11 +528,34 @@ export class Game {
       }
       return turns;
     };
-    // Everything the tether is round goes in as one haul.
-    const round = this.pieces.filter(cells => cells.every(i => winds((i % N) + 0.5, Math.floor(i / N) + 0.5) !== 0));
-    if (!round.length) return;
-    this.haul(round.flat());
-    this.changed();
+    const inside = i => winds((i % N) + 0.5, Math.floor(i / N) + 0.5) !== 0;
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, crossed = null;
+    for (const p of pts) { if (p[0] < x0) x0 = p[0]; if (p[1] < y0) y0 = p[1]; if (p[0] > x1) x1 = p[0]; if (p[1] > y1) y1 = p[1]; }
+    // Everything the tether is round goes in as one haul: every piece all of whose cells are wound.
+    //
+    // The tether itself never passes between two cells of one piece, so by the tether alone the whole of a piece is
+    // wound alike. Only the straight line home can divide a piece, and it does so only between cells it runs
+    // through or beside. So a piece is wound whole when its first cell is, and with it every cell of the piece that
+    // the line home runs through and every neighbour of those: nothing else is asked about, however large the piece.
+    // A piece whose box lies clear of the tether's is not asked about at all.
+    const round = this.pieces.filter(cells => {
+      const box = this.boxOf(cells);
+      if (box[0] > x1 || box[2] + 1 < x0 || box[1] > y1 || box[3] + 1 < y0 || !inside(cells[0])) return false;
+      if (crossed === null) {
+        crossed = new Map();
+        for (const c of cellsAlong(HX, HY, pts[0][0], pts[0][1])) { const piece = this.pieceOf.get(c); if (piece) { if (!crossed.has(piece)) crossed.set(piece, []); crossed.get(piece).push(c); } }
+      }
+      for (const c of crossed.get(cells) ?? []) {
+        if (!inside(c)) return false;
+        for (const j of [c + 1, c - 1, c + N, c - N]) if (this.pieceOf.get(j) === cells && !inside(j)) return false;
+      }
+      return true;
+    });
+    // No cell is ever handed over twice, and never a haul of nothing.
+    const cells = [...new Set(round.flat())];
+    if (!cells.length) return;
+    this.haul(cells);
+    this.changed(cells);
   }
   // The tether lets the drill go this far from the core and no further, whatever road it takes.
   within(x, y) { return Math.hypot(x - HX, y - HY) <= this.val('tether') + 0.3; }
@@ -632,23 +724,31 @@ export class Game {
     }
     const home = this.atCore;
     if (home && !d.home && this.bombs < this.val('bombs')) { this.bombs = this.val('bombs'); sfx.dock(); this.coreFlash = 0.25; }
-    if (home && !d.home) {
-      const P = this.band;
-      if (P.length > 2) {
-        let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, found = false;
-        for (const [x, y] of P) { x0 = Math.min(x0, Math.floor(x) - 1); y0 = Math.min(y0, Math.floor(y) - 1); x1 = Math.max(x1, Math.floor(x) + 1); y1 = Math.max(y1, Math.floor(y) + 1); }
-        for (let n = 1; n < P.length - 1; n++) {
-          if (P[n][3] === undefined || this.looseSet.has(P[n][3])) continue;
-          const cells = this.world.pieceIn(P[n][3], x0, y0, x1, y1, 400000);
-          if (!cells) continue;
-          this.pieces.push(cells); found = true;
-          for (const c of cells) this.looseSet.add(c);
-        }
-        if (found) { this.loose = this.pieces.flat(); this.reelIfRound(); }
-      }
-      this.save();
-    }
+    if (home && !d.home) { this.homecoming(); this.save(); }
     d.home = home;
+  }
+  // Home with the tether still wound round something: ground it lies against that nobody knew was loose is found
+  // now (`discover`) and what the tether is round is reeled in. Reeling lets the string settle on whatever lay
+  // inside, so the search is made again until it finds nothing new. Nothing is flooded to find out: only outlines
+  // are walked, no further than a piece the loop could hold would need, one wall once for all the bends on it, and
+  // not at all when neither the tether nor the ground has changed since the last time home.
+  homecoming() {
+    for (let pass = 0; pass < 64 && this.band.length > 2; pass++) {
+      const P = this.band, key = `${this.cuts}:${P.map(b => b[4] ?? '').join(',')}`;
+      if (key === this.homeKey) return;
+      this.homeKey = key;
+      // The most ground the closed tether could be round: no more than the triangles it makes with the core cover,
+      // and a cell's width along its length.
+      let most = 8;
+      for (let n = 0; n + 1 < P.length; n++) {
+        const ax = P[n][0] - HX, ay = P[n][1] - HY, bx = P[n + 1][0] - HX, by = P[n + 1][1] - HY;
+        most += Math.abs(ax * by - ay * bx) / 2 + 2 * Math.hypot(bx - ax, by - ay);
+      }
+      const hauls = this.S.stats.hauls;
+      if (!this.discover(P.slice(1, -1), Math.min(40000, 4 * Math.ceil(most)), new Set(), Math.min(400000, Math.ceil(most)))) return;
+      this.reelIfRound();
+      if (hauls === this.S.stats.hauls) return;
+    }
   }
   // The end of the tether's reach: say so, and show where the edge is.
   refuse() {
@@ -658,7 +758,13 @@ export class Game {
   }
   // The last cut glows: the ground that would come free if this cell were cut.
   foresee(i) {
-    const found = this.world.freed(i, 4000);
+    // A lava pocket or a spore pod beside the cut bursts with it, and what comes free is what both leave hanging.
+    const w = this.world, cells = [i];
+    for (let s = 0; s < 4; s++) {
+      const j = i + DY[s] * N + DX[s];
+      if (w.k(j) === K.HAZARD && (base(w.b(j)) === B.EMBER || base(w.b(j)) === B.MIRE)) cells.push(j);
+    }
+    const found = w.freed(cells, 2000);
     this.preview = found.length ? [{ i, cells: found.flat() }] : [{ i, cells: [] }];
   }
   finishDig(i) {
@@ -673,13 +779,15 @@ export class Game {
     if (k === K.ORE_A || k === K.ORE_B) this.popup(x, y, 'CRUSHED', '#9a94a8');
     this.shake = Math.max(this.shake, 1 + tough * 0.5);
     if (k === K.HAZARD) this.trigger(i, b, true);
+    // A hazard beside the cut wakes, and may open its own cell: every cell opened goes to `changed` together.
+    const opened = [i];
     for (let s = 0; s < 4; s++) {
       const j = (y + DY[s]) * N + x + DX[s];
-      if (w.k(j) === K.HAZARD) this.trigger(j, w.b(j), false);
+      if (w.k(j) === K.HAZARD) opened.push(...this.trigger(j, w.b(j), false));
     }
     d.dig = -1; this.preview = [];
     w.see(x, y, 1);
-    this.changed([i]);
+    this.changed(opened);
   }
 
   // ------------------------------------------------------------ hauling
@@ -894,6 +1002,7 @@ export class Game {
 
   // ------------------------------------------------------------ hazards
   // A hazard wakes when the drill cuts beside it (or into it: `direct`). Lassoed asleep, it is worth gems.
+  // Returns the cells it opened, for `changed`.
   trigger(i, biome, direct) {
     const w = this.world, x = i % N, y = Math.floor(i / N);
     biome = base(biome);
@@ -901,14 +1010,19 @@ export class Game {
       w.setK(i, K.EMPTY); w.lava.set(i, 9); this.lavaVol.set(i, 5);
       sfx.hiss(); this.effect('steam', 'smoke-puff', (x + 0.5) * T, (y + 0.5) * T);
       if (direct) { this.jolt(0.5); this.shake = 5; }
-    } else if (biome === B.MIRE) {
+      return [i];
+    }
+    if (biome === B.MIRE) {
       w.setK(i, K.EMPTY);
       this.clouds.push({ x, y, t: 0, life: 6 });
       sfx.puff();
-    } else if (biome === B.LODE) {
+      return [i];
+    }
+    if (biome === B.LODE) {
       if (direct) this.zap(x, y);
       else { const s = this.sparks.get(i); if (!s || s.cool <= 0) this.sparks.set(i, { fuse: 0.55, cool: 0 }); }
     }
+    return [];
   }
   zap(x, y) {
     const w = this.world, d = this.drill;
@@ -924,7 +1038,8 @@ export class Game {
   jolt(time) { const d = this.drill; d.stun = Math.max(d.stun, time); this.hurt = time; d.vx = d.vy = 0; d.dig = -1; }
   updateHazards(dt) {
     const w = this.world, d = this.drill, here = this.di, dcx = Math.floor(d.x), dcy = Math.floor(d.y);
-    let moved = false;
+    // The cells that open and that grow back in this pass, for `changed`.
+    const opened = [], closed = [];
     // Ground never grows back across the tether: where it lies is worked out afresh, at the moment it is asked.
     let fresh = false;
     const lies = i => {
@@ -964,7 +1079,7 @@ export class Game {
         const vol = this.lavaVol.get(i) ?? 1, start = (cellHash(x, y, (this.time * 10) | 0) * 4) | 0;
         for (let s = 0; s < 4; s++) {
           const j = (y + DY[(s + start) % 4]) * N + x + DX[(s + start) % 4];
-          if (w.k(j) === K.HAZARD && base(w.b(j)) === B.EMBER) { this.trigger(j, B.EMBER, false); moved = true; continue; }
+          if (w.k(j) === K.HAZARD && base(w.b(j)) === B.EMBER) { opened.push(...this.trigger(j, B.EMBER, false)); continue; }
           if (vol > 1 && w.k(j) === K.EMPTY && !w.lava.has(j) && j !== here && w.s(j) && Math.hypot(x - C, y - C) > 3) {
             w.lava.set(j, 8); this.lavaVol.set(j, vol - 1); this.lavaVol.set(i, 1);
             break;
@@ -974,7 +1089,7 @@ export class Game {
       if (life - dt > 0) { w.lava.set(i, life - dt); continue; }
       w.lava.delete(i); this.lavaVol.delete(i);
       if (!lies(i) && Math.abs(dcx - x) + Math.abs(dcy - y) > 1) {
-        w.setK(i, K.BASALT); moved = true;
+        w.setK(i, K.BASALT); closed.push(i);
         this.effect('steam', 'smoke-puff', (x + 0.5) * T, (y + 0.5) * T);
       }
     }
@@ -985,7 +1100,7 @@ export class Game {
       if (c.t < c.life) continue;
       for (let v = -1; v <= 1; v++) for (let u = -1; u <= 1; u++) {
         const j = (c.y + v) * N + c.x + u;
-        if (w.k(j) === K.EMPTY && !lies(j) && !w.lava.has(j) && Math.max(Math.abs(dcx - c.x - u), Math.abs(dcy - c.y - v)) > 1) { w.setK(j, K.SOFT); w.setB(j, B.MIRE); moved = true; }
+        if (w.k(j) === K.EMPTY && !lies(j) && !w.lava.has(j) && Math.max(Math.abs(dcx - c.x - u), Math.abs(dcy - c.y - v)) > 1) { w.setK(j, K.SOFT); w.setB(j, B.MIRE); closed.push(j); }
       }
     }
     this.clouds = this.clouds.filter(c => c.t < c.life);
@@ -1004,12 +1119,12 @@ export class Game {
         if (this.clock - w.dug.get(i) < 30) return true;
         const x = i % N, y = Math.floor(i / N);
         if (lies(i) || Math.max(Math.abs(dcx - x), Math.abs(dcy - y)) <= 1 || w.lava.has(i)) return true;
-        w.setK(i, K.ICE); w.dug.delete(i); moved = true;
+        w.setK(i, K.ICE); w.dug.delete(i); closed.push(i);
         if (this.onScreen(x, y)) { this.effect('freeze', 'impact', (x + 0.5) * T, (y + 0.5) * T); sfx.freeze(); }
         return false;
       });
     }
-    if (moved) this.changed();
+    if (opened.length || closed.length) this.changed(opened, closed);
   }
 
   // ------------------------------------------------------------ blast, shop
@@ -1131,8 +1246,10 @@ export class Game {
       this.clock += dt;
       this.fly(dt);
       this.tend();
+      // Ground the string came to lie against on the way: is any of it loose, though nobody knew?
+      const met = this.taken.length > 0 && this.discover(this.taken.splice(0), 600, this.walked);
       this.reelTick = (this.reelTick ?? 0) + dt;
-      if (this.reelTick > 0.1) { this.reelTick = 0; this.reelIfRound(); }
+      if (met || this.reelTick > 0.1) { this.reelTick = 0; this.reelIfRound(); }
       this.updateHazards(dt);
       this.updateHauls(dt);
       // The station makes a trickle of grit of its own: however a world has been spent, the next reach is never out
@@ -1355,7 +1472,7 @@ export class Game {
     // Ground lying loose: cut off from the world, waiting for the tether to be drawn round it. It shows through the
     // dark, with a dotted edge that crawls round it.
     if (this.loose.length) {
-      const set = this.looseSet, crawl = (now / 90) | 0;
+      const set = this.pieceOf, crawl = (now / 90) | 0;
       for (const i of this.loose) {
         const px = (i % N) * T - ox, py = Math.floor(i / N) * T - oy;
         if (px < -T || py < -T || px > W || py > H) continue;
