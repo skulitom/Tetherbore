@@ -20,8 +20,8 @@ const wrap = (obj, name, label = name) => {
   spent[label] = 0; calls[label] = 0; worst[label] = 0;
   obj[name] = function (...args) { const t = performance.now(); try { return own.apply(this, args); } finally { const ms = performance.now() - t; spent[label] += ms; calls[label]++; if (ms > worst[label]) worst[label] = ms; } };
 };
-for (const name of ['fly', 'tend', 'lead', 'retighten', 'changed', 'reelIfRound', 'updateHazards', 'updateHauls', 'ambient', 'look', 'haul', 'foresee', 'finishDig', 'catchIn', 'find']) wrap(game, name);
-for (const name of ['freed', 'pieceIn', 'see', 'piece']) wrap(w, name, `world.${name}`);
+for (const name of ['fly', 'tend', 'lead', 'retighten', 'changed', 'reelIfRound', 'updateHazards', 'updateHauls', 'ambient', 'look', 'haul', 'foresee', 'finishDig', 'catchIn', 'discover', 'homecoming']) wrap(game, name);
+for (const name of ['freed', 'island', 'pieceIn', 'see']) wrap(w, name, `world.${name}`);
 let frames = 0, total = 0, heading = 0;
 for (let turn = 0; turn < turns; turn++) {
   heading += (rnd() - 0.5) * 2.5;
