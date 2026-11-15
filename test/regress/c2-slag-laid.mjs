@@ -30,9 +30,10 @@ let bareSlag = 0;
 for (let seed = 1; seed <= 6; seed++) {
   w.reset(seed);
   // A window in the middle of each province between the core's four and the deep flanks, as tools/strains.mjs
-  // counts them, and two in the south's deep flanks.
+  // counts them, and four in the south's deep flanks. (A window may hold a little of other ground, a pocket's or
+  // the next province's: those cells are not this ground's, and are not counted.)
   const windows = provinces(w).map(([px, py, , ground]) => [ground, C + Math.round((px + 0.5) * PROVINCE) - SIZE / 2, C + Math.round((py + 0.5) * PROVINCE) - SIZE / 2]);
-  windows.push([6, C + 1000, C + 1000], [6, C - 1000, C + 1100]);
+  windows.push([6, C + 1000, C + 1000], [6, C - 1000, C + 1100], [6, C + 1150, C + 1150], [6, C - 1150, C + 1150]);
   const grid = new Int16Array(SIZE * SIZE), mark = new Uint8Array(SIZE * SIZE);
   for (const [ground, x0, y0] of windows) {
     const row = BIOMES[ground], lava = row.haz?.type === 'lava' && !!tally[ground];
@@ -49,6 +50,7 @@ for (let seed = 1; seed <= 6; seed++) {
       const is = (x, y, k) => x >= 0 && y >= 0 && x < SIZE && y < SIZE && grid[y * SIZE + x] === k;
       for (let s = 0; s < SIZE * SIZE; s++) {
         const x = s % SIZE, y = (s / SIZE) | 0, k = grid[s];
+        if (k < 0) continue;
         // Against the same ground laid without the rind (the south's own with `rind: 0`; the west's own with no
         // second hazard, where the lava itself is new too): nothing moved but plain rock turned to slag.
         if (ground === B.EMBER || as === 121) {

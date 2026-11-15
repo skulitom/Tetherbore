@@ -2,21 +2,29 @@
 // mineral pays `lump` seconds of what cutting earns out there, so a pocket pays its cells of mineral times its
 // lump. For every kind of pocket there is, over 200 of them made as the world makes them:
 //   - the mean pocket pays no more than 3.5 seconds for each cell of its radius, in every band of radius, small
-//     and great, and as a herald; and no less than half of that overall, so that no pocket is a dead one;
+//     and great, and as a herald; and no less than half of that overall, so that no pocket is a dead one. A kind
+//     whose mineral pays more in a chain of hauls (the drift) is held to that at the most it can pay: every
+//     boulder hauled by itself in one chain, the richest last;
 //   - a pocket of radius 14 gives about 12 specimens: from 9 to 15;
 //   - and in the worlds themselves: four heralds within the sixth reach in every one, a pocket of some kind in
 //     the west within the seventh, and pockets covering no more than about the 2.4 cells in a hundred of the ground
 //     that was planned for them (under 3).
 //   node test/regress/s4-budget.mjs
-import { budget, census, kinds, SECONDS, SPECIMENS, AT } from '../../tools/zone-budget.mjs';
+import { budget, census, kinds, chained, SECONDS, SPECIMENS, AT } from '../../tools/zone-budget.mjs';
+import { BIOMES } from '../../js/world.js';
 
 const fails = [], check = (ok, what) => { if (!ok && fails.length < 12) fails.push(what); };
 check(SECONDS === 3.5 && SPECIMENS === 12 && AT === 14, 'the budget is not the one written');
-check(kinds().includes(32), `the kinds of pocket there are: ${kinds()}`);
+check([32, 33, 34].every(row => kinds().includes(row)), `the kinds of pocket there are: ${kinds()}`);
+// A chain: a fifth more for each haul before, to double, the poorest piece first.
+check(chained([]) === 0 && chained([3]) === 3 && Math.abs(chained([1, 1, 1, 1, 1, 1, 1]) - (1 + 1.2 + 1.4 + 1.6 + 1.8 + 2 + 2)) < 1e-9 && Math.abs(chained([2, 4]) - (2 + 4.8)) < 1e-9, 'a chain of hauls is not counted as it pays');
 const out = [];
 for (const row of kinds()) {
   const b = budget(row, 200);
-  out.push({ name: b.name, lump: b.lump, spec: b.spec, mineral: +b.mineral.toFixed(1), seconds: +b.seconds.toFixed(1), may: +b.may.toFixed(1), at14: +b.at14.toFixed(1), herald: +b.herald.seconds.toFixed(1) });
+  // (Counted with its chain: more than with none, and no more than twice.)
+  if (BIOMES[row].pocket.chain) check(b.seconds > b.flat * 1.2 && b.seconds <= b.flat * 2 && b.pieces >= 4, `${b.name}: ${b.seconds.toFixed(1)} s in one chain of ${b.pieces.toFixed(1)} hauls, ${b.flat.toFixed(1)} with none`);
+  else check(b.seconds === b.flat, `${b.name} has no chain and pays ${b.seconds} s, not the ${b.flat} of its cells`);
+  out.push({ name: b.name, lump: b.lump, spec: b.spec, mineral: +b.mineral.toFixed(1), seconds: +b.seconds.toFixed(1), flat: +b.flat.toFixed(1), may: +b.may.toFixed(1), at14: +b.at14.toFixed(1), herald: +b.herald.seconds.toFixed(1) });
   check(b.made === 200 && b.mineral > 5, `${b.name}: ${b.made} pockets made, ${b.mineral.toFixed(1)} cells of mineral in the mean one`);
   check(b.seconds <= b.may && b.seconds >= b.may * 0.5, `${b.name}: the mean pocket pays ${b.seconds.toFixed(1)} s of income, where it may pay ${b.may.toFixed(1)}`);
   for (const band of b.bands) if (band.made >= 10) check(band.seconds <= band.may, `${b.name}: pockets of radius under ${band.to} pay ${band.seconds.toFixed(1)} s in the mean, over the ${band.may.toFixed(1)} they may`);

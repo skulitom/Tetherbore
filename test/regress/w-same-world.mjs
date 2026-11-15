@@ -17,7 +17,8 @@
 // right round, the world holds its collar), each asked here the plainest way there is. And the prism, in `findAt`.
 // And pockets (docs/CONTENT-PLAN.md S3 and content item 6), under "Pockets" below: which sector of 128 cells holds
 // one and where, each direction's first, which cells are a hive's and what each of them is; and that no find and
-// no slab lies in a pocket or against one.
+// no slab lies in a pocket or against one. And the other two kinds of pocket (content item 7): which kind a
+// sector's pocket is, the boulders of a pumice drift and the tektites of an ash flat.
 //   node test/regress/w-same-world.mjs
 import { world } from '../harness.mjs';
 const { World, N, C, CH, CW, K, B, HOME_R, DEEP_R, RELIC_R, WORLD_R, FIND, WRECK_R, DX, DY, base, cellHash: hash } = world;
@@ -61,26 +62,34 @@ const plain = seed => {
   // direction's line and 14 to one side, or 40 further out where a wreck lies within 24 cells of that. Of the
   // other sectors half try one: its middle 38 cells or more inside the sector, 170 cells or more from the core and
   // not so far out that the last reach does not go round it; its radius 6 + 24 x the square of a hash, kept within
-  // 8 and 30; and none within 40 cells and its radius of a wreck or a relic. The one kind of pocket there is yet,
-  // the hive (ground 32), is the west's: it lies only where the middle is further west than it is north or south.
+  // 8 and 30 (a drift's within 9 and 30); and none within 40 cells and its radius of a wreck or a relic.
+  // There are three kinds. The hive (ground 32) is the west's: it lies only where the middle is further west than
+  // it is north or south. The ash flat (34) is the south's, likewise. The pumice drift (33) lies anywhere. Where
+  // two kinds may lie, the sector's pocket is the one whose own hash for the sector (100 + its ground's number) is
+  // larger. The first pockets are a drift in the north and the east, an ash flat in the south, a hive in the west.
   // (Kept once worked out, as a sector's slab is.)
   const relics = [0, 1, 2, 3].map(d => [C + DX[d] * RELIC_R, C + DY[d] * RELIC_R]);
-  const HERALD = [[14, -165, 0, -1], [-14, 165, 0, 1], [-165, -14, -1, 0], [165, 14, 1, 0]];
+  const HERALD = [[14, -165, 0, -1, 33], [-14, 165, 0, 1, 34], [-165, -14, -1, 0, 32], [165, 14, 1, 0, 33]];
   const zones = new Map();
   const zoneOf = (sx, sy) => {
     const id = `${sx},${sy}`;
     if (zones.has(id)) return zones.get(id);
     let Z = null, herald = false;
-    for (let [hx, hy, ux, uy] of HERALD) {
+    for (let [hx, hy, ux, uy, row] of HERALD) {
       if (Math.floor(hx / 128) !== sx || Math.floor(hy / 128) !== sy) continue;
       herald = true;
       if (wrecks.some(([wx, wy]) => (C + hx - wx) ** 2 + (C + hy - wy) ** 2 < 24 * 24)) { hx += ux * 40; hy += uy * 40; }
-      Z = { cx: C + hx, cy: C + hy, rho: 9, row: 32 };
+      Z = { cx: C + hx, cy: C + hy, rho: 9, row };
     }
     if (!herald && hash(sx, sy, seed + 40) < 0.5) {
       const cx = C + sx * 128 + 38 + Math.floor(hash(sx, sy, seed + 42) * 52), cy = C + sy * 128 + 38 + Math.floor(hash(sx, sy, seed + 43) * 52);
-      const far = Math.sqrt((cx - C) * (cx - C) + (cy - C) * (cy - C)), h = hash(sx, sy, seed + 41), rho = Math.min(30, Math.max(8, 6 + 24 * h * h));
-      if (far >= 170 && far + 36 <= WORLD_R - 100 && C - cx > Math.abs(cy - C) && ![...wrecks, ...relics].some(([x, y]) => (cx - x) ** 2 + (cy - y) ** 2 < (40 + rho) * (40 + rho))) Z = { cx, cy, rho, row: 32 };
+      const far = Math.sqrt((cx - C) * (cx - C) + (cy - C) * (cy - C)), h = hash(sx, sy, seed + 41);
+      const west = C - cx > Math.abs(cy - C), south = !west && cy - C >= Math.abs(cx - C), other = west ? 32 : south ? 34 : 0;
+      // Which kind: the drift, or the direction's other kind where it has one and that kind's hash is the larger
+      // (of two the same, the kind of the lower number).
+      const mine = hash(sx, sy, seed + 133), theirs = other ? hash(sx, sy, seed + 100 + other) : -1, row = theirs > mine || (theirs === mine && other < 33) ? other : 33;
+      const rho = Math.min(30, Math.max(row === 33 ? 9 : 8, 6 + 24 * h * h));
+      if (far >= 170 && far + 36 <= WORLD_R - 100 && ![...wrecks, ...relics].some(([x, y]) => (cx - x) ** 2 + (cy - y) ** 2 < (40 + rho) * (40 + rho))) Z = { cx, cy, rho, row };
     }
     zones.set(id, Z);
     return Z;
@@ -117,12 +126,39 @@ const plain = seed => {
     const [ux, uy] = [[1, 0], [0, 1], [-1, 0], [0, -1]][Math.floor(hash(mx, my, seed + 47) * 4)];
     return (du === 2 * ux || du === 3 * ux) && (dv === 2 * uy || dv === 3 * uy) ? K.NODE : K.EMPTY;
   };
+  // A pumice drift is a plain disc, open but for its boulders. They lie on a grid of squares seven cells across,
+  // the drift's middle cell the first of a square each way: a square has a boulder where its hash is under 0.8 or
+  // 5.2 over the drift's radius, whichever is less (and the four squares round the middle always). The boulder's
+  // middle is three cells in from the square's first, and on by the two halves of one hash, a part of a cell each
+  // way; its radius 1.2 to 1.8 by another hash, and no more than leaves two cells between it and the drift's
+  // edge; there is none where that is under 0.9. A cell within 0.9 of the boulder's middle is the mineral, the
+  // rest of it pumice.
+  const driftCell = (Z, x, y) => {
+    const gx = Math.floor((x - Z.cx) / 7), gy = Math.floor((y - Z.cy) / 7), qx = Z.cx + 7 * gx, qy = Z.cy + 7 * gy;
+    const first = (gx === 0 || gx === -1) && (gy === 0 || gy === -1);
+    if (!first && hash(qx, qy, seed + 48) >= Math.min(0.8, 5.2 / Z.rho)) return K.EMPTY;
+    const h = hash(qx, qy, seed + 49) * 65536, bx = qx + 3 + Math.floor(h) / 65536, by = qy + 3 + h % 1;
+    const room = Z.rho - 2 - Math.sqrt((bx - Z.cx) ** 2 + (by - Z.cy) ** 2), r = Math.min(room, 1.2 + 0.6 * hash(qx, qy, seed + 50));
+    if (room < 0.9) return K.EMPTY;
+    const d = Math.sqrt((x - bx) ** 2 + (y - by) ** 2);
+    return d >= r ? K.EMPTY : d < 0.9 ? K.MINERAL : K.SOFT;
+  };
+  // An ash flat is a disc whose edge wanders between 0.8 and 1.2 of its radius, soft ash with a cell of the mineral
+  // where the cell's hash is under one in ten, or 2.1 over the radius where that is less.
+  const ashCell = (Z, x, y) => hash(x, y, seed + 51) < Math.min(0.1, 2.1 / Z.rho) ? K.MINERAL : K.SOFT;
+  // Which cells are a pocket's, and how far from its middle they can lie: a hive's 5.7 cells beyond its radius.
+  const inPocket = (Z, x, y) => {
+    if (Z.row === 32) return inHive(Z, x, y);
+    const d = Math.sqrt((x - Z.cx) ** 2 + (y - Z.cy) ** 2);
+    return d < (Z.row === 33 ? Z.rho : Z.rho * (0.8 + 0.4 * noise(x / 7, y / 7, seed + 44)));
+  };
+  const reachOf = Z => Z.row === 32 ? Z.rho + 5.7 : Z.row === 33 ? Z.rho : Z.rho * 1.2;
   // Whether a disc (its middle and how far it runs) meets a pocket: its middle is nearer a pocket's than the disc
-  // runs and the pocket's cells can lie, which for a hive is 5.7 cells beyond its radius.
+  // runs and the pocket's cells can lie.
   const meets = (cx, cy, reach) => {
     for (let v = -1; v <= 1; v++) for (let u = -1; u <= 1; u++) {
       const Z = zoneOf(Math.floor((cx - C) / 128) + u, Math.floor((cy - C) / 128) + v);
-      if (Z && (Z.cx - cx) ** 2 + (Z.cy - cy) ** 2 < (reach + (Z.rho + 5.7)) * (reach + (Z.rho + 5.7))) return true;
+      if (Z && (Z.cx - cx) ** 2 + (Z.cy - cy) ** 2 < (reach + reachOf(Z)) * (reach + reachOf(Z))) return true;
     }
     return false;
   };
@@ -146,9 +182,9 @@ const plain = seed => {
   };
   const biomeAt = (x, y) => {
     const dx = x - C, dy = y - C, r = Math.sqrt(dx * dx + dy * dy);
-    // A pocket before all else: the cell is its sector's hive's.
+    // A pocket before all else: the cell is its sector's pocket's.
     const Z = zoneOf(Math.floor(dx / 128), Math.floor(dy / 128));
-    if (r > 130 && Z && inHive(Z, x, y)) return Z.row;
+    if (r > 130 && Z && inPocket(Z, x, y)) return Z.row;
     if (r < HOME_R + (noise(x / 30, y / 30, seed + 3) - 0.5) * 50) return B.CRUST;
     const far = Math.min(90, r * 0.2), near = Math.min(8, r * 0.1);
     const ax = Math.abs(dx) + (noise(x / 61, y / 61, seed + 1) - 0.5) * far + (noise(x / 9, y / 9, seed + 16) - 0.5) * near;
@@ -276,7 +312,7 @@ const plain = seed => {
     if (hash(sx, sy, seed + 80) < 0.22) {
       const p = 8 + Math.floor(hash(sx, sy, seed + 81) * 9), cx = C + sx * 144 + 40 + Math.floor(hash(sx, sy, seed + 82) * 64), cy = C + sy * 144 + 40 + Math.floor(hash(sx, sy, seed + 83) * 64);
       const out = Math.sqrt((cx - C) ** 2 + (cy - C) ** 2), within = (x, y, r) => (cx - x) ** 2 + (cy - y) ** 2 < r * r, one = firstSlab();
-      if (out > 60 && out + p + 6 <= WORLD_R - 100 && ![...wrecks, ...relics].some(([x, y]) => within(x, y, 40 + p)) && !(one && within(one.cx, one.cy, 44 + p)) && !meets(cx, cy, p + 5)
+      if (out > 60 && out + p + 6 <= WORLD_R - 100 && ![...wrecks, ...relics].some(([x, y]) => within(x, y, 40 + p)) && !(one && within(one.cx, one.cy, 44 + p)) && !meets(cx, cy, hash(sx, sy, seed + 85) < 0.35 ? p + 6.5 : p + 5)
         && !(noise(cx / 19, cy / 19, seed + 18) > cavernOf(biomeAt(cx, cy)) - 0.08)) {
         const q = hash(sx, sy, seed + 86) * 4, a = 0.8 + hash(sx, sy, seed + 87) * (p > 12 ? 0.8 : 2.4);
         S = { cx, cy, p, cobble: hash(sx, sy, seed + 85) < 0.35, ways: (p > 12 ? [q, q + a, q + a + 0.8 + hash(sx, sy, seed + 88) * 0.8] : [q, q + a]).map(way) };
@@ -313,6 +349,8 @@ const plain = seed => {
     }
     // A pocket's cells are its own to say: nothing else is laid in one.
     if (b === 32) return hiveCell(zoneOf(Math.floor(dx / 128), Math.floor(dy / 128)), x, y);
+    if (b === 33) return driftCell(zoneOf(Math.floor(dx / 128), Math.floor(dy / 128)), x, y);
+    if (b === 34) return ashCell(zoneOf(Math.floor(dx / 128), Math.floor(dy / 128)), x, y);
     // A slab's crack and joints are open and its keys are keys; its own ground and its collar are the ground of
     // wherever it lies, with no find and no cave in them, and in the slab's own the ore's thresholds are 0.05 lower.
     const slab = bare ? 'out' : slabAt(x, y), solid = slab !== 'out', lift = slab === 'inside' ? 0.05 : 0;
@@ -439,7 +477,8 @@ console.log(wrong ? `DEFECT: the world a seed makes has changed: ${first}` : 'no
 const crosses = [...biomes].filter(b => b >= 128), donors = new Set(crosses.map(b => OTHERS[cross(b).kin][Math.floor((b - 128) % 15 / 5)])), shapes = new Set(crosses.map(b => (b - 128) % 5));
 if (!wrong && biomes.size - crosses.length < 18) console.log(`DEFECT: only ${biomes.size - crosses.length} of the 18 hand-made grounds were met: ${[...biomes].sort((a, b) => a - b)}`);
 if (!wrong && (pockets < 40 || !kinds.has(K.MINERAL) || !kinds.has(K.NODE))) console.log(`DEFECT: ${pockets} pockets were met${kinds.has(K.MINERAL) ? '' : ', no mineral'}${kinds.has(K.NODE) ? '' : ', no stalk'}`);
+if (!wrong && ![32, 33, 34].every(b => biomes.has(b))) console.log(`DEFECT: of the three kinds of pocket (grounds 32, 33, 34) only ${[32, 33, 34].filter(b => biomes.has(b))} were met`);
 if (!wrong && (crosses.length < 20 || donors.size < 4 || shapes.size < 5)) console.log(`DEFECT: only ${crosses.length} crosses were met, with ${donors.size} of the 4 donors and ${shapes.size} of the 5 structures: ${crosses.sort((a, b) => a - b)}`);
 if (!wrong && (slabs < 20 || cobbles < 8 || !kinds.has(K.KEY) || !kinds.has(K.PRISM))) console.log(`DEFECT: ${slabs} slabs and ${cobbles} cobble fields were met${kinds.has(K.KEY) ? '' : ', no key'}${kinds.has(K.PRISM) ? '' : ', no prism'}`);
 process.exit(wrong || slabs < 20 || cobbles < 8 || !kinds.has(K.KEY) || !kinds.has(K.PRISM) || kinds.size < 14 || biomes.size - crosses.length < 18 || crosses.length < 20 || donors.size < 4 || shapes.size < 5
-  || pockets < 40 || !kinds.has(K.MINERAL) || !kinds.has(K.NODE) ? 1 : 0);
+  || pockets < 40 || !kinds.has(K.MINERAL) || !kinds.has(K.NODE) || ![32, 33, 34].every(b => biomes.has(b)) ? 1 : 0);

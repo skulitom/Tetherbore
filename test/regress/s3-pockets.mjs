@@ -14,7 +14,8 @@
 //   - a pocket's cells are its ground before any other rule (the home ground's edge, a direction's, a deep
 //     flank's, a province's), and nothing else in the world's ground changes for it;
 //   - inside one there is nothing but what its shape lays: no find, no key of a slab, no hazard, no ore;
-//   - no slab is laid whose disc and five cells more meet a pocket, and no find within five cells of one;
+//   - no slab is laid any cell of which could be a pocket's (its disc and five cells more, a cobble field's and
+//     six and a half), and no find within five cells of one;
 //   - a cell that holds a pocket's ground where the world lays none (a saved game's may) is plain rock of it;
 //   - a sector's pocket is worked out once and kept, afresh for another seed, and asking makes none of the world.
 //   node test/regress/s3-pockets.mjs
@@ -47,7 +48,10 @@ const out = {};
     }
   }
   check(moved >= 4 && stayed >= 150, `of the heralds of 60 worlds, ${moved} lie further out for a wreck and ${stayed} where they always do`);
+  // The west's own first is the hive. Until the others' own are made (content item 10), the north's and the
+  // east's are pumice drifts and the south's an ash flat.
   check(world(7).zoneOf(-2, -1).row === 32, 'the west\'s herald is not a hive');
+  check(world(7).zoneOf(0, -2).row === 33 && world(7).zoneOf(1, 0).row === 33 && world(7).zoneOf(-1, 1).row === 34, `the heralds of the north, the east and the south are grounds ${world(7).zoneOf(0, -2).row}, ${world(7).zoneOf(1, 0).row} and ${world(7).zoneOf(-1, 1).row}, not 33, 33 and 34`);
   out.heralds = { moved, stayed };
 }
 
@@ -94,25 +98,33 @@ const out = {};
   // A kind that lies anywhere from 400 cells out, with half the hive's weight, and is twice as small.
   biome({ ...hive, id: 62, name: 'test-any', pocket: { ...hive.pocket, kins: 'any', minR: 400, rho: [6, 12], weight: 0.5 } });
   const w = world(7);
+  // (What a kind's hash for a sector is worth: the hash times the kind's weight.)
+  const pick = (sx, sy, row) => hash(sx, sy, 7 + 100 + row) * rowOf(row).pocket.weight;
   let took = 0, kept = 0, fresh = 0, near = 0, wrong = 0, wide = 0;
+  const lies = [0, 0, 0, 0, 0], kinds = new Set();
   for (let sy = -19; sy < 19; sy++) for (let sx = -19; sx < 19; sx++) {
     const Z = w.zoneOf(sx, sy), old = was.get(`${sx},${sy}`);
     if (!Z || Z.herald) continue;
     if (Z.row === 62) {
+      lies[Z.kin]++;
       if (far(Z) < 400) near++;
       if (Z.rho > 12 || Z.rho < 6) wide++;
-      if (old) { took++; if (hash(sx, sy, 7 + 100 + 62) * 0.5 <= hash(sx, sy, 7 + 100 + 32)) wrong++; } else fresh++;
+      // (Where it took the place of another kind's pocket its own hash was worth more; and it may lie, being
+      // smaller, in a sector where the other was too near a wreck to be laid at all.)
+      if (old) { took++; kinds.add(old.row); if (pick(sx, sy, 62) <= pick(sx, sy, old.row)) wrong++; } else fresh++;
     } else {
       kept++;
       if (!old || old.cx !== Z.cx || old.cy !== Z.cy || old.rho !== Z.rho || old.row !== Z.row) wrong++;
-      if (far(Z) >= 400 && hash(sx, sy, 7 + 100 + 62) * 0.5 > hash(sx, sy, 7 + 100 + 32)) wrong++;
+      if (far(Z) >= 400 && pick(sx, sy, 62) > pick(sx, sy, Z.row)) wrong++;
     }
   }
   check(near === 0 && wide === 0, `${near} pockets of the new kind lie nearer than it may, ${wide} are not within its radius`);
   check(wrong === 0, `${wrong} sectors' pockets are not the kind whose hash times weight is largest, or moved when a kind was added`);
-  // (With half the weight it takes about a quarter of the sectors the hive had from 400 out, and all the others'.)
-  check(took > kept * 0.15 && took < kept * 0.6 && fresh > 200, `the new kind took ${took} of the hive's sectors and left it ${kept}; it lies in ${fresh} sectors that had none`);
-  out.added = { took, kept, fresh };
+  // (With half the weight it takes about a quarter of the sectors that one other kind had from 400 out, and fewer
+  // where two had them between them: from every kind there is, in every direction.)
+  check(took > kept * 0.12 && took < kept * 0.6 && fresh < took * 0.05, `the new kind took ${took} of the others' sectors and left them ${kept}; it lies in ${fresh} sectors that had none`);
+  check(lies.slice(1).every(n => n > 5) && [32, 33, 34].every(row => kinds.has(row)), `the new kind lies in ${lies.slice(1)} sectors of the north, south, west and east, in place of kinds ${[...kinds].sort()}`);
+  out.added = { took, kept, fresh, lies: lies.slice(1) };
   // A kind that may lie as near the core as it likes still lies no nearer than any pocket may: 170 cells.
   biome({ ...hive, id: 62, name: 'test-near', pocket: { ...hive.pocket, kins: 'any', minR: 0 } });
   {
@@ -193,7 +205,7 @@ const out = {};
   let slabs = 0, meet = 0, refused = 0, finds = 0, close = 0;
   for (const seed of [1, 7, 34]) {
     const w = world(seed);
-    for (let sy = -16; sy < 16; sy++) for (let sx = -16; sx < 16; sx++) { const S = w.slabIn(sx, sy); if (S) { slabs++; if (w.meetsPocket(S.cx, S.cy, S.p + 5)) meet++; } }
+    for (let sy = -16; sy < 16; sy++) for (let sx = -16; sx < 16; sx++) { const S = w.slabIn(sx, sy); if (S) { slabs++; if (w.meetsPocket(S.cx, S.cy, S.reach)) meet++; } }
     refused += w.refused.pocket;
     for (let sy = -48; sy < 48; sy++) for (let sx = -48; sx < 48; sx++) { const [what, fx, fy] = w.findSpot(sx, sy); if (what) { finds++; if (w.meetsPocket(fx, fy, 5)) close++; } }
     check(w.made === 0, `seed ${seed}: asking where pockets, slabs and finds lie made ${w.made} pieces of the world`);

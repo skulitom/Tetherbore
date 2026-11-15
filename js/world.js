@@ -267,6 +267,8 @@ strain(24, 'loess', B.LODE, { rich: 0.85, dig: 0.5, gen: { dense: 0.76, oreA: 0.
 //                  (js/game.js: `payOf`), and so many specimens of the direction the pocket lies in
 //   chain          whether that lump is more for each haul made just before (a fifth a haul, to double): false
 //                  where it does not say
+//   twist          the name of the one rule of its own the game plays it by, where it has one ('drift': what
+//                  lies in it lies loose, and is in the books of loose ground while the drill is there)
 //   pip, chips     its colour as a pip on the map, and the colours its mineral sheds
 // Inside a pocket there are no finds, no slabs, no hazards and nothing that grows back, and its row has no
 // thresholds (`gen`): every cell of it is its shape's to say.
@@ -339,6 +341,70 @@ export const hiveChambers = Z => {
 pocket(32, 'hive', { title: 'AMBER HIVE', kin: B.MIRE, sheet: 'wax', floor: 'wax-floor', dig: 0.5, gloom: [28, 16, 4], mote: ['#ffd070', 'still'],
   map: [216, 154, 42], debris: ['#d89a2a', '#f6d066', '#ffe89a'],
   pocket: { shape: 'hive', kins: [B.MIRE], minR: 170, rho: [8, 30], mineral: 'amber', node: 'stalk', nodeDig: 0.1, lump: 0.8, spec: 0.25, pip: '#ffb020', chips: ['#ff9a1a', '#ffd070', '#a85a10'] } });
+// DRIFT: an open cavern, a plain disc with nothing in it but boulders that hang on nothing, to be lassoed as they
+// stand. They lie on a grid of squares DRIFT cells across, the pocket's middle at a corner where four squares meet,
+// one boulder to a square at the most: by the square's own hashes its middle lies somewhere in the cell-wide
+// square at the square's middle (49: the two halves of one hash), and it is a disc ROCK[0] to ROCK[1] cells in
+// radius (50), mineral within CORE of its middle and the pocket's rock outside that. So a boulder is two to four
+// cells across with one to four cells of mineral at its heart, never leaves its square, and the lanes between
+// boulders are three cells wide or more: a drill is two thirds of a cell wide and cuts what it is pushed into.
+// A boulder keeps BERTH cells of open ground between itself and the cavern's wall: it is no bigger than leaves
+// that (a pebble, near the wall), and is not laid at all where its heart of mineral would not fit.
+// The four squares round the middle always hold one, so the smallest drift, a direction's first, has four. Of the
+// others a share `boulders` does (48): 8 in 10 at the most, and fewer the bigger the drift,
+// in proportion to its radius (5.2 / rho), since a drift has squares as the square of its radius and what it pays
+// is to grow no faster than the radius does (docs/CONTENT-PLAN.md S4; tools/zone-budget.mjs counts it, with every
+// boulder hauled in one chain). A great drift is a wide night sky with a boulder here and there.
+const DRIFT = 7, ROCK = [1.2, 1.8], CORE = 0.9, BERTH = 2;
+export const boulders = rho => Math.min(0.8, 5.2 / rho);
+// The boulder of the square a cell (ex, ey from the drift's middle) lies in, worked out into `BOULDER` as its middle
+// (from the drift's) and its radius; false where the square has none.
+const BOULDER = [0, 0, 0];
+const boulderOf = (seed, Z, gx, gy) => {
+  const qx = Z.cx + gx * DRIFT, qy = Z.cy + gy * DRIFT;
+  if (!((gx === 0 || gx === -1) && (gy === 0 || gy === -1)) && hash(qx, qy, seed + 48) >= boulders(Z.rho)) return false;
+  const h = hash(qx, qy, seed + 49) * 65536, whole = Math.floor(h), bx = gx * DRIFT + 3 + whole / 65536, by = gy * DRIFT + 3 + (h - whole);
+  const room = Z.rho - BERTH - Math.sqrt(bx * bx + by * by);
+  if (room < CORE) return false;
+  BOULDER[0] = bx; BOULDER[1] = by; BOULDER[2] = Math.min(room, ROCK[0] + (ROCK[1] - ROCK[0]) * hash(qx, qy, seed + 50));
+  return true;
+};
+// ASH: a disc of soft ash with its mineral scattered through it a cell at a time, by each cell's own hash (51): one
+// cell in ten in a pocket of up to 21 cells in radius, and fewer in a bigger one in proportion to its radius
+// (2.1 / rho), for the same reason.
+export const tektites = rho => Math.min(0.1, 2.1 / rho);
+Object.assign(POCKET_SHAPES, {
+  drift: {
+    cell(seed, Z, x, y) {
+      const ex = x - Z.cx, ey = y - Z.cy;
+      if (!boulderOf(seed, Z, Math.floor(ex / DRIFT), Math.floor(ey / DRIFT))) return K.EMPTY;
+      const dx = ex - BOULDER[0], dy = ey - BOULDER[1], dd = dx * dx + dy * dy;
+      return dd >= BOULDER[2] * BOULDER[2] ? K.EMPTY : dd < CORE * CORE ? Z.mineral : K.SOFT;
+    },
+  },
+  ash: { cell(seed, Z, x, y) { return hash(x, y, seed + 51) < tektites(Z.rho) ? Z.mineral : K.SOFT; } },
+});
+// The boulders of a drift (a pocket's record) in a world of seed `seed`, each [x, y, radius]: its middle, in cells
+// as the world counts them (a cell's own middle is at its whole number), and how far it runs. The nearest the
+// drift's middle first: for tools and tests.
+export const driftBoulders = (seed, Z) => {
+  const out = [], most = Math.ceil(Z.rho / DRIFT) + 1;
+  for (let gy = -most; gy < most; gy++) for (let gx = -most; gx < most; gx++) if (boulderOf(seed, Z, gx, gy)) out.push([Z.cx + BOULDER[0], Z.cy + BOULDER[1], BOULDER[2]]);
+  const far = ([x, y]) => (x - Z.cx) * (x - Z.cx) + (y - Z.cy) * (y - Z.cy);
+  return out.sort((a, b) => far(a) - far(b) || a[1] - b[1] || a[0] - b[0]);
+};
+// PUMICE DRIFT. An open cavern of boulders that are loose already: nothing to cut, only to lasso, and hauls made
+// one close behind another pay more each (`chain`). Found in every direction; the north's first pocket and the
+// east's until their own are made.
+pocket(33, 'drift', { title: 'PUMICE DRIFT', kin: 0, sheet: 'pumice', floor: 'pumice-floor', gloom: [6, 10, 22], mote: ['#7fd0ff', 'rise'],
+  map: [168, 160, 180], debris: ['#a8a0b4', '#bdb6c8', '#5a5466'],
+  pocket: { shape: 'drift', kins: 'any', minR: 170, rho: [9, 30], wobble: false, twist: 'drift', chain: true, mineral: 'aerolite', lump: 2, spec: 0.9, pip: '#7fd0ff', chips: ['#e8fbff', '#7fd0ff', '#2a6cc0'] } });
+// ASH FLATS. Worthless ash that cuts like air (`dig`: the game ploughs through ground this quick, js/game.js
+// `PLOUGH`), salted with tektites: the place to draw great freehand loops. The south's, and its first pocket until
+// its own is made.
+pocket(34, 'ash', { title: 'ASH FLATS', kin: B.EMBER, sheet: 'ash', floor: 'ash-floor', dig: 0.2, worth: 0, gloom: [14, 14, 16], mote: ['#d0d0d0', 'fall'],
+  map: [196, 196, 192], debris: ['#c4c4c0', '#d2d2ce', '#77777f'],
+  pocket: { shape: 'ash', kins: [B.EMBER], minR: 170, rho: [8, 30], mineral: 'tektite', lump: 0.5, spec: 0.2, pip: '#d0d0d0', chips: ['#2a2a36', '#8ce0ff', '#ffffff'] } });
 // The first pocket of each direction lies just past the home ground, where a new game comes on it within its
 // first reaches: HERALD_R cells out along the direction's own line and HERALD_OFF to one side, so that all of it lies
 // in one sector, HERALD_RHO in radius; and HERALD_ON further out where a wreck lies within HERALD_CLEAR cells of
@@ -856,7 +922,8 @@ export class World {
   // a cobble field instead (85). A slab has two keys, or three if it is over 12 cells in radius, at least 0.8 of a
   // quarter of a circle apart (86 to 88). None is laid whose middle is within 60 cells of the core, or so far
   // out that the last reach could not go round it; within 40 cells and its radius of a wreck or a relic's vault;
-  // within 44 and its radius of the first slab; where its disc and five cells more meet a pocket (`meetsPocket`);
+  // within 44 and its radius of the first slab; where its disc and five cells more (a cobble field's and six
+  // and a half: as far as its own cells lie) meet a pocket (`meetsPocket`);
   // where its middle is in a great cavern or within 0.08, on the caverns' layer of noise, of being in one; or
   // where it would not be sound (`slab`).
   slabIn(sx, sy) {
@@ -874,11 +941,14 @@ export class World {
       if (!why) for (const [wx, wy] of this.wrecks) if (near(wx, wy, most)) why = 'wreck';
       if (!why) for (let d = 0; d < 4; d++) if (near(C + DX[d] * RELIC_R, C + DY[d] * RELIC_R, most)) why = 'wreck';
       if (!why && far < FIRST_R + most + 6) { const first = this.firstSlab; if (first && near(first.cx, first.cy, most + 4)) why = 'first'; }
-      if (!why && this.meetsPocket(cx, cy, p + 5)) why = 'pocket';
+      // (No cell of it may be a pocket's: a slab's own cells lie up to five cells beyond its radius, a cobble
+      // field's collar a cell and a half further.)
+      const cobble = hash(sx, sy, seed + 85) < COBBLES;
+      if (!why && this.meetsPocket(cx, cy, cobble ? p + 6.5 : p + 5)) why = 'pocket';
       if (!why) { const lay = (BIOMES[this.biomeAt(cx, cy)] ?? BIOMES[0]).lay; if (noise(cx / 19, cy / 19, seed + 18, 18) > (lay ? lay.cavern : 0.76) - 0.08) why = 'cavern'; }
       if (!why) {
         const turn = hash(sx, sy, seed + 86) * 4, a = 0.8 + hash(sx, sy, seed + 87) * (p > 12 ? 0.8 : 2.4);
-        S = this.slab(cx, cy, p, hash(sx, sy, seed + 85) < COBBLES, p > 12 ? [turn, turn + a, turn + a + 0.8 + hash(sx, sy, seed + 88) * 0.8] : [turn, turn + a]);
+        S = this.slab(cx, cy, p, cobble, p > 12 ? [turn, turn + a, turn + a + 0.8 + hash(sx, sy, seed + 88) * 0.8] : [turn, turn + a]);
         why = S.fault;
       }
       // (`unsound`, kept for tests: the slab that was tried last and not laid for a fault of its own.)
