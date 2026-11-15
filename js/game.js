@@ -154,10 +154,9 @@ export class Game {
   foresee() {
     const w = this.world, d = this.drill, tier = this.val('drill'), L = this.val('tether');
     this.preview = [];
-    if (w.dist[this.di] + 1 > L) return;
     for (let dir = 0; dir < 4; dir++) {
       const i = (d.y + DY[dir]) * N + d.x + DX[dir], k = w.kind[i];
-      if (k === K.EMPTY || HARD[k] >= 99) continue;
+      if (k === K.EMPTY || HARD[k] >= 99 || this.tetherTo(i) > L) continue;
       w.kind[i] = K.EMPTY; w.dist[i] = 1;
       const found = w.islands();
       w.kind[i] = k; w.dist[i] = -1;
@@ -180,10 +179,16 @@ export class Game {
     if (fromInput) { d.bore = this.val('momentum'); this.S.stats.moves++; }
     if (fromInput && this.atCore && this.input.vec && this.fling(this.input.vec)) return;
     const nx = d.x + DX[dir], ny = d.y + DY[dir], ni = ny * N + nx, k = w.at(nx, ny);
+    const px = d.x - C, py = d.y - C, along = px * DX[dir] + py * DY[dir], across = Math.abs(px * DY[dir] - py * DX[dir]);
+    // Once the string is pulling, it keeps pulling for as long as the drag points inward, whatever is beside it.
+    if (fromInput && d.reeling && along < 0 && !this.atCore && this.reelIn()) return;
+    d.reeling = false;
     if (k === K.EMPTY) {
       if (w.lava[ni] > 0) { this.bump(); sfx.hiss(); return; }
       // Heading away from the core the drill snaps to the next ground; any other way it goes a cell at a time.
-      const away = this.atCore || (d.x - C) * DX[dir] + (d.y - C) * DY[dir] > 0;
+      // Toward the core along the tether, the drill is reeled in on the string itself.
+      const away = this.atCore || (along > 0 && along >= across);
+      if (fromInput && !this.atCore && along < 0 && w.onPath[ni] && this.reelIn()) return;
       let x = d.x, y = d.y, steps = 0;
       for (;;) {
         const i = (y + DY[dir]) * N + x + DX[dir];
@@ -204,7 +209,7 @@ export class Game {
       d.bore = 0;
       return;
     }
-    if (w.dist[this.di] + 1 > L) { this.taut(nx, ny); return; }
+    if (this.tetherTo(ni) > L) { this.taut(nx, ny); return; }
     if (this.charge <= 0) { this.bump(); sfx.deny(); this.popup(nx, ny, 'EMPTY', '#ffe14a', 'bolt'); this.nudge = 2.5; return; }
     d.mode = 'dig'; d.target = ni; d.t = 0;
     d.dur = DIG_TIME[k] / SPEED[this.S.lv.drill] * (fromInput ? 1 : 0.55);
@@ -228,6 +233,34 @@ export class Game {
     sfx.slide(Math.hypot(d.x - d.fx, d.y - d.fy));
     this.retether(); this.arrive();
     return true;
+  }
+  // One step of being reeled in: the next cell along the taut string. Held, it runs on smoothly to the core.
+  reelIn() {
+    const w = this.world, d = this.drill, pts = this.pathPts;
+    for (const want of [1, 1.5, 2.2, 3]) {
+      let left = want, x = pts[0][0], y = pts[0][1];
+      for (let n = 1; n < pts.length && left > 0; n++) {
+        const seg = Math.hypot(pts[n][0] - x, pts[n][1] - y), take = Math.min(seg, left);
+        if (seg > 0) { x += (pts[n][0] - x) * take / seg; y += (pts[n][1] - y) * take / seg; }
+        left -= take;
+      }
+      const cx = Math.floor(x), cy = Math.floor(y), i = cy * N + cx;
+      if (i === this.di || w.kind[i] !== K.EMPTY || w.lava[i] > 0 || w.dist[i] < 0) continue;
+      const dx = cx - d.x, dy = cy - d.y;
+      d.dir = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 0 : 2) : (dy > 0 ? 1 : 3);
+      d.x = cx; d.y = cy; d.mode = 'slide'; d.speed = 16; d.wait = 0; d.reeling = true;
+      this.retether(); this.arrive();
+      return true;
+    }
+    return false;
+  }
+  // How much tether a solid cell would take once cut open: one more than its nearest open neighbour, which may
+  // be nearer the core than the drill is (cutting back toward a tunnel never needs more string).
+  tetherTo(i) {
+    const { dist, kind } = this.world;
+    let best = Infinity;
+    for (const j of [i + 1, i - 1, i + N, i - N]) if (kind[j] === K.EMPTY && dist[j] >= 0 && dist[j] < best) best = dist[j];
+    return best + 1;
   }
   bump() { const d = this.drill; d.mode = 'bump'; d.t = 0; }
   // The tether is all paid out: say so on the cell that was refused, and point at the way home.
@@ -531,7 +564,7 @@ export class Game {
       // What is drawn follows the drill's cell.
       if (d.mode === 'slide') {
         const tx = d.x, ty = d.y, dx = tx - d.fx, dy = ty - d.fy, far = Math.hypot(dx, dy), step = d.speed * dt;
-        if (far <= step) { d.fx = tx; d.fy = ty; d.mode = 'idle'; if (d.speed < 26) sfx.thud(); } else { d.fx += dx / far * step; d.fy += dy / far * step; }
+        if (far <= step) { d.fx = tx; d.fy = ty; d.mode = 'idle'; if (d.speed === 24) sfx.thud(); } else { d.fx += dx / far * step; d.fy += dy / far * step; }
       } else if (d.mode === 'dig') {
         d.t += dt;
         if (((d.t * 30) | 0) !== (((d.t - dt) * 30) | 0) && d.dur > 0.15) sfx.grind();
@@ -547,6 +580,7 @@ export class Game {
         }
         if (d.at >= d.route.length) { const was = d.mode; d.mode = 'idle'; d.route = null; if (was === 'recall') { this.arrive(); sfx.thud(); } }
       }
+      if (inp.held === null) d.reeling = false;
       if (d.mode === 'idle') {
         d.wait -= dt;
         if (this.homeAfter > 0) {
