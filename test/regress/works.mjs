@@ -3,7 +3,7 @@
 // what a hazard does to the drill: LAVA SKIN lets it through lava unknocked, SPORE DRIVE turns a pod's burst into
 // speed, ARC COIL turns an arc into a pip mended, MENDER gives a pip back in time. A game saved before them loads
 // with none. The panel the top bar opens says what the drill is now, from the game's own figures.
-import { makeGame, UPGRADES, WORKS, K, B, N, C } from '../harness.mjs';
+import { makeGame, UPGRADES, WORKS, MAPS, K, B, N, C } from '../harness.mjs';
 
 const fails = [], check = (ok, what) => { if (!ok) fails.push(what); };
 const fly = (game, x, y, seconds) => { game.input.auto = [x, y, 1]; for (let f = 0; f < seconds * 60; f++) game.update(1 / 60); game.input.auto = null; };
@@ -30,9 +30,10 @@ check(WORKS.every(u => u.grit.length === u.values.length - 1 && u.spec.length ==
   check(game.S.lv.mender === 2 && game.val('mender') === 18 && Math.abs(game.S.spec[B.FROST] - 16) < 1e-9, `the mender bought as far as 40 specimens go: level ${game.S.lv.mender}, one pip every ${game.val('mender')} s, ${game.S.spec[B.FROST]} specimens left`);
   // Both tabs draw, and a tap on a tab opens it.
   game.resize(320, 568, 1); game.shop = true; game.shopRise = 1; game.render();
-  const tab = game.buttons.find(b => b.h === 20 && b.x > 30 && b.y < game.H / 2 && b.w < 60);
-  tab?.act(); game.render();
-  check(game.shopTab === 'works', `a tap on the second tab left the shop at '${game.shopTab}'`);
+  // (The tabs stand in the panel's header, left to right, each a button twenty high and under sixty wide.)
+  const tabs = game.buttons.filter(b => b.h === 20 && b.y > 43 && b.y < game.H / 2 && b.w < 60 && b.w > 24 && b.x < game.W * 0.6).sort((a, b) => a.x - b.x);
+  tabs[1]?.act(); game.render();
+  check(tabs.length === 3 && game.shopTab === 'works', `a tap on the second tab left the shop at '${game.shopTab}'`);
   game.shop = false;
   game.save();
   const loaded = await makeGame(7); await loaded.restore();
@@ -116,6 +117,41 @@ for (const coil of [0, 1]) {
   check(game.mapFor.endsWith(`:${C + 300.5},${C - 200.5}`), `three hundred cells east the map is drawn about ${game.mapFor}`);
   const [x, y, w, h] = game.mapRect;
   check(!game.buttons.some(b => b.x <= x + w / 2 && b.y <= y + h / 2 && b.x + b.w > x + w / 2 && b.y + b.h > y + h / 2), 'the map can be tapped');
+}
+
+// ---- the map's own rows: how far it shows, what it tells apart, the finds it marks, and the chart at the core
+{
+  const game = await makeGame(7), w = game.world;
+  check(MAPS.map(u => u.id).join() === 'maprange,maplens,mapfinder,chart', `the third tab's rows are ${MAPS.map(u => u.id)}`);
+  game.resize(320, 568, 1); game.render();
+  // The pixel 3 right of the map's middle and 1 below it is the cell 5 east and 2 south of the drill's, at a cell
+  // and a half to a pixel. Rich ore laid and seen there is plain rock on the map until the lens is bought.
+  const pixel = () => { const o = (24 * 46 + 26) * 4; return [...game.mapData.data.slice(o, o + 3)].join(); };
+  w.setK((C + 2) * N + C + 5, K.ORE_B); w.see(C + 5, C + 2, 0); game.version++; game.render();
+  const plain = pixel();
+  game.S.lv.maplens = 1; game.render();
+  check(pixel() === '255,239,106' && plain !== '255,239,106', `rich ore seen is drawn ${plain} without the lens and ${pixel()} with it`);
+  // The range: the same square shows further.
+  const near = game.mapFor; game.S.lv.maprange = 3; game.render();
+  check(game.val('maprange') === 5 && game.mapFor !== near, `with the best range a pixel is ${game.val('maprange')} cells`);
+  // The finder: nothing without it; with it, caches within the map's span that the drill has not seen, and no more than its level knows.
+  game.S.lv.tether = 6;
+  check(game.findsNear(C + 0.5, C + 0.5, 115).length === 0, 'finds are marked with no finder');
+  game.S.lv.mapfinder = 1;
+  const caches = game.findsNear(C + 0.5, C + 0.5, 115);
+  check(caches.length > 0 && caches.every(([what, fx, fy]) => what === 'cache' && w.kindAt(fx, fy, w.biomeAt(fx, fy)) === K.CACHE && w.peek(fx, fy) < 0), `the first finder marks ${caches.length} finds: ${[...new Set(caches.map(f => f[0]))]}`);
+  game.S.lv.mapfinder = 3;
+  const all = game.findsNear(C + 0.5, C + 0.5, 115);
+  check(all.length > caches.length && all.some(f => f[0] === 'geode'), `the best finder marks ${all.length} finds: ${[...new Set(all.map(f => f[0]))]}`);
+  game.render();
+  // The chart: a third tab of the top bar's panel, at the core, once bought; a tap on the map there opens it.
+  game.labTab = 'chart'; game.openLab(true); game.render();
+  check(!game.charted && game.labTab === 'stats', `before the chart is bought the panel can be left at '${game.labTab}'`);
+  game.openLab(false); game.S.lv.chart = 1; game.render();
+  const [x, y, mw, mh] = game.mapRect;
+  game.pointerDown(1, x + mw / 2, y + mh / 2); game.pointerUp(1); game.render();
+  check(game.lab && game.labTab === 'chart' && game.chartMap?.mapFor?.endsWith(`:${C + 0.5},${C + 0.5}`), `a tap on the map at the core left the panel ${game.lab ? 'open' : 'shut'} at '${game.labTab}'`);
+  game.openLab(false);
 }
 
 console.log(fails.length ? `DEFECT:\n  ${fails.join('\n  ')}` : 'no defect: the second tab sells four things for specimens, each turns a hazard, and the stats say what the drill is');

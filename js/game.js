@@ -111,8 +111,26 @@ export const WORKS = [
   { id: 'sporedrive', name: 'SPORE DRIVE', what: 'SPORES SPEED IT UP', values: [0, 1], kin: B.MIRE, gem: B.MIRE, ...works([5.5], 0.4, [12]), show: v => v ? 'ON' : 'OFF' },
   { id: 'arccoil', name: 'ARC COIL', what: 'ARCS MEND THE HULL', values: [0, 1], kin: B.LODE, gem: B.LODE, ...works([5.5], 0.4, [12]), show: v => v ? 'ON' : 'OFF' },
 ];
-const ROWS = [...UPGRADES, ...WORKS];
-const TABS = [{ id: 'rig', name: 'RIG', rows: UPGRADES }, { id: 'works', name: 'WORKS', rows: WORKS }];
+// The shop's third tab, MAP: what the map in the corner shows.
+//   RANGE    how many cells of ground a pixel of the map is, so how far it shows: 69 cells across at first
+//   LENS     what the map tells apart from plain rock, in colours of their own: ore; then hard ground and hazards;
+//            then minerals, caches and whatever else was laid to be found (`LENS`)
+//   FINDER   finds not yet seen are marked on the map: caches; then geodes; then prisms (`findsNear`)
+//   CHART    a map of the whole of the tether's reach, read at the core (the third tab of the top bar's panel)
+export const MAPS = [
+  { id: 'maprange', icon: 'scanner', name: 'RANGE', what: 'MAP SHOWS FURTHER', values: [1.5, 2.25, 3.5, 5], gem: B.FROST, ...levels([2, 4, 6], 0.25), show: v => `${Math.round(v * 46)}` },
+  { id: 'maplens', icon: 'scanner', name: 'LENS', what: 'MAP TELLS MORE APART', values: [0, 1, 2, 3], gem: B.LODE, ...levels([1.5, 3.5, 5.5], 0.25), show: v => ['ROCK', 'ORE', 'HARD', 'ALL'][v] },
+  { id: 'mapfinder', icon: 'scanner', name: 'FINDER', what: 'MAP MARKS HIDDEN FINDS', values: [0, 1, 2, 3], gem: B.MIRE, ...levels([2.5, 4.5, 6.5], 0.25), show: v => ['OFF', 'CACHE', 'GEODE', 'PRISM'][v] },
+  { id: 'chart', icon: 'scanner', name: 'CHART', what: 'WHOLE MAP, AT THE CORE', values: [0, 1], gem: B.EMBER, ...levels([3], 0.3), show: v => v ? 'ON' : 'OFF' },
+];
+// What the lens shows a kind of ground as, and from which level of it: [level, red, green, blue].
+const LENS = [];
+for (const [level, colour, kinds] of [[1, [214, 178, 64], [K.ORE_A]], [1, [255, 232, 96], [K.ORE_B]], [2, [176, 184, 204], [K.SLATE, K.VAULT, K.KEY, K.STEEL, K.SLAG]], [2, [255, 84, 64], [K.HAZARD, K.HAZARD2]],
+  [3, [120, 240, 190], [K.MINERAL, K.NODE, K.CACHE, K.PRISM, K.FOSSIL, K.CAP, K.CAP_LIT, K.TWIN]]]) for (const k of kinds) LENS[k] = [level, ...colour];
+// Which finds the finder marks at each level of it.
+const FOUND = { cache: 1, geode: 2, prism: 3 };
+const ROWS = [...UPGRADES, ...WORKS, ...MAPS];
+const TABS = [{ id: 'rig', name: 'RIG', rows: UPGRADES }, { id: 'works', name: 'WORKS', rows: WORKS }, { id: 'map', name: 'MAP', rows: MAPS }];
 // How long a spore pod's burst drives a drill fitted with the spore drive, and how much faster.
 const BOOST = { time: 3, by: 1.5 };
 // After a knock nothing takes another pip, or stuns again, for SHIELD seconds: time to get clear. A drill whose
@@ -2787,26 +2805,40 @@ export class Game {
   // rock or open; the rest only as whose ground it is, so there is always somewhere to choose to go. Whose it is
   // is asked of the world as far as it is known (`biomeKnown`): what a piece already made holds, seen or not, so
   // that an older saved game's map never shows a place that its ground does not have.
-  drawMap(x, y) {
-    // The map shows the ground near the drill, a cell and a half to a pixel, with the drill in the middle: the
-    // whole of a long reach in so small a square cannot be read. The core, where it is off the map, is a mark at
-    // the map's edge on the way home.
-    const { ctx } = this, w = this.world, d = this.drill, size = 46, R = this.val('tether'), per = 1.5, mx0 = Math.floor(d.x) + 0.5, my0 = Math.floor(d.y) + 0.5;
-    slice9(ctx, 'ui', 'panel', x - 3, y - 3, size + 6, size + 6);
-    this.mapRect = [x - 3, y - 3, size + 6, size + 6];
-    let map = this.mapCanvas;
-    if (!map) { map = this.mapCanvas = document.createElement('canvas'); map.width = map.height = size; this.mapData = map.getContext('2d').createImageData(size, size); this.mapAt = -1; }
-    const view = `${this.version}:${R}:${mx0},${my0}`;
-    if (this.time - this.mapAt > 0.5 || this.mapFor !== view) {
-      this.mapAt = this.time; this.mapFor = view;
-      const px = this.mapData.data;
+  // The map. In the corner it shows the ground near the drill with the drill in its middle, so many cells to a
+  // pixel as RANGE gives: the whole of a long reach in so small a square cannot be read. The core, where it is off
+  // the map, is a mark at the map's edge on the way home. `big` draws the chart instead: { size, per }, the whole
+  // reach about the core, in a square that many pixels across.
+  drawMap(x, y, big = null) {
+    const { ctx } = this, w = this.world, d = this.drill, R = this.val('tether'), lens = this.val('maplens');
+    const size = big ? big.size : 46, per = big ? big.per : this.val('maprange'), mx0 = big ? HX : Math.floor(d.x) + 0.5, my0 = big ? HY : Math.floor(d.y) + 0.5;
+    const M = big ? (this.chartMap ??= {}) : this;
+    if (!big) {
+      slice9(ctx, 'ui', 'panel', x - 3, y - 3, size + 6, size + 6);
+      this.mapRect = [x - 3, y - 3, size + 6, size + 6];
+      // With the chart bought, a tap on the map at the core opens it.
+      if (this.atCore && this.val('chart') && !this.lab && !this.shop) {
+        ctx.fillStyle = '#ffe14a'; ctx.fillRect(x - 2, y - 2, size + 4, 1); ctx.fillRect(x - 2, y + size + 1, size + 4, 1);
+        this.button(x - 3, y - 3, size + 6, size + 6, () => { this.labTab = 'chart'; this.openLab(true); });
+      }
+    }
+    let map = M.mapCanvas;
+    if (!map || map.width !== size) { map = M.mapCanvas = document.createElement('canvas'); map.width = map.height = size; M.mapData = map.getContext('2d').createImageData(size, size); M.mapAt = -1; }
+    const view = `${this.version}:${R}:${per}:${lens}:${mx0},${my0}`;
+    if (this.time - M.mapAt > 0.5 || M.mapFor !== view) {
+      M.mapAt = this.time; M.mapFor = view;
+      const px = M.mapData.data;
       for (let v = 0; v < size; v++) for (let u = 0; u < size; u++) {
         const wx = Math.floor(mx0 + (u - size / 2 + 0.5) * per), wy = Math.floor(my0 + (v - size / 2 + 0.5) * per), o = (v * size + u) * 4, k = w.peek(wx, wy);
-        const [r, g, b] = rowOf(w.biomeKnown(wx, wy)).map;
-        const inside = Math.hypot(wx - C, wy - C) <= R, shade = (k < 0 ? 0.3 : k === K.EMPTY ? 0.12 : 0.85) * (inside ? 1 : 0.45);
+        let [r, g, b] = rowOf(w.biomeKnown(wx, wy)).map;
+        const inside = Math.hypot(wx - C, wy - C) <= R;
+        let shade = (k < 0 ? 0.3 : k === K.EMPTY ? 0.12 : 0.85) * (inside ? 1 : 0.45);
+        // What the lens tells apart is drawn in its own colour, at full strength.
+        const L = k > 0 ? LENS[k] : undefined;
+        if (L !== undefined && L[0] <= lens) { r = L[1]; g = L[2]; b = L[3]; shade = inside ? 1 : 0.6; }
         px[o] = r * shade + 8; px[o + 1] = g * shade + 7; px[o + 2] = b * shade + 10; px[o + 3] = 255;
       }
-      map.getContext('2d').putImageData(this.mapData, 0, 0);
+      map.getContext('2d').putImageData(M.mapData, 0, 0);
     }
     ctx.drawImage(map, x, y);
     const at = (wx, wy) => [x + size / 2 + (wx - mx0) / per, y + size / 2 + (wy - my0) / per];
@@ -2848,6 +2880,12 @@ export class Game {
       const [mx, my] = at(wx + 0.5, wy + 0.5);
       ctx.fillStyle = '#ff9a3a'; ctx.fillRect(Math.round(mx) - 1, Math.round(my), 3, 1); ctx.fillRect(Math.round(mx), Math.round(my) - 1, 1, 3);
     });
+    // What the finder knows of and the drill has not seen: a dot each, in the find's own colour, ringed dark.
+    for (const [what, fx, fy] of this.findsNear(mx0, my0, size * per / 2)) {
+      const [mx, my] = at(fx + 0.5, fy + 0.5);
+      ctx.fillStyle = '#0c0a12'; ctx.fillRect(Math.round(mx) - 2, Math.round(my) - 2, 4, 4);
+      ctx.fillStyle = SPOT[what][1]; ctx.fillRect(Math.round(mx) - 1, Math.round(my) - 1, 2, 2);
+    }
     // Pockets within reach that the drill has not been into: a pip each, in the pocket's own colour.
     // (One that lies off the map is drawn at the map's edge, on the way to it.)
     for (const Z of this.pocketPips()) {
@@ -2865,6 +2903,27 @@ export class Game {
     const [dx, dy] = at(d.x, d.y);
     ctx.fillStyle = ((this.time * 3) | 0) % 2 ? '#ffffff' : '#ffd83a'; ctx.fillRect(Math.round(dx) - 1, Math.round(dy) - 1, 3, 3);
     ctx.restore();
+  }
+  // The finds the finder marks within `half` cells of a place (square): those of the kinds its level knows, that
+  // still lie where the seed laid them (a pocket or a wreck may have taken the place), within the tether's reach,
+  // and that the drill has not yet seen (what it has seen is on the map already). Asked of the seed alone: no
+  // ground is made to answer. The list is kept while the place, the span and the level stay the same.
+  findsNear(cx, cy, half) {
+    const w = this.world, level = this.val('mapfinder'), R = this.val('tether');
+    if (!level) return [];
+    const x0 = Math.floor((cx - half - C) / FIND), x1 = Math.floor((cx + half - C) / FIND), y0 = Math.floor((cy - half - C) / FIND), y1 = Math.floor((cy + half - C) / FIND);
+    const key = `${this.S.seed}:${level}:${R}:${x0},${y0},${x1},${y1}:${this.version}`;
+    if (this.foundFor !== key) {
+      this.foundFor = key; this.found = [];
+      for (let sy = y0; sy <= y1 && this.found.length < 200; sy++) for (let sx = x0; sx <= x1; sx++) {
+        const [what, fx, fy] = w.findSpot(sx, sy);
+        if (what === null || !(FOUND[what] <= level) || Math.hypot(fx - C, fy - C) > R || w.peek(fx, fy) >= 0) continue;
+        const laid = w.kindAt(fx, fy, w.biomeAt(fx, fy));
+        if ((what === 'cache' && laid !== K.CACHE) || (what === 'prism' && laid !== K.PRISM) || rowOf(w.biomeAt(fx, fy)).pocket !== null) continue;
+        this.found.push([what, fx, fy]);
+      }
+    }
+    return this.found;
   }
   // The pockets the map marks: those whose middles lie within the tether's reach and that the drill has not been
   // into, the PIPS nearest the drill. One whose ground was made before pockets were laid (an older saved game's:
@@ -2893,12 +2952,14 @@ export class Game {
     ctx.fillStyle = '#0c0a12'; ctx.fillRect(x + 11, y + 2, w - 11, 6);
     ctx.fillStyle = flash ? '#ffffff' : color; ctx.fillRect(x + 12, y + 3, Math.round((w - 13) * Math.max(0, Math.min(1, fill))), 4);
   }
-  // The two tabs of the panel the top bar opens (STATS: what the drill is now; ANALYSIS: the lab's notes), and its
-  // cross.
+  // The chart can be read where the drill is docked, once it is bought.
+  get charted() { return this.val('chart') > 0 && this.atCore; }
+  // The tabs of the panel the top bar opens (STATS: what the drill is now; ANALYSIS: the lab's notes; CHART, at the
+  // core: the whole reach), and its cross.
   panelTabs(px, py, pw, HEAD) {
     const { ctx } = this;
     let tx = px + 8;
-    for (const [id, name] of [['stats', 'STATS'], ['lab', 'ANALYSIS']]) {
+    for (const [id, name] of [['stats', 'STATS'], ['lab', 'ANALYSIS'], ...(this.charted ? [['chart', 'CHART']] : [])]) {
       const tw = textWidth(name), on = this.labTab === id;
       text(ctx, name, tx, py + 7, on ? '#ffe14a' : '#8a84a0');
       if (on) { ctx.fillStyle = '#ffe14a'; ctx.fillRect(tx, py + 17, tw, 1); }
@@ -2927,6 +2988,9 @@ export class Game {
       ['HAUL PAY', `+${parts * 10}% (${parts}/8 PARTS)`, parts > 0],
       ['ANALYSED', known.length ? `${known.length}/${LAB.length}, UP TO +${best}%` : `0/${LAB.length}`, known.length > 0],
       ['SPECIMENS', [1, 2, 3, 4].map(k => this.specs(k)).join(' / ')],
+      ['MAP', `${Math.round(this.val('maprange') * 46)} CELLS, ${MAPS[1].show(this.val('maplens'))}`, this.S.lv.maprange + this.S.lv.maplens > 0],
+      ['FINDER', this.val('mapfinder') ? ['', 'CACHES', 'CACHES, GEODES', 'ALL FINDS'][this.val('mapfinder')] : 'NONE', this.val('mapfinder') > 0],
+      ['CHART', this.val('chart') ? 'AT THE CORE' : 'NONE', this.val('chart') > 0],
     ];
   }
   drawStats(px, y0, pw) {
@@ -2948,11 +3012,14 @@ export class Game {
     const room = H - 48 - HEAD - NOTE - 4, paged = Math.floor(room / RH) < LAB.length, rows = paged ? Math.max(3, Math.floor((room - 14) / RH)) : LAB.length, pages = Math.ceil(LAB.length / rows);
     const sel = LAB_OF[this.labSel] ?? LAB[0];
     if (this.labPage < 0 || this.labPage >= pages) this.labPage = Math.floor(LAB.indexOf(sel) / rows);
-    const rise = 1 - this.labRise, ph = this.labTab === 'stats' ? HEAD + this.stats().length * 11 + 8 : HEAD + rows * RH + NOTE + (paged ? 14 : 0) + 4, py = Math.max(44, Math.round((H - ph) / 2)) + Math.round(rise * rise * 60);
+    if (this.labTab === 'chart' && !this.charted) this.labTab = 'stats';
+    const chart = Math.min(pw - 12, H - 52 - HEAD - 10);
+    const rise = 1 - this.labRise, ph = this.labTab === 'chart' ? HEAD + chart + 10 : this.labTab === 'stats' ? HEAD + this.stats().length * 11 + 8 : HEAD + rows * RH + NOTE + (paged ? 14 : 0) + 4, py = Math.max(44, Math.round((H - ph) / 2)) + Math.round(rise * rise * 60);
     slice9(ctx, 'ui', 'panel', px, py, pw, ph);
     this.button(px, py, pw, ph, () => {});
     this.panelTabs(px, py, pw, HEAD);
     if (this.labTab === 'stats') { this.drawStats(px, py + HEAD, pw); return; }
+    if (this.labTab === 'chart') { this.drawMap(Math.round(px + (pw - chart) / 2), py + HEAD + 3, { size: chart, per: Math.max(0.3, this.val('tether') * 2.25 / chart) }); return; }
     text(ctx, `${LAB.filter(e => S.lab[e.key]).length}/${LAB.length}`, px + pw - 28, py + 7, '#8cf2c4', 1);
     LAB.slice(this.labPage * rows, this.labPage * rows + rows).forEach((e, r) => {
       const y = py + HEAD + r * RH, n = S.lab[e.key] ?? 0, on = e === sel;
@@ -3020,6 +3087,7 @@ export class Game {
       else if (u.id === 'scanner') draw(ctx, 'dish', `dish-${next}`, vx, vy);
       else if (u.id === 'hull') this.drawDrill(vx + 8, vy + 8, 0, S.lv.drill, S.lv.momentum, -1, 1, 1, ctx, next);
       else if (u.kin !== undefined && u.spec) this.drawDrill(vx + 8, vy + 8, 0, S.lv.drill, S.lv.momentum, -1, 1, 1, ctx, S.lv.hull, u.id);
+      else if (MAPS.includes(u)) draw(ctx, 'upgrades', u.icon, vx + 2, vy + 2);
       else { draw(ctx, 'upgrades', u.icon, vx + 2, vy + 2); text(ctx, `${u.values[next]}`, vx + 15, vy + 7, '#ffffff', 1); }
       // What it is, what it does, and what the next level changes.
       text(ctx, u.name, px + 25, y + 2, '#ffffff');
