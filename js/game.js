@@ -397,8 +397,8 @@ export class Game {
     d.dur = DIG_TIME[k] / SPEED[this.S.lv.drill] * (fromInput ? 1 : 0.55);
   }
   // Move through a run of open cells, laying tether in each.
-  go(cells, speed, wait) {
-    const d = this.drill;
+  go(cells, speed, wait, homing = false) {
+    const d = this.drill, before = Math.hypot(d.x - C, d.y - C);
     for (const i of cells) { d.x = i % N; d.y = (i / N) | 0; this.step(i); }
     d.mode = 'slide'; d.speed = speed; d.wait = wait;
     if (speed === 18) {
@@ -407,7 +407,12 @@ export class Game {
     }
     this.retether(); this.reelIfRound(); this.arrive();
     // Home: the drill settles in the middle and waits for a fresh stroke before it sets out again.
-    if (d.x === C && d.y === C) { this.input.held = null; this.input.queued = null; this.input.keys.clear(); d.wait = 0.2; }
+    if (d.x === C && d.y === C) { this.input.held = null; this.input.queued = null; this.input.keys.clear(); d.wait = 0.2; return; }
+    // Close to the core and heading in, the tether takes over and reels the drill the rest of the way home.
+    const far = Math.hypot(d.x - C, d.y - C);
+    if (homing || far > 3.3 || far >= before) return;
+    const w = this.world, way = cellsAlong(d.x + 0.5, d.y + 0.5, C + 0.5, C + 0.5).slice(1);
+    if (way.every(i => w.kind[i] === K.EMPTY && w.lava[i] <= 0)) { this.go(way, 24, 0.2, true); d.reeled = true; sfx.slide(way.length); }
   }
   // From the core the drill can be thrown at any angle: it flies straight along the drag until ground, lava or
   // the end of its reach stops it. Returns false when it cannot leave its cell that way.
@@ -765,7 +770,7 @@ export class Game {
           const dx = d.x - d.fx, dy = d.y - d.fy, far = Math.hypot(dx, dy);
           if (far > step) { d.fx += dx / far * step; d.fy += dy / far * step; break; }
           d.fx = d.x; d.fy = d.y; step -= far; d.mode = 'idle';
-          if (d.speed === 24) { sfx.thud(); this.land(); d.squash = 0.12; break; }
+          if (d.speed === 24) { if (d.reeled) { d.reeled = false; sfx.dock(); this.ring((C + 0.5) * T, (C + 0.5) * T, '#84dcff', 30); } else { sfx.thud(); this.land(); d.squash = 0.12; } break; }
           const want = inp.queued ?? (d.hold <= 0 ? inp.held : null);
           if (d.next || want === null || d.wait > 0 || d.stun > 0) break;
           inp.queued = null;       // already moving: a turn carries straight on
