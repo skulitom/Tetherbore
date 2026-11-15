@@ -127,6 +127,19 @@ export const STRAINS = [
     }
     fill.dots('o', 2, 2);
   }),
+  // West. Tangle: deep moss shot through with roots.
+  strain('tangle', { k: '#0e1a12', D: '#24402c', L: '#a8e070', s: '#05020a59', f: '#3e5a40', a: '#324a36', b: '#5a4a70', c: '#c8f08a', r: '#5e8a48' }, 139, fill => {
+    fill.clumps('a', 0.22, 6).clumps('b', 0.12, 5);
+    for (const [x, y] of fill.places(3, 5, 2)) {
+      const dx = fill.next() < 0.5 ? 1 : -1;
+      fill.wander(x, y, [[dx, 1], [0, 1], [0, 1], [dx, 0]], fill.int(5, 8), 'r');
+    }
+    fill.dots('c', 3, 2);
+  }),
+  // Sporefall: pale ground dusted with what the pods let fall.
+  strain('sporefall', { k: '#22142c', D: '#5a4070', L: '#f0c8ff', s: '#05020a59', f: '#a888b8', a: '#9a7aac', b: '#b898c6', c: '#b4e878', g: '#6aa050' }, 149, fill => {
+    fill.clumps('a', 0.2, 4).clumps('b', 0.16, 3).dots('c', 4, 1).dots('g', 3, 1);
+  }),
 ];
 
 export const FLOORS = [
