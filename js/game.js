@@ -105,6 +105,11 @@ const DEBRIS = {
   slate: ['#6a7080', '#a4acbc', '#454a5a'], vault: ['#463a68', '#8a78c0', '#c8a8ff'], ice: ['#6fb0e0', '#d8f4ff', '#ffffff'],
   basalt: ['#463e4c', '#7a6a78', '#8a3424'], bedrock: ['#1e1e26', '#34343e'],
 };
+// And off what is found in the ground, whatever ground it lies in: a keystone's iron and rust, a prism's glass.
+const CHIPS = [];
+CHIPS[K.KEY] = ['#8a94a8', '#eef4ff', '#b0603a']; CHIPS[K.PRISM] = ['#ffffff', '#bfe6ff', '#d8b8ff'];
+// How many keystones in view glint in the dark at once (the nearest the drill), how bright, and how far.
+const KEY_GLINTS = 12, KEY_GLINT = 0.4, KEY_GLOW = 2;
 // How the tether looks at each level of reach: rope, braid, cable, then lines of light.
 const TETHERS = [
   { a: '#e8dcc0', b: '#e8dcc0', dash: 1 }, { a: '#e8dcc0', b: '#b89a6c', dash: 0.5 }, { a: '#f0d890', b: '#b0803a', dash: 0.5 },
@@ -1059,12 +1064,13 @@ export class Game {
     const w = this.world, d = this.drill, x = i % N, y = Math.floor(i / N), k = w.k(i), b = w.b(i), row = rowOf(b), haz = hazOf(k, row);
     w.setK(i, K.EMPTY);
     if (row.freeze > 0) { w.dug.set(i, this.clock); this.frostOpen.push(i); }
-    const tough = k === K.SLATE ? 3 : k === K.VAULT ? 4 : k === K.DENSE || k === K.ORE_B || k === K.BASALT || k === K.SLAG || k === K.STEEL ? 2 : 1;
+    // (A keystone is iron: it rings and shatters as slate does. A prism breaks like any crystal.)
+    const tough = k === K.SLATE || k === K.KEY ? 3 : k === K.VAULT ? 4 : k === K.DENSE || k === K.ORE_B || k === K.BASALT || k === K.SLAG || k === K.STEEL || k === K.PRISM ? 2 : 1;
     sfx.dig(tough);
     this.chips(x, y, this.debris(k, b), 9 + tough * 3, d.ang, 1);
     this.effect('dust', 'dust', (x + 0.5) * T, (y + 0.5) * T);
     if (tough >= 2 || k === K.ICE) this.effect('shatter', 'shatter', (x + 0.5) * T, (y + 0.5) * T);
-    if (k === K.ORE_A || k === K.ORE_B || k === K.STEEL) this.popup(x, y, 'CRUSHED', '#9a94a8');
+    if (k === K.ORE_A || k === K.ORE_B || k === K.STEEL || k === K.PRISM) this.popup(x, y, 'CRUSHED', '#9a94a8');
     this.shake = Math.max(this.shake, 1 + tough * 0.5);
     // The hazard that was cut into wakes, and a hazard beside the cut: each may open cells (its own; the slate an
     // arc shatters), and every cell opened goes to `changed` together.
@@ -1146,8 +1152,9 @@ export class Game {
     // A haul made soon after another is a link in a chain: `n` is how many came before it.
     const linked = this.chain && this.time - this.chain.t <= CHAIN ? this.chain.n : 0;
     this.chain = { t: this.time, n: linked + 1 };
-    // Small, and with nothing in it to make a show of, it is a light haul: flight is not stopped for it.
-    const light = n < LIGHT && relic < 0 && !caches && !parts;
+    // Small, and with nothing in it to make a show of, it is a light haul: flight is not stopped for it. (A prism
+    // is something to make a show of: the banner says what it did to the gems.)
+    const light = n < LIGHT && relic < 0 && !caches && !parts && !pay.prisms;
     S.grit += grit; this.pending.grit += grit;
     for (let b = 1; b < 5; b++) { S.gems[b] += gems[b]; this.pending.gems[b] += gems[b]; }
     S.stats.hauls++; S.stats.best = Math.max(S.stats.best, n);
@@ -1180,7 +1187,7 @@ export class Game {
     const title = relic >= 0 ? 'RELIC!' : parts ? 'WRECK PART! PAY +10%' : caches ? 'CACHE!' : n >= 200 ? 'COLOSSAL!' : n >= 80 ? 'HUGE HAUL!' : n >= 30 ? 'BIG HAUL!' : n >= 10 ? 'NICE CUT!' : 'HAUL';
     // What the last haul was and paid (`hauled`). Any but a light one says so across the screen, with a flash and
     // a beat of stillness. A light one says what it paid where it lay, and leaves the banner of a bigger haul up.
-    this.hauled = { title, n, mult, over, grit, gems, light, t: 0, life: 2.2 + Math.min(1.2, n * 0.01) };
+    this.hauled = { title, n, mult, over, grit, gems, light, shine: pay.shine, t: 0, life: 2.2 + Math.min(1.2, n * 0.01) };
     if (light) {
       this.shake = Math.max(this.shake, Math.min(1.5, 0.7 + n * 0.08));
       this.ring(cx, cy, '#fff6c8', 12 + n);
@@ -1765,7 +1772,7 @@ export class Game {
     return k === K.BEDROCK ? 'bedrock' : k === K.SLATE ? 'slate' : k === K.VAULT || k === K.RELIC ? 'vault' : k === K.ICE ? 'ice' : k === K.BASALT ? 'basalt' : rowOf(b).sheet;
   }
   // The colours of the chips that fly off a cell of kind `k` in ground `b`.
-  debris(k, b) { return DEBRIS[this.rockSheet(k, b)] ?? rowOf(b).debris; }
+  debris(k, b) { return CHIPS[k] ?? DEBRIS[this.rockSheet(k, b)] ?? rowOf(b).debris; }
   rockRect(x, y, k, b) {
     const sheet = this.rockSheet(k, b), rects = sheets[sheet].tiles[this.world.mask(x, y)];
     return [sheet, rects[(cellHash(x, y, 3) * rects.length) | 0]];
@@ -1779,7 +1786,9 @@ export class Game {
     if (k === K.HAZARD || k === K.HAZARD2) { const haz = hazOf(k, row); return haz ? [HAZARDS[haz].sheet, 'hazard'] : null; }
     // Slag and the steel it is quenched to are the lava's, drawn from the lava's sheet whatever ground they lie in.
     if (k === K.SLAG || k === K.STEEL) return [HAZARDS.lava.sheet, k === K.SLAG ? 'slag' : 'steel'];
-    return k === K.RELIC ? [rowOf(row.kin).items, 'relic'] : k === K.CACHE ? ['finds', 'cache'] : k === K.WRECK ? ['finds', 'part'] : null;
+    // A keystone is an iron staple across its block of rock; a prism turns through the gems' colours (`render`).
+    return k === K.RELIC ? [rowOf(row.kin).items, 'relic'] : k === K.CACHE ? ['finds', 'cache'] : k === K.WRECK ? ['finds', 'part']
+      : k === K.KEY ? ['finds', 'key'] : k === K.PRISM ? ['finds', 'prism'] : null;
   }
 
   render() {
@@ -1807,8 +1816,10 @@ export class Game {
     }
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
       const k = w.peek(x, y);
-      if (k !== K.HAZARD && k !== K.HAZARD2 && k !== K.RELIC && k !== K.STEEL) continue;
+      if (k !== K.HAZARD && k !== K.HAZARD2 && k !== K.RELIC && k !== K.STEEL && k !== K.PRISM) continue;
       const i = y * N + x, row = w.row(i), m = w.mask(x, y), ux = x * T - ox - ((m & 4) ? 0 : 1), uy = y * T - oy - ((m & 16) ? 0 : 1);
+      // A prism turns through the gems' colours, each in its own time.
+      if (k === K.PRISM) { draw(ctx, 'finds', frameAt('finds', 'prism', now + cellHash(x, y, 4) * 720), ux, uy); continue; }
       // Steel glints now and then, each bar in its own time, and is white for a moment as it is quenched.
       if (k === K.STEEL) { const items = HAZARDS.lava.sheet; draw(ctx, items, this.quenched.has(i) ? 'quench' : frameAt(items, 'steel', now + cellHash(x, y, 4) * 1140), ux, uy); continue; }
       if (k === K.RELIC) { const rs = rowOf(DIR_BIOME[w.relicAt.indexOf(i)] ?? row.kin).items; draw(ctx, rs, frameAt(rs, 'relic', now), ux, uy); continue; }
@@ -2153,7 +2164,7 @@ export class Game {
       const ux = px - ((m & 4) ? 0 : 1), uy = py - ((m & 16) ? 0 : 1);
       if (k === K.SLATE || k === K.VAULT) draw(ctx, 'tough', k === K.SLATE ? 'slate' : 'vault', ux, uy);
       const over = this.overlay(k, row);
-      if (over && over[1] !== 'hazard' && over[1] !== 'relic') draw(ctx, over[0], over[1], ux, uy);
+      if (over && over[1] !== 'hazard' && over[1] !== 'relic' && over[1] !== 'prism') draw(ctx, over[0], over[1], ux, uy);
     }
   }
 
@@ -2194,7 +2205,13 @@ export class Game {
       [L.lit, L.next] = [L.next, L.lit]; L.x0 = x0; L.y0 = y0;
     }
     L.want.fill(0);
-    for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) L.solid[y * cols + x] = w.peek(x0 + x, y0 + y) === K.EMPTY ? 0 : 1;
+    const keys = L.keys ??= [];
+    keys.length = 0;
+    for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) {
+      const k = w.peek(x0 + x, y0 + y);
+      L.solid[y * cols + x] = k === K.EMPTY ? 0 : 1;
+      if (k === K.KEY) keys.push((y0 + y) * N + x0 + x);
+    }
     const flick = 1 + Math.sin(this.time * 9) * 0.03;
     this.shine(Math.floor(d.x), Math.floor(d.y), (d.dig >= 0 ? 1.08 : 1) * flick, 8.5);
     this.shine(C, C, 1 + this.coreFlash * 1.5 + Math.sin(this.time * 2) * 0.04, 8 + this.coreFlash * 10);
@@ -2203,6 +2220,13 @@ export class Game {
     for (const e of this.effects) if (e.sheet === 'blast' || e.sheet === 'zap' || e.sheet === 'haul' || e.sheet === 'bank') this.shine(Math.floor(e.x / T), Math.floor(e.y / T), 1, 6);
     for (const [i, sp] of this.sparks) if (sp.fuse > 0) this.shine(i % N, Math.floor(i / N), 0.9, 3);
     for (const i of this.quenched.keys()) this.shine(i % N, Math.floor(i / N), 0.8, 2.5);
+    // Keystones that have been seen glint, so that they read from across the screen: the nearest dozen.
+    if (keys.length > KEY_GLINTS) {
+      const far = i => ((i % N) + 0.5 - d.x) ** 2 + (Math.floor(i / N) + 0.5 - d.y) ** 2;
+      keys.sort((a, b) => far(a) - far(b)); keys.length = KEY_GLINTS;
+    }
+    this.glints = keys.length;
+    for (const i of keys) this.shine(i % N, Math.floor(i / N), KEY_GLINT, KEY_GLOW);
     // One pixel of darkness per cell, drawn sixteen times the size and smoothed.
     const mcols = vx1 - vx0 + 1, mrows = vy1 - vy0 + 1;
     let map = this.dark;
@@ -2297,6 +2321,10 @@ export class Game {
   }
 
   button(x, y, w, h, act) { this.buttons.push({ x, y, w, h, act }); }
+  // What a haul's banner says besides its title and what it paid: how many cells came and what their grit was
+  // multiplied by, and that the piece was over the winch's load where it was (a keystone slab is the haul the winch
+  // is for); and, where a prism came with it, what the prism multiplied the gems by (null: no prism).
+  bannerSays(b) { return [`${b.n} x${b.mult.toFixed(1)}${b.over < 1 ? ' WINCH OVER LOAD' : ''}`, b.shine > 1 ? `PRISM x${b.shine}` : null]; }
   drawHud(ox, oy) {
     const { ctx, W, H, S } = this, now = this.time * 1000, d = this.drill;
     this.buttons.length = 0;
@@ -2306,13 +2334,16 @@ export class Game {
       ctx.globalAlpha = Math.min(1, (b.life - b.t) * 3);
       const big = (b.n >= 10 ? 2 : 1) + (b.t < 0.07 ? 1 : 0);
       text(ctx, b.title, W / 2, y, b.n >= 30 ? '#ffe14a' : '#ffffff', 0.5, big);
-      text(ctx, b.over < 1 ? `${b.n} x${b.mult.toFixed(1)} WINCH OVER LOAD` : `${b.n} x${b.mult.toFixed(1)}`, W / 2, y + 11 * big + 2, b.over < 1 ? '#ffb060' : '#bfe6ff', 0.5);
+      const [size, prism] = this.bannerSays(b);
+      text(ctx, size, W / 2, y + 11 * big + 2, b.over < 1 ? '#ffb060' : '#bfe6ff', 0.5);
       let line = `+${compact(b.grit)}`, lw = textWidth(line) + 11;
       const gems = [1, 2, 3, 4].filter(g => b.gems[g] > 0);
       for (const g of gems) lw += textWidth(`+${compact(b.gems[g])}`) + 15;
       let lx = Math.round(W / 2 - lw / 2), ly = y + 11 * big + 14;
       draw(ctx, 'icons', 'grit', lx, ly - 1); text(ctx, line, lx + 11, ly, '#ffe14a'); lx += textWidth(line) + 15;
       for (const g of gems) { draw(ctx, 'icons', GEM_ICON[g], lx, ly - 1); text(ctx, `+${compact(b.gems[g])}`, lx + 11, ly, GEM_COLOR[g]); lx += textWidth(`+${compact(b.gems[g])}`) + 15; }
+      // A prism among the cells: what it multiplied the gems by, in the gems' colours by turns.
+      if (prism) text(ctx, prism, W / 2, ly + 12, GEM_COLOR[1 + ((now / 240) | 0) % 4], 0.5);
       ctx.globalAlpha = 1;
     }
     if (S.won && this.wonAt !== undefined && this.time - this.wonAt < 6) text(ctx, 'CORE RESTORED', W / 2, H * 0.36, '#ffe14a', 0.5, 2);
@@ -2330,7 +2361,7 @@ export class Game {
         }
         if (best) lines = [best[0], best[1]]; else big = 1;
       }
-      const under = this.banner ? Math.round(H * 0.2) + 11 * (this.banner.n >= 10 ? 2 : 1) + 30 : 0, y = Math.max(under, Math.round(H * 0.3 - (1 - pop) * 8));
+      const under = this.banner ? Math.round(H * 0.2) + 11 * (this.banner.n >= 10 ? 2 : 1) + (this.banner.shine > 1 ? 42 : 30) : 0, y = Math.max(under, Math.round(H * 0.3 - (1 - pop) * 8));
       ctx.globalAlpha = Math.min(1, (place.life - place.t) * 3);
       lines.forEach((line, n) => text(ctx, line, W / 2, y + n * 11 * big, place.colour, 0.5, big + (n === 0 && lines.length === 1 && place.t < 0.07 ? 1 : 0)));
       ctx.globalAlpha = 1;
@@ -2444,6 +2475,17 @@ export class Game {
       const [mx, my] = at(HX + DX[dir] * RELIC_R, HY + DY[dir] * RELIC_R);
       ctx.fillStyle = GEM_COLOR[DIR_BIOME[dir]]; ctx.fillRect(Math.round(mx) - 1, Math.round(my) - 1, 3, 3);
     }
+    // The first keystone slab, a ring of its own size, until it hangs by no key: somewhere to go. While the reach
+    // is too short for the map to show where it lies (the map shows a little more than the reach), the ring is
+    // drawn small at the map's edge, on the way to it.
+    const slab = this.firstRing();
+    if (slab) {
+      let [mx, my] = at(slab.cx + 0.5, slab.cy + 0.5), r = Math.max(1.5, slab.p / per);
+      const ox = mx - x - size / 2, oy = my - y - size / 2, off = Math.max(Math.abs(ox), Math.abs(oy)), edge = size / 2 - 4;
+      if (off > edge) { mx = Math.floor(x + size / 2 + ox * edge / off) + 0.5; my = Math.floor(y + size / 2 + oy * edge / off) + 0.5; r = 2; }
+      ctx.fillStyle = SPOT.key[1];
+      for (let a = 0; a < 6.283; a += 0.7 / r) ctx.fillRect(Math.round(mx + Math.cos(a) * r - 0.5), Math.round(my + Math.sin(a) * r - 0.5), 1, 1);
+    }
     // Things seen and not yet taken, each a dot in its own colour.
     for (const [cell, , colour] of this.S.marks) {
       const wx = cell % N, wy = Math.floor(cell / N);
@@ -2461,6 +2503,13 @@ export class Game {
     const [dx, dy] = at(d.x, d.y);
     ctx.fillStyle = ((this.time * 3) | 0) % 2 ? '#ffffff' : '#ffd83a'; ctx.fillRect(Math.round(dx) - 1, Math.round(dy) - 1, 3, 3);
     ctx.restore();
+  }
+  // The first keystone slab, while it is there to be found: the world's record of it, or null once none of its
+  // keys is left (cut, or hauled with it), or where the ground there was made before slabs were (an older saved
+  // game: what is there is the cells' to say). Where the ground is not made yet, it will be.
+  firstRing() {
+    const w = this.world, slab = w.firstSlab;
+    return slab && slab.keys.some(i => { const k = w.laid(i); return k < 0 || k === K.KEY; }) ? slab : null;
   }
   bar(x, y, w, icon, fill, color, flash) {
     const { ctx } = this;
