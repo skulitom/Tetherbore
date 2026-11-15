@@ -15,13 +15,13 @@ const GEM_COLOR = [null, '#bfe6ff', '#ffb060', '#b8f06a', '#d8b8ff'];
 export const UPGRADES = [
   // The tether's reach: how far from the core the drill may go, by any road.
   { id: 'tether', icon: 'string', name: 'REACH', what: 'TETHER GOES FURTHER', values: [12, 15, 19, 23, 28, 33, 38, 44, 51, 58], gem: B.MIRE,
-    grit: [10, 60, 220, 650, 1700, 4200, 9500, 21000, 45000], gems: [0, 0, 4, 12, 30, 70, 140, 260, 450], show: v => `${v}` },
-  { id: 'drill', icon: 'drill', name: 'BIT', what: 'CUTS FASTER', values: [1, 2, 3, 4, 5], gem: B.LODE, grit: [80, 700, 4200, 20000], gems: [0, 15, 60, 200], show: v => `MK${v}` },
+    grit: [10, 50, 150, 400, 900, 1800, 3000, 4500, 6500], gems: [0, 0, 4, 10, 22, 40, 70, 110, 160], show: v => `${v}` },
+  { id: 'drill', icon: 'drill', name: 'BIT', what: 'CUTS FASTER', values: [1, 2, 3, 4, 5], gem: B.LODE, grit: [80, 500, 2000, 7000], gems: [0, 12, 45, 130], show: v => `MK${v}` },
   { id: 'winch', icon: 'winch', name: 'WINCH', what: 'BIG HAULS PAY MORE', values: [1, 1.3, 1.6, 2, 2.5, 3], gem: B.FROST,
-    grit: [60, 400, 1800, 7000, 24000], gems: [0, 8, 30, 90, 240], show: v => `x${v}` },
-  { id: 'scanner', icon: 'scanner', name: 'SCAN', what: 'SEES DEEPER IN ROCK', values: [2, 3, 4, 5, 6], gem: B.FROST, grit: [40, 300, 1600, 8000], gems: [0, 8, 40, 130], show: v => `${v}` },
-  { id: 'momentum', icon: 'momentum', name: 'RAM', what: 'RUNS ON THROUGH SOFT', values: [0, 2, 4, 7, 12], gem: B.LODE, grit: [70, 500, 2600, 12000], gems: [0, 12, 50, 150], show: v => `${v}` },
-  { id: 'bombs', icon: 'bomb', name: 'BLAST', what: 'BOMB: CLEARS ROCK', values: [0, 1, 2, 3, 4], gem: B.EMBER, grit: [90, 600, 3000, 14000], gems: [0, 14, 60, 180], show: v => `${v}` },
+    grit: [60, 300, 1100, 3500, 9000], gems: [0, 8, 25, 70, 170], show: v => `x${v}` },
+  { id: 'scanner', icon: 'scanner', name: 'SCAN', what: 'SEES DEEPER IN ROCK', values: [2, 3, 4, 5, 6], gem: B.FROST, grit: [40, 250, 1000, 3500], gems: [0, 6, 30, 90], show: v => `${v}` },
+  { id: 'momentum', icon: 'momentum', name: 'RAM', what: 'RUNS ON THROUGH SOFT', values: [0, 2, 4, 7, 12], gem: B.LODE, grit: [70, 400, 1500, 5000], gems: [0, 10, 35, 100], show: v => `${v}` },
+  { id: 'bombs', icon: 'bomb', name: 'BLAST', what: 'BOMB: CLEARS ROCK', values: [0, 1, 2, 3, 4], gem: B.EMBER, grit: [90, 450, 1800, 6000], gems: [0, 12, 45, 120], show: v => `${v}` },
 ];
 // What flies off each kind of ground when it is cut, and the dark each direction's ground lies in.
 const DEBRIS = {
@@ -791,6 +791,10 @@ export class Game {
       }
       this.updateHazards(dt);
       this.updateHauls(dt);
+      // The station makes a trickle of grit of its own: however a world has been spent, the next reach is never
+      // out of reach for good.
+      this.trickle = (this.trickle ?? 0) + dt;
+      if (this.trickle >= 2) { this.trickle -= 2; this.S.grit += 1; }
       this.saveTick = (this.saveTick ?? 0) + dt;
       if (this.saveTick > 15) { this.saveTick = 0; this.save(); }
     }
