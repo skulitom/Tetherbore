@@ -1,6 +1,7 @@
 // tools/shot.mjs, run as it is run by hand: a PNG of the size asked for is written and its path is the last line
 // printed; the picture is of something (many colours, not one); `--lit` at the same place is brighter; `--zoom`
-// keeps the picture's size. Arguments that cannot be met are refused before any browser is started. Where no Edge
+// keeps the picture's size; the browser's profile is not left behind. Arguments that cannot be met are refused
+// before any browser is started. Where no Edge
 // or Chrome is installed the tool says so (exit 3) and the pictures are passed over, with a line to say so.
 // Nothing here is timed. The pictures go in a folder of their own under the system's temp folder, removed after.
 import { spawnSync } from 'node:child_process';
@@ -36,8 +37,12 @@ try {
     // (On seed 7 that is in a province of firn, a strain of the north's ground.)
     check(/300 north of the core, in firn/.test(first.stdout), `the tool does not say where the drill stands: ${first.stdout.trim()}`);
     const lit = path.join(folder, 'lit.png'), wide = path.join(folder, 'wide.png');
-    check(run('shot.mjs', lit, '--at=0,-300', '--frames', '30', '--lit').status === 0, 'tools/shot.mjs --lit failed');
-    check(run('shot.mjs', wide, '--at', '0,-300', '--frames', '0', '--size', '400x300', '--zoom', '4', '--lit').status === 0, 'tools/shot.mjs --zoom failed');
+    const second = run('shot.mjs', lit, '--at=0,-300', '--frames', '30', '--lit'), third = run('shot.mjs', wide, '--at', '0,-300', '--frames', '0', '--size', '400x300', '--zoom', '4', '--lit');
+    check(second.status === 0, 'tools/shot.mjs --lit failed');
+    check(third.status === 0, 'tools/shot.mjs --zoom failed');
+    // Nothing is left behind: the tool says so itself when the browser's profile could not be removed from the
+    // temp folder (it was left at every run of the whole suite, when the tool gave the browser three seconds).
+    for (const r of [first, second, third]) check(!/could not be removed/.test(r.stderr), `the tool left the browser's profile behind: ${r.stderr.trim().split('\n').pop()}`);
     if (!fails.length) {
       const a = decodePNG(await readFile(dark)), b = decodePNG(await readFile(lit)), c = decodePNG(await readFile(wide));
       const la = look(a), lb = look(b), lc = look(c);

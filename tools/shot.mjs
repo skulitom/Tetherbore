@@ -131,9 +131,9 @@ const server = createServer(async (request, response) => {
 // ---------------------------------------------------------------- everything that must be closed, closed once
 let browser = null, profile = null, closeBrowser = null, closing = null;
 const pids = new Set();
-const gone = async folder => {
+const gone = async (folder, most = 12) => {
   // (Not `maxRetries`: it tries again at every level of the tree, and one held file then takes minutes.)
-  for (let tries = 0; tries < 12; tries++) {
+  for (let tries = 0; tries < most; tries++) {
     if (await rm(folder, { recursive: true, force: true }).then(() => true, () => false)) return true;
     await sleep(250);
   }
@@ -141,13 +141,15 @@ const gone = async folder => {
 };
 const close = () => closing ??= (async () => {
   // Ask the browser to quit. Its profile can be removed once every process of it has let go of it; if it cannot,
-  // the processes the browser itself named are ended, and it is tried again.
+  // the processes the browser itself named are ended, and it is tried again, for twenty seconds: on a busy machine
+  // (the whole test suite running beside it) they are that slow to let go, and three seconds left a profile behind
+  // in the temp folder at every run of the suite.
   await closeBrowser?.().catch(() => {});
   browser?.kill();
   server.closeAllConnections(); server.close();
   if (profile && !await gone(profile)) {
     for (const pid of pids) { try { process.kill(pid); } catch { /* already gone */ } }
-    if (!await gone(profile)) console.error(`The browser's profile could not be removed: ${profile}`);
+    if (!await gone(profile, 80)) console.error(`The browser's profile could not be removed: ${profile}`);
   }
 })();
 for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(signal, () => { close().then(() => process.exit(130)); });
