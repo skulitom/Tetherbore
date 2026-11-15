@@ -268,8 +268,7 @@ export class Game {
       }
       return turns;
     };
-    // Everything the tether is round goes in as one haul. Nothing new is lassoed while the drill is being reeled in.
-    if (this.drill.mode === 'reel') return;
+    // Everything the tether is round goes in as one haul.
     const round = this.pieces.filter(cells => cells.every(i => winds((i % N) + 0.5, Math.floor(i / N) + 0.5) !== 0));
     if (!round.length) return;
     this.haul(round.flat());
@@ -297,19 +296,6 @@ export class Game {
     if (d.mode === 'free' && !this.free(d.x, d.y) && w.k(this.di) === K.EMPTY && this.free(Math.floor(d.x) + 0.5, Math.floor(d.y) + 0.5)) { d.x = Math.floor(d.x) + 0.5; d.y = Math.floor(d.y) + 0.5; }
     d.px = d.x; d.py = d.y;
     const far = this.far;
-    if (d.mode === 'reel') {
-      // Closing the loop behind a haul: the drill is drawn along the tether, just behind the rubble, so nothing
-      // can fall out of the back. Once the rubble is in, it docks.
-      const h = this.reeling;
-      if (!h || h.doneAt !== undefined || !this.hauls.includes(h)) { d.mode = 'home'; d.tx = HX; d.ty = HY; d.speed = 22; this.reeling = null; }
-      else {
-        const [x, y] = this.along(h, h.D), nx = x / T, ny = y / T, gone = Math.hypot(nx - d.x, ny - d.y);
-        if (gone > 1e-4 && dt > 0) { d.ang = Math.atan2(ny - d.y, nx - d.x); d.vx = (nx - d.x) / dt; d.vy = (ny - d.y) / dt; } else d.vx = d.vy = 0;
-        d.x = nx; d.y = ny; d.dig = -1; d.run = 0;
-        this.look();
-        return;
-      }
-    }
     if (d.mode !== 'free') {
       // Thrown from the core, or being reeled home: straight to where it is going.
       const dx = d.tx - d.x, dy = d.ty - d.y, left = Math.hypot(dx, dy), step = d.speed * dt;
@@ -499,10 +485,10 @@ export class Game {
       s.k = k; at += u / count;
       if (s.over) { const items = this.itemSheet(s.biome), f = s.over === 'hazard' || s.over === 'relic' ? frameAt(items, s.over, 0) : sheets[items].frames[s.over]; s.item = [sheets[items].image, f]; }
     });
-    // The rubble gathers on the tether beside where it lay; the drill comes round behind it, this far back.
-    h.S = at; h.gap = Math.sqrt(h.total * size * size / Math.PI) + 12; h.D = 0;
+    // The rubble gathers on the tether beside where it lay. From here the haul has a rope of its own, and the drill
+    // is free to go.
+    h.S = at;
     this.hauls.push(h);
-    this.reeling = h; this.drill.mode = 'reel'; this.drill.dig = -1; this.preview = [];
     cx = (cx / n + 0.5) * T; cy = (cy / n + 0.5) * T;
     this.effect('haul', 'impact', cx, cy);
     if (n >= 20) this.effect('bank', 'area', cx, cy);
@@ -539,9 +525,9 @@ export class Game {
   }
   // A lassoed piece crumbles into bits of ground, and they are real: they cannot overlap each other, the drill or the
   // rock, so they have to flow down the tunnels to the core, where a hatch opens and they drop in. `h.S` is how far
-  // along the route the tether is drawing them to, `h.D` where the drill is, closing the loop behind.
+  // along the route the rope is drawing them to.
   updateHauls(dt) {
-    const w = this.world, d = this.drill, homeX = HX * T, homeY = HY * T;
+    const w = this.world, homeX = HX * T, homeY = HY * T;
     for (const h of this.hauls) {
       h.t += dt;
       const { size, bits } = h, per = T / size, rad = size * 0.45, wall = size * 0.4;
@@ -556,13 +542,10 @@ export class Game {
         if (h.count < 80 || cellHash(s.x, s.y, 9) < 0.35) this.chips(s.x, s.y, s.tile[0], 3, null, 0.8);
         if (this.time - (this.lastSnap ?? 0) > 0.05) { this.lastSnap = this.time; sfx.dig((s.x + s.y) & 1); }
       }
-      // The drill comes round to close the loop, then the tether draws the lot in. A long way out it is carried
+      // Once the blocks have broken up, the rope draws the lot in. A long way out it is carried
       // fast as one bundle; the last stretch, and any short haul, is pushed through the tunnels bit by bit.
       const before = this.along(h, h.S), left = h.length - h.S;
-      const back = Math.max(0, Math.min(h.length - h.gap, h.S - h.gap));
-      if (h.D < back) h.D = Math.min(back, h.D + Math.max(22 * T, h.v * 2.5) * dt);
-      const closed = h.D >= back - 2 || h.t > h.gathered + 1.2;
-      const want = h.t < h.gathered || !closed ? 0 : left > 600 ? Math.max(700, left * 2.5) : 320;
+      const want = h.t < h.gathered ? 0 : left > 600 ? Math.max(700, left * 2.5) : 320;
       h.v = want > h.v ? Math.min(want, h.v + Math.max(900, want * 3) * dt) : want;
       h.S = Math.min(h.length, h.S + h.v * dt);
       const express = h.v > 330, aim = this.along(h, h.S), seg = this.onRoute(h, aim[0], aim[1], 0, h.route.length)[1];
@@ -571,7 +554,7 @@ export class Game {
       // The hatch in the core opens as the rubble comes up to it, and shuts behind the last bit.
       const open = left < 130 && h.t > h.gathered && h.paid < h.total ? 5 + size * 1.3 : 0;
       h.hole += Math.max(-60 * dt, Math.min(60 * dt, open - h.hole));
-      const dxp = d.x * T, dyp = d.y * T, steps = express ? 1 : Math.max(1, Math.min(4, Math.ceil((h.v * 1.5 + 80) * dt / 3))), sdt = dt / steps;
+      const steps = express ? 1 : Math.max(1, Math.min(4, Math.ceil((h.v * 1.5 + 80) * dt / 3))), sdt = dt / steps;
       let arrived = 0;
       for (let step = 0; step < steps; step++) {
         for (const b of bits) {
@@ -621,9 +604,6 @@ export class Game {
         }
         for (const b of bits) {
           if (b.st) continue;
-          // The drill shoves what it comes up behind.
-          const ux = b.x - dxp, uy = b.y - dyp, far = Math.hypot(ux, uy);
-          if (far < rad + 6 && far > 0.01 && d.mode === 'reel' && this.reeling === h) { b.x = dxp + ux / far * (rad + 6); b.y = dyp + uy / far * (rad + 6); }
           // Rock is solid to it.
           if (!b.ghost) {
             for (let cy = Math.floor((b.y - wall) / T); cy <= Math.floor((b.y + wall) / T); cy++) for (let cx = Math.floor((b.x - wall) / T); cx <= Math.floor((b.x + wall) / T); cx++) {
@@ -1008,9 +988,8 @@ export class Game {
         }
         ctx.globalAlpha = 1;
       }
-      // The loop of tether round the lot, the drill closing it at the back once it has come round.
+      // The haul's own rope: a loop round the lot, and a line from it along the way home.
       if (hull.length && h.doneAt === undefined) {
-        if (this.reeling === h && d.mode === 'reel' && h.D >= Math.min(h.length - h.gap, h.S - h.gap) - 4) hull.push([d.x * T - ox, d.y * T - oy]);
         hull.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
         const turn = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]), ring = [];
         for (const pass of [0, 1]) {
@@ -1023,7 +1002,14 @@ export class Game {
           for (const p of ring) { mx += p[0] / ring.length; my += p[1] / ring.length; }
           // Slack at first, drawn tight as the blocks break up.
           const slack = 2 + 3 * Math.max(0, 1 - h.t / h.gathered), out = ring.map(([x, y]) => { const far = Math.hypot(x - mx, y - my) || 1; return [x + (x - mx) / far * slack, y + (y - my) / far * slack]; });
-          const own = TETHERS[this.S.lv.tether];
+          const own = TETHERS[this.S.lv.tether], dark = { a: '#16121c', b: '#16121c', dash: 1 };
+          const line = [this.along(h, h.S)];
+          for (let k = 1; k < h.route.length; k++) if (h.cum[k] > h.S) line.push(h.route[k]);
+          for (const pass of [1, 0]) for (let i = 0; i + 1 < line.length; i++) {
+            const a = line[i], b = line[i + 1];
+            if (Math.max(a[0], b[0]) - ox < -2 || Math.max(a[1], b[1]) - oy < -2 || Math.min(a[0], b[0]) - ox > W + 2 || Math.min(a[1], b[1]) - oy > H + 2) continue;
+            this.drawSpan(a[0] - ox, a[1] - oy, b[0] - ox, b[1] - oy, pass ? dark : own, pass);
+          }
           for (const pass of [1, 0]) for (let i = 0; i < out.length; i++) {
             const a = out[i], b = out[(i + 1) % out.length];
             if (Math.max(a[0], b[0]) < -2 || Math.max(a[1], b[1]) < -2 || Math.min(a[0], b[0]) > W + 2 || Math.min(a[1], b[1]) > H + 2) continue;
