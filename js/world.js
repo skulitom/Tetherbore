@@ -80,7 +80,7 @@ export const base = b => b > 4 ? b - 4 : b;
 //          RIB of its edge on the slate's own layer of noise, which is the nearer half of the cells against it)
 //          is a crystal where its hash is under this times the ground's `rate`: one such cell in five. An arc
 //          shatters the slate beside it (js/game.js: `zap`) and sets off the crystals within three cells, and
-//          along a rib they stand that near: one nick unzips a run of it, seven cells of slate as often as not.
+//          along a rib they stand that near: one nick unzips a run of it, six cells of slate or more as often as not.
 //          (Counted, tools/strains.mjs. The figures first planned, one cell in ten within 0.015, left a crystal
 //          every ten cells of rib, and an arc took three cells of slate and stopped.)
 export const HAZARDS = {
@@ -280,8 +280,8 @@ export const cellHash = hash;
 // Layers and hash seeds in use (added to the world's seed): 1-3 and 14-17 whose ground a cell is; 4 the world's
 // edge; 5-13 and 18 the ground itself; 21-24 finds; 31-32 wrecks; 55 and 300 + a strain's number, provinces (56 and
 // 57 are kept for crosses); 58-59 a second hazard; 64 grapes, 65 lanes, 66 rivers, 67 bubbles (strata are on 11,
-// stretched); 68 slag among lava. docs/CONTENT-PLAN.md (S3) allots the rest: take a number from there, so that no two rules read the
-// same layer.
+// stretched); 68 slag among lava. docs/CONTENT-PLAN.md (S3) allots the rest: take a number from there, so that no
+// two rules read the same layer.
 const kept = new Float64Array(128 * 7).fill(NaN);
 const noise = (x, y, s, k = s & 127) => {
   const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi, m = k * 7;

@@ -269,7 +269,7 @@ ITEM 1 AS BUILT (read this with the above; where they differ, this is the code).
   17 firn       dense 0.60, cave 0.86, cavern 0.84              45      1    0.95  none              rivers 0.02
   18 serac      -                                               15      1    1.05  none              lanes 0.085
   19 scoria     -                                               0       1    0.95  lava t 0.80       bubbles 0.8
-  20 forge      slate 0.04                                      0       1    1.25  lava t 0.735, lavaVol 7   none yet (the slag rind is item 2's)
+  20 forge      slate 0.04                                      0       1    1.25  lava t 0.735, lavaVol 7   its rind of slag, 0.12 wide where the others' is 0.07 (built with item 2)
   21 tangle     cavern 0.60                                     0       1    1.0   spore rate 1      none (its caves are the tell)
   22 sporefall  oreA 0.63                                       0       1    1.2   spore rate 0.5    grapes 0.85
   23 redrock    slate 0                                         0       1    1.0   spark rate 1      strata 0.05
@@ -309,6 +309,32 @@ VEIN FROST (every row with freeze). A cut that freezes over beside ore heals as 
   Numbers: a cut cell borders ore about a third of the time, so at most about 0.35 gems per cell cut against about 4 for ordinary loops: under +10% frost gems, and it needs a fresh cut each time.
   Art: none.
 Code: kindAt (two extras), trigger, zap, updateHazards, overlay.
+
+ITEM 2 AS BUILT (read this with the above; where they differ, this is the code). Counted with tools/strains.mjs on 8 seeds and in play by the tests named; looked at with tools/shot.mjs, which has `--wake` for it (the hazard nearest the drill is woken as a cut beside it would wake it, and `--frames` picks the moment).
+
+Where the rules live. Slag and rib crystals are not names in a row's `extras` (the plan has scoria ['bubbles', 'slag'] and redrock ['strata', 'ribs']): they go with the hazard, wherever that hazard is laid, as a ground's first or its second, by a figure of HAZARDS in js/world.js that a row's own `haz` may override (0: none). So every ground with lava has slag and every ground with crystals has ribs without saying so, and a cross that takes either as its second hazard gets them from `haz2` alone. biome() works the figures into row.lay: rind and rind2, ribs and ribs2.
+
+SLAG AND STEEL.
+- Generation as planned: HAZARDS.lava.rind 0.07 (forge's own: 0.12, the plan's "thick rind"); half of the plain rock within a pocket by hash 68. Slag takes only soft and dense rock, asked last in kindAt. A second hazard's lava (layers 58) has its rind the same way.
+- Counted, cells in a hundred: ember lava 4.3 and slag 5.2; magma 6.4 and 5.5; scoria 3.3 and 4.4; forge 5.9 and 10.0. A pocket is about as much slag as lava (forge 1.7 times), not the plan's two to one: three pockets in four have slag against them, and four cells of slag in five lie within two cells of lava. One cell of slag in five belongs to no pocket (the noise came near the threshold and no lava was laid).
+- The rule as planned: Game.quench(i), from trigger() for lava and from the lava loop when lava pours into a cell, turns the slag on that cell's four sides to steel, white for 0.12 s (Game.quenched, the 'quench' frame, a light through shine()), with a sparkle, sfx.clink and a hiss when in view. Nothing opens or closes and changed() is not called; version is bumped. Steel glints in the per-frame pass.
+- Steel pays 4 gems, not the plan's 2 (K.STEEL in the table of kinds, and test/regress/s1-tables.mjs). The plan's sum took every cell of slag for steel. Counted in real ground (c2-quench: 30 pockets woken by a cut beside them), a woken pocket makes 0.74 cells of steel for each cell of lava it had (forge 0.94, scoria 0.58), so at 2 gems waking paid a third fewer gems than hauling the pocket asleep and the choice was no choice. At 4 a woken pocket pays about half as much again in gems (forge nearly twice), and a fifth more grit, for the flood. If that proves too much it is this one number.
+- A cell of steel cut into says CRUSHED, as ore does.
+
+CRACKLING RIBS.
+- Generation, not the plan's figures. A cell is on a flank when it is not slate and lies within RIB = 0.03 beyond the edge of a rib (or of a level bed in a ground with strata) on the slate's own layer of noise; a flank cell is a crystal where the crystals' own hash (seed + 10; a second hazard's, 59) is under HAZARDS.spark.ribs = 0.2 times the ground's rate (so loess 0.1, gilt 0.36). The plan's one cell in ten within 0.015 was counted first: a crystal every ten cells of rib, 2.0 crystals in a hundred cells (1.7 without), and an arc beside slate set off 2.6 crystals and took 4.1 cells of slate (3 as often as not), a notch. As built: lode 2.9 crystals in a hundred, redrock 2.8, loess 1.5; half of them stand beside slate (a quarter without ribs); one arc among those sets off 5.3 crystals and shatters 8.2 cells of slate, 6 or more as often as not (redrock 5.0 and 7.3; loess 2.8 and 3.6). Nine in ten of the crystals the ribs add stand against slate in the east's own ground, seven in ten in redrock, where a bed's flank is wide at its thin ends.
+- The rule as planned: Game.zap(x, y) returns the cells it opened, the slate among the eight round the crystal that the tether reaches (Game.shatters), and the caller tells changed() once with everything that opened together: finishDig with the cut (trigger() now returns what a crystal cut into opened), updateHazards with whatever else opened in the frame, so two arcs in one frame are one call. FUSE is 0.8 s. Shattered slate pays nothing.
+- Added to the plan: slate an arc opens in ground that freezes is a cut like any other and closes with ice (as a bomb's cells do); the arc uncovers the two cells round its crystal (World.see), so what it broke open is seen; the glow of a cut into a crystal (foresee) holds the slate its arc will take and what hangs on it.
+- The crystal stands after its arc, as before.
+
+VEIN FROST.
+- As planned, in the frost tick: Game.veined(i), and the cell closes as ORE_A with six sparks of #a8fff0 and sfx.gem when in view. It is told to changed() as ground that grew, as the ice is.
+- Not in the plan: only ore the seed laid counts. World.first(i) is what the seed laid in a cell, in the ground the cell lies in, and a neighbour seeds a vein only when it is ore now and was laid as that ore. Without it a cut beside healed ore heals too, and cuts close in the order they were made: one cut against one nugget turned the whole tunnel dug on from it to ore. Healed ore where the seed also laid ore (a nugget cut and healed) counts, so a vein can grow back but not on.
+- Counted: 39 cells in a hundred of the north's plain rock lie beside ore (the plan: a third).
+
+Tests: c2-slag-laid, c2-quench, c2-ribs-laid, c2-rib-arc (staged as f-bomb-ring stages a bomb: a block on a neck of slate, shattered by an arc, is in the books and is hauled), c2-vein-frost; t-shot-stage has `wake`. w-same-world's plain reading has the rind and the ribs; 27 hashed pieces were recorded again for the slag (those along the south and its two diagonals, on each seed) and 27 for the ribs (along the east and its two diagonals); none at the core, none along the north or the west. The play fuzz flies the east's, the south's and the north's own ground, the hazard fuzz the east's own crystals, the rope fuzz a deep flank (test/all.mjs). Generating 160 pieces of world takes 96 ms before and after.
+
+By eye (seed 7): a pocket asleep, dull grey lumps round the orange; the same pocket woken, the white bar for a moment and then blue steel bars standing where the slag was, the lava set to basalt between them; forge 45 cells wide, clinker round every pocket; a rib with tufts along its flank, the arc, and three seconds later a channel through the rib where the slate was, the crystals still standing in it; redrock's beds with crystals along their upper and lower edges. Slag reads as worthless and steel as worth having.
 
 --------------------------------------------------------------
 3. The cross generator  (M; today's request, so it does not slip)
