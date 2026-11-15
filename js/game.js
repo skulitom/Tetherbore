@@ -97,18 +97,16 @@ const wrap = (words, wide) => {
   }
   return lines;
 };
-// After a knock nothing takes another pip, or stuns again, for SHIELD seconds: time to get clear. A wrecked drill
-// lies dead for `wait` seconds and is then wound home along its tether at `least` cells a second, or as fast as
-// brings it home within `most` seconds from however far.
+// After a knock nothing takes another pip, or stuns again, for SHIELD seconds: time to get clear. A drill whose
+// last pip is gone lies dead for DEATH seconds, the screen going dark, and then the game is back at the last
+// docking (`revert`).
 const SHIELD = 1.5;
-export const TOW = { wait: 0.5, least: 18, most: 3 };
+export const DEATH = 1.2;
 // How long each blow that knocks the hull stuns, in seconds: lava cut into, lava touched, an arc, a spore burst.
 // (Before there was a hull an arc stunned for 0.7 s and lava for 0.5: with a pip gone as well, and SHIELD running
 // from the blow, that left under a second to get clear.)
 const JOLT = { lava: 0.4, burn: 0.3, arc: 0.5, spore: 0.4 };
-// Where a wreck's middle may ride, as steps from the end of its string (`ride`); and what flies off a hull that
-// breaks.
-const RIDE = [[0, 0], [0.25, 0], [-0.25, 0], [0, 0.25], [0, -0.25], [0.25, 0.25], [-0.25, 0.25], [0.25, -0.25], [-0.25, -0.25]];
+// What flies off a hull that breaks, and the smoke of one in trouble.
 const WRECKAGE = ['#ffd83a', '#e08a1c', '#8a94a8', '#3a3440'];
 const SMOKE = ['#4a4654', '#6a6474', '#2e2a36'];
 // Where each direction's gems are found, for a price that cannot be met yet.
@@ -208,7 +206,8 @@ export class Game {
     this.pips = []; this.pipsFor = '';                                // the pockets the map marks, and what that list was made for
     this.drifts = new Map();                                          // the drifts whose boulders are in the books, by their keys
     this.crushedAt = -9;                                              // when ore cut into last said CRUSHED
-    this.dents = 0; this.shield = 0; this.tow = null;                 // knocks the hull has taken, how long nothing more knocks it, the wreck being wound home
+    this.dents = 0; this.shield = 0; this.tow = null;                 // knocks the hull has taken, how long nothing more knocks it, how long the wreck has lain dead
+    this.docked = null;                                               // what was banked and bought at the last docking, to go back to (`dockMark`)
     this.knocked = 0; this.mended = 0; this.notice = null;            // a pip just lost and the hull just mended (seconds left to show it), and the word across the screen
     this.smokeIn = 0; this.wrecks = 0; this.knocks = 0;               // until a hull in trouble next smokes; wrecks and knocks since the game began (for tests and tools)
     this.fresh((Math.random() * 1e9) | 0, true);
@@ -242,6 +241,7 @@ export class Game {
     // The first piece, beside the core, lies loose from the start: the open cell between them tells of it.
     this.changed([C * N + C + 3]);
     this.shop = false; this.lab = false; this.labSel = null; this.labPage = 0; this.labFlash = 0;
+    this.dockMark();
   }
   val(id) { const u = UPGRADES.find(u => u.id === id); return u.values[this.S.lv[id] ?? 0]; }
   // The pips the hull has left: what its level gives, less the knocks taken since it was last mended.
@@ -329,7 +329,7 @@ export class Game {
     }
     if (!down) return false;
     unlock();
-    if (code === 'KeyU' || code === 'Enter') { if (this.atCore && this.drill.mode !== 'tow') { this.shop = !this.shop; this.lab = false; } return true; }
+    if (code === 'KeyU' || code === 'Enter') { if (this.atCore && this.drill.mode !== 'dead') { this.shop = !this.shop; this.lab = false; } return true; }
     if (code === 'KeyL') { this.openLab(!this.lab); return true; }
     if (code === 'Escape') { this.shop = this.lab = false; return true; }
     return false;
@@ -495,8 +495,8 @@ export class Game {
   // went round something, so the string is led the way the drill really went.
   tend() {
     const d = this.drill, P = this.band;
-    // (A wreck being wound home does not lead the string: the string leads it, `towed`.)
-    if (d.mode === 'tow') return;
+    // (A dead drill leads no string.)
+    if (d.mode === 'dead') return;
     if (P[0][0] !== d.x || P[0][1] !== d.y) this.lead(P, [d.x, d.y]);
   }
   // Does the string, running from `c` to bend `b` and on to `a`, turn round the bend's ground: the ground is there,
@@ -787,7 +787,7 @@ export class Game {
   reelIfRound() {
     const pts = this.band;
     // (The loops of a wreck's tether are dropped as it is wound in: nothing is hauled by a dead drill.)
-    if (!this.pieces.length || pts.length < 3 || this.drill.mode === 'tow') return;
+    if (!this.pieces.length || pts.length < 3 || this.drill.mode === 'dead') return;
     // How many times the tether, closed by the straight line from the core back to the drill, winds round a point.
     const winds = (x, y) => {
       let turns = 0;
@@ -842,7 +842,7 @@ export class Game {
   fly(dt) {
     const w = this.world, d = this.drill;
     // A wreck is wound home by its tether, whatever the thumb does.
-    if (d.mode === 'tow') { this.towed(dt); return; }
+    if (d.mode === 'dead') { this.dying(dt); return; }
     let [ix, iy, m] = this.steer();
     if (d.stun > 0 || this.shop || this.lab) m = 0;
     // Just reeled home: it stays put until the thumb lets go.
@@ -851,7 +851,7 @@ export class Game {
     // again; then it is set in the middle of the cell it is in.
     if (d.mode === 'free' && !this.free(d.x, d.y)) {
       // (Lava that has poured on to its body burns the hull: a wreck is wound home from where it lies.)
-      if (this.inLava(d.x, d.y) && this.hit(JOLT.burn) && d.mode === 'tow') return;
+      if (this.inLava(d.x, d.y) && this.hit(JOLT.burn) && d.mode === 'dead') return;
       const i = this.di, k = w.k(i);
       if (k !== K.EMPTY && HARD[k] < 99) {
         w.setK(i, K.EMPTY);
@@ -952,7 +952,7 @@ export class Game {
     }
     // Pushed into lava, the hull burns. (Lava is shut to the drill, as rock is: a drill it has hemmed in can
     // wait for it to drain or set, or push, and be wrecked and wound home.)
-    if (m > 0 && (hitX || hitY) && this.scalds(ix, iy, hitX, hitY) && this.hit(JOLT.burn) && d.mode === 'tow') { this.look(); return; }
+    if (m > 0 && (hitX || hitY) && this.scalds(ix, iy, hitX, hitY) && this.hit(JOLT.burn) && d.mode === 'dead') { this.look(); return; }
     // Pushed into ground, it cuts.
     if (m > 0 && (hitX || hitY)) {
       // A cut in progress goes on while the drill is still pressed into that cell and the stick has not turned from
@@ -992,7 +992,7 @@ export class Game {
       }
     } else { if (d.dig >= 0) this.preview = []; d.dig = -1; }
     // (The cut may have been into a hazard, and the blow the hull's last.)
-    if (d.mode === 'tow') { this.look(); return; }
+    if (d.mode === 'dead') { this.look(); return; }
     // Close to the core and heading in, the tether takes over and reels the drill the rest of the way home.
     const near = this.far;
     if (d.mode === 'free' && m > 0 && near < 3.3 && near > 0.4 && (d.vx * (HX - d.x) + d.vy * (HY - d.y)) > 0.5 * speed * near && near < far + 1e-6 && sight(w, d.x, d.y, HX, HY)) {
@@ -1071,8 +1071,10 @@ export class Game {
     if (this.world.spotted.length) this.callOut();
     const home = this.atCore;
     if (home && !d.home) { this.homecoming(); this.save(); }
-    // Riding on to the core mends the hull. (A wreck is mended when it docks: `dock`.)
-    if (home && this.dents && d.mode !== 'tow') this.mend();
+    // Riding on to the core mends the hull.
+    if (home && this.dents && d.mode !== 'dead') this.mend();
+    // Leaving the core is the docking the game goes back to if the drill is lost: everything up to now is kept.
+    if (!home && d.home) this.dockMark();
     d.home = home;
   }
   // The place a cell lies in: the row of its ground, and the key the place is known by. A pocket is a place of
@@ -1332,6 +1334,8 @@ export class Game {
       sprites.push({ x, y, tile: this.rockRect(x, y, k, b), over: this.overlay(k, row, i), debris: this.debris(k, b), gem: gem ? kin : 0, gems: gem * show, far: Math.hypot(x - C, y - C) });
     }
     for (const i of cells) w.setK(i, K.EMPTY);
+    // (It is plainly gone, wherever it was: the map shows it open without the drill going to look.)
+    w.show(cells);
     // A haul made soon after another is a link in a chain: `n` is how many came before it.
     const linked = this.chain && this.time - this.chain.t <= CHAIN ? this.chain.n : 0;
     this.chain = { t: this.time, n: linked + 1 };
@@ -1677,7 +1681,7 @@ export class Game {
   // last gone it is a wreck (`wreck`). Returns whether the blow landed.
   hit(time) {
     const d = this.drill;
-    if (d.mode === 'tow' || this.shield > 0) return false;
+    if (d.mode === 'dead' || this.shield > 0) return false;
     this.jolt(time);
     this.dents++; this.knocks++; this.shield = SHIELD; this.knocked = 0.5;
     this.shake = Math.max(this.shake, 4);
@@ -1686,86 +1690,47 @@ export class Game {
     if (this.hull <= 0) this.wreck();
     return true;
   }
-  // The last pip is gone. The drill goes dark and its own tether winds it home (`towed`). That costs the trip and
-  // whatever loops the tether was drawing, and nothing else: nothing banked or bought is lost, nothing runs out,
-  // and hauls already on their way come home and pay. The screen says what happened, by name.
+  // The last pip is gone: the drill is lost. It lies dead where it is for DEATH seconds while the screen goes dark
+  // (`dying`), and then the game is what it was at the last docking (`revert`). The screen says what happened.
   wreck() {
-    const d = this.drill, P = this.band;
-    let len = 0;
-    for (let n = 1; n < P.length; n++) len += Math.hypot(P[n][0] - P[n - 1][0], P[n][1] - P[n - 1][1]);
-    d.mode = 'tow'; d.stun = 0; d.dig = -1; d.vx = d.vy = 0; d.run = 0; d.speed = Math.max(TOW.least, len / TOW.most);
+    const d = this.drill;
+    d.mode = 'dead'; d.stun = 0; d.dig = -1; d.vx = d.vy = 0; d.run = 0; d.speed = 0;
     this.preview = []; this.shield = 0;
-    this.tow = { t: 0, len, from: [d.x, d.y] };
+    this.tow = { t: 0 };
     this.wrecks++;
-    this.banner = null; this.notice = { title: 'HULL GONE', colour: '#ff7a5a', t: 0, life: 2.4 };
+    this.banner = null; this.notice = { title: 'HULL GONE', colour: '#ff7a5a', t: 0, life: DEATH + 0.3 };
     this.shake = Math.max(this.shake, 8); this.smokeIn = 0;
     sfx.wreck();
     this.effect('steam', 'smoke-puff', d.x * T, d.y * T);
     this.chips(d.x - 0.5, d.y - 0.5, WRECKAGE, 14, null, 1);
   }
-  // A wreck is wound home. It lies dead for a moment; then the tether is drawn in at the core and the drill comes
-  // with it along the string's own line, bend by bend, each bend let go as the drill comes to it: the string is
-  // never led anywhere it did not already lie, so it is sound at every step, and nothing can stop it, since
-  // nothing is asked of the ground on the way but where the dead drill's middle may ride (`ride`). However the
-  // ground changes meanwhile, the string settles as it always does (`retighten`) and the drill goes on along what
-  // is left. At the core it docks (`dock`).
-  towed(dt) {
-    const d = this.drill, P = this.band, tow = this.tow;
-    tow.t += dt;
-    d.px = d.x; d.py = d.y;
-    if (tow.t > TOW.wait) {
-      const speed = d.speed * Math.min(1, (tow.t - TOW.wait) / 0.25);
-      let go = speed * dt;
-      for (;;) {
-        if (P.length < 2) { this.dock(); return; }
-        const a = P[0], b = P[1], left = Math.hypot(b[0] - a[0], b[1] - a[1]);
-        if (left > go) {
-          const u = go / left;
-          P[0] = [a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u];
-          // It is drawn in tail first.
-          let turn = Math.atan2(a[1] - b[1], a[0] - b[0]) - d.ang;
-          turn = Math.atan2(Math.sin(turn), Math.cos(turn));
-          d.ang += turn * Math.min(1, dt * 12);
-          d.vx = (b[0] - a[0]) / left * speed; d.vy = (b[1] - a[1]) / left * speed;
-          break;
-        }
-        go -= left;
-        if (P.length === 2) { this.dock(); return; }
-        P.splice(0, 2, [b[0], b[1]]);
-      }
-      const at = this.ride(P[0][0], P[0][1]);
-      if (at) { d.x = at[0]; d.y = at[1]; }
-    }
-    this.look();
-  }
-  // Where a wreck's middle rides when the end of the string is at (x, y): there, if that is open ground with a
-  // little room round it; else the best of eight places a quarter of a cell off (the string's end runs on the very
-  // corners and faces of rock, where a middle would lie in the rock); null where none of them is open, and then
-  // it stays where it was.
-  ride(x, y) {
-    const w = this.world, open = (u, v) => w.k(Math.floor(v) * N + Math.floor(u)) === K.EMPTY;
-    let best = null, most = 0;
-    for (const [u, v] of RIDE) {
-      const px = x + u, py = y + v;
-      if (!open(px, py)) continue;
-      const room = 1 + open(px - 0.12, py - 0.12) + open(px + 0.12, py - 0.12) + open(px - 0.12, py + 0.12) + open(px + 0.12, py + 0.12);
-      if (room > most) { most = room; best = [px, py]; }
-      if (room === 5) break;
-    }
-    return best;
-  }
-  // A wreck is home: it stands in the middle of the core, mended, its tether wound in, and is handed back. As
-  // after any coming home, it stays put until the thumb lets go, and leaves on a fresh stroke.
-  dock() {
+  dying(dt) {
     const d = this.drill;
-    d.x = d.px = HX; d.y = d.py = HY; d.vx = d.vy = 0; d.mode = 'free'; d.run = 0; d.speed = 0; d.armed = false; d.park = true; d.squash = 0.14;
-    this.band = [[HX, HY], [HX, HY]]; this.homeEnd = [HX, HY]; this.taken.length = 0;
-    this.tow = null;
-    sfx.dock(); this.ring(HX * T, HY * T, '#84dcff', 30);
-    this.mend();
-    this.look();
+    d.px = d.x; d.py = d.y;
+    this.tow.t += dt;
+    if (this.tow.t >= DEATH) this.revert(); else this.look();
   }
-  // The hull is made whole, for nothing: whenever the drill rides on to the core, and when a wreck docks there.
+  // The docking the game goes back to: what is banked, bought and known now, and the ground as it is now (the
+  // world keeps what it changes from here on, `World.mark`). Made on leaving the core, and when a game begins.
+  dockMark() {
+    this.docked = JSON.stringify(this.S);
+    this.world.mark();
+  }
+  // The drill was lost: the game is again what it was at the last docking. What was banked, bought, analysed, met
+  // and found since is gone, and so is every cut made and every haul taken since: the ground is as it was. The
+  // drill stands whole in the middle of the core, and the screen says what the trip cost.
+  revert() {
+    const lost = Math.max(0, Math.round(this.S.grit - JSON.parse(this.docked).grit));
+    this.S = JSON.parse(this.docked);
+    this.world.back();
+    this.version++;
+    this.begin();
+    this.drill.armed = false; this.drill.park = true;
+    this.notice = { title: 'TRIP LOST', sub: lost > 0 ? `-${compact(lost)} GRIT` : '', colour: '#ff7a5a', t: 0, life: 3 };
+    this.flash = 0.25; sfx.dock();
+    this.save();
+  }
+  // The hull is made whole, for nothing, whenever the drill rides on to the core.
   // Returns whether there was anything to mend.
   mend() {
     if (!this.dents) return false;
@@ -1989,10 +1954,10 @@ export class Game {
     this.shield = Math.max(0, this.shield - dt); this.knocked = Math.max(0, this.knocked - dt); this.mended = Math.max(0, this.mended - dt);
     if (this.notice) { this.notice.t += dt; if (this.notice.t > this.notice.life) this.notice = null; }
     // A hull with one knock left in it smokes and spits sparks, so the bar need not be read; a wreck trails smoke.
-    if (d.mode === 'tow' || (this.dents > 0 && this.hull === 1)) {
+    if (d.mode === 'dead' || (this.dents > 0 && this.hull === 1)) {
       this.smokeIn -= dt;
       if (this.smokeIn <= 0) {
-        const wreck = d.mode === 'tow';
+        const wreck = d.mode === 'dead';
         this.smokeIn = wreck ? 0.09 : 0.32;
         if (this.parts.length < 400) for (let n = 0; n < 2; n++) this.parts.push({ x: d.x * T + (Math.random() - 0.5) * 6, y: d.y * T + (Math.random() - 0.5) * 6, vx: (Math.random() - 0.5) * 14, vy: -10 - Math.random() * 16, t: 0, life: 0.5 + Math.random() * 0.5, color: SMOKE[(Math.random() * SMOKE.length) | 0], size: 2 });
         if (!wreck && Math.random() < 0.5) this.effect('sparks', 'sparks', d.x * T, d.y * T);
@@ -2011,7 +1976,7 @@ export class Game {
       let met = this.taken.length > 0 && this.discover(this.taken.splice(0), 600, this.walked);
       this.reelTick = (this.reelTick ?? 0) + dt;
       // And ground the line home has passed over: is any of that loose?
-      if (d.mode !== 'tow' && this.sweepHome(this.reelTick > 0.1)) met = true;
+      if (d.mode !== 'dead' && this.sweepHome(this.reelTick > 0.1)) met = true;
       if (met || this.reelTick > 0.1) { this.reelTick = 0; this.reelIfRound(); }
       this.updateHazards(dt);
       this.listen(dt);
@@ -2243,9 +2208,9 @@ export class Game {
       for (let g = 3; g >= 1; g--) { ctx.globalAlpha = 0.34 - g * 0.09; this.drawDrill(dx - d.vx / speed * g * 7, dy - d.vy / speed * g * 7, d.ang, this.S.lv.drill, this.S.lv.momentum, -1, along, across); }
       ctx.globalAlpha = 1;
     }
-    this.drillDrawn = [dx, dy, d.ang, this.S.lv.drill, this.S.lv.momentum, d.mode !== 'tow' && (d.dig >= 0 || speed > 1) ? now : -1, along, across];
+    this.drillDrawn = [dx, dy, d.ang, this.S.lv.drill, this.S.lv.momentum, d.mode !== 'dead' && (d.dig >= 0 || speed > 1) ? now : -1, along, across];
     // A wreck is dark; a drill that has just been knocked blinks for as long as nothing can knock it again.
-    ctx.globalAlpha = d.mode === 'tow' ? 0.5 : this.shield > 0 && ((now / 70) | 0) % 2 === 0 ? 0.35 : 1;
+    ctx.globalAlpha = d.mode === 'dead' ? 0.5 : this.shield > 0 && ((now / 70) | 0) % 2 === 0 ? 0.35 : 1;
     this.drawDrill(...this.drillDrawn);
     ctx.globalAlpha = 1;
     if (this.hurt > 0 && ((now / 50) | 0) % 2) { ctx.globalAlpha = 0.5; ctx.fillStyle = '#ff5a4a'; ctx.fillRect(Math.round(dx) - 5, Math.round(dy) - 5, 10, 10); ctx.globalAlpha = 1; }
@@ -2648,10 +2613,13 @@ export class Game {
       if (prism) text(ctx, prism, W / 2, ly + 12, GEM_COLOR[1 + ((now / 240) | 0) % 4], 0.5);
       ctx.globalAlpha = 1;
     }
+    // Over a dead drill the screen goes dark.
+    if (d.mode === 'dead' && this.tow) { ctx.globalAlpha = Math.min(0.85, this.tow.t / DEATH); ctx.fillStyle = '#07060b'; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1; }
     if (this.notice) {
       const note = this.notice, pop = Math.min(1, note.t / 0.12);
       ctx.globalAlpha = Math.min(1, (note.life - note.t) * 3);
       text(ctx, note.title, W / 2, Math.round(H * 0.2 - (1 - pop) * 8), note.colour, 0.5, 2 + (note.t < 0.07 ? 1 : 0));
+      if (note.sub) text(ctx, note.sub, W / 2, Math.round(H * 0.2) + 24, '#ffe14a', 0.5);
       ctx.globalAlpha = 1;
     }
     if (S.won && this.wonAt !== undefined && this.time - this.wonAt < 6) text(ctx, 'CORE RESTORED', W / 2, H * 0.36, '#ffe14a', 0.5, 2);
