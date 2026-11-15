@@ -914,8 +914,10 @@ export class Game {
     this.twang = 0.45; this.edge = 1.2; sfx.twang(); d.squash = 0.14;
     this.popup(d.x - 0.5, d.y - 1, 'REACH', '#ff7a5a', 'tether');
   }
-  // The last cut glows: the ground that would come free if this cell were cut.
-  foresee(i) {
+  // The last cut glows: the ground that would come free if this cell were cut. `also` is whatever else the cut
+  // would open besides its own cell (a pane that shatters whole, a crack that runs on, the cells a punch goes
+  // through): those glow with it, and what they would leave hanging is found as what the cut itself would.
+  foresee(i, also = []) {
     // A lava pocket or a spore pod beside the cut bursts with it, and what comes free is what both leave hanging.
     const w = this.world, cells = [i];
     for (let s = 0; s < 4; s++) {
@@ -923,8 +925,8 @@ export class Game {
       const haz = w.hazAt(j);
       if (haz === 'lava' || haz === 'spore') cells.push(j);
     }
-    const found = w.freed(cells, 2000);
-    this.preview = found.length ? [{ i, cells: found.flat() }] : [{ i, cells: [] }];
+    const open = also.filter(j => j !== i && w.k(j) !== K.EMPTY), found = w.freed(cells, 2000, open.length ? new Set(open) : null);
+    this.preview = [{ i, cells: open.concat(...found) }];
   }
   finishDig(i) {
     const w = this.world, d = this.drill, x = i % N, y = Math.floor(i / N), k = w.k(i), b = w.b(i), row = rowOf(b), haz = hazOf(k, row);

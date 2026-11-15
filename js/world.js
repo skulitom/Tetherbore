@@ -439,7 +439,9 @@ export class World {
     return apart === 1;
   }
   // The ground that hangs on nothing once `cells` are open (or would, were they cut): one cell or a list of cells
-  // opened together, which need not be open in the world yet. `open` is a set of further cells to take as open.
+  // opened together, which need not be open in the world yet. `open` is a set of further cells to take as open
+  // with them (what a cut would open besides itself: a pane, a crack, a punch), for the glow to ask what a cut
+  // would free before it is made: ground that hung only on one of those is found as ground beside the cut is.
   // A list of pieces, each a list of cells.
   //
   // Ground that a cut has freed lies beside an opened cell, and it is an island: its outline, walked from the side
@@ -464,7 +466,7 @@ export class World {
     if (open) for (const j of open) gone.add(j);
     // Where each walk began (a side: its cell times four plus which side), and where it is now.
     const starts = new Map(), from = [];
-    for (const i of opened) for (let s = 0; s < 4; s++) {
+    for (const i of gone) for (let s = 0; s < 4; s++) {
       const c = i + STEP[s];
       if (gone.has(c) || this.k(c) === K.EMPTY) continue;
       const side = c * 4 + ((s + 2) & 3);
