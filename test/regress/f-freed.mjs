@@ -1,8 +1,8 @@
 // What World.freed and World.island promise, asked of the world alone on ground laid by hand (F22, F23, F27):
-//   a lone flood that runs out is an island and is returned (the first piece beside the core);
+//   the only ground beside an opened cell is returned if it is an island (the first piece beside the core);
 //   cells opened together are asked about together (a bomb takes a neck and the cells either side of it);
 //   `open` names further cells to take as open; an opened cell need not be open in the world yet;
-//   the limit is each flood's own, so a piece of up to `limit` cells is found whatever the shape of the last cut;
+//   the limit is each piece's own, so a piece of up to `limit` cells is found whatever the shape of the last cut;
 //   a cut into the mainland costs next to nothing; an island is known by its outline, a hollow's wall is not one.
 //   node test/regress/f-freed.mjs
 import { world, C, N, K } from '../harness.mjs';
@@ -34,14 +34,16 @@ expect('a cut with a further cell taken as open', safely(() => sizes(w.freed(at(
 expect('the same cut alone frees one cell of neck with the block', safely(() => sizes(w.freed(at(50, -12), 120000))), '[442]');
 expect('the world was not changed by asking', w.k(at(50, -11)) === K.SOFT && w.k(at(50, -12)) === K.SOFT, true);
 
-// The limit is each flood's own: a piece of 441 cells is found with a limit of 441 and not with 440, though the
-// held ground beside the cut is flooded cell for cell alongside it.
+// The limit is each piece's own: a piece of 441 cells is found with a limit of 441 and not with 440. (The held
+// ground beside the cut is not followed at all: what is loose is settled by outlines.)
 expect('a piece of exactly the limit', safely(() => sizes(w.freed(at(50, -11), 441))), '[441]');
 expect('a piece one cell over the limit', safely(() => sizes(w.freed(at(50, -11), 440))), '[]');
 
 // A cut into the mainland: nothing comes free, and next to nothing is looked at to know it.
 let looked = 0;
 const kind = w.k; w.k = function (i) { looked++; return kind.call(this, i); };
+// (Ground is also read straight from the world's pieces, when a piece is followed and when the tether sweeps: counted too.)
+const follow = w.follow; w.follow = function (...a) { const n = this.followed; try { return follow.apply(this, a); } finally { looked += this.followed - n; } };
 expect('a cut into the mainland frees nothing', safely(() => sizes(w.freed(at(30, 20), 120000))), '[]');
 expect('and looks at under 5,000 cells to say so', looked < 5000, true);
 w.k = kind;

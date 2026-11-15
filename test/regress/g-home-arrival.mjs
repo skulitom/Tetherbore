@@ -13,6 +13,9 @@ game.band = [[d.x, d.y], [C + 0.5, C + 0.5]];
 game.changed();
 let lookMs = 0, floods = 0, looked = 0, lookCells = 0, dockCells = 0, frames = 0, heading = Math.atan2(sy, sx);
 const kind = w.k; w.k = function (i) { looked++; return kind.call(this, i); };
+// (Ground is also read straight from the world's pieces, when a piece is followed and when the tether sweeps: counted too.)
+const follow = w.follow; w.follow = function (...a) { const n = this.followed; try { return follow.apply(this, a); } finally { looked += this.followed - n; } };
+const sweep = game.catchIn; game.catchIn = function (...a) { const n = this.swept; try { return sweep.apply(this, a); } finally { looked += this.swept - n; } };
 const look = game.look; game.look = function () { const t0 = performance.now(), l0 = looked; look.call(this); lookMs = performance.now() - t0; lookCells = Math.max(lookCells, looked - l0); };
 const pieceIn = w.pieceIn; w.pieceIn = function (...a) { floods++; const got = pieceIn.apply(this, a); return got; };
 for (let turn = 0; turn < turns; turn++) {

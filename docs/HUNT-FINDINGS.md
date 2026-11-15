@@ -310,3 +310,46 @@ FIX: Keep hauls running while the shop is open (call updateHauls(dt) outside the
 --- F27 UNVERIFIED [wrong-behaviour] A ring-cut piece well under freed()'s limit of 120,000 cells is not reeled in where it is cut: the real cap is 60,000, or 40,000 when the last cut has held ground on two sides
 MECH: changed() calls `w.freed(i, 120000)` with the comment 'cut a piece off, of any size', and freed()'s own comment says each piece is followed 'until it proves larger than `limit` cells'. But `spent` counts cells taken by all floods together, one from each flood per round, and `if (spent > limit)` then holds everything. With the loose piece and the mainland as two floods the piece must be under limit / 2; when the cut cell has held ground on two sides (two mainland floods that keep running after they meet) it must be under limit / 3. The piece is then not registered although the tether is right r
 FIX: In freed(), measure each flood by its own size: keep a cell count per root (summed on union) and hold a root only when its own count passes `limit`; stop the round-robin when every root still going has passed it. That makes the cap the documented one whatever the shape of the last cut.
+
+===== SECOND PASS: what three verifiers found in the fixes, and what was done =====
+Each line: the finding, then the outcome. Tests named are in test/regress and run by test/all.mjs.
+
+V1 [performance] One cut could freeze the game 0.24 to 0.36 s in World.freed (both sides of a cut flooded, each to 120,000 cells, making unseen world as they went).
+DONE: freed settles what is loose by outlines alone and follows only an island's own ground. The hunters' soak: worst frame 279 ms to 22 ms (a colossal haul), frames over 8 ms 1,410 to 16. A loop closed round 400 x 400: 359 ms to 19 ms. Test: g-loop-cut (work counted: sides, cells followed, pieces of world made).
+
+V2, V11 [performance] Letting go of a bend with two legs of 900 to 1,000 cells took 80 ms or more (F17's cost).
+DONE: a sweep's first part is 4,000 cells and doubles while it meets nothing; rows are read straight from the world's pieces; the world is made in half the time. budget-400000: 78 ms to 2 ms; big-triangle 212 to 2; far-haul 214 to 13; big-triangle-played 313 to 15. Test: c-budget-400000 counts the cells swept. A sweep across ground that is truly open, the size of the whole triangle, still costs its area.
+
+V3 [performance] New with F24: ground growing back against a loose piece flooded up to every loose cell in the books of the mainland (29 to 62 ms).
+DONE: what the grown cell belongs to is followed from that cell, through loose ground and what grew; held ground is known at the first step. Test: g-regrow.
+
+V4 [wrong behaviour, old] A drag held on an exact diagonal into a notch of two cells cut neither, for as long as it was held.
+DONE: a cut in progress goes on while the drill is pressed into that cell and the stick is within 20 degrees of where it was when the cut began; a new direction still cancels it. Test: i-diagonal-notch.
+
+V5 [wrong behaviour, old] The drill could be left beyond the end of its reach and then neither move nor cut: stuck for good.
+DONE: a move that takes the drill no further out stands when the place on the reach is shut; set free of ground that closed on it, it stands as near its reach as it fits; squaring up to a cut never carries it out. Test: i-reach-pin, i-fuzz-play 60 and 50.
+LEFT: hemmed in by lava at the very end of its reach the drill still waits for the lava to drain or set (14 s in the longest flight seen), because lava is shut to it and the ways out are beyond the reach. That is the hazard as designed; i-fuzz-play counts it (`hemmedByLava`) and does not fail on it.
+
+V6 [not fixed: item F] An island the books did not know was not reeled when the tether was right round it without touching it.
+DONE: the ground the straight line home passes over is looked at (the string never passes over ground; only that line does), with ground that comes into view and ground that grows, and an island among it is known from then on. The verifiers' plain batch: 45 of 62 flights with such an island, now none; main, core and pillars batches likewise. Test: f-unseen-island, i-fuzz-play 45 and 33.
+LEFT: an island whose outline is longer than 600 sides is still learnt of only from a cut, a bend lying on it, or the homecoming; and ground the world has not yet made is not looked at.
+
+V7 [performance] The frame in which a very large piece is cut loose ran over 16 ms (26 ms for 31,931 cells, 84 ms for 115,600).
+DONE by V1's change: 32,400 cells 23 ms to 3 ms; 115,600 cells 84 ms to 11 ms; the natural flight has no frame over 8 ms. Not spread over frames: a piece near the 120,000 limit in natural ground still makes its own unseen ground in that one frame.
+
+V8 [visual, old] A thrown drill's body passes through rock beside the line of the throw.
+NOT CHANGED: real (up to five frames, a third of a cell). The only fix that keeps the angle shortens the throw to where the body first touches, which down a tunnel one cell wide is three or four cells unless the drag is within a degree of straight; bending the throw to fit would steer the drill. Left for the owner to choose.
+
+V9 [performance] New with B's fix: tend() after every small move made fast straight flight far out cost 12 to 35 times the tether work.
+DONE: small moves that go straight on are led as one. 63,905 cell lookups a frame to 156. Test: b-straight-run.
+
+V10 [visual] The shop drew a price as affordable while buy() refused it.
+DONE: lit by what has come home, as the purchase is judged. Test: h-shop-price.
+
+V12 [wrong behaviour, latent] World.freed missed an island when the opened cell faced only a hollow inside it.
+DONE: such ground is followed a little way (4,000 cells) and is an island if it runs out. freed agrees with a plain flood on 48,000 random trials. Test: f-freed-diff.
+
+V13 [the tests] tetherFaults sampled a span at 4,000 points at the most and stepped over rock on a long span.
+DONE: every cell a span crosses is asked about exactly. Test: a-harness-long-span.
+
+Found on the way, by the verifiers' fuzz run on the reworked game: a drill at rest creeps by a hundred-millionth of a cell, and such a move could hook the string on a corner half a cell beyond its end (seed 57, reach 9). A corner further from the pivot than the string reaches is never caught now. Test: a-micro-move, i-fuzz-play 57.

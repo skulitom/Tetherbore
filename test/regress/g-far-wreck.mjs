@@ -19,6 +19,9 @@ rect(game, -2, -2, 2, 2, K.EMPTY);
 game.changed();
 let calls = 0, inside = 0, looked = 0, lookedMost = 0;
 const kind = w.k; w.k = function (i) { looked++; return kind.call(this, i); };
+// (Ground is also read straight from the world's pieces, when a piece is followed and when the tether sweeps: counted too.)
+const follow = w.follow; w.follow = function (...a) { const n = this.followed; try { return follow.apply(this, a); } finally { looked += this.followed - n; } };
+const sweep = game.catchIn; game.catchIn = function (...a) { const n = this.swept; try { return sweep.apply(this, a); } finally { looked += this.swept - n; } };
 const real = w.pieceIn.bind(w);
 w.pieceIn = (...a) => { const t = performance.now(), r = real(...a); inside += performance.now() - t; calls++; return r; };
 let worst = 0, worstAt = '', frame = 0, phase = 'out';

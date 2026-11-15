@@ -36,7 +36,7 @@ python -m http.server 4791
 node test/all.mjs
 ```
 
-The game runs with no browser under `test/harness.mjs`. `test/all.mjs` runs every script in `test/regress/` (each fails while the defect it was written for is there), `test/smoke.mjs`, which plays every direction unattended, and the tether fuzz `test/rope-fuzz.mjs`: about two minutes, one line a test. `test/frame-time.mjs` times a frame over the fuzz's flight.
+The game runs with no browser under `test/harness.mjs`. `test/all.mjs` runs every script in `test/regress/` (each fails while the defect it was written for is there), `test/smoke.mjs`, which plays every direction unattended, and the tether fuzz `test/rope-fuzz.mjs`: about two minutes, one line a test. Among the regress scripts, `i-fuzz-play.mjs` plays the whole game at random (throws, bombs, the shop) and checks the tether, the books of loose ground, the hauls and the money after every frame. Tests of speed count work, not time: `game.swept` (cells the tether's sweeps look at) and the world's `sides`, `followed` and `made` (outline sides walked, cells followed, pieces of world made). `test/frame-time.mjs` times a frame over the fuzz's flight.
 
 ## The art
 

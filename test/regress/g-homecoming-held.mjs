@@ -26,6 +26,9 @@ let comb = 0; for (let y = hy; y <= hy + 35; y++) for (let x = hx; x <= hx + 31;
 
 let looked = 0;
 const kind = w.k; w.k = function (i) { looked++; return kind.call(this, i); };
+// (Ground is also read straight from the world's pieces, when a piece is followed and when the tether sweeps: counted too.)
+const follow = w.follow; w.follow = function (...a) { const n = this.followed; try { return follow.apply(this, a); } finally { looked += this.followed - n; } };
+const sweep = game.catchIn; game.catchIn = function (...a) { const n = this.swept; try { return sweep.apply(this, a); } finally { looked += this.swept - n; } };
 const faults = new Set();
 const fly = (x, y, tol = 0.25) => { if (flyTo(game, x, y, { frames: 20000, tol, each: () => { for (const f of tetherFaults(game)) faults.add(f.replace(/[-\d.(),]+/g, '#')); } }) < 0) throw new Error(`never reached ${x},${y} from ${where(game)}`); };
 for (const [x, y] of pts.slice(1)) fly(x, y);
