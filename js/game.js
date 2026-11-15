@@ -514,19 +514,25 @@ export class Game {
     // Speed builds over a long clear run, so far ground is not a long walk.
     const top = FLY * this.val('momentum') * (1 + Math.max(0, d.run - 0.8) * 0.9) * m, ease = Math.min(1, dt * (m > 0 ? 14 : 10));
     d.vx += (ix * top - d.vx) * ease; d.vy += (iy * top - d.vy) * ease;
-    // Move a little at a time, sliding along whatever stops it.
-    const speed = Math.hypot(d.vx, d.vy), steps = Math.max(1, Math.ceil(speed * dt / 0.3));
-    let hitX = false, hitY = false;
+    // Move a little at a time, sliding along whatever stops it. The string follows each small move (`tend`), so it
+    // goes round whatever the drill went round: a move this small never leaves the open ground the drill stands in,
+    // where one straight line across a whole frame's flight could pass the far side of a corner.
+    const speed = Math.hypot(d.vx, d.vy), steps = Math.max(1, Math.ceil(speed * dt / 0.3)), R = this.val('tether');
+    let hitX = false, hitY = false, held = false;
     for (let n = 0; n < steps; n++) {
-      const nx = d.x + d.vx * dt / steps, ny = d.y + d.vy * dt / steps;
+      const sx = d.x, sy = d.y, nx = d.x + d.vx * dt / steps, ny = d.y + d.vy * dt / steps;
       if (this.free(nx, d.y)) d.x = nx; else hitX = true;
       if (this.free(d.x, ny)) d.y = ny; else hitY = true;
+      // The end of the tether's reach.
+      const out = Math.hypot(d.x - HX, d.y - HY);
+      if (out > R) {
+        d.x = HX + (d.x - HX) / out * R; d.y = HY + (d.y - HY) / out * R;
+        if (!this.free(d.x, d.y)) { d.x = sx; d.y = sy; }
+        held = true;
+      }
+      this.tend();
     }
-    // The end of the tether's reach.
-    const R = this.val('tether'), out = Math.hypot(d.x - HX, d.y - HY);
-    if (out > R) {
-      d.x = HX + (d.x - HX) / out * R; d.y = HY + (d.y - HY) / out * R;
-      if (!this.free(d.x, d.y)) { d.x = d.px; d.y = d.py; }
+    if (held) {
       if (m > 0 && (d.vx * (d.x - HX) + d.vy * (d.y - HY)) > 0 && this.edge <= 0) this.refuse();
       d.run = 0;
     }
@@ -551,6 +557,7 @@ export class Game {
           const cx = (i % N) + 0.5, cy = Math.floor(i / N) + 0.5;
           if (Math.abs(cx - d.x) > Math.abs(cy - d.y)) { const ny = d.y + (cy - d.y) * Math.min(1, dt * 6); if (this.free(d.x, ny)) d.y = ny; }
           else { const nx = d.x + (cx - d.x) * Math.min(1, dt * 6); if (this.free(nx, d.y)) d.x = nx; }
+          this.tend();
           if (d.digT >= d.digDur) this.finishDig(i);
         }
       }
