@@ -33,6 +33,18 @@ check(WORKS.every(u => u.grit.length === u.values.length - 1 && u.spec.length ==
   // (The tabs stand in the panel's header, left to right, each a button twenty high and under sixty wide.)
   const tabs = game.buttons.filter(b => b.h === 20 && b.y > 43 && b.y < game.H / 2 && b.w < 60 && b.w > 24 && b.x < game.W * 0.6).sort((a, b) => a.x - b.x);
   tabs[1]?.act(); game.render();
+  // What a refused tap says is written on the footer's line, never over the tabs in the header.
+  {
+    const said = [], fill = game.ctx.drawImage;
+    game.buy(row('sporedrive'));
+    const note = game.shopNote?.text, top = Math.min(...tabs.map(b => b.y));
+    check(note === 'WEST POCKETS' && game.shopNote.t > 0, `a tap refused for want of specimens says '${note}'`);
+    // (Text is drawn a glyph at a time: where glyphs are drawn this frame and not the last, the note is.)
+    const drawn = () => { const ys = []; game.ctx.drawImage = (...a) => { if (a.length === 9 && a[4] === 10) ys.push(a[6]); }; game.render(); delete game.ctx.drawImage; return ys; };
+    const withNote = drawn(); game.shopNote.t = 0; const without = drawn();
+    const header = y => y >= top && y < top + 20;
+    check(withNote.filter(header).length === without.filter(header).length && withNote.length !== without.length, `with a note up ${withNote.filter(header).length} glyphs are drawn in the header, and ${without.filter(header).length} without`);
+  }
   check(tabs.length === 3 && game.shopTab === 'works', `a tap on the second tab left the shop at '${game.shopTab}'`);
   game.shop = false;
   game.save();
@@ -151,6 +163,12 @@ for (const coil of [0, 1]) {
   const [x, y, mw, mh] = game.mapRect;
   game.pointerDown(1, x + mw / 2, y + mh / 2); game.pointerUp(1); game.render();
   check(game.lab && game.labTab === 'chart' && game.chartMap?.mapFor?.endsWith(`:${C + 0.5},${C + 0.5}`), `a tap on the map at the core left the panel ${game.lab ? 'open' : 'shut'} at '${game.labTab}'`);
+  game.openLab(false);
+  // And away from the core: the chart is read wherever the drill is.
+  game.drill.x = C + 60.5; game.drill.y = C + 0.5; game.render();
+  check(game.charted && !game.atCore, 'sixty cells out the chart cannot be read');
+  game.pointerDown(1, x + mw / 2, y + mh / 2); game.pointerUp(1); game.render();
+  check(game.lab && game.labTab === 'chart', `a tap on the map sixty cells out left the panel ${game.lab ? 'open' : 'shut'} at '${game.labTab}'`);
   game.openLab(false);
 }
 
