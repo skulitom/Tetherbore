@@ -80,7 +80,7 @@ export const frost = {
 export const ember = {
   version: 1, name: 'ember-items', width: 16, height: 16,
   palette: { k: '#160c12', d: '#2a1214', l: '#a86a58', o: '#ff8a2a', y: '#ffd84a', r: '#c8381e', w: '#fff6c8', m: '#7a1e14',
-    g: '#ffb060', G: '#f0602a', D: '#a82a1a' },
+    g: '#ffb060', G: '#f0602a', D: '#a82a1a', e: '#6a5a52', E: '#3e3230', h: '#8e7c70', i: '#d8e8ff', I: '#6e8cc8', j: '#3a4a7a', W: '#ffffff', z: '#ffffff00' },
   symbols: {
     dense: [
       '............',
@@ -138,12 +138,47 @@ export const ember = {
       '....kkkk....',
       '............',
     ],
+    // What lava leaves round itself: a pitted lump of clinker, dull beside everything else here.
+    slag: [
+      '............',
+      '............',
+      '...kkkkk....',
+      '..khheeekk..',
+      '.khheEeeeek.',
+      '.kheeeeeEek.',
+      '.keeEeeeeek.',
+      '.keeeeeEeEk.',
+      '..kEeeEeekk.',
+      '...kkkkkk...',
+      '............',
+      '............',
+    ],
+    // What slag becomes when lava touches it: a bar of blue steel, strapped twice. The z above it is clear but in
+    // the glint and the quench, where it is a sparkle.
+    steel: [
+      '..........z.',
+      '.........zzz',
+      '.kkkkkkkkkk.',
+      'kiiiiiiiiiik',
+      'kiWWiiiiiiik',
+      'kIIIjIIIjIIk',
+      'kIIIjIIIjIIk',
+      'kIIIjIIIjIIk',
+      'kjjjjjjjjjjk',
+      '.kkkkkkkkkk.',
+      '............',
+      '............',
+    ],
     relic: RELIC,
   },
   frames: [frame('dense', 'dense'), frame('oreA', 'oreA'), frame('oreB', 'oreB'),
     frame('hazard', 'lava', { duration: 260 }), { name: 'hazard-b', from: 'hazard', duration: 260, palette: { y: '#ff8a2a', o: '#ffd84a' } },
-    ...relic({})],
-  animations: { hazard: { frames: ['hazard', 'hazard-b'] }, relic: { frames: ['relic', 'relic', 'relic', 'relic-glint'] } },
+    ...relic({}),
+    frame('slag', 'slag'), frame('steel', 'steel', { duration: 500 }), frame('steel-glint', 'steel', { duration: 140, palette: { i: '#ffffff', I: '#d8e8ff', z: '#ffffff' } }),
+    // The flash as slag is quenched to steel: the bar with every colour white.
+    frame('quench', 'steel', { duration: 120, palette: { k: '#ffffff', i: '#ffffff', I: '#ffffff', j: '#ffffff', z: '#ffffff' } })],
+  animations: { hazard: { frames: ['hazard', 'hazard-b'] }, relic: { frames: ['relic', 'relic', 'relic', 'relic-glint'] },
+    steel: { frames: ['steel', 'steel', 'steel-glint'] } },
 };
 
 export const mire = {
@@ -685,10 +720,12 @@ export const cracks = {
   frames: [1, 2, 3, 4].map(n => ({ name: `crack-${n}`, ops: crackOps(n) })),
 };
 
-// Things found in the ground: a buried crate, and a part of an older machine.
+// Things found in the ground: a buried crate, a part of an older machine, the iron staple that holds a keystone
+// slab to the world, and a prism, which turns through the four gems' colours.
 export const finds = {
   version: 1, name: 'finds', width: 16, height: 16,
-  palette: { k: '#1c1420', y: '#ffd84a', Y: '#fff2a0', b: '#9a6638', o: '#5e3a22', S: '#8e98ac', s: '#e2e8f4', d: '#565e72', g: '#5cc4f0', G: '#c8f4ff' },
+  palette: { k: '#1c1420', y: '#ffd84a', Y: '#fff2a0', b: '#9a6638', o: '#5e3a22', S: '#8e98ac', s: '#e2e8f4', d: '#565e72', g: '#5cc4f0', G: '#c8f4ff',
+    i: '#8a94a8', I: '#eef4ff', r: '#b0603a', w: '#ffffff', m: '#bfe6ff', R: '#4fd0e8' },
   symbols: {
     cache: [
       '............',
@@ -718,8 +755,40 @@ export const finds = {
       '.kk.kddk.kk.',
       '....kkkk....',
     ],
+    key: [
+      '............',
+      '............',
+      '.kkkkkkkkkk.',
+      'kIIIIIIIIIIk',
+      'kiiiiiiiiiik',
+      'kiiriiiiidik',
+      'kidkkkkkkidk',
+      'kidk....kidk',
+      'kirk....kidk',
+      'kidk....krdk',
+      '.kk......kk.',
+      '............',
+    ],
+    prism: [
+      '.....kk.....',
+      '....kwmk....',
+      '...kwwmRk...',
+      '..kwwmmRRk..',
+      '..kwwmmRRk..',
+      '..kwwmmRRk..',
+      '..kwwmmRRk..',
+      '..kwwmmRRk..',
+      '..kwwmmRRk..',
+      '...kwmmRk...',
+      '....kmRk....',
+      '.....kk.....',
+    ],
   },
-  frames: [frame('cache', 'cache'), frame('part', 'part')],
+  frames: [frame('cache', 'cache'), frame('part', 'part'), frame('key', 'key'),
+    frame('prism', 'prism', { duration: 240 }),
+    frame('prism-b', 'prism', { duration: 240, palette: { m: '#ffb060', R: '#c8442a' } }),
+    frame('prism-c', 'prism', { duration: 240, palette: { m: '#b8f06a', R: '#d8b8ff' } })],
+  animations: { prism: { frames: ['prism', 'prism-b', 'prism-c'] } },
 };
 
 export const RECIPES = [finds, cracks, dish, frost, ember, mire, lode, drill, core, icons, upgrades, ui, logo, tough];
