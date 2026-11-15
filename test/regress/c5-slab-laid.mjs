@@ -28,14 +28,17 @@ const FAULTS = {
   held: [[43, -7, -1], [69, -5, -1], [107, -12, -1]],
 };
 const SHOWS = { keys: /does not join the slab to the collar|keys for/, ring: /not a ring a drill can fly/, held: /not held|books find/ };
+// (Asked of worlds with no pockets: where a pocket stands in a slab's way it is not tried at all, and two of these
+// sectors have had a hive beside them since pockets were laid.)
+const unpocketed = seed => { const w = world(seed); w.zoneOf = () => null; return w; };
 for (const [fault, cases] of Object.entries(FAULTS)) for (const [seed, sx, sy] of cases) {
-  const w = world(seed), at = `seed ${seed} sector ${sx},${sy}`;
+  const w = unpocketed(seed), at = `seed ${seed} sector ${sx},${sy}`;
   w.unsound = null;
   const before = w.refused[fault], laid = w.slabIn(sx, sy), S = w.unsound;
   if (laid !== null) { fail(`${at}: a slab is laid whose fault is '${fault}'`); continue; }
   if (!S || S.fault !== fault || w.refused[fault] !== before + 1) { fail(`${at}: the slab tried there has fault ${S?.fault}, not '${fault}'`); continue; }
   // The same slab, laid all the same in a world of its own, is broken in just that way.
-  const forced = world(seed);
+  const forced = unpocketed(seed);
   forced.slabIn(sx, sy);
   forced.slabs.set(key(sx, sy), S);
   const found = check(forced, S).faults;
@@ -63,8 +66,12 @@ for (const [fault, cases] of Object.entries(FAULTS)) for (const [seed, sx, sy] o
     const withPocket = (far, rho) => {
       const px = S.cx + ux * far, py = S.cy + uy * far;
       const v = world(7);
-      let asked = 0;
-      v.zoneOf = (qx, qy) => { asked++; return qx === zx(px) && qy === zx(py) ? { key: 'test', row: 32, cx: px, cy: py, rho, kin: 1 } : null; };
+      // (How many sectors are asked about is counted for the slab's own question, the first that is put: the
+      // ground round the slab asks about pockets too, a cell and a find at a time.)
+      let asked = 0, put = 0;
+      const meets = v.meetsPocket.bind(v);
+      v.meetsPocket = (...disc) => { put++; return meets(...disc); };
+      v.zoneOf = (qx, qy) => { if (put === 1) asked++; return qx === zx(px) && qy === zx(py) ? { key: 'test', row: 32, cx: px, cy: py, rho, kin: 1 } : null; };
       return [v.slabIn(sx, sy), v.refused.pocket, asked];
     };
     if (zx(S.cx + ux * near) === zx(S.cx) && zx(S.cy + uy * near) === zx(S.cy)) fail(`${where}: the pocket set against it is in the slab's own sector`);
@@ -72,7 +79,8 @@ for (const [fault, cases] of Object.entries(FAULTS)) for (const [seed, sx, sy] o
     if (met !== null || refused !== 1) fail(`${where}: the slab of radius ${S.p} is laid with a pocket of radius 10 whose middle is ${near} cells from its own`);
     if (clear === null) fail(`${where}: the slab is not laid though the pocket is clear of its disc and five cells more`);
     if (asked < 1 || asked > 4) fail(`${where}: asking whether the slab meets a pocket asked about ${asked} sectors of pockets`);
-    if (w.meetsPocket(S.cx, S.cy, 20)) fail('with no pocket laid, a disc meets one');
+    const none = world(7); none.zoneOf = () => null;
+    if (none.meetsPocket(S.cx, S.cy, 20)) fail('with no pocket laid, a disc meets one');
     out.pocket.push({ radius: S.p, far: near, asked });
   }
 }

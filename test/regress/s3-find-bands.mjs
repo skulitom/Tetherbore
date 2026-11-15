@@ -7,6 +7,8 @@
 //   - every find's middle lies eight cells or more inside its own sector;
 //   - a prism is laid (content item 5): one cell of prism at its middle and plain ore in the eight round it;
 //   - the two that are allotted and not laid yet put nothing in the ground;
+//   - a sector whose find would have its middle within five cells of where a pocket's cells can lie holds nothing
+//     (pockets, content item 6): those sectors are counted apart, and the shares are of the rest;
 //   - asking what a sector holds makes none of the world.
 //   node test/regress/s3-find-bands.mjs
 import { World, C, K, FIND, FINDS, cellHash as hash } from '../../js/world.js';
@@ -23,12 +25,15 @@ const was = (seed, sx, sy) => {
   return what < 0.38 ? ['geode', fx, fy, hash(sx, sy, seed + 24) < 0.4 ? 4 : 3] : ['cache', fx, fy, 1];
 };
 const counts = { geode: 0, cache: 0, prism: 0, twin: 0, fossil: 0, null: 0 };
-let sectors = 0, moved = 0, nearPrism = 0, nearAny = 0, outside = 0, laid = 0, unlaid = 0, checked = 0, far = 0, prisms = 0, badPrism = 0;
+let sectors = 0, moved = 0, nearPrism = 0, nearAny = 0, outside = 0, laid = 0, unlaid = 0, checked = 0, far = 0, prisms = 0, badPrism = 0, pocketed = 0, inPocket = 0;
 const w = new World();
 for (const seed of [1, 7, 34]) {
   w.reset(seed);
   for (let sy = -40; sy < 40; sy++) for (let sx = -40; sx < 40; sx++) {
     const [what, fx, fy, size] = w.findSpot(sx, sy), old = was(seed, sx, sy);
+    // Where the find would lie, whatever it is, and whether a pocket is in its way.
+    const mx = C + sx * FIND + 8 + Math.floor(hash(sx, sy, seed + 22) * (FIND - 16)), my = C + sy * FIND + 8 + Math.floor(hash(sx, sy, seed + 23) * (FIND - 16));
+    if (hash(sx, sy, seed + 21) < 0.86 && w.meetsPocket(mx, my, 5)) { pocketed++; if (what !== null || w.findAt(mx, my) >= 0) inPocket++; continue; }
     sectors++; counts[what]++;
     if (JSON.stringify(old ?? [null, 0, 0, 0]) !== JSON.stringify(what === 'geode' || what === 'cache' ? [what, fx, fy, size] : [null, 0, 0, 0])) moved++;
     if (what === null) continue;
@@ -56,6 +61,7 @@ console.log(JSON.stringify({ sectors, counts, checked }));
 check(w.made === 0, `asking what sectors hold made ${w.made} pieces of the world`);
 check(moved === 0, `${moved} sectors' geodes and caches are not where they were before the bands`);
 for (const [name, want] of [['geode', 0.38], ['cache', 0.32], ['prism', 0.04], ['twin', 0.06], ['fossil', 0.06], ['null', 0.14]]) check(Math.abs(share(name) - want) < 0.012, `${(share(name) * 100).toFixed(1)} sectors in a hundred hold ${name === 'null' ? 'nothing' : `a ${name}`}, not ${want * 100}`);
+check(inPocket === 0 && pocketed > 100, `${inPocket} of the ${pocketed} sectors whose find a pocket is in the way of hold one all the same`);
 check(nearAny === 0, `${nearAny} finds have their middle within 16 cells of the core`);
 check(nearPrism === 0 && counts.prism > 300, `${nearPrism} prisms have their middle within 130 cells of the core`);
 check(outside === 0 && far > sectors * 0.8, `${outside} finds have their middle outside their sector, or nearer its edge than eight cells`);

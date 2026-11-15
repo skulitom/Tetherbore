@@ -15,14 +15,17 @@ import { World, C, BIOMES, B, PROVINCE, HOME_R, DEEP_R, biome } from '../../js/w
 
 const fails = [], check = (ok, what) => { if (!ok) fails.push(what); };
 const isStrain = b => b >= 17 && b <= 31, isCross = b => b >= 128 && b <= 187;
+// (Pockets lie over whatever ground is there, provinces and deep flanks and all: test/regress/s3-pockets.mjs holds
+// where. Here the ground is asked for as it lies without them.)
+class Unpocketed extends World { zoneOf() { return null; } }
 // The world as it was before provinces: every province its direction's own ground.
-class Bare extends World { province(px, py, kin) { return kin; } }
+class Bare extends Unpocketed { province(px, py, kin) { return kin; } }
 
 // ---- cells: the order of the rules, and whose ground a strain lies in
 let cells = 0, strains = 0, near = 0, inDeep = 0, inHome = 0, astray = 0, lost = 0, deep = 0;
 const met = new Set();
 for (const seed of [1, 7, 34]) {
-  const w = new World(), bare = new Bare();
+  const w = new Unpocketed(), bare = new Bare();
   w.reset(seed); bare.reset(seed);
   for (let y = -2300; y <= 2300; y += 13) for (let x = -2300; x <= 2300; x += 13) {
     const b = w.biomeAt(C + x, C + y), was = bare.biomeAt(C + x, C + y), strain = isStrain(b);
@@ -56,7 +59,7 @@ check(lost === 0, `${lost} cells that are no strain's and no cross's are not wha
 const share = { near: [0, 0], far: [0, 0] }, each = {};
 let inner = 0;
 for (let seed = 1; seed <= 40; seed++) {
-  const w = new World(); w.reset(seed);
+  const w = new Unpocketed(); w.reset(seed);
   for (let py = -9; py <= 8; py++) for (let px = -9; px <= 8; px++) for (let kin = 1; kin <= 4; kin++) {
     const mx = (px + 0.5) * PROVINCE, my = (py + 0.5) * PROVINCE, rc = Math.sqrt(mx * mx + my * my), b = w.province(px, py, kin);
     if (b !== kin && BIOMES[b].kin !== kin) astray++;
@@ -79,7 +82,7 @@ for (let kin = 1; kin <= 4; kin++) {
 
 // ---- the same whatever was asked before, and its own on every seed
 {
-  const one = new World(), two = new World(), other = new World();
+  const one = new Unpocketed(), two = new Unpocketed(), other = new Unpocketed();
   one.reset(7); two.reset(7); other.reset(8);
   const order = [];
   for (let py = -9; py <= 8; py++) for (let px = -9; px <= 8; px++) for (let kin = 1; kin <= 4; kin++) order.push([px, py, kin]);

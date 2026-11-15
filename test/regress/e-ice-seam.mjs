@@ -8,6 +8,9 @@ import { makeGame, tetherFaults, seamFaults, moreFaults, flyTo, idle, idx, open,
 const wait = Number(process.argv[2] ?? 34);          // seconds to wait after the cut; 0 is the control: no ice forms
 const game = await makeGame(11, { tether: 5, drill: 4 });
 const w = game.world, d = game.drill, log = [];
+// (The north's first pocket lies hereabouts in every world, since pockets were laid: where it does, the ground
+// is made the north's own plain rock again, as it was when this was written.)
+for (let y = -182; y <= -146; y++) for (let x = -12; x <= 30; x++) if (w.row(idx(x, y)).pocket) { w.setB(idx(x, y), B.FROST); w.setK(idx(x, y), K.SOFT); }
 open(game, -8, -162, 8, -148, K.SOFT);                    // the slab
 open(game, -1, -147, 1, -3);                              // a shaft from the core and the room under the slab
 for (let y = -162; y <= -148; y++) for (let x = -8; x <= 8; x++) if (w.b(idx(x, y)) !== B.FROST) throw new Error('not frost ground here');

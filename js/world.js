@@ -114,7 +114,8 @@ const KIN_ITEMS = ['lode-items', 'frost-items', 'ember-items', 'mire-items', 'lo
 //   lavaVol, freeze     how far a lava pocket of it pours; seconds until a cut closes with ice (0: never)
 //   extras              the names of what else is laid in it, each a rule of `TELLS`
 //   cross               of a generated cross, what it was made from: { host, donor, structure } (null: hand-made)
-//   glass, pocket       for ground yet to come (docs/CONTENT-PLAN.md S1): nothing reads them yet
+//   pocket              of a pocket's ground, what the pocket is (see "pockets" below); null for any other
+//   glass               for ground yet to come (docs/CONTENT-PLAN.md S1): nothing reads it yet
 // and `lay`, made from gen, the hazards and the extras: the same numbers as `kindAt` wants them, worked out once.
 export const BIOMES = [];
 const SCATTER = 2, POCKETS = 1;                 // how a hazard is laid: a cell at a time by its hash, or in pockets of noise
@@ -148,6 +149,9 @@ const grape = (x, y, seed, t) => {
 const stratum = (x, y, seed) => Math.abs(noise(x / 40, y / 3, seed + 11, 11) - 0.5);
 // The hand-made strains of each direction's ground (grounds 17 to 31), by kin: `biomeAt` lays them as provinces.
 const STRAINS = [[], [], [], [], []];
+// The pockets a sector may choose among (grounds 32 to 63 that say how they are laid), and what lays each shape of
+// pocket: see "pockets" below.
+const POCKET_ROWS = [], POCKET_SHAPES = {};
 const laid = (haz, what) => {
   if (!haz) return [0, 0];
   const type = HAZARDS[haz.type];
@@ -171,6 +175,9 @@ export function biome(f) {
   }
   for (const list of STRAINS) if (list.includes(id)) list.splice(list.indexOf(id), 1);
   if (id >= 17 && id <= 31 && kin) STRAINS[kin].push(id);
+  // (And the pockets a sector may choose among: grounds 32 to 63 that say how they are laid.)
+  if (POCKET_ROWS.includes(id)) POCKET_ROWS.splice(POCKET_ROWS.indexOf(id), 1);
+  if (id >= 32 && id <= 63 && f.pocket?.shape) { if (!POCKET_SHAPES[f.pocket.shape]) throw new Error(`${name}: there is no pocket shaped ${f.pocket.shape}`); POCKET_ROWS.push(id); POCKET_ROWS.sort((a, b) => a - b); }
   return BIOMES[id] = {
     id, name, title: f.title ?? name.toUpperCase(), kin, gemA: f.gemA ?? kin, gemB: f.gemB ?? kin,
     rich: f.rich ?? 1, gemx: f.gemx ?? 1, worth: f.worth ?? 1, dig: f.dig ?? 1,
@@ -241,6 +248,106 @@ strain(22, 'sporefall', B.MIRE, { rich: 1.2, haz: { type: 'spore', rate: 0.5 }, 
 // the time and holds little ore: the quick road.
 strain(23, 'redrock', B.LODE, { rich: 1, gen: { slate: 0 }, extras: ['strata'], map: [168, 90, 58], debris: ['#a85a3a', '#bc6e48', '#f0b080'] });
 strain(24, 'loess', B.LODE, { rich: 0.85, dig: 0.5, gen: { dense: 0.76, oreA: 0.72, oreB: 0.80, slate: 0.02 }, haz: { type: 'spark', rate: 0.5 }, map: [228, 220, 200], debris: ['#e4dcc8', '#f0ead8', '#ffffff'] });
+
+// ---------------------------------------------------------------- pockets (mini zones)
+// A pocket is a small place of its own, a screen or a few across, laid in whatever direction's ground is there: its
+// own rock, floor and dark, one mineral that is found nowhere else, and one rule in the shape of its ground. Where
+// pockets lie is `World.zoneOf`'s to say; what one is made of is its row's (grounds 32 to 63), whose `pocket` says:
+//   shape          which rule of `POCKET_SHAPES` lays it
+//   kins           whose directions it is found in: a list of them, or 'any'
+//   minR           how far from the core its middle lies at the least
+//   rho            [least, most]: how far it runs from its middle, in cells
+//   weight         what its hash is multiplied by where a sector chooses among the pockets it could hold (1)
+//   wobble         whether the edge of its disc wanders (true), where its shape has no edge of its own
+//   mineral        the name of its mineral, which is also the mineral's frame on the 'minerals' sheet
+//   kind           the kind of cell that is the mineral (K.MINERAL where it does not say)
+//   node, nodeDig  the name of its special cell (K.NODE: `node`-h and `node`-v are its frames on the 'minerals'
+//                  sheet, as it runs level or upright) and how long one takes to cut, in seconds
+//   lump, spec     what a hauled cell of the mineral pays: so many seconds of what cutting out there earns
+//                  (js/game.js: `payOf`), and so many specimens of the direction the pocket lies in
+//   chain          whether that lump is more for each haul made just before (a fifth a haul, to double): false
+//                  where it does not say
+//   pip, chips     its colour as a pip on the map, and the colours its mineral sheds
+// Inside a pocket there are no finds, no slabs, no hazards and nothing that grows back, and its row has no
+// thresholds (`gen`): every cell of it is its shape's to say.
+const pocket = (id, name, f) => biome({ id, name, gen: null, ...f, pocket: { weight: 1, wobble: true, kind: K.MINERAL, ...f.pocket } });
+// What lays a pocket, by the name of its shape. Each has
+//   reach(rho)             how far from its middle a pocket of that radius can have a cell: never over POCKET_MOST
+//   has(Z, ex, ey)         whether the cell at (ex, ey) from the middle of pocket `Z` is the pocket's, where the
+//                          shape has an edge of its own (left out: a disc of radius rho, wandering if the row says)
+//   cell(seed, Z, x, y)    what the cell is
+// HIVE: a comb of chambers seven cells square between walls of wax a cell thick, the rows of chambers one above
+// another and every other row shifted half a chamber, as bricks are laid, with the pocket's middle cell the middle
+// of a chamber. A chamber is the hive's if its own middle is within rho of the hive's, and every cell of such a
+// chamber and of the walls round it is the hive: so a hive is whole chambers, walled all round.
+// Doors. Where the wall at a chamber's west side meets the wall over it, one of the two may have a door, by that
+// corner's hash (45): in a share DOORS of the corners, half of them in the west wall, two cells above its middle or
+// two below, and half in the wall overhead, in the middle of the three cells from the corner to where the wall
+// between the two chambers above stands on it. The other half of the wall overhead never has one, and a door is
+// only ever between two chambers of the hive: its outside wall is whole, and the way in is to bite through it.
+// So no wall is ever cut off by doors: from any corner the wall runs on unbroken, east along the half that has
+// no door and down the west wall that has none, to the outside wall, which goes right round. (Doors first laid in
+// any wall at all left one nugget in eight hanging from a scrap of wall that hung on nothing.)
+// A chamber holds, by its own hash (46): a nugget of the mineral three cells square in its middle, hung from one of its four
+// walls (hash 47) by a stalk two cells long, with two cells of room all round (a share NUGGETS of the chambers, and
+// always the chamber at the hive's middle); or wax right through (15 in 100); or nothing. Cut the stalk, and the
+// nugget hangs on nothing.
+// NUGGETS is 55 in 100 in a hive of up to 14 cells in radius, and less in a bigger one in proportion to its
+// radius (7.7 / rho): a hive has chambers as the square of its radius, and what it pays is to grow no faster than
+// the radius does (docs/CONTENT-PLAN.md S4; tools/zone-budget.mjs counts it). A great hive is a maze with a
+// nugget in every third or fourth chamber, not a hoard.
+const chamberIn = (Z, uc, vc) => uc * uc + vc * vc <= Z.rho * Z.rho;
+const DOORS = 0.7;
+export const nuggets = rho => Math.min(0.55, 7.7 / rho);
+Object.assign(POCKET_SHAPES, {
+  hive: {
+    reach: rho => rho + 5.7,
+    has(Z, ex, ey) {
+      // The one or two rows of chambers whose walls or insides this cell could be, and in each the one or two chambers.
+      for (let r = Math.floor((ey + 4) / 8), last = ey - r * 8 === -4 ? r - 1 : r; r >= last; r--) {
+        const shift = (r & 1) * 4, c = Math.floor((ex - shift + 4) / 8);
+        if (chamberIn(Z, c * 8 + shift, r * 8) || (ex - shift - c * 8 === -4 && chamberIn(Z, (c - 1) * 8 + shift, r * 8))) return true;
+      }
+      return false;
+    },
+    cell(seed, Z, x, y) {
+      const ex = x - Z.cx, ey = y - Z.cy, r = Math.floor((ey + 4) / 8), dv = ey - r * 8, shift = (r & 1) * 4, c = Math.floor((ex - shift + 4) / 8), du = ex - shift - c * 8;
+      // The wall over this row of chambers, and the wall at this chamber's west side: the corner where they meet
+      // says which has a door, if either.
+      // (`uc`, `vc`: this chamber's middle, from the hive's.)
+      const uc = c * 8 + shift, vc = r * 8;
+      if (dv === -4) return du === -2 && hash(x - 2, y, seed + 45) < DOORS / 2 && chamberIn(Z, uc, vc) && chamberIn(Z, uc - 4, vc - 8) ? K.EMPTY : K.SOFT;
+      if (du === -4) { const h = hash(x, y - dv - 4, seed + 45); return h >= DOORS / 2 && h < DOORS && dv === (h < DOORS * 0.75 ? -2 : 2) && chamberIn(Z, uc, vc) && chamberIn(Z, uc - 8, vc) ? K.EMPTY : K.SOFT; }
+      const mx = Z.cx + c * 8 + shift, my = Z.cy + r * 8, share = nuggets(Z.rho), what = c === 0 && r === 0 ? 0 : hash(mx, my, seed + 46);
+      if (what >= share + 0.15) return K.EMPTY;
+      if (what >= share) return K.SOFT;
+      if (du >= -1 && du <= 1 && dv >= -1 && dv <= 1) return Z.mineral;
+      const side = Math.floor(hash(mx, my, seed + 47) * 4);
+      return (side === 0 ? dv === 0 && du > 1 : side === 1 ? du === 0 && dv > 1 : side === 2 ? dv === 0 && du < -1 : du === 0 && dv < -1) ? K.NODE : K.EMPTY;
+    },
+  },
+});
+// The chambers of a hive (a pocket's record), each the cell at its middle as [x, y], the nearest the hive's own
+// middle first: for tools and tests.
+export const hiveChambers = Z => {
+  const out = [], most = Math.ceil(Z.rho / 8) + 1, far = ([x, y]) => (x - Z.cx) * (x - Z.cx) + (y - Z.cy) * (y - Z.cy);
+  for (let r = -most; r <= most; r++) for (let c = -most; c <= most; c++) { const uc = c * 8 + (r & 1) * 4, vc = r * 8; if (chamberIn(Z, uc, vc)) out.push([Z.cx + uc, Z.cy + vc]); }
+  return out.sort((a, b) => far(a) - far(b) || a[1] - b[1] || a[0] - b[0]);
+};
+// AMBER HIVE. A honeycomb of wax chambers; one bite on a stalk drops a nugget of amber, to be circled. The west's,
+// and until the other three directions' own first pockets are made, theirs too (`HERALDS`).
+pocket(32, 'hive', { title: 'AMBER HIVE', kin: B.MIRE, sheet: 'wax', floor: 'wax-floor', dig: 0.5, gloom: [28, 16, 4], mote: ['#ffd070', 'still'],
+  map: [216, 154, 42], debris: ['#d89a2a', '#f6d066', '#ffe89a'],
+  pocket: { shape: 'hive', kins: [B.MIRE], minR: 170, rho: [8, 30], mineral: 'amber', node: 'stalk', nodeDig: 0.1, lump: 0.8, spec: 0.25, pip: '#ffb020', chips: ['#ff9a1a', '#ffd070', '#a85a10'] } });
+// The first pocket of each direction lies just past the home ground, where a new game comes on it within its
+// first reaches: HERALD_R cells out along the direction's own line and HERALD_OFF to one side, so that all of it lies
+// in one sector, HERALD_RHO in radius; and HERALD_ON further out where a wreck lies within HERALD_CLEAR cells of
+// that. What kind each is: the first of its list that has a row (the kinds first planned for the heralds are not
+// made yet: docs/CONTENT-PLAN.md, content item 10).
+const HERALDS = [null, [37, 33, 32], [36, 34, 32], [35, 32], [38, 33, 32]];
+export const HERALD_R = 165, HERALD_OFF = 14, HERALD_RHO = 9, HERALD_ON = 40, HERALD_CLEAR = 24;
+// Where each direction's herald lies: its sector of pockets, and the way out from the core and the way aside.
+const HERALD_AT = [null, { sx: 0, sy: -2, ux: 0, uy: -1, ox: 1, oy: 0 }, { sx: -1, sy: 1, ux: 0, uy: 1, ox: -1, oy: 0 }, { sx: -2, sy: -1, ux: -1, uy: 0, ox: 0, oy: -1 }, { sx: 1, sy: 0, ux: 1, uy: 0, ox: 0, oy: 1 }];
 
 // ---------------------------------------------------------------- generated ground: crosses
 // Everything above is made by hand. A cross is made by rule from three hand-made parts, so that a player who knows
@@ -313,6 +420,8 @@ export const FIND = 48, WRECK_R = [45, 90, 160, 300, 500, 800, 1200, 1700];
 // plain.
 export const FINDS = [[0.38, 'geode'], [0.70, 'cache'], [0.74, 'prism'], [0.80, 'twin'], [0.86, 'fossil']];
 const GEODES = FINDS[0][0], CACHES = FINDS[1][0], PRISMS = FINDS[2][0], HELD = FINDS[FINDS.length - 1][0], PRISM_R = 130;
+// How far a find's middle must be from the nearest cell a pocket could have (the biggest find runs four cells).
+const FIND_ROOM = 5;
 // Keystone slabs. A slab is a great disc of ground that a natural crack already runs all the way round (its moat),
 // held to the world by two or three keystones of iron set across the crack: cut the keys and the whole disc hangs
 // on nothing. Slabs lie in whatever ground is there, laid out in sectors SLAB cells across, one at the most in a
@@ -335,8 +444,14 @@ const GEODES = FINDS[0][0], CACHES = FINDS[1][0], PRISMS = FINDS[2][0], HELD = F
 export const SLAB = 144, FIRST_R = 52, HOLD = 48;
 const SLABS = 0.22, COBBLES = 0.35, MOAT = 1.1, PLUG = 1.2, COLLAR = 3.5, LIFT = 0.05;
 const OUT = 0, GAP = 1, KEYS = 2, INSIDE = 3, COLLARED = 4;
-// Pockets (mini zones) are laid out in sectors ZONE cells across, one pocket at the most in each.
-export const ZONE = 128;
+// Pockets (mini zones) are laid out in sectors ZONE cells across, one pocket at the most in each and all of it
+// inside the sector, so that a cell asks only about its own: a share POCKETS_IN of the sectors try one, its middle
+// POCKET_EDGE cells or more inside the sector on every side, and none has a cell further than POCKET_MOST from its
+// middle. None lies with its middle under POCKET_FROM cells from the core (but each direction's first: `HERALDS`),
+// or within POCKET_CLEAR cells and its own radius of a wreck or a relic's vault. No cell within POCKET_NEAR of the
+// core is asked whether it is a pocket's.
+export const ZONE = 128, POCKET_MOST = 36;
+const POCKETS_IN = 0.5, POCKET_EDGE = 38, POCKET_FROM = 170, POCKET_CLEAR = 40, POCKET_NEAR = 130;
 // Past the four pieces of ground round the core, each direction's ground is laid out in provinces PROVINCE cells
 // across, and a province may be a strain of the direction's ground (`World.province`).
 export const PROVINCE = 256;
@@ -452,6 +567,8 @@ export class World {
     this.tried = 0;                        // cells of ground asked about to see whether a slab would be held: for tests
     // How many slabs were not laid, by what stood against each (`slabIn`, `slab`): for tests and tools/slabs.mjs.
     this.refused = { core: 0, wreck: 0, first: 0, pocket: 0, cavern: 0, keys: 0, ring: 0, held: 0 };
+    this.zones = new Map();                // the pocket of each sector asked about (null: none), and the sector asked last
+    this.zoneLast = { sx: NaN, sy: NaN, seed: NaN, zone: null };
     this.relicAt = [0, 1, 2, 3].map(d => (C + DY[d] * RELIC_R) * N + C + DX[d] * RELIC_R);
   }
   // Where the eight wrecks lie in this world: [x, y] each, in a direction of its own.
@@ -477,6 +594,8 @@ export class World {
     S.fx = C + sx * FIND + 8 + Math.floor(hash(sx, sy, seed + 22) * (FIND - 16)); S.fy = C + sy * FIND + 8 + Math.floor(hash(sx, sy, seed + 23) * (FIND - 16));
     const dx = S.fx - C, dy = S.fy - C, far = dx * dx + dy * dy;
     if (far < 16 * 16 || (S.what >= CACHES && S.what < PRISMS && far <= PRISM_R * PRISM_R)) S.what = 1;
+    // No find lies in a pocket, or so near one that any of it would: such a sector holds nothing.
+    else if (this.meetsPocket(S.fx, S.fy, FIND_ROOM)) S.what = 1;
     else if (S.what < GEODES) S.size = hash(sx, sy, seed + 24) < 0.4 ? 4 : 3;
   }
   // What a sector holds, asked without making any of the world: [what, x, y, size], `what` being a name from
@@ -508,24 +627,113 @@ export class World {
     const edge = Math.max(Math.abs(dx), Math.abs(dy));
     return edge === 0 ? K.CACHE : edge === 1 ? K.DENSE : -1;
   }
-  // The pocket laid in a sector of ZONE cells (sx, sy: the sector's place, counted from the core's), as
-  // { key, row, cx, cy, rho, kin }: the key it is known by, its ground's number, its middle, how far it runs and
-  // whose direction its middle lies in. Null where the sector has none. (No pockets are laid yet,
-  // docs/CONTENT-PLAN.md S3: until they are, no sector has one.)
-  zoneOf(sx, sy) { return null; }
+  // ---------------------------------------------------------------- pockets
+  // The pocket laid in a sector of ZONE cells (sx, sy: the sector's place, counted from the core's), or null where
+  // the sector has none. Worked out once for each sector and kept. A pocket's record (`zone`) is
+  //   { key, row, cx, cy, rho, kin, reach, shape, mineral, wobble, herald }
+  // the key it is known by, its ground's number, its middle cell, how far it runs, whose direction its middle
+  // lies in (which is whose specimens its mineral is), how far from its middle a cell of it can lie, what lays it
+  // (a rule of POCKET_SHAPES), the kind of cell that is its mineral, whether its edge wanders, and whether it is
+  // a direction's first.
+  //
+  // Four sectors hold the heralds, each direction's first pocket, which lie where they do in every world
+  // (`HERALDS`). Of the others half hold one (hash 40), with a radius that is small more often than large
+  // (6 + 24 x the square of hash 41) and its middle POCKET_EDGE cells or more inside the sector (42, 43). None where
+  // that middle is under POCKET_FROM cells from the core, so far out that the last reach does not go round it, or
+  // within POCKET_CLEAR cells and its radius of a wreck or a relic's vault. Whose direction it is in is said by
+  // its middle alone, on no wandering border: the larger of its two distances from the core. Of the pockets that
+  // may lie in that direction, that far out (their rows' `kins` and `minR`), it is the one whose own hash for the
+  // sector (100 + its number) times its `weight` is largest, so that a pocket made later takes few sectors from
+  // the others; and its radius is brought within that pocket's own `rho`.
+  zoneOf(sx, sy) {
+    const seed = this.seed, key = ((sy + 64) << 7) | (sx + 64);
+    if (this.zonesFor !== seed) { this.zonesFor = seed; this.zones.clear(); }
+    let Z = this.zones.get(key);
+    if (Z !== undefined) return Z;
+    Z = null;
+    const wrecks = this.wrecks, near = (cx, cy, r) => {
+      for (const [wx, wy] of wrecks) if ((cx - wx) * (cx - wx) + (cy - wy) * (cy - wy) < r * r) return true;
+      for (let d = 0; d < 4; d++) { const ex = cx - C - DX[d] * RELIC_R, ey = cy - C - DY[d] * RELIC_R; if (ex * ex + ey * ey < r * r) return true; }
+      return false;
+    };
+    let herald = 0;
+    for (let kin = B.FROST; kin <= B.LODE; kin++) if (HERALD_AT[kin].sx === sx && HERALD_AT[kin].sy === sy) herald = kin;
+    if (herald) {
+      const H = HERALD_AT[herald], row = HERALDS[herald].find(id => BIOMES[id]?.pocket?.shape);
+      let cx = C + H.ux * HERALD_R + H.ox * HERALD_OFF, cy = C + H.uy * HERALD_R + H.oy * HERALD_OFF;
+      if (near(cx, cy, HERALD_CLEAR)) { cx += H.ux * HERALD_ON; cy += H.uy * HERALD_ON; }
+      if (row !== undefined) Z = this.zone(row, cx, cy, HERALD_RHO, herald, `z${sx},${sy}`, true);
+    } else if (hash(sx, sy, seed + 40) < POCKETS_IN) {
+      const h = hash(sx, sy, seed + 41), rho0 = 6 + 24 * h * h;
+      const cx = C + sx * ZONE + POCKET_EDGE + Math.floor(hash(sx, sy, seed + 42) * (ZONE - 2 * POCKET_EDGE)), cy = C + sy * ZONE + POCKET_EDGE + Math.floor(hash(sx, sy, seed + 43) * (ZONE - 2 * POCKET_EDGE));
+      const dx = cx - C, dy = cy - C, far = Math.sqrt(dx * dx + dy * dy);
+      if (far >= POCKET_FROM && far + POCKET_MOST <= WORLD_R - 100) {
+        const kin = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? B.LODE : B.MIRE) : (dy < 0 ? B.FROST : B.EMBER);
+        let row = -1, most = -1;
+        for (const id of POCKET_ROWS) {
+          const P = BIOMES[id].pocket;
+          if ((P.kins !== 'any' && !P.kins.includes(kin)) || far < P.minR) continue;
+          const pick = hash(sx, sy, seed + 100 + id) * P.weight;
+          if (pick > most) { most = pick; row = id; }
+        }
+        if (row >= 0) {
+          const [least, widest] = BIOMES[row].pocket.rho, rho = Math.min(widest, Math.max(least, rho0));
+          if (!near(cx, cy, POCKET_CLEAR + rho)) Z = this.zone(row, cx, cy, rho, kin, `z${sx},${sy}`, false);
+        }
+      }
+    }
+    this.zones.set(key, Z);
+    return Z;
+  }
+  // A pocket's record, from the number of its ground, its middle cell, its radius and whose direction it lies in.
+  zone(row, cx, cy, rho, kin, key = `z${cx - C},${cy - C}`, herald = false) {
+    const P = BIOMES[row].pocket, shape = POCKET_SHAPES[P.shape];
+    return { key, row, cx, cy, rho, kin, reach: Math.min(POCKET_MOST, shape.reach ? shape.reach(rho) : P.wobble ? rho * 1.2 : rho), shape, mineral: P.kind ?? K.MINERAL, wobble: P.wobble, herald };
+  }
+  // The pocket of the sector a cell lies in (null: none): the sector asked about last is kept, since a piece of
+  // the world is made a row at a time and both `biomeAt` and `kindAt` ask.
+  pocketOf(x, y) {
+    const sx = (x - C) >> 7, sy = (y - C) >> 7, L = this.zoneLast;
+    if (L.sx !== sx || L.sy !== sy || L.seed !== this.seed) { L.zone = this.zoneOf(sx, sy); L.sx = sx; L.sy = sy; L.seed = this.seed; }
+    return L.zone;
+  }
+  // Whether a cell is pocket `Z`'s. A shape may have an edge of its own (a hive is whole chambers); any other is
+  // a disc of radius rho, whose edge wanders between 0.8 and 1.2 of that on a layer of noise (44) unless its
+  // row says it does not.
+  inPocket(Z, x, y) {
+    // (A record that does not say how far it runs or what lays it, as a test's may not, has no cells.)
+    const ex = x - Z.cx, ey = y - Z.cy, most = Z.reach;
+    if (!(ex <= most && ex >= -most && ey <= most && ey >= -most) || Z.shape === undefined) return false;
+    if (Z.shape.has) return Z.shape.has(Z, ex, ey);
+    const dd = ex * ex + ey * ey, rho = Z.rho;
+    if (!Z.wobble) return dd < rho * rho;
+    if (dd < 0.64 * rho * rho - SURE) return true;
+    if (dd >= 1.44 * rho * rho) return false;
+    return Math.sqrt(dd) < rho * (0.8 + 0.4 * noise(x / 7, y / 7, this.seed + 44, 44));
+  }
+  // What a cell of pocket `Z` is, as its shape lays it.
+  pocketCell(Z, x, y) { return Z.shape.cell(this.seed, Z, x, y); }
+  // Every pocket whose middle lies within `far` cells of the core, nearest first: for the map, and for tools.
+  pocketsWithin(far) {
+    const found = [], most = Math.floor(far / ZONE);
+    for (let sy = -most - 1; sy <= most; sy++) for (let sx = -most - 1; sx <= most; sx++) {
+      const Z = this.zoneOf(sx, sy);
+      if (Z && (Z.cx - C) * (Z.cx - C) + (Z.cy - C) * (Z.cy - C) <= far * far) found.push(Z);
+    }
+    return found.sort((a, b) => (a.cx - C) ** 2 + (a.cy - C) ** 2 - (b.cx - C) ** 2 - (b.cy - C) ** 2);
+  }
   // Whether a disc of ground (its middle cell and how far it runs) meets a pocket: the one test that keeps slabs
-  // out of pockets. It asks `zoneOf` for every sector of ZONE cells the disc's box overlaps, and takes a pocket's
-  // record to give its middle as a cell of the world (`cx`, `cy`) and to run no further than 1.2 times its `rho`,
-  // the widest its wobbling edge goes (docs/CONTENT-PLAN.md S3). It counts on a pocket lying wholly inside its own
-  // sector, as S3 lays them (a middle 38 cells or more from the sector's edge): a pocket that ran over into the
-  // next sector would not be asked about from there. No pocket is laid yet, so today it never does: whoever lays
-  // pockets keeps this true to how far a pocket's cells can lie from its middle.
+  // and finds out of pockets. It says yes where the disc's middle is nearer a pocket's than the disc runs and the
+  // pocket's cells can lie (`reach` in its record; 1.2 times `rho` of a record that does not say). Every sector
+  // of ZONE cells that could hold such a pocket is asked about: those within the disc's reach and POCKET_MOST,
+  // the furthest any pocket's cell lies from its middle.
   meetsPocket(cx, cy, reach) {
-    for (let zy = Math.floor((cy - reach - C) / ZONE), y1 = Math.floor((cy + reach - C) / ZONE); zy <= y1; zy++) {
-      for (let zx = Math.floor((cx - reach - C) / ZONE), x1 = Math.floor((cx + reach - C) / ZONE); zx <= x1; zx++) {
+    const box = reach + POCKET_MOST;
+    for (let zy = Math.floor((cy - box - C) / ZONE), y1 = Math.floor((cy + box - C) / ZONE); zy <= y1; zy++) {
+      for (let zx = Math.floor((cx - box - C) / ZONE), x1 = Math.floor((cx + box - C) / ZONE); zx <= x1; zx++) {
         const z = this.zoneOf(zx, zy);
         if (!z) continue;
-        const dx = z.cx - cx, dy = z.cy - cy, most = reach + z.rho * 1.2;
+        const dx = z.cx - cx, dy = z.cy - cy, most = reach + (z.reach ?? z.rho * 1.2);
         if (dx * dx + dy * dy < most * most) return true;
       }
     }
@@ -714,12 +922,12 @@ export class World {
     this.touched.clear(); this.lava.clear(); this.dug.clear();
     this.made = 0;
     this.spotted.length = 0;
-    this.provincesFor = NaN; this.slabsFor = NaN; this.firstFor = NaN; this.slabLast.seed = NaN;
+    this.provincesFor = NaN; this.slabsFor = NaN; this.firstFor = NaN; this.slabLast.seed = NaN; this.zonesFor = NaN; this.zoneLast.seed = NaN;
   }
 
   // Whose ground a cell is, from the seed alone. The rules, in the order they are asked (docs/CONTENT-PLAN.md S3):
   // the first that holds is the answer.
-  //   1. a pocket          (not laid yet: `zoneOf`. Its place is here, before the home ground, for cells over 150 out)
+  //   1. a pocket, for a cell over POCKET_NEAR cells out: the pocket of its sector, if the cell is that pocket's
   //   2. the home ground
   //   3. which direction's ground, on borders that wander
   //   4. a seam along a diagonal   (not laid yet. Its place is after the direction is known and before the flanks)
@@ -728,6 +936,7 @@ export class World {
   //   7. the direction's own ground.
   biomeAt(x, y) {
     const seed = this.seed, dx = x - C, dy = y - C, r = Math.sqrt(dx * dx + dy * dy);
+    if (r > POCKET_NEAR) { const Z = this.pocketOf(x, y); if (Z !== null && this.inPocket(Z, x, y)) return Z.row; }
     if (r < HOME_R - 25 - SURE || (r < HOME_R + 25 + SURE && r < HOME_R + (noise(x / 30, y / 30, seed + 3, 3) - 0.5) * 50)) return B.CRUST;
     // The larger of the two distances, on a border that wanders in long sweeps and small wobbles.
     const far = Math.min(90, r * 0.2), near = Math.min(8, r * 0.1), n1 = noise(x / 61, y / 61, seed + 1, 1), n2 = noise(x / 61, y / 61, seed + 2, 2);
@@ -806,6 +1015,11 @@ export class World {
       if (edge === 1) return hash(x, y, seed + 32) < 0.55 ? K.SLATE : K.EMPTY;
       return K.EMPTY;
     }
+    // A pocket: every cell of it is its shape's to say, and nothing else is laid in it: no slab, no find, no
+    // hazard. (A cell that holds a pocket's ground where the world would now lay none, as a saved game's may, is
+    // plain rock of it.)
+    const row = BIOMES[b] ?? BIOMES[0];
+    if (row.pocket !== null && row.pocket.shape) { const Z = this.pocketOf(x, y); return Z !== null && Z.row === b ? Z.shape.cell(seed, Z, x, y) : K.SOFT; }
     // A keystone slab: its crack is open and its keys are keys; its own ground and its collar are the ground of
     // whatever lies there, laid with no caves in it (`bare`), the slab's own with more ore (`lift`), and no find
     // lies in either (a geode may have a hollow heart).
@@ -815,7 +1029,7 @@ export class World {
     const bare = slab !== OUT, lift = slab === INSIDE ? LIFT : 0;
     const find = r > 12 && !bare ? this.findAt(x, y) : -1;
     if (find >= 0) return find;
-    const h = hash(x, y, seed + 9), g = (BIOMES[b] ?? BIOMES[0]).lay;
+    const h = hash(x, y, seed + 9), g = row.lay;
     if (g === null) {
       // Home ground: soft, with stones to go round, nuggets worth lassoing, and further out seams of slate.
       // (The last of these to hold is what the cell is, so they are asked last first, and the first that holds

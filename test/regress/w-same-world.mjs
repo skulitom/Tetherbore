@@ -15,6 +15,9 @@
 // And keystone slabs and cobble fields (content item 5), under "Keystone slabs" below: where one lies, what it
 // makes of each cell, and the three things asked of the ground before one is laid (its keys hold it, its crack goes
 // right round, the world holds its collar), each asked here the plainest way there is. And the prism, in `findAt`.
+// And pockets (docs/CONTENT-PLAN.md S3 and content item 6), under "Pockets" below: which sector of 128 cells holds
+// one and where, each direction's first, which cells are a hive's and what each of them is; and that no find and
+// no slab lies in a pocket or against one.
 //   node test/regress/w-same-world.mjs
 import { world } from '../harness.mjs';
 const { World, N, C, CH, CW, K, B, HOME_R, DEEP_R, RELIC_R, WORLD_R, FIND, WRECK_R, DX, DY, base, cellHash: hash } = world;
@@ -53,11 +56,83 @@ const plain = seed => {
     const ux = hash(n, 1, seed + 31) - 0.5, uy = hash(n, 2, seed + 31) - 0.5, len = Math.sqrt(ux * ux + uy * uy) || 1;
     return [C + Math.round(ux / len * r), C + Math.round(uy / len * r)];
   });
+  // ---- Pockets. A sector of 128 cells holds one at the most, all of it inside the sector. Four sectors hold the
+  // first pocket of each direction (north, south, west, east), nine cells in radius, 165 cells out along the
+  // direction's line and 14 to one side, or 40 further out where a wreck lies within 24 cells of that. Of the
+  // other sectors half try one: its middle 38 cells or more inside the sector, 170 cells or more from the core and
+  // not so far out that the last reach does not go round it; its radius 6 + 24 x the square of a hash, kept within
+  // 8 and 30; and none within 40 cells and its radius of a wreck or a relic. The one kind of pocket there is yet,
+  // the hive (ground 32), is the west's: it lies only where the middle is further west than it is north or south.
+  // (Kept once worked out, as a sector's slab is.)
+  const relics = [0, 1, 2, 3].map(d => [C + DX[d] * RELIC_R, C + DY[d] * RELIC_R]);
+  const HERALD = [[14, -165, 0, -1], [-14, 165, 0, 1], [-165, -14, -1, 0], [165, 14, 1, 0]];
+  const zones = new Map();
+  const zoneOf = (sx, sy) => {
+    const id = `${sx},${sy}`;
+    if (zones.has(id)) return zones.get(id);
+    let Z = null, herald = false;
+    for (let [hx, hy, ux, uy] of HERALD) {
+      if (Math.floor(hx / 128) !== sx || Math.floor(hy / 128) !== sy) continue;
+      herald = true;
+      if (wrecks.some(([wx, wy]) => (C + hx - wx) ** 2 + (C + hy - wy) ** 2 < 24 * 24)) { hx += ux * 40; hy += uy * 40; }
+      Z = { cx: C + hx, cy: C + hy, rho: 9, row: 32 };
+    }
+    if (!herald && hash(sx, sy, seed + 40) < 0.5) {
+      const cx = C + sx * 128 + 38 + Math.floor(hash(sx, sy, seed + 42) * 52), cy = C + sy * 128 + 38 + Math.floor(hash(sx, sy, seed + 43) * 52);
+      const far = Math.sqrt((cx - C) * (cx - C) + (cy - C) * (cy - C)), h = hash(sx, sy, seed + 41), rho = Math.min(30, Math.max(8, 6 + 24 * h * h));
+      if (far >= 170 && far + 36 <= WORLD_R - 100 && C - cx > Math.abs(cy - C) && ![...wrecks, ...relics].some(([x, y]) => (cx - x) ** 2 + (cy - y) ** 2 < (40 + rho) * (40 + rho))) Z = { cx, cy, rho, row: 32 };
+    }
+    zones.set(id, Z);
+    return Z;
+  };
+  // A hive is a comb of chambers seven cells square with walls a cell thick between them: the rows of chambers
+  // eight cells apart, every other row shifted four cells, and the hive's middle cell the middle of a chamber. A
+  // chamber is the hive's if its middle is within the hive's radius of the hive's middle, and a cell is the
+  // hive's if it is within four cells, each way, of the middle of such a chamber: its inside, or its walls.
+  const inHive = (Z, x, y) => {
+    for (let r = -5; r <= 5; r++) for (let c = -5; c <= 5; c++) {
+      const uc = 8 * c + (Math.abs(r) % 2 ? 4 : 0), vc = 8 * r;
+      if (uc * uc + vc * vc <= Z.rho * Z.rho && Math.abs(x - Z.cx - uc) <= 4 && Math.abs(y - Z.cy - vc) <= 4) return true;
+    }
+    return false;
+  };
+  // What a cell of a hive is. A wall is wax, but for a door: by the hash of the corner where the wall at a
+  // chamber's west side meets the wall over the chamber, under 0.35 the cell of the wall overhead two cells east
+  // of the corner is open; from there to 0.7 one cell of the west wall is, two cells above its middle (under
+  // 0.525) or two below; and a door only where the chambers on both sides of it are the hive's. Inside a chamber,
+  // by the chamber's own
+  // hash: a nugget three cells square in the middle (55 in a hundred, or 7.7 over the hive's radius where that is
+  // less; and always the chamber at the hive's middle) with a stalk of two cells from it to one of the four
+  // walls; wax right through (15 in a hundred); or nothing.
+  const hiveCell = (Z, x, y) => {
+    const ey = y - Z.cy, r = Math.floor((ey + 4) / 8), dv = ey - 8 * r, shift = Math.abs(r) % 2 ? 4 : 0, ex = x - Z.cx - shift, c = Math.floor((ex + 4) / 8), du = ex - 8 * c;
+    const corner = hash(Z.cx + shift + 8 * c - 4, Z.cy + 8 * r - 4, seed + 45), uc = 8 * c + shift, vc = 8 * r, within = (u, v) => u * u + v * v <= Z.rho * Z.rho;
+    if (dv === -4) return du === -2 && corner < 0.35 && within(uc, vc) && within(uc - 4, vc - 8) ? K.EMPTY : K.SOFT;
+    if (du === -4) return corner >= 0.35 && corner < 0.7 && dv === (corner < 0.525 ? -2 : 2) && within(uc, vc) && within(uc - 8, vc) ? K.EMPTY : K.SOFT;
+    const mx = Z.cx + 8 * c + shift, my = Z.cy + 8 * r, what = c === 0 && r === 0 ? 0 : hash(mx, my, seed + 46);
+    const share = Math.min(0.55, 7.7 / Z.rho);
+    if (what >= share + 0.15) return K.EMPTY;
+    if (what >= share) return K.SOFT;
+    if (Math.abs(du) <= 1 && Math.abs(dv) <= 1) return K.MINERAL;
+    const [ux, uy] = [[1, 0], [0, 1], [-1, 0], [0, -1]][Math.floor(hash(mx, my, seed + 47) * 4)];
+    return (du === 2 * ux || du === 3 * ux) && (dv === 2 * uy || dv === 3 * uy) ? K.NODE : K.EMPTY;
+  };
+  // Whether a disc (its middle and how far it runs) meets a pocket: its middle is nearer a pocket's than the disc
+  // runs and the pocket's cells can lie, which for a hive is 5.7 cells beyond its radius.
+  const meets = (cx, cy, reach) => {
+    for (let v = -1; v <= 1; v++) for (let u = -1; u <= 1; u++) {
+      const Z = zoneOf(Math.floor((cx - C) / 128) + u, Math.floor((cy - C) / 128) + v);
+      if (Z && (Z.cx - cx) ** 2 + (Z.cy - cy) ** 2 < (reach + (Z.rho + 5.7)) * (reach + (Z.rho + 5.7))) return true;
+    }
+    return false;
+  };
   const findAt = (x, y) => {
     const sx = Math.floor((x - C) / FIND), sy = Math.floor((y - C) / FIND), what = hash(sx, sy, seed + 21);
     if (what >= 0.74) return -1;
     const fx = C + sx * FIND + 8 + Math.floor(hash(sx, sy, seed + 22) * (FIND - 16)), fy = C + sy * FIND + 8 + Math.floor(hash(sx, sy, seed + 23) * (FIND - 16));
     if (Math.hypot(fx - C, fy - C) < 16) return -1;
+    // No find where its middle is within five cells of where a pocket's cells can lie.
+    if (meets(fx, fy, 5)) return -1;
     const dx = x - fx, dy = y - fy;
     if (what < 0.38) {
       const size = hash(sx, sy, seed + 24) < 0.4 ? 4 : 3, far = Math.sqrt(dx * dx + dy * dy);
@@ -71,6 +146,9 @@ const plain = seed => {
   };
   const biomeAt = (x, y) => {
     const dx = x - C, dy = y - C, r = Math.sqrt(dx * dx + dy * dy);
+    // A pocket before all else: the cell is its sector's hive's.
+    const Z = zoneOf(Math.floor(dx / 128), Math.floor(dy / 128));
+    if (r > 130 && Z && inHive(Z, x, y)) return Z.row;
     if (r < HOME_R + (noise(x / 30, y / 30, seed + 3) - 0.5) * 50) return B.CRUST;
     const far = Math.min(90, r * 0.2), near = Math.min(8, r * 0.1);
     const ax = Math.abs(dx) + (noise(x / 61, y / 61, seed + 1) - 0.5) * far + (noise(x / 9, y / 9, seed + 16) - 0.5) * near;
@@ -198,8 +276,7 @@ const plain = seed => {
     if (hash(sx, sy, seed + 80) < 0.22) {
       const p = 8 + Math.floor(hash(sx, sy, seed + 81) * 9), cx = C + sx * 144 + 40 + Math.floor(hash(sx, sy, seed + 82) * 64), cy = C + sy * 144 + 40 + Math.floor(hash(sx, sy, seed + 83) * 64);
       const out = Math.sqrt((cx - C) ** 2 + (cy - C) ** 2), within = (x, y, r) => (cx - x) ** 2 + (cy - y) ** 2 < r * r, one = firstSlab();
-      const relics = [0, 1, 2, 3].map(d => [C + DX[d] * RELIC_R, C + DY[d] * RELIC_R]);
-      if (out > 60 && out + p + 6 <= WORLD_R - 100 && ![...wrecks, ...relics].some(([x, y]) => within(x, y, 40 + p)) && !(one && within(one.cx, one.cy, 44 + p))
+      if (out > 60 && out + p + 6 <= WORLD_R - 100 && ![...wrecks, ...relics].some(([x, y]) => within(x, y, 40 + p)) && !(one && within(one.cx, one.cy, 44 + p)) && !meets(cx, cy, p + 5)
         && !(noise(cx / 19, cy / 19, seed + 18) > cavernOf(biomeAt(cx, cy)) - 0.08)) {
         const q = hash(sx, sy, seed + 86) * 4, a = 0.8 + hash(sx, sy, seed + 87) * (p > 12 ? 0.8 : 2.4);
         S = { cx, cy, p, cobble: hash(sx, sy, seed + 85) < 0.35, ways: (p > 12 ? [q, q + a, q + a + 0.8 + hash(sx, sy, seed + 88) * 0.8] : [q, q + a]).map(way) };
@@ -234,6 +311,8 @@ const plain = seed => {
       if (edge === 1) return hash(x, y, seed + 32) < 0.55 ? K.SLATE : K.EMPTY;
       if (edge <= 3) return K.EMPTY;
     }
+    // A pocket's cells are its own to say: nothing else is laid in one.
+    if (b === 32) return hiveCell(zoneOf(Math.floor(dx / 128), Math.floor(dy / 128)), x, y);
     // A slab's crack and joints are open and its keys are keys; its own ground and its collar are the ground of
     // wherever it lies, with no find and no cave in them, and in the slab's own the ore's thresholds are 0.05 lower.
     const slab = bare ? 'out' : slabAt(x, y), solid = slab !== 'out', lift = slab === 'inside' ? 0.05 : 0;
@@ -303,10 +382,10 @@ const plain = seed => {
     }
     return k;
   };
-  return { wrecks, biomeAt, kindAt, firstSlab, slabIn };
+  return { wrecks, biomeAt, kindAt, firstSlab, slabIn, zoneOf };
 };
 
-let pieces = 0, cells = 0, wrong = 0, first = '', slabs = 0, cobbles = 0;
+let pieces = 0, cells = 0, wrong = 0, first = '', slabs = 0, cobbles = 0, pockets = 0;
 const kinds = new Set(), biomes = new Set();
 for (const seed of [1, 7, 34, 99991, 123456789]) {
   const w = new World(); w.reset(seed);
@@ -327,6 +406,17 @@ for (const seed of [1, 7, 34, 99991, 123456789]) {
     if (S) { round(S.cx, S.cy); if (S.cobble) cobbles++; else slabs++; }
   }
   if (!ref.firstSlab() || !w.firstSlab) { wrong++; first ||= `seed ${seed}: there is no first slab`; }
+  // Pockets: the four heralds, and the pocket of every sector within six of the core's that has one. The game
+  // must lay one in the same sectors as the plain reading, the same size in the same place, and nowhere else; and
+  // every piece of the world one lies in is compared.
+  for (let sy = -6; sy < 6; sy++) for (let sx = -6; sx < 6; sx++) {
+    const Z = ref.zoneOf(sx, sy), mine = w.zoneOf(sx, sy);
+    if (!Z !== !mine || (Z && (Z.cx !== mine.cx || Z.cy !== mine.cy || Z.rho !== mine.rho || Z.row !== mine.row))) { wrong++; first ||= `seed ${seed} sector ${sx},${sy}: the game lays ${mine ? `a pocket at ${mine.cx - C},${mine.cy - C} of radius ${mine.rho}` : 'no pocket'}, the plain reading ${Z ? `one at ${Z.cx - C},${Z.cy - C} of radius ${Z.rho}` : 'none'}`; }
+    if (!Z) continue;
+    pockets++;
+    const most = Math.ceil(Z.rho + 6);
+    for (let v = -most; v <= most; v += most) for (let u = -most; u <= most; u += most) round(Z.cx + u, Z.cy + v, 0);
+  }
   // Asked in the game's order (a piece at a time, as play makes them) and then a second time in another order, so
   // what the layers remember from the cell before is put to the test.
   for (const id of ids) {
@@ -344,10 +434,12 @@ for (const seed of [1, 7, 34, 99991, 123456789]) {
   }
   if (JSON.stringify(w.wrecks) !== JSON.stringify(ref.wrecks)) { wrong++; first ||= `seed ${seed}: the wrecks lie elsewhere`; }
 }
-console.log(JSON.stringify({ pieces, cells, kindsSeen: kinds.size, biomesSeen: biomes.size, slabs, cobbles, wrong }));
+console.log(JSON.stringify({ pieces, cells, kindsSeen: kinds.size, biomesSeen: biomes.size, slabs, cobbles, pockets, wrong }));
 console.log(wrong ? `DEFECT: the world a seed makes has changed: ${first}` : 'no defect');
 const crosses = [...biomes].filter(b => b >= 128), donors = new Set(crosses.map(b => OTHERS[cross(b).kin][Math.floor((b - 128) % 15 / 5)])), shapes = new Set(crosses.map(b => (b - 128) % 5));
-if (!wrong && biomes.size - crosses.length < 17) console.log(`DEFECT: only ${biomes.size - crosses.length} of the 17 hand-made grounds were met: ${[...biomes].sort((a, b) => a - b)}`);
+if (!wrong && biomes.size - crosses.length < 18) console.log(`DEFECT: only ${biomes.size - crosses.length} of the 18 hand-made grounds were met: ${[...biomes].sort((a, b) => a - b)}`);
+if (!wrong && (pockets < 40 || !kinds.has(K.MINERAL) || !kinds.has(K.NODE))) console.log(`DEFECT: ${pockets} pockets were met${kinds.has(K.MINERAL) ? '' : ', no mineral'}${kinds.has(K.NODE) ? '' : ', no stalk'}`);
 if (!wrong && (crosses.length < 20 || donors.size < 4 || shapes.size < 5)) console.log(`DEFECT: only ${crosses.length} crosses were met, with ${donors.size} of the 4 donors and ${shapes.size} of the 5 structures: ${crosses.sort((a, b) => a - b)}`);
 if (!wrong && (slabs < 20 || cobbles < 8 || !kinds.has(K.KEY) || !kinds.has(K.PRISM))) console.log(`DEFECT: ${slabs} slabs and ${cobbles} cobble fields were met${kinds.has(K.KEY) ? '' : ', no key'}${kinds.has(K.PRISM) ? '' : ', no prism'}`);
-process.exit(wrong || slabs < 20 || cobbles < 8 || !kinds.has(K.KEY) || !kinds.has(K.PRISM) || kinds.size < 12 || biomes.size - crosses.length < 17 || crosses.length < 20 || donors.size < 4 || shapes.size < 5 ? 1 : 0);
+process.exit(wrong || slabs < 20 || cobbles < 8 || !kinds.has(K.KEY) || !kinds.has(K.PRISM) || kinds.size < 14 || biomes.size - crosses.length < 18 || crosses.length < 20 || donors.size < 4 || shapes.size < 5
+  || pockets < 40 || !kinds.has(K.MINERAL) || !kinds.has(K.NODE) ? 1 : 0);
