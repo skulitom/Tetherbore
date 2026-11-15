@@ -1959,17 +1959,18 @@ export class Game {
       text(ctx, u.name, px + 25, y + 2, '#ffffff');
       text(ctx, c ? `${u.show(u.values[l])}>${u.show(u.values[l + 1])}` : `${u.show(u.values[l])} MAX`, px + 31 + textWidth(u.name), y + 2, c ? '#bfe6ff' : '#ffe14a');
       if (c) {
-        // The cost sits on the second line when the first is full.
+        // The cost sits on the second line when the first is full. It is lit by what has come home (`banked`), as
+        // the purchase itself is judged: never shown as enough while the tap would be refused.
         let cx = px + pw - 18;
         const wide = textWidth(u.name) + textWidth(`${u.show(u.values[l])}>${u.show(u.values[l + 1])}`) + textWidth(compact(c.grit)) + (c.gems ? textWidth(compact(c.gems)) + 16 : 0) > pw - 80, cy = wide ? y + rh - 12 : y + 2;
         draw(ctx, 'icons', 'grit', cx, cy - 1);
-        text(ctx, compact(c.grit), cx - 2, cy, S.grit >= c.grit ? '#ffe14a' : '#ff7a5a', 1);
+        text(ctx, compact(c.grit), cx - 2, cy, this.banked() >= c.grit ? '#ffe14a' : '#ff7a5a', 1);
         if (c.gems > 0) {
           cx -= textWidth(compact(c.grit)) + 16;
           draw(ctx, 'icons', GEM_ICON[u.gem], cx, cy - 1);
-          text(ctx, compact(c.gems), cx - 2, cy, S.gems[u.gem] >= c.gems ? GEM_COLOR[u.gem] : '#ff7a5a', 1);
+          text(ctx, compact(c.gems), cx - 2, cy, this.banked(u.gem) >= c.gems ? GEM_COLOR[u.gem] : '#ff7a5a', 1);
         }
-        const short = c.gems > 0 && S.gems[u.gem] < c.gems;
+        const short = c.gems > 0 && this.banked(u.gem) < c.gems;
         if (!wide) text(ctx, short ? `${GEM_WHERE[u.gem]}, PAST ${HOME_R}` : u.what, px + 25, y + rh - 12, short ? GEM_COLOR[u.gem] : '#c8c2d4');
       } else text(ctx, u.what, px + 25, y + rh - 12, '#e8c070');
       this.buttons.unshift({ x: px + 4, y, w: pw - 8, h: rh - 1, act: () => this.buy(u) });
