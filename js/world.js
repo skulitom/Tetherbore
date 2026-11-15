@@ -51,6 +51,10 @@ export const K = {
   FOSSIL: kind(27, 'FOSSIL', 1, 2, 0, 1.0),
 };
 export const KIND_NAMES = KINDS.map(k => k.name);
+// What is worth calling out the first time it is seen (`World.see`), by kind. Slate is, where it is a geode's shell;
+// a pocket's mineral is too, and which kind that is its row says.
+const NOTABLE = [];
+NOTABLE[K.CACHE] = 'cache'; NOTABLE[K.WRECK] = 'wreck'; NOTABLE[K.RELIC] = 'relic'; NOTABLE[K.KEY] = 'key'; NOTABLE[K.PRISM] = 'prism'; NOTABLE[K.SLATE] = 'geode';
 export const HARD = KINDS.map(k => k.hard), GRIT = KINDS.map(k => k.grit), GEMS = KINDS.map(k => k.gems), DIG_TIME = KINDS.map(k => k.dig);
 
 // ---------------------------------------------------------------- whose ground a cell is
@@ -209,6 +213,8 @@ export class World {
     this.made = 0;                         // pieces of the world made, and outline sides walked and cells followed by
     this.sides = 0; this.followed = 0;     // `freed` and `pieceIn`: for tests of how much work is done
     this.sector = { sx: NaN, sy: NaN, seed: NaN, what: 1, fx: 0, fy: 0, size: 3 };      // the sector `findAt` last looked at
+    this.asked = { sx: NaN, sy: NaN, seed: NaN, what: 1, fx: 0, fy: 0, size: 3 };       // and the one `findSpot` did
+    this.spotted = [];                     // things seen for the first time and not yet called out: `see` adds, the game takes
     this.relicAt = [0, 1, 2, 3].map(d => (C + DY[d] * RELIC_R) * N + C + DX[d] * RELIC_R);
   }
   // Where the eight wrecks lie in this world: [x, y] each, in a direction of its own.
@@ -223,18 +229,31 @@ export class World {
     }
     return this.wreckSpots;
   }
+  // What a sector of FIND cells holds and where, worked out into the record `S`: `what` is under 0.38 for a geode
+  // (`size` cells from its middle to the outside of its shell), under 0.7 for a cache, and anything else is
+  // nothing; `fx`, `fy` is the middle cell. A sector is its place counted from the core's: (x - C) / FIND, floored.
+  find(sx, sy, S) {
+    const seed = this.seed;
+    S.sx = sx; S.sy = sy; S.seed = seed; S.what = hash(sx, sy, seed + 21);
+    if (S.what < 0.7) {
+      S.fx = C + sx * FIND + 8 + Math.floor(hash(sx, sy, seed + 22) * (FIND - 16)); S.fy = C + sy * FIND + 8 + Math.floor(hash(sx, sy, seed + 23) * (FIND - 16));
+      if (Math.hypot(S.fx - C, S.fy - C) < 16) S.what = 1;
+      else if (S.what < 0.38) S.size = hash(sx, sy, seed + 24) < 0.4 ? 4 : 3;
+    }
+  }
+  // What a sector holds, asked without making any of the world: ['geode' | 'cache' | null, x, y, size], the find's
+  // middle cell and, of a geode, its size. (What is truly there is the world's cells to say: a wreck or a relic's
+  // vault laid over a find has taken its place.)
+  findSpot(sx, sy) {
+    const S = this.asked;
+    if (S.sx !== sx || S.sy !== sy || S.seed !== this.seed) this.find(sx, sy, S);
+    return S.what < 0.38 ? ['geode', S.fx, S.fy, S.size] : S.what < 0.7 ? ['cache', S.fx, S.fy, 1] : [null, 0, 0, 0];
+  }
   // What a sector's find puts in a cell, or -1 where it puts nothing. What the sector holds and where is worked out
   // once and kept while cells of the same sector are asked about.
   findAt(x, y) {
-    const seed = this.seed, sx = Math.floor((x - C) / FIND), sy = Math.floor((y - C) / FIND), S = this.sector;
-    if (S.sx !== sx || S.sy !== sy || S.seed !== seed) {
-      S.sx = sx; S.sy = sy; S.seed = seed; S.what = hash(sx, sy, seed + 21);
-      if (S.what < 0.7) {
-        S.fx = C + sx * FIND + 8 + Math.floor(hash(sx, sy, seed + 22) * (FIND - 16)); S.fy = C + sy * FIND + 8 + Math.floor(hash(sx, sy, seed + 23) * (FIND - 16));
-        if (Math.hypot(S.fx - C, S.fy - C) < 16) S.what = 1;
-        else if (S.what < 0.38) S.size = hash(sx, sy, seed + 24) < 0.4 ? 4 : 3;
-      }
-    }
+    const sx = Math.floor((x - C) / FIND), sy = Math.floor((y - C) / FIND), S = this.sector;
+    if (S.sx !== sx || S.sy !== sy || S.seed !== this.seed) this.find(sx, sy, S);
     const what = S.what;
     if (what >= 0.7) return -1;
     const dx = x - S.fx, dy = y - S.fy;
@@ -257,6 +276,7 @@ export class World {
     this.chunks = new Array(CW * CW);
     this.touched.clear(); this.lava.clear(); this.dug.clear();
     this.made = 0;
+    this.spotted.length = 0;
   }
 
   // Whose ground a cell is, from the seed alone.
@@ -348,14 +368,30 @@ export class World {
   // (What was known of a cell's sides goes when the cell changes: `dull`.)
   setK(i, v) { const id = ((i >>> 20) << 8) | ((i >>> 6) & 255), p = this.piece(id), at = (((i >>> 14) & 63) << 6) | (i & 63); p.kind[at] = v; if (p.dull) p.dull[at] = 0; this.touched.add(id); }
   setB(i, v) { const id = ((i >>> 20) << 8) | ((i >>> 6) & 255); this.piece(id).biome[(((i >>> 14) & 63) << 6) | (i & 63)] = v; this.touched.add(id); }
-  // Show the ground within `radius` cells of a cell. Returns whether anything new was seen.
+  // Show the ground within `radius` cells of a cell. Returns whether anything new was seen. A cell seen for the
+  // first time that is worth calling out (a cache, a wreck, a relic, a keystone, a prism, a pocket's mineral, the
+  // shell of a geode) goes on `spotted` as [what, cell, middle]: what it is ('cache', 'wreck', 'relic', 'key',
+  // 'prism', 'mineral', 'geode'), the cell seen, and the middle cell of the thing (the cell itself, but for a
+  // geode). Whoever calls things out takes them from the list; it never holds more than a few hundred.
   see(cx, cy, radius) {
     let fresh = false;
     for (let y = cy - radius; y <= cy + radius; y++) for (let x = cx - radius; x <= cx + radius; x++) {
       const id = ((y >> 6) << 8) | (x >> 6), p = this.piece(id), at = ((y & 63) << 6) | (x & 63);
-      if (!p.seen[at]) { p.seen[at] = 1; this.touched.add(id); fresh = true; }
+      if (p.seen[at]) continue;
+      p.seen[at] = 1; this.touched.add(id); fresh = true;
+      const k = p.kind[at], P = (BIOMES[p.biome[at]] ?? BIOMES[0]).pocket;
+      if (NOTABLE[k] !== undefined || (P !== null && k === (P.kind ?? K.MINERAL))) this.notice(x, y, k, P);
     }
     return fresh;
+  }
+  notice(x, y, k, P) {
+    if (this.spotted.length >= 400) return;
+    const i = y * N + x;
+    if (P !== null && k === (P.kind ?? K.MINERAL)) { this.spotted.push(['mineral', i, i]); return; }
+    if (k !== K.SLATE) { this.spotted.push([NOTABLE[k], i, i]); return; }
+    // Slate is a geode's shell where its sector holds a geode and the cell lies within it.
+    const [what, fx, fy, size] = this.findSpot(Math.floor((x - C) / FIND), Math.floor((y - C) / FIND)), dx = x - fx, dy = y - fy;
+    if (what === 'geode' && dx * dx + dy * dy <= (size - 0.2) * (size - 0.2)) this.spotted.push(['geode', i, fy * N + fx]);
   }
   // What a cell is, without making its piece of the world: -1 where nothing has been seen yet.
   peek(x, y) { const p = this.chunks[((y >> 6) << 8) | (x >> 6)]; return p && p.seen[((y & 63) << 6) | (x & 63)] ? p.kind[((y & 63) << 6) | (x & 63)] : -1; }
