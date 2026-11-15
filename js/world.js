@@ -7,7 +7,7 @@ export const B = { CRUST: 0, FROST: 1, EMBER: 2, MIRE: 3, LODE: 4 };
 // Far out, the ground to either side of each direction's middle turns into a richer, meaner kind of the same.
 export const BIOME_NAMES = ['crust', 'frost', 'ember', 'mire', 'lode', 'rime', 'magma', 'bloom', 'gilt'];
 export const base = b => b > 4 ? b - 4 : b;
-export const DEEP_R = 23;
+export const DEEP_R = 31, HOME_R = 13;
 // What bit a cell needs (99: no bit cuts it), and what a hauled cell pays in grit and in its biome's gem.
 export const HARD = [0, 99, 99, 1, 1, 1, 1, 1, 1, 1, 99, 1, 1];
 export const GRIT = [0, 0, 0, 1, 2, 2, 4, 4, 10, 3, 0, 0, 1];
@@ -55,27 +55,32 @@ export class World {
       const wx = (noise(x / 9, y / 9, seed + 1) - 0.5) * sway, wy = (noise(x / 9, y / 9, seed + 2) - 0.5) * sway;
       const ax = Math.abs(dx) + wx, ay = Math.abs(dy) + wy;
       let b = ax > ay ? (dx > 0 ? B.LODE : B.MIRE) : (dy < 0 ? B.FROST : B.EMBER);
-      if (r < 5.6 + (noise(x / 3, y / 3, seed + 3) - 0.5) * 2.4) b = B.CRUST;
+      if (r < HOME_R + (noise(x / 4, y / 4, seed + 3) - 0.5) * 5) b = B.CRUST;
       const deep = b !== B.CRUST && r > DEEP_R + (noise(x / 6, y / 6, seed + 14) - 0.5) * 6
         && Math.min(Math.abs(dx), Math.abs(dy)) > Math.max(Math.abs(dx), Math.abs(dy)) * 0.36 + (noise(x / 7, y / 7, seed + 15) - 0.5) * 5;
       biome[i] = deep ? b + 4 : b;
       if (r > WORLD_R + (noise(x / 5, y / 5, seed + 4) - 0.5) * 3) { kind[i] = K.BEDROCK; continue; }
       let k = K.SOFT;
-      if (b !== B.CRUST) {
+      if (b === B.CRUST) {
+        // Home ground: soft, with stones to go round and nuggets worth lassoing.
+        const h = hash(x, y, seed + 9);
+        if (r > 5 && noise(x / 4, y / 4, seed + 5) > 0.7) k = K.DENSE;
+        if (r > 4.5 && noise(x / 3, y / 3, seed + 6) > 0.64 && h < 0.6) k = K.ORE_A;
+      } else {
         const h = hash(x, y, seed + 9);
         if (r > 7 && noise(x / 4, y / 4, seed + 5) > (b === B.EMBER ? 0.64 : 0.68)) k = K.DENSE;
         if (r > 6.5 && noise(x / 3, y / 3, seed + 6) > (deep ? 0.6 : 0.66) && h < 0.62) k = K.ORE_A;
-        if (r > 15 && noise(x / 3.5, y / 3.5, seed + 7) > (deep ? 0.66 : 0.74) && h < 0.5) k = K.ORE_B;
-        if (r > 10) {
+        if (r > 20 && noise(x / 3.5, y / 3.5, seed + 7) > (deep ? 0.66 : 0.74) && h < 0.5) k = K.ORE_B;
+        if (r > 17) {
           const more = deep ? 1.8 : 1;
           if (b === B.EMBER && noise(x / 2.5, y / 2.5, seed + 8) > (deep ? 0.72 : 0.78) && h > 0.45) k = K.HAZARD;
           if (b === B.MIRE && hash(x, y, seed + 10) < 0.022 * more) k = K.HAZARD;
           if (b === B.LODE && hash(x, y, seed + 10) < 0.026 * more) k = K.HAZARD;
         }
         const vein = Math.abs(noise(x / 9, y / 9, seed + 11) - 0.5);
-        if (r > 11 && vein < (b === B.LODE ? 0.05 : 0.03)) k = K.SLATE;
-        if (r > 27 && Math.abs(noise(x / 8, y / 8, seed + 12) - 0.5) < 0.028) k = K.VAULT;
-        if (r > 8.5 && noise(x / 5, y / 5, seed + 13) > (b === B.MIRE ? 0.68 : 0.8)) k = K.EMPTY;
+        if (r > 16 && vein < (b === B.LODE ? 0.05 : 0.03)) k = K.SLATE;
+        if (r > 30 && Math.abs(noise(x / 8, y / 8, seed + 12) - 0.5) < 0.028) k = K.VAULT;
+        if (r > 15 && noise(x / 5, y / 5, seed + 13) > (b === B.MIRE ? 0.68 : 0.8)) k = K.EMPTY;
       }
       kind[i] = k;
     }
@@ -92,10 +97,10 @@ export class World {
     // The core, the gap round it, and a first piece all but cut free, to show what a cut does.
     // The core is a platform: the drill rides onto it. Its nine cells and the gap round them are open ground.
     for (let y = -2; y <= 2; y++) for (let x = -2; x <= 2; x++) kind[(C + y) * N + C + x] = K.EMPTY;
-    for (let x = 3; x <= 5; x++) kind[(C - 2) * N + C + x] = K.EMPTY;
-    for (let y = -2; y <= 1; y++) kind[(C + y) * N + C + 5] = K.EMPTY;
-    kind[(C - 1) * N + C + 3] = K.ORE_A; kind[(C - 1) * N + C + 4] = K.SOFT;
-    kind[C * N + C + 3] = K.SOFT; kind[C * N + C + 4] = K.ORE_A;
+    // A first piece already cut loose beside the core, to show what drawing the tether round something does.
+    for (let y = -2; y <= 1; y++) for (let x = 3; x <= 6; x++) kind[(C + y) * N + C + x] = K.EMPTY;
+    kind[(C - 1) * N + C + 4] = K.ORE_A; kind[(C - 1) * N + C + 5] = K.SOFT;
+    kind[C * N + C + 4] = K.SOFT; kind[C * N + C + 5] = K.ORE_A;
     this.lava.fill(0); this.dugAt.fill(0); this.seen.fill(0); this.reached.fill(0);
   }
 

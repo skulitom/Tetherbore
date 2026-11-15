@@ -1,6 +1,6 @@
 // Tetherbore: the game. A drill on a tether cuts ground round a fixed core; a piece cut wholly free is reeled in.
 // Logic moves by whole cells and at once; what is drawn catches up, so input never waits on an animation.
-import { World, N, C, K, B, HARD, GRIT, GEMS, DX, DY, BIOME_NAMES, base, cellHash, taut, sight, onCore } from './world.js';
+import { World, N, C, SIZE, K, B, HARD, GRIT, GEMS, DX, DY, BIOME_NAMES, base, cellHash, sight, onCore } from './world.js';
 import { sheets, draw, drawScaled, frameAt, duration, slice9, text, textWidth } from './atlas.js';
 import { sfx, unlock, isMuted, setMuted, setAmbience } from './audio.js';
 
@@ -13,19 +13,16 @@ const GEM_COLOR = [null, '#bfe6ff', '#ffb060', '#b8f06a', '#d8b8ff'];
 // ---------------------------------------------------------------- upgrades
 // `values` is what each level gives; `grit` and `gems` what the next level costs; `gem` whose gems it takes.
 export const UPGRADES = [
-  { id: 'tether', icon: 'string', name: 'TETHER', values: [20, 26, 33, 41, 50, 60, 72, 86, 102, 120], gem: B.MIRE,
+  // The tether's reach: how far from the core the drill may go, by any road.
+  { id: 'tether', icon: 'string', name: 'REACH', what: 'TETHER GOES FURTHER', values: [12, 15, 19, 23, 28, 33, 38, 44, 51, 58], gem: B.MIRE,
     grit: [8, 30, 90, 240, 600, 1400, 3200, 7000, 15000], gems: [0, 0, 3, 8, 20, 45, 90, 170, 300], show: v => `${v}` },
-  { id: 'drill', icon: 'drill', name: 'BIT', values: [1, 2, 3, 4, 5], gem: B.LODE, grit: [60, 400, 1800, 7000], gems: [0, 10, 40, 120], show: v => `MK${v}` },
-  { id: 'battery', icon: 'battery', name: 'CELL', values: [60, 85, 115, 150, 200, 270, 360], gem: B.EMBER,
-    grit: [20, 70, 200, 550, 1500, 4000], gems: [0, 4, 12, 30, 70, 150], show: v => `${v}` },
-  { id: 'winch', icon: 'winch', name: 'WINCH', values: [1, 1.3, 1.6, 2, 2.5, 3], gem: B.FROST,
+  { id: 'drill', icon: 'drill', name: 'BIT', what: 'CUTS FASTER', values: [1, 2, 3, 4, 5], gem: B.LODE, grit: [60, 400, 1800, 7000], gems: [0, 10, 40, 120], show: v => `MK${v}` },
+  { id: 'winch', icon: 'winch', name: 'WINCH', what: 'BIG HAULS PAY MORE', values: [1, 1.3, 1.6, 2, 2.5, 3], gem: B.FROST,
     grit: [50, 220, 800, 2600, 8000], gems: [0, 6, 20, 60, 150], show: v => `x${v}` },
-  { id: 'scanner', icon: 'scanner', name: 'SCAN', values: [2, 3, 4, 5, 6], gem: B.FROST, grit: [30, 150, 700, 3000], gems: [0, 5, 25, 80], show: v => `${v}` },
-  { id: 'momentum', icon: 'momentum', name: 'RAM', values: [0, 2, 4, 7, 12], gem: B.LODE, grit: [60, 300, 1200, 5000], gems: [0, 8, 30, 90], show: v => `${v}` },
-  { id: 'shield', icon: 'shield', name: 'GUARD', values: [1, 0.7, 0.45, 0.25], gem: B.MIRE, grit: [100, 600, 3000], gems: [3, 20, 70], show: v => `${Math.round((1 - v) * 100)}%` },
-  { id: 'bombs', icon: 'bomb', name: 'BLAST', values: [0, 1, 2, 3, 4], gem: B.EMBER, grit: [80, 400, 1600, 6000], gems: [0, 10, 40, 110], show: v => `${v}` },
+  { id: 'scanner', icon: 'scanner', name: 'SCAN', what: 'SEES DEEPER IN ROCK', values: [2, 3, 4, 5, 6], gem: B.FROST, grit: [30, 150, 700, 3000], gems: [0, 5, 25, 80], show: v => `${v}` },
+  { id: 'momentum', icon: 'momentum', name: 'RAM', what: 'RUNS ON THROUGH SOFT', values: [0, 2, 4, 7, 12], gem: B.LODE, grit: [60, 300, 1200, 5000], gems: [0, 8, 30, 90], show: v => `${v}` },
+  { id: 'bombs', icon: 'bomb', name: 'BLAST', what: 'BOMB: CLEARS ROCK', values: [0, 1, 2, 3, 4], gem: B.EMBER, grit: [80, 400, 1600, 6000], gems: [0, 10, 40, 110], show: v => `${v}` },
 ];
-// Nothing is too hard to cut: tougher ground only takes longer, and a better bit cuts all of it faster.
 // What flies off each kind of ground when it is cut, and the dark each direction's ground lies in.
 const DEBRIS = {
   crust: ['#6f5b49', '#806a55', '#a08a6c'], frost: ['#bcd8ee', '#ffffff', '#a2c4e2'], ember: ['#4a2f37', '#855350', '#ff8a2a'],
@@ -37,7 +34,6 @@ const DEBRIS = {
 const GLOOM = [[10, 8, 7], [5, 12, 30], [22, 5, 6], [14, 6, 26], [22, 13, 4], [3, 18, 24], [30, 5, 3], [26, 4, 28], [24, 18, 2]];
 const MOTE = ['#8a7a66', '#ffffff', '#ff9a3a', '#a5f0a0', '#ffe08a', '#d8fff4', '#ffc040', '#ffa0e0', '#ffe680'];
 const DIG_TIME = [0, 0, 0, 0.24, 0.45, 0.24, 0.45, 1.0, 1.8, 0.24, 0, 0.18, 0.45];
-const DIG_COST = [0, 0, 0, 1, 1, 1, 1, 2, 3, 1, 0, 1, 1];
 const SPEED = [1, 1.6, 2.4, 3.6, 5];
 
 const compact = n => n < 1000 ? `${Math.floor(n)}` : n < 10000 ? `${(Math.floor(n / 100) / 10).toFixed(1)}K` : n < 1e6 ? `${Math.floor(n / 1000)}K` : `${(Math.floor(n / 1e5) / 10).toFixed(1)}M`;
@@ -52,6 +48,7 @@ export class Game {
     this.W = 180; this.H = 320;
     this.time = 0;
     this.input = { held: null, queued: null, id: null, ax: 0, ay: 0, px: 0, py: 0, keys: new Set() };
+    this.hist = []; this.pos = new Int32Array(SIZE).fill(-1); this.loose = []; this.preview = []; this.pathPts = [];
     this.effects = []; this.popups = []; this.hauls = []; this.clouds = []; this.sparks = new Map(); this.lavaVol = new Map(); this.frostOpen = [];
     this.parts = []; this.rings = []; this.motes = []; this.gloom = [10, 8, 7]; this.flash = 0; this.counted = 0; this.chime = 3;
     this.shake = 0; this.twang = 0; this.coreFlash = 0; this.banner = null; this.shop = false; this.confirmReset = 0;
@@ -74,10 +71,11 @@ export class Game {
     this.effects.length = 0; this.popups.length = 0; this.hauls.length = 0; this.clouds.length = 0; this.sparks.clear(); this.lavaVol.clear(); this.frostOpen.length = 0;
     w.lava.fill(0); w.dugAt.fill(0); w.reached.fill(0); this.lavaCells.clear(); this.version++;
     w.reach(this.val('scanner'));
-    this.drill = { x: C + 2, y: C + 1, fx: C + 2, fy: C + 1, dir: 0, mode: 'idle', t: 0, wait: 0, bore: 0, target: -1, dur: 0, route: null, at: 0, site: -1 };
-    this.charge = this.val('battery'); this.bombs = this.val('bombs');
+    this.drill = { x: C, y: C, fx: C, fy: C, dir: 0, mode: 'idle', t: 0, wait: 0, bore: 0, target: -1, dur: 0, stun: 0 };
+    this.bombs = this.val('bombs');
     this.cam = { x: this.drill.fx * T + 8, y: this.drill.fy * T + 8 };
-    this.retether();
+    this.pos.fill(-1); this.hist = [C * N + C]; this.pos[C * N + C] = 0;
+    this.changed();
     this.shop = false;
   }
   val(id) { const u = UPGRADES.find(u => u.id === id); return u.values[this.S.lv[id]]; }
@@ -120,20 +118,20 @@ export class Game {
     const hit = this.buttons.find(b => x >= b.x && y >= b.y && x < b.x + b.w && y < b.y + b.h);
     if (hit) { hit.act(); return; }
     if (this.shop) { this.shop = false; sfx.tap(); return; }
-    Object.assign(this.input, { id, ax: x, ay: y, px: x, py: y, held: null, lock: false });
+    Object.assign(this.input, { id, ax: x, ay: y, px: x, py: y, held: null });
   }
   pointerMove(id, x, y) {
     const inp = this.input;
-    if (inp.id !== id || inp.lock) return;
+    if (inp.id !== id) return;
     inp.px = x; inp.py = y;
-    let dx = x - inp.ax, dy = y - inp.ay;
-    const far = Math.hypot(dx, dy);
-    if (far < 9) return;
-    const dir = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 0 : 2) : (dy > 0 ? 1 : 3);
+    const dx = x - inp.ax, dy = y - inp.ay, far = Math.hypot(dx, dy);
+    if (far < 10) return;
+    // Each short stroke is read on its own, from where the last one ended: a turn is a thumb's width of travel the
+    // new way, wherever the thumb has got to. A stroke has to lean clearly one way to change the heading.
+    const ax = Math.abs(dx), ay = Math.abs(dy), dir = ax > ay ? (dx > 0 ? 0 : 2) : (dy > 0 ? 1 : 3);
     inp.vec = [dx / far, dy / far];
-    if (dir !== inp.held) { inp.held = dir; inp.queued = dir; }
-    // The origin trails the finger, so turning takes a short stroke from wherever the thumb is.
-    if (far > 20) { inp.ax = x - dx / far * 20; inp.ay = y - dy / far * 20; }
+    if (dir !== inp.held && (inp.held === null || Math.max(ax, ay) > Math.min(ax, ay) * 1.35)) { inp.held = dir; inp.queued = dir; }
+    inp.ax = x; inp.ay = y;
   }
   pointerUp(id) { if (this.input.id === id) { this.input.id = null; this.input.held = null; } }
   key(code, down) {
@@ -146,7 +144,6 @@ export class Game {
     }
     if (!down) return false;
     unlock();
-    if (code === 'Space' || code === 'KeyR') { this.recallButton(); return true; }
     if (code === 'KeyB' || code === 'KeyE') { this.blast(); return true; }
     if (code === 'KeyU' || code === 'Enter') { if (this.atCore) this.shop = !this.shop; return true; }
     if (code === 'Escape') { this.shop = false; return true; }
@@ -154,139 +151,183 @@ export class Game {
   }
 
   // ------------------------------------------------------------ the tether
-  // After any change to the ground or the drill's cell: where the tether lies and how it is drawn.
+  // The tether lies where the drill has been. `hist` is every cell from the middle of the core out to the drill, and
+  // `pos` where each cell is in it. Going back the way it came winds the tether in; touching its own tether closes a
+  // loop, and whatever ground that loop surrounds is lassoed and reeled in.
+  step(i) {
+    const h = this.hist, pos = this.pos, x = i % N, y = (i / N) | 0, centre = C * N + C;
+    if (onCore(x, y)) {
+      // Home. The whole trip, closed by the core itself, is a loop.
+      const loop = h.length > 2 ? h.slice() : null;
+      for (const c of h) pos[c] = -1;
+      // From the middle to this cell of the platform, by neighbouring cells.
+      this.hist = i === centre ? [centre] : x !== C && y !== C ? [centre, C * N + x, i] : [centre, i];
+      this.hist.forEach((c, n) => { pos[c] = n; });
+      if (loop) this.lasso(loop, true);
+      return;
+    }
+    if (h.length >= 2 && h[h.length - 2] === i) { pos[h.pop()] = -1; return; }
+    // The earliest place the tether already lies in this cell or right beside it (the cell just left does not count).
+    let j = pos[i];
+    for (const n of [i + 1, i - 1, i + N, i - N]) if (pos[n] >= 0 && pos[n] < h.length - 1 && (j < 0 || pos[n] < j)) j = pos[n];
+    if (j < 0) { pos[i] = h.length; h.push(i); return; }
+    const loop = h.slice(j);
+    if (h[j] !== i) loop.push(i);
+    for (let n = j + 1; n < h.length; n++) pos[h[n]] = -1;
+    h.length = j + 1;
+    if (h[j] !== i) { pos[i] = h.length; h.push(i); }
+    this.lasso(loop, false);
+  }
+  // Reel in every piece of ground inside a closed loop of tether.
+  lasso(loop, home) {
+    const w = this.world, wall = w.mark, queue = w.queue;
+    if (loop.length < 4) return;
+    wall.fill(0);
+    for (const c of loop) wall[c] = 1;
+    if (home) for (let v = -1; v <= 1; v++) for (let u = -1; u <= 1; u++) wall[(C + v) * N + C + u] = 1;
+    // Everything the outside can reach without crossing the loop is outside it.
+    let tail = 0;
+    wall[0] = 2; queue[tail++] = 0;
+    for (let head = 0; head < tail; head++) {
+      const c = queue[head], x = c % N;
+      if (x + 1 < N && !wall[c + 1]) { wall[c + 1] = 2; queue[tail++] = c + 1; }
+      if (c + N < SIZE && !wall[c + N]) { wall[c + N] = 2; queue[tail++] = c + N; }
+      if (x > 0 && !wall[c - 1]) { wall[c - 1] = 2; queue[tail++] = c - 1; }
+      if (c >= N && !wall[c - N]) { wall[c - N] = 2; queue[tail++] = c - N; }
+    }
+    const cells = [];
+    for (let c = 0; c < SIZE; c++) if (!wall[c] && w.kind[c] !== K.EMPTY && w.kind[c] !== K.BEDROCK) cells.push(c);
+    if (!cells.length) return;
+    this.haul(cells);
+    this.changed();
+  }
+  // After any change to the ground or the drill's cell: how the tether is drawn, and what a cut would free.
   retether() {
-    const w = this.world;
-    this.pathCells = w.path(this.di);
-    // Drawn as a real string: straight, bending only round the corners it is pulled against.
-    this.pathPts = taut(w, this.drill.x, this.drill.y, this.val('tether')) ?? [...this.pathCells.map(i => [i % N + 0.5, ((i / N) | 0) + 0.5]), [C + 0.5, C + 0.5]];
-    this.used = Math.max(0, w.dist[this.di]);
+    const w = this.world, d = this.drill;
+    w.onPath.fill(0);
+    for (const c of this.hist) w.onPath[c] = 1;
+    this.pathPts = this.pull();
+    this.far = Math.hypot(d.x - C, d.y - C);
     this.foresee();
+  }
+  // The tether as a string pulled tight along the way the drill went: straight wherever it can be, bending only
+  // where it lies against a corner. From the drill to the core, in cells.
+  pull() {
+    const w = this.world, P = this.hist.map(i => [i % N + 0.5, ((i / N) | 0) + 0.5]).reverse(), out = [P[0]];
+    for (let a = 0; a < P.length - 1;) {
+      let b = a + 1;
+      while (b + 1 < P.length && sight(w, P[a][0], P[a][1], P[b + 1][0], P[b + 1][1])) b++;
+      out.push(P[b]); a = b;
+    }
+    // Each bend is drawn hard against the corner it turns round, not in the middle of the open cell beside it.
+    for (let n = 1; n < out.length - 1; n++) {
+      const [ax, ay] = out[n - 1], [bx, by] = out[n], [cx, cy] = out[n + 1];
+      let best = Math.hypot(ax - bx, ay - by) + Math.hypot(cx - bx, cy - by), at = out[n];
+      for (const [u, v] of [[-0.35, -0.35], [0.35, -0.35], [-0.35, 0.35], [0.35, 0.35]]) {
+        const qx = bx + u, qy = by + v, len = Math.hypot(ax - qx, ay - qy) + Math.hypot(cx - qx, cy - qy);
+        if (len < best && sight(w, ax, ay, qx, qy) && sight(w, qx, qy, cx, cy)) { best = len; at = [qx, qy]; }
+      }
+      out[n] = at;
+    }
+    return out;
   }
   // The last cut glows: for each side of the drill, the ground that would come free if that cell were cut.
   foresee() {
-    const w = this.world, d = this.drill, tier = this.val('drill'), L = this.val('tether');
+    const w = this.world, d = this.drill;
     this.preview = [];
     for (let dir = 0; dir < 4; dir++) {
-      const i = (d.y + DY[dir]) * N + d.x + DX[dir], k = w.kind[i];
-      if (k === K.EMPTY || HARD[k] >= 99 || this.tetherTo(i) > L) continue;
+      const x = d.x + DX[dir], y = d.y + DY[dir], i = y * N + x, k = w.kind[i];
+      if (k === K.EMPTY || HARD[k] >= 99 || !this.within(x, y)) continue;
       const found = w.wouldFree(i);
       if (found.length) this.preview.push({ dir, i, cells: found.flat() });
     }
   }
-  // After the ground changed: what the tether reaches, what came free, where the tether lies.
+  // After the ground changed: what is open, what lies loose waiting to be lassoed, how the tether is drawn.
   changed() {
     this.version++;
     const w = this.world;
     w.reach(this.val('scanner'));
-    const islands = w.islands();
-    if (islands.length) { for (const cells of islands) this.haul(cells); w.reach(this.val('scanner')); }
+    this.loose = w.islands().flat();
     this.retether();
   }
+  // The tether lets the drill go this far from the core and no further, whatever road it takes.
+  within(x, y) { return Math.hypot(x - C, y - C) <= this.val('tether') + 0.3; }
 
   // ------------------------------------------------------------ moving and cutting
+  // The drill goes exactly where it is told: one cell at a time, except that straight out from the core it runs on
+  // to the next ground. From the core itself it can be thrown at any angle.
   attempt(dir, fromInput) {
-    const w = this.world, d = this.drill, L = this.val('tether');
+    const w = this.world, d = this.drill;
+    if (d.stun > 0) return;
     d.dir = dir;
     if (fromInput) { d.bore = this.val('momentum'); this.S.stats.moves++; }
     if (fromInput && this.atCore && this.input.vec && this.fling(this.input.vec)) return;
     const nx = d.x + DX[dir], ny = d.y + DY[dir], ni = ny * N + nx, k = w.at(nx, ny);
-    const px = d.x - C, py = d.y - C, along = px * DX[dir] + py * DY[dir], across = Math.abs(px * DY[dir] - py * DX[dir]);
-    // Once the string is pulling, it keeps pulling for as long as the drag points inward, whatever is beside it.
-    if (fromInput && d.reeling && along < 0 && !this.atCore && this.reelIn()) return;
-    d.reeling = false;
+    if (!this.within(nx, ny)) { this.refuse(nx, ny); return; }
     if (k === K.EMPTY) {
       if (w.lava[ni] > 0) { this.bump(); sfx.hiss(); return; }
-      // Heading away from the core the drill snaps to the next ground; any other way it goes a cell at a time.
-      // Toward the core along the tether, the drill is reeled in on the string itself.
+      const px = d.x - C, py = d.y - C, along = px * DX[dir] + py * DY[dir], across = Math.abs(px * DY[dir] - py * DX[dir]);
       const away = this.atCore || (along > 0 && along >= across);
-      if (fromInput && !this.atCore && along < 0 && w.onPath[ni] && this.reelIn()) return;
-      let x = d.x, y = d.y, steps = 0;
+      const cells = [];
+      let x = d.x, y = d.y;
       for (;;) {
-        const i = (y + DY[dir]) * N + x + DX[dir];
-        if (w.kind[i] !== K.EMPTY || w.lava[i] > 0 || w.dist[i] < 0 || w.dist[i] > L) break;
-        x += DX[dir]; y += DY[dir]; steps++;
+        const cx = x + DX[dir], cy = y + DY[dir], i = cy * N + cx;
+        if (w.kind[i] !== K.EMPTY || w.lava[i] > 0 || !this.within(cx, cy)) break;
+        x = cx; y = cy; cells.push(i);
         if (!away || (x === C && y === C)) break;      // the middle of the core is a place to stop
       }
-      if (!steps) { this.taut(nx, ny); return; }
-      d.x = x; d.y = y; d.mode = 'slide'; d.speed = away ? 24 : 15; d.wait = away || w.at(x + DX[dir], y + DY[dir]) !== K.EMPTY ? 0.13 : 0;
-      sfx.slide(steps);
-      this.retether(); this.arrive();
+      if (!cells.length) { this.bump(); return; }
+      this.go(cells, away ? 24 : 18, away || w.at(x + DX[dir], y + DY[dir]) !== K.EMPTY ? 0.13 : 0);
+      if (away) sfx.slide(cells.length);
       return;
     }
-    const hard = HARD[k];
-    if (hard >= 99) {
+    if (HARD[k] >= 99) {
       this.bump(); sfx.clink();
       this.effect('sparks', 'sparks', (d.x + 0.5 + DX[dir] * 0.5) * T, (d.y + 0.5 + DY[dir] * 0.5) * T);
       d.bore = 0;
       return;
     }
-    if (this.tetherTo(ni) > L) { this.taut(nx, ny); return; }
-    if (this.charge <= 0) { this.bump(); sfx.deny(); this.popup(nx, ny, 'EMPTY', '#ffe14a', 'bolt'); this.nudge = 2.5; return; }
     d.mode = 'dig'; d.target = ni; d.t = 0;
     d.dur = DIG_TIME[k] / SPEED[this.S.lv.drill] * (fromInput ? 1 : 0.55);
   }
+  // Move through a run of open cells, laying tether in each.
+  go(cells, speed, wait) {
+    const d = this.drill;
+    for (const i of cells) { d.x = i % N; d.y = (i / N) | 0; this.step(i); }
+    d.mode = 'slide'; d.speed = speed; d.wait = wait;
+    this.retether(); this.arrive();
+  }
   // From the core the drill can be thrown at any angle: it flies straight along the drag until ground, lava or
-  // the end of the tether stops it. Returns false when it cannot leave its cell that way.
+  // the end of its reach stops it. Returns false when it cannot leave its cell that way.
   fling([vx, vy]) {
-    const w = this.world, d = this.drill, L = this.val('tether');
-    let cx = d.x, cy = d.y, last = this.di;
+    const w = this.world, d = this.drill, cells = [];
+    let cx = d.x, cy = d.y;
     const sx = vx > 0 ? 1 : -1, sy = vy > 0 ? 1 : -1, tdx = vx ? Math.abs(1 / vx) : Infinity, tdy = vy ? Math.abs(1 / vy) : Infinity;
     let tx = tdx / 2, ty = tdy / 2;
     for (let guard = 0; guard < 300; guard++) {
       if (tx < ty) { tx += tdx; cx += sx; } else { ty += tdy; cy += sy; }
       const i = cy * N + cx;
-      if (w.kind[i] !== K.EMPTY || w.lava[i] > 0 || w.dist[i] < 0 || w.dist[i] > L) break;
-      last = i;
+      if (w.kind[i] !== K.EMPTY || w.lava[i] > 0 || !this.within(cx, cy)) break;
+      cells.push(i);
     }
-    if (last === this.di) return false;
-    d.x = last % N; d.y = (last / N) | 0; d.mode = 'slide'; d.speed = 24; d.wait = 0.13;
+    if (!cells.length) return false;
     d.dir = Math.abs(vx) > Math.abs(vy) ? (vx > 0 ? 0 : 2) : (vy > 0 ? 1 : 3);
-    sfx.slide(Math.hypot(d.x - d.fx, d.y - d.fy));
-    this.retether(); this.arrive();
+    this.go(cells, 24, 0.13);
+    sfx.slide(cells.length);
     return true;
   }
-  // One step of being reeled in: the next cell along the taut string. Held, it runs on smoothly to the core.
-  reelIn() {
-    const w = this.world, d = this.drill, pts = this.pathPts;
-    for (const want of [1, 1.5, 2.2, 3]) {
-      let left = want, x = pts[0][0], y = pts[0][1];
-      for (let n = 1; n < pts.length && left > 0; n++) {
-        const seg = Math.hypot(pts[n][0] - x, pts[n][1] - y), take = Math.min(seg, left);
-        if (seg > 0) { x += (pts[n][0] - x) * take / seg; y += (pts[n][1] - y) * take / seg; }
-        left -= take;
-      }
-      const cx = Math.floor(x), cy = Math.floor(y), i = cy * N + cx;
-      if (i === this.di || w.kind[i] !== K.EMPTY || w.lava[i] > 0 || w.dist[i] < 0) continue;
-      const dx = cx - d.x, dy = cy - d.y;
-      d.dir = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 0 : 2) : (dy > 0 ? 1 : 3);
-      d.x = cx; d.y = cy; d.mode = 'slide'; d.speed = 16; d.wait = 0; d.reeling = true;
-      this.retether(); this.arrive();
-      return true;
-    }
-    return false;
-  }
-  // How much tether a solid cell would take once cut open: one more than its nearest open neighbour, which may
-  // be nearer the core than the drill is (cutting back toward a tunnel never needs more string).
-  tetherTo(i) {
-    const { dist, kind } = this.world;
-    let best = Infinity;
-    for (const j of [i + 1, i - 1, i + N, i - N]) if (kind[j] === K.EMPTY && dist[j] >= 0 && dist[j] < best) best = dist[j];
-    return best + 1;
-  }
   bump() { const d = this.drill; d.mode = 'bump'; d.t = 0; }
-  // The tether is all paid out: say so on the cell that was refused, and point at the way home.
-  taut(x, y) { this.bump(); this.twang = 0.45; sfx.twang(); this.drill.bore = 0; this.nudge = 2.5; if (!this.popups.some(p => p.icon === 'tether')) this.popup(x, y, 'TETHER OUT', '#ff7a5a', 'tether'); }
+  // The end of the tether's reach: say so on the cell that was refused, and show where the edge is.
+  refuse(x, y) { this.bump(); this.twang = 0.45; this.edge = 1.2; sfx.twang(); this.drill.bore = 0; this.popup(x, y, 'REACH', '#ff7a5a', 'tether'); }
   arrive() {
-    if (this.atCore && (this.charge < this.val('battery') || this.bombs < this.val('bombs'))) {
-      this.charge = this.val('battery'); this.bombs = this.val('bombs');
+    if (this.atCore && this.bombs < this.val('bombs')) {
+      this.bombs = this.val('bombs');
       sfx.dock(); this.coreFlash = 0.25; this.save();
       this.ring((C + 0.5) * T, (C + 0.5) * T, '#84dcff', 46);
     }
   }
   finishDig() {
     const w = this.world, d = this.drill, i = d.target, x = i % N, y = (i / N) | 0, k = w.kind[i], b = w.biome[i];
-    this.charge = Math.max(0, this.charge - DIG_COST[k]);
     w.kind[i] = K.EMPTY;
     if (base(b) === B.FROST) { w.dugAt[i] = this.time; this.frostOpen.push(i); }
     const tough = k === K.SLATE ? 3 : k === K.VAULT ? 4 : k === K.DENSE || k === K.ORE_B || k === K.BASALT ? 2 : 1;
@@ -302,8 +343,8 @@ export class Game {
       const j = (y + DY[s]) * N + x + DX[s];
       if (w.kind[j] === K.HAZARD) this.trigger(j, w.biome[j], false);
     }
-    if (enter) { d.x = x; d.y = y; d.mode = 'slide'; d.speed = 30; d.wait = 0; } else d.mode = 'idle';
     this.changed();
+    if (enter) this.go([i], 30, 0); else d.mode = 'idle';
     // The ram: a swipe carries on through soft ground, but never through anything worth hauling.
     if (enter && d.bore > 0) {
       const nk = w.at(d.x + DX[d.dir], d.y + DY[d.dir]);
@@ -334,7 +375,11 @@ export class Game {
     sprites.sort((a, b) => a.far - b.far);
     const spread = Math.min(1.7, 0.25 + n * 0.018), lift = Math.min(0.5, 0.26 + n * 0.003);
     sprites.forEach((s, i) => { s.go = lift + (n > 1 ? i / (n - 1) : 0) * spread; s.done = false; });
-    this.hauls.push({ sprites, t: 0, n, grit, gems, left: grit, paid: 0, lift, end: lift + spread + 0.45, relic });
+    // The bundle rides the tether from where the loop closed to the core.
+    const route = this.pathPts.map(([x, y]) => [x * T, y * T]);
+    let length = 0;
+    for (let k = 1; k < route.length; k++) length += Math.hypot(route[k][0] - route[k - 1][0], route[k][1] - route[k - 1][1]);
+    this.hauls.push({ sprites, t: 0, n, grit, gems, left: grit, paid: 0, lift, relic, route, length, speed: Math.max(260, length / 1.6) });
     cx = (cx / n + 0.5) * T; cy = (cy / n + 0.5) * T;
     this.effect('haul', 'impact', cx, cy);
     if (n >= 20) this.effect('bank', 'area', cx, cy);
@@ -347,14 +392,13 @@ export class Game {
     const title = relic >= 0 ? 'RELIC!' : n >= 200 ? 'COLOSSAL!' : n >= 80 ? 'HUGE HAUL!' : n >= 30 ? 'BIG HAUL!' : n >= 10 ? 'NICE CUT!' : 'HAUL';
     this.banner = { title, n, mult, grit, gems, t: 0, life: 2.2 + Math.min(1.2, n * 0.01) };
     if (relic >= 0) { S.relics[relic] = 1; sfx.relic(); if (S.relics.every(Boolean) && !S.won) { S.won = true; this.wonAt = this.time; } }
-    this.drill.bore = 0; this.homeAfter = lift + 0.2;
+    this.drill.bore = 0;
   }
-  // A piece cut free gathers behind the drill, is towed home along the tether, and is paid out at the core.
+  // A lassoed piece gathers into a bundle, runs in along the tether, and is paid out at the core.
   updateHauls(dt) {
-    const d = this.drill;
     for (const h of this.hauls) {
       h.t += dt;
-      if (h.home === undefined && this.atCore && d.mode === 'idle') h.home = h.t;
+      if (h.home === undefined && (h.t - h.lift - 0.45) * h.speed >= h.length) h.home = h.t;
       let arrived = 0;
       for (const s of h.sprites) {
         if (!s.done && h.home !== undefined && h.t >= s.go + 0.42 && h.t >= h.home + (s.go - h.lift) * 0.5 + 0.12) {
@@ -391,7 +435,7 @@ export class Game {
     if (biome === B.EMBER) {
       w.kind[i] = K.EMPTY; w.lava[i] = 9; this.lavaVol.set(i, 5); this.lavaCells.add(i);
       sfx.hiss(); this.effect('steam', 'smoke-puff', (x + 0.5) * T, (y + 0.5) * T);
-      if (direct) { this.drain(8); this.shake = 5; }
+      if (direct) { this.jolt(0.5); this.shake = 5; }
       return false;
     }
     if (biome === B.MIRE) {
@@ -412,17 +456,14 @@ export class Game {
     const w = this.world, d = this.drill;
     this.effect('zap', 'impact', (x + 0.5) * T, (y + 0.5) * T);
     sfx.zap();
-    if (Math.max(Math.abs(d.x - x), Math.abs(d.y - y)) <= 3) { this.drain(16); this.shake = Math.max(this.shake, 5); this.twang = 0.3; }
+    if (Math.max(Math.abs(d.x - x), Math.abs(d.y - y)) <= 3) { this.jolt(0.7); this.shake = Math.max(this.shake, 5); this.twang = 0.3; }
     for (let v = -3; v <= 3; v++) for (let u = -3; u <= 3; u++) {
       const j = (y + v) * N + x + u;
       if ((u || v) && w.kind[j] === K.HAZARD && base(w.biome[j]) === B.LODE && !this.sparks.has(j)) this.sparks.set(j, { fuse: 0.3 + cellHash(u, v, 7) * 0.3, cool: 0 });
     }
   }
-  drain(amount) {
-    if (this.charge <= 0) return;
-    this.charge = Math.max(0, this.charge - amount * this.val('shield'));
-    this.hurt = 0.3;
-  }
+  // A hazard's bite: the drill is knocked senseless for a moment.
+  jolt(time) { this.drill.stun = Math.max(this.drill.stun, time); this.hurt = time; this.drill.bore = 0; }
   updateHazards(dt) {
     const w = this.world, d = this.drill;
     let moved = false;
@@ -430,11 +471,8 @@ export class Game {
     this.lavaTick = (this.lavaTick ?? 0) + dt;
     const flow = this.lavaTick >= 0.26;
     if (flow) this.lavaTick = 0;
-    let onTether = 0, beside = 0;
     for (const i of [...this.lavaCells]) {
       const x = i % N, y = (i / N) | 0;
-      if (w.onPath[i]) onTether++;
-      if (Math.abs(d.x - x) + Math.abs(d.y - y) === 1) beside++;
       if (flow) {
         const vol = this.lavaVol.get(i) ?? 1, start = (cellHash(x, y, (this.time * 10) | 0) * 4) | 0;
         for (let s = 0; s < 4; s++) {
@@ -455,11 +493,10 @@ export class Game {
         }
       }
     }
-    if (onTether || beside) { this.drain((onTether * 3 + beside * 4) * dt); this.burning = 0.2; }
     // Spores: a burst pod hangs a cloud that saps the cell, then moss closes the ground round it.
     for (const c of this.clouds) {
       c.t += dt;
-      if (Math.max(Math.abs(d.x - c.x), Math.abs(d.y - c.y)) <= 2) this.drain(5 * dt);
+      if (Math.max(Math.abs(d.x - c.x), Math.abs(d.y - c.y)) <= 1 && c.t < 0.2) this.jolt(0.4);
       if (c.t >= c.life) {
         for (let v = -1; v <= 1; v++) for (let u = -1; u <= 1; u++) {
           const j = (c.y + v) * N + c.x + u;
@@ -493,46 +530,10 @@ export class Game {
     if (moved) this.changed();
   }
 
-  // ------------------------------------------------------------ recall, blast, shop
-  recallButton() {
-    const d = this.drill, w = this.world;
-    if (d.mode === 'recall' || d.mode === 'launch') return;
-    if (!this.atCore) { this.recall(); return; }
-    // At the core the same button sends the drill back out to where it was called in from.
-    const site = d.site;
-    if (site >= 0 && w.kind[site] === K.EMPTY && w.dist[site] > 0 && w.dist[site] <= this.val('tether') && w.lava[site] <= 0) {
-      d.x = site % N; d.y = (site / N) | 0; d.site = -1; this.shop = false;
-      this.retether();
-      d.route = this.pathPts.slice(0, -1).reverse().map(([x, y]) => [x - 0.5, y - 0.5]); d.at = 0; d.mode = 'launch';
-      sfx.recall();
-    } else sfx.deny();
-  }
-  recall(reel = false) {
-    const d = this.drill;
-    if (this.atCore || d.mode === 'recall') return;
-    const cells = this.pathCells, w = this.world;
-    d.site = this.di;
-    // The drill rides the string in, to the cell beside the core that the string passes through.
-    const [bx, by] = this.pathPts[this.pathPts.length - 2];
-    let home = cells[cells.length - 1], best = Infinity;
-    for (let i = 0; i < w.dist.length; i++) {
-      if (w.dist[i] !== 0) continue;
-      const far = Math.hypot(i % N + 0.5 - bx, ((i / N) | 0) + 0.5 - by);
-      if (far < best && sight(w, bx, by, i % N + 0.5, ((i / N) | 0) + 0.5)) { best = far; home = i; }
-    }
-    d.route = [...this.pathPts.slice(1, -1).map(([x, y]) => [x - 0.5, y - 0.5]), [home % N, (home / N) | 0]]; d.at = 0; d.mode = 'recall';
-    d.x = home % N; d.y = (home / N) | 0;
-    if (!reel) this.S.stats.recalls++;
-    // Reeling a piece in is slow enough to watch; a plain recall is quick.
-    let len = 0, px = d.fx, py = d.fy;
-    for (const [x, y] of d.route) { len += Math.hypot(x - px, y - py); px = x; py = y; }
-    d.reel = reel ? Math.max(17, len / 2.6) : 70;
-    this.input.queued = null;
-    this.retether(); sfx.recall();
-  }
+  // ------------------------------------------------------------ blast, shop
   blast() {
     const w = this.world, d = this.drill;
-    if (this.bombs <= 0 || d.mode === 'recall' || d.mode === 'launch') { if (this.val('bombs')) sfx.deny(); return; }
+    if (this.bombs <= 0 || d.mode === 'dig') { if (this.val('bombs')) sfx.deny(); return; }
     const r = this.S.lv.bombs >= 3 ? 2 : 1, tier = this.val('drill') + 1;
     this.bombs--;
     for (let v = -r; v <= r; v++) for (let u = -r; u <= r; u++) {
@@ -554,7 +555,6 @@ export class Game {
     this.S.grit -= c.grit; this.S.gems[u.gem] -= c.gems; this.S.lv[u.id]++; this.S.stats.buys++;
     sfx.buy();
     this.ring((C + 0.5) * T, (C + 0.5) * T, '#8ce060', 70); this.sparkle((C + 0.5) * T, (C + 0.5) * T, 16, '#c8f4a0'); this.flash = 0.15;
-    if (u.id === 'battery') this.charge = this.val('battery');
     if (u.id === 'bombs') this.bombs = this.val('bombs');
     if (u.id === 'scanner') { this.world.reached.fill(0); this.world.reach(this.val('scanner')); this.version++; }
     this.bought = { id: u.id, t: 0.5 };
@@ -622,7 +622,7 @@ export class Game {
     }
     setAmbience(base(here), here > 4);
     this.chime -= dt;
-    if (this.chime <= 0 && d.mode !== 'recall') { this.chime = 2.5 + Math.random() * 4.5; sfx.chime(base(here)); }
+    if (this.chime <= 0) { this.chime = 2.5 + Math.random() * 4.5; sfx.chime(base(here)); }
   }
 
   // ------------------------------------------------------------ small things
@@ -640,7 +640,7 @@ export class Game {
     this.shake = Math.max(0, this.shake - dt * 22);
     if (this.bought) { this.bought.t -= dt; if (this.bought.t <= 0) this.bought = null; }
     if (this.confirmReset > 0) this.confirmReset -= dt;
-    this.nudge = Math.max(0, (this.nudge ?? 0) - dt);
+    this.edge = Math.max(0, (this.edge ?? 0) - dt); d.stun = Math.max(0, d.stun - dt);
 
     if (!this.shop) {
       // What is drawn follows the drill's cell.
@@ -654,28 +654,12 @@ export class Game {
         if (d.t >= d.dur) this.finishDig();
       } else if (d.mode === 'bump') {
         d.t += dt; if (d.t > 0.14) d.mode = 'idle';
-      } else if (d.mode === 'recall' || d.mode === 'launch') {
-        let step = (d.mode === 'recall' ? d.reel : 70) * dt;
-        while (step > 0 && d.at < d.route.length) {
-          const [tx, ty] = d.route[d.at], dx = tx - d.fx, dy = ty - d.fy, far = Math.hypot(dx, dy);
-          if (dx || dy) d.dir = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 0 : 2) : (dy > 0 ? 1 : 3);
-          if (far <= step) { d.fx = tx; d.fy = ty; step -= far; d.at++; } else { d.fx += dx / far * step; d.fy += dy / far * step; step = 0; }
-        }
-        if (d.at >= d.route.length) { const was = d.mode; d.mode = 'idle'; d.route = null; if (was === 'recall') { this.arrive(); sfx.thud(); } }
       }
-      if (inp.held === null) d.reeling = false;
       if (d.mode === 'idle') {
         d.wait -= dt;
-        if (this.homeAfter > 0) {
-          // The cut is finished: hold while the piece lifts, then reel it home.
-          Object.assign(inp, { queued: null, held: null, lock: true }); inp.keys.clear();
-          this.homeAfter -= dt;
-          if (this.homeAfter <= 0 && !this.atCore) this.recall(true);
-        }
-        else if (d.next) { d.next = false; this.attempt(d.dir, false); }
+        if (d.next) { d.next = false; this.attempt(d.dir, false); }
         else if (inp.queued !== null) { const q = inp.queued; inp.queued = null; this.attempt(q, true); }
         else if (inp.held !== null && d.wait <= 0) this.attempt(inp.held, true);
-        else if (this.charge <= 0 && !this.atCore) { this.emptyFor = (this.emptyFor ?? 0) + dt; if (this.emptyFor > 0.7) { this.emptyFor = 0; sfx.low(); this.recall(); } }
       }
       this.updateHazards(dt);
       this.updateHauls(dt);
@@ -760,13 +744,18 @@ export class Game {
       if (this.S.relics[dir]) drawScaled(ctx, `${BIOME_NAMES[DIR_BIOME[dir]]}-items`, 'relic', coreX + u, coreY + v, 8, 8);
     });
     this.drawTether(ox, oy);
-    // Cut pieces: they lift, gather into a bundle behind the drill, ride home with it, then drop into the core.
+    // Lassoed pieces: they lift, gather into a bundle, run in along the tether, then drop into the core.
     const hx = (C + 0.5) * T - ox, hy = (C + 0.5) * T - oy;
     for (const h of this.hauls) {
-      // The bundle is packed as a disc as wide as the piece was big, slung behind the drill on a short line.
-      const girth = Math.min(40, 4 + Math.sqrt(h.n) * 4.2), sway = Math.sin(this.time * 7) * 2;
-      const tailX = d.fx * T + 8 - ox - DX[d.dir] * (12 + girth) + DY[d.dir] * sway, tailY = d.fy * T + 8 - oy - DY[d.dir] * (12 + girth) + DX[d.dir] * sway;
-      if (h.home === undefined && h.t > h.lift) { ctx.fillStyle = '#f4ecd8'; this.line(d.fx * T + 8 - ox, d.fy * T + 8 - oy, tailX, tailY); }
+      // The bundle is packed as a disc as wide as the piece was big.
+      const girth = Math.min(40, 4 + Math.sqrt(h.n) * 4.2);
+      let run = Math.max(0, (h.t - h.lift - 0.45) * h.speed), tailX = h.route[0][0] - ox, tailY = h.route[0][1] - oy;
+      for (let k = 1; k < h.route.length && run > 0; k++) {
+        const seg = Math.hypot(h.route[k][0] - h.route[k - 1][0], h.route[k][1] - h.route[k - 1][1]), take = Math.min(seg, run);
+        tailX = h.route[k - 1][0] + (h.route[k][0] - h.route[k - 1][0]) * (seg ? take / seg : 1) - ox;
+        tailY = h.route[k - 1][1] + (h.route[k][1] - h.route[k - 1][1]) * (seg ? take / seg : 1) - oy;
+        run -= take;
+      }
       const flash = h.t < h.lift && ((h.t * 24) | 0) % 2 === 0;
       h.sprites.forEach((s, n) => {
         if (s.done) return;
@@ -805,10 +794,10 @@ export class Game {
     let dx = d.fx * T - ox, dy = d.fy * T - oy;
     if (d.mode === 'dig') { const push = 3 + Math.sin(d.t * 70) * 1.2; dx += DX[d.dir] * push; dy += DY[d.dir] * push; }
     if (d.mode === 'bump') { const push = Math.sin(Math.min(1, d.t / 0.14) * Math.PI) * 3; dx += DX[d.dir] * push; dy += DY[d.dir] * push; }
-    const busy = d.mode === 'dig' || d.mode === 'slide' || d.mode === 'recall' || d.mode === 'launch';
-    if (d.mode === 'slide' || d.mode === 'recall' || d.mode === 'launch') {
+    const busy = d.mode === 'dig' || d.mode === 'slide';
+    if (d.mode === 'slide' && d.speed >= 24) {
       // Speed leaves a wake: fading copies of the drill back along the way it came.
-      const to = d.mode === 'slide' ? [d.x, d.y] : d.route[Math.min(d.at, d.route.length - 1)], mvx = to[0] - d.fx, mvy = to[1] - d.fy, far = Math.hypot(mvx, mvy) || 1;
+      const mvx = d.x - d.fx, mvy = d.y - d.fy, far = Math.hypot(mvx, mvy) || 1;
       for (let g = 3; g >= 1; g--) { ctx.globalAlpha = 0.34 - g * 0.09; draw(ctx, 'drill', `${dirName}-a`, dx - mvx / far * g * 7, dy - mvy / far * g * 7); }
       ctx.globalAlpha = 1;
     }
@@ -833,6 +822,28 @@ export class Game {
     }
     ctx.globalAlpha = 1;
     this.light(ox, oy);
+    // Ground lying loose: cut off from the world, waiting for the tether to be drawn round it. It shows through the
+    // dark, with a dotted edge that crawls round it.
+    if (this.loose.length) {
+      const set = this.looseSet ??= new Set();
+      if (this.looseFor !== this.version) { this.looseFor = this.version; set.clear(); for (const i of this.loose) set.add(i); }
+      const crawl = (now / 90) | 0;
+      for (const i of this.loose) {
+        const x = i % N, y = (i / N) | 0, px = x * T - ox, py = y * T - oy;
+        if (px < -T || py < -T || px > W || py > H) continue;
+        ctx.fillStyle = '#84dcff'; ctx.globalAlpha = 0.16 + 0.08 * Math.sin(now / 260);
+        ctx.fillRect(px, py, T, T);
+        ctx.globalAlpha = 0.95;
+        for (let n = 0; n < T; n++) {
+          if ((n + crawl) & 3) continue;
+          if (!set.has(i - N)) ctx.fillRect(px + n, py, 1, 1);
+          if (!set.has(i + N)) ctx.fillRect(px + T - 1 - n, py + T - 1, 1, 1);
+          if (!set.has(i - 1)) ctx.fillRect(px, py + T - 1 - n, 1, 1);
+          if (!set.has(i + 1)) ctx.fillRect(px + T - 1, py + n, 1, 1);
+        }
+      }
+      ctx.globalAlpha = 1;
+    }
     for (const r of this.rings) {
       // A ring of whole pixels spreading from a point.
       const u = r.t / 0.5, rad = r.reach * (1 - (1 - u) * (1 - u)), n = Math.max(12, (rad * 1.6) | 0);
@@ -950,23 +961,30 @@ export class Game {
     }
   }
   drawTether(ox, oy) {
-    const { ctx } = this, d = this.drill, L = this.val('tether'), ratio = this.used / L;
+    const { ctx, W, H } = this, d = this.drill, R = this.val('tether'), ratio = this.far / R;
+    // Where the tether's reach ends: a faint dotted ring, bright for a moment when the drill is turned back by it.
+    const cx = (C + 0.5) * T - ox, cy = (C + 0.5) * T - oy, rad = (R + 0.8) * T, dots = Math.ceil(rad * 6.2832 / 7);
+    if (Math.hypot(W / 2 - cx, H / 2 - cy) + Math.hypot(W, H) / 2 > rad) {
+      ctx.fillStyle = this.edge > 0 ? '#ff7a5a' : '#f4ecd8'; ctx.globalAlpha = this.edge > 0 ? 0.9 : 0.3;
+      const turn = this.time * 0.05;
+      for (let n = 0; n < dots; n++) {
+        const a = n / dots * 6.2832 + turn, x = Math.round(cx + Math.cos(a) * rad), y = Math.round(cy + Math.sin(a) * rad);
+        if (x >= 0 && y >= 0 && x < W && y < H) ctx.fillRect(x, y, 2, 1);
+      }
+      ctx.globalAlpha = 1;
+    }
     const pts = this.pathPts.map(([x, y]) => [x * T - ox, y * T - oy]);
+    if (!pts.length) return;
     // The first point is the drill as drawn, the tether leaving from its tail.
-    if (d.mode === 'recall' || d.mode === 'launch') {
-      // On the way in or out the tether is the part of the route between the drill and the core.
-      const rest = d.mode === 'recall' ? d.route.slice(d.at) : d.route.slice(0, d.at).reverse();
-      pts.length = 0;
-      pts.push([d.fx * T + 8 - ox, d.fy * T + 8 - oy], ...rest.map(([x, y]) => [x * T + 8 - ox, y * T + 8 - oy]), [C * T + 8 - ox, C * T + 8 - oy]);
-    } else pts[0] = [d.fx * T + 8 - ox - DX[d.dir] * 5, d.fy * T + 8 - oy - DY[d.dir] * 5];
+    pts[0] = [d.fx * T + 8 - ox - DX[d.dir] * 5, d.fy * T + 8 - oy - DY[d.dir] * 5];
     const wob = this.twang > 0 ? Math.sin(this.time * 90) * this.twang * 5 : 0;
-    const color = this.twang > 0 ? '#ff5a4a' : this.burning > 0 ? '#ff8a2a' : ratio > 0.92 ? '#ff7a5a' : ratio > 0.75 ? '#ffe14a' : '#f4ecd8';
+    const color = this.twang > 0 ? '#ff5a4a' : ratio > 0.93 ? '#ff7a5a' : ratio > 0.8 ? '#ffe14a' : '#f4ecd8';
     for (const [pass, shade] of [[1, '#16121c'], [0, color]]) {
       ctx.fillStyle = shade;
       for (let i = 0; i < pts.length - 1; i++) {
-        let [x0, y0] = pts[i], [x1, y1] = pts[i + 1];
-        if (Math.max(x0, x1) < -2 || Math.max(y0, y1) < -2 || Math.min(x0, x1) > this.W + 2 || Math.min(y0, y1) > this.H + 2) continue;
-        if (wob && i < pts.length - 2) {
+        const [x0, y0] = pts[i], [x1, y1] = pts[i + 1];
+        if (Math.max(x0, x1) < -2 || Math.max(y0, y1) < -2 || Math.min(x0, x1) > W + 2 || Math.min(y0, y1) > H + 2) continue;
+        if (wob) {
           // A plucked string: the middle of each span swings across it.
           const mx = (x0 + x1) / 2, my = (y0 + y1) / 2, len = Math.hypot(x1 - x0, y1 - y0) || 1, nx = -(y1 - y0) / len * wob, ny = (x1 - x0) / len * wob;
           this.line(x0, y0 + pass, mx + nx, my + ny + pass); this.line(mx + nx, my + ny + pass, x1, y1 + pass);
@@ -1015,23 +1033,21 @@ export class Game {
       text(ctx, compact(have), gx + 12, 18, GEM_COLOR[g]);
       ctx.globalAlpha = 1;
     }
-    const bw = Math.floor((W - 12 - 26 - 8) / 2), max = this.val('battery'), L = this.val('tether');
-    const low = this.charge / max < 0.25 && !this.atCore;
-    this.bar(6, 29, bw, 'bolt', this.charge / max, low && ((now / 200) | 0) % 2 ? '#ff5a4a' : '#ffe14a', this.hurt > 0);
-    this.bar(6 + bw + 14, 29, bw, 'tether', 1 - this.used / L, this.used / L > 0.92 ? '#ff7a5a' : '#f4ecd8', this.twang > 0);
-    text(ctx, `${L - this.used}`, W - 6, 30, this.twang > 0 ? '#ff7a5a' : '#f4ecd8', 1);
+    // How much of its reach the tether has left.
+    const R = this.val('tether'), left = Math.max(0, R - this.far);
+    this.bar(6, 29, W - 34, 'tether', left / R, this.far / R > 0.93 ? '#ff7a5a' : '#f4ecd8', this.twang > 0);
+    text(ctx, `${Math.floor(left)}`, W - 6, 30, this.twang > 0 ? '#ff7a5a' : '#f4ecd8', 1);
     draw(ctx, 'ui', isMuted() ? 'mute' : 'sound', W - 21, 2);
     this.button(W - 24, 0, 24, 20, () => { setMuted(!isMuted()); sfx.tap(); });
-    // Bottom: recall (or, at the core, back out), the blast, and the shop.
+    // Start over: two taps, so a slip of the thumb does not cost a world.
+    const sure = this.confirmReset > 0, label = sure ? 'SURE?' : 'NEW', lw = textWidth(label) + 8;
+    slice9(ctx, 'ui', sure ? 'button-off' : 'panel', W - lw - 2, 44, lw, 14);
+    text(ctx, label, W - lw / 2 - 2, 46, sure ? '#ff7a5a' : '#9a94a8', 0.5);
+    this.button(W - lw - 6, 42, lw + 6, 20, () => {
+      if (this.confirmReset > 0) { this.confirmReset = 0; this.fresh((Math.random() * 1e9) | 0); this.save(); sfx.relic(); } else { this.confirmReset = 2.5; sfx.tap(); }
+    });
+    // Bottom: the blast, and the shop when the drill is home.
     const by = H - 46;
-    const canLaunch = this.atCore && d.site >= 0;
-    if (!this.atCore || canLaunch) {
-      const pulse = (low || this.nudge > 0) && ((now / 250) | 0) % 2;
-      slice9(ctx, 'ui', pulse ? 'button-down' : canLaunch ? 'button-max' : 'panel', W - 38, by, 34, 34);
-      draw(ctx, 'ui', 'recall', W - 29, by + 9);
-      this.button(W - 44, by - 6, 44, 46, () => this.recallButton());
-      if (low && S.stats.recalls === 0) draw(ctx, 'ui', 'hand', W - 30, by + 16 + Math.round(Math.sin(now / 150) * 3));
-    }
     if (this.val('bombs') > 0) {
       slice9(ctx, 'ui', this.bombs > 0 ? 'panel' : 'button-off', 4, by, 34, 34);
       draw(ctx, 'upgrades', 'bomb', 12, by + 8);
@@ -1046,15 +1062,14 @@ export class Game {
       this.button(x - 4, by, w + 8, 36, () => { this.shop = true; sfx.tap(); });
       if (afford && S.stats.buys === 0) draw(ctx, 'ui', 'hand', W / 2 - 4, by + 18 + Math.round(Math.sin(now / 150) * 3));
     }
-    // The first move, shown and not told: a hand drags right, toward the piece that is all but cut free.
-    if (S.stats.hauls === 0 && S.stats.moves < 3 && !this.shop && this.input.id === null) {
-      const u = (now % 1400) / 1400, hx = W / 2 - 22 + Math.min(1, u * 1.6) * 44, hy = H * 0.7;
-      ctx.globalAlpha = u < 0.1 ? u * 10 : u > 0.8 ? (1 - u) * 5 : 1;
+    // The idea, shown and not told: a hand draws a loop, as the tether must be drawn round the loose piece.
+    if (S.stats.hauls === 0 && !this.shop && this.input.id === null) {
+      const u = (now % 2200) / 2200, turn = u * 6.2832 - 1.5708, hx = W / 2 - 6 + Math.cos(turn) * 20, hy = H * 0.72 + Math.sin(turn) * 14;
       ctx.fillStyle = '#ffffff';
-      for (let s = 0; s < 5; s++) if (hx - s * 7 > W / 2 - 22) ctx.fillRect(Math.round(hx - s * 7) + 5, Math.round(hy) - 2, 3, 2);
-      draw(ctx, 'ui', 'hand', hx, hy);
+      for (let n = 1; n < 14; n++) { const a = turn - n * 0.22; ctx.globalAlpha = 1 - n / 14; ctx.fillRect(Math.round(W / 2 + Math.cos(a) * 20), Math.round(H * 0.72 + Math.sin(a) * 14) - 2, 2, 2); }
       ctx.globalAlpha = 1;
-      draw(ctx, 'logo', 'logo', W / 2 - 66, 52);
+      draw(ctx, 'ui', 'hand', hx, hy);
+      if (S.stats.moves < 3) draw(ctx, 'logo', 'logo', W / 2 - 66, 52);
     }
     // Where the thumb is steering from.
     if (this.input.id !== null && !this.shop) {
@@ -1076,7 +1091,7 @@ export class Game {
   drawShop() {
     const { ctx, W, H, S } = this;
     ctx.globalAlpha = 0.6 * this.shopRise; ctx.fillStyle = '#07060b'; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1;
-    const pw = Math.min(W - 8, 200), px = Math.round((W - pw) / 2), rh = Math.max(22, Math.min(28, Math.floor((H - 100) / UPGRADES.length)));
+    const pw = Math.min(W - 8, 200), px = Math.round((W - pw) / 2), rh = Math.max(22, Math.min(30, Math.floor((H - 100) / UPGRADES.length)));
     const rise = 1 - this.shopRise, ph = 22 + rh * UPGRADES.length + 22, py = Math.max(44, Math.round((H - ph) / 2)) + Math.round(rise * rise * 60);
     slice9(ctx, 'ui', 'panel', px, py, pw, ph);
     this.button(px, py, pw, ph, () => {});
@@ -1087,16 +1102,19 @@ export class Game {
       const y = py + 20 + n * rh, c = this.cost(u), can = this.canBuy(u), lit = this.bought?.id === u.id;
       slice9(ctx, 'ui', lit ? 'button-down' : !c ? 'button-max' : can ? 'button' : 'button-off', px + 4, y, pw - 8, rh - 1);
       draw(ctx, 'upgrades', u.icon, px + 9, y + Math.floor((rh - 13) / 2));
-      text(ctx, u.name, px + 25, y + 2, '#ffffff');
+      // What it is, what it does, and what the next level changes.
       const l = S.lv[u.id];
-      text(ctx, c ? `${u.show(u.values[l])}>${u.show(u.values[l + 1])}` : `${u.show(u.values[l])} MAX`, px + 25, y + rh - 12, c ? '#bfe6ff' : '#ffe14a');
+      text(ctx, u.name, px + 25, y + 2, '#ffffff');
+      text(ctx, c ? `${u.show(u.values[l])}>${u.show(u.values[l + 1])}` : `${u.show(u.values[l])} MAX`, px + 31 + textWidth(u.name), y + 2, c ? '#bfe6ff' : '#ffe14a');
+      text(ctx, u.what, px + 25, y + rh - 12, c ? '#c8c2d4' : '#e8c070');
       if (c) {
-        const two = c.gems > 0, y1 = y + (two ? 2 : Math.floor((rh - 11) / 2));
-        draw(ctx, 'icons', 'grit', px + pw - 18, y1 - 1);
-        text(ctx, compact(c.grit), px + pw - 20, y1, S.grit >= c.grit ? '#ffe14a' : '#ff7a5a', 1);
-        if (two) {
-          draw(ctx, 'icons', GEM_ICON[u.gem], px + pw - 18, y + rh - 13);
-          text(ctx, `${c.gems}`, px + pw - 20, y + rh - 12, S.gems[u.gem] >= c.gems ? GEM_COLOR[u.gem] : '#ff7a5a', 1);
+        let cx = px + pw - 18;
+        draw(ctx, 'icons', 'grit', cx, y + 1);
+        text(ctx, compact(c.grit), cx - 2, y + 2, S.grit >= c.grit ? '#ffe14a' : '#ff7a5a', 1);
+        if (c.gems > 0) {
+          cx -= textWidth(compact(c.grit)) + 16;
+          draw(ctx, 'icons', GEM_ICON[u.gem], cx, y + 1);
+          text(ctx, `${c.gems}`, cx - 2, y + 2, S.gems[u.gem] >= c.gems ? GEM_COLOR[u.gem] : '#ff7a5a', 1);
         }
       }
       this.buttons.unshift({ x: px + 4, y, w: pw - 8, h: rh - 1, act: () => this.buy(u) });
