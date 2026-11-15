@@ -1,10 +1,13 @@
 # Draws terrain sheets side by side as the game lays them, to judge by eye:
 #
-#   python tools/compare.py <out.png> <sheet>[:<items>[:<floor>]] ... [--scale 4] [--items a,b,...] [--seed n]
+#   python tools/compare.py <out.png> <sheet>[:<items>[:<floor>[:<extras>]]] ... [--scale 4] [--items a,b,...] [--seed n]
 #
 # Each sheet is a field 8 blocks wide and 9 tall with the same caves cut into it, over its floor (its own
 # '<sheet>-floor' unless one is named), with the ore and hazard sprites of its items sheet ('<sheet>-items' unless
 # one is named) lying in the rock. The fields touch, so the border between two kinds of ground shows as well.
+# The extra frames of --items lie in every field; a field's own <extras> (a+b+..., each 'frame' or 'sheet=frame')
+# take their place in that field. So a cross is seen beside its host with its donor's hazard in it:
+#   python tools/compare.py out.png frost x-frost-ember:frost-items:frost-floor:ember-items=hazard+ember-items=oreB
 # Blocks take their frame from the mask of their neighbours as World.mask does, and a sprite sits one pixel in from
 # an open east or south side as the game draws it. Nothing here is lit: the game's darkness comes on top.
 import json, os, sys
@@ -71,7 +74,8 @@ def main():
         if c == '.': continue
         rocks = [f for f in atlas[sheet]['frames'] if f.startswith('%s-%d-' % (sheet, m))]
         image.alpha_composite(frame(sheet, rocks[int(hash2(x, y, seed + 2) * len(rocks))]), (px, py))
-        name = SPRITE.get(c) or (extra[int(c) - 1] if c.isdigit() and int(c) <= len(extra) else None)
+        own = [n.replace('=', ':') for n in spec[3].split('+')] if len(spec) > 3 and spec[3] else extra
+        name = SPRITE.get(c) or (own[int(c) - 1] if c.isdigit() and int(c) <= len(own) else None)
         if not name: continue
         src = items
         if ':' in name: src, name = name.split(':')

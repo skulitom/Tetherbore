@@ -249,6 +249,89 @@ export const FLOORS = [
   floor('lode-floor', { f: '#3a2616', a: '#301e11', b: '#48301c' }, { color: 'f', speckle: [{ color: 'a', amount: 0.25, size: 6 }, { color: 'b', amount: 0.1, size: 3 }] }, 9),
 ];
 
+// ---- the crosses
+// Generated ground: a host direction's ground with a donor direction's hazard in it. The sheet is the host's own
+// (its outline, lit rim, shadow, main colour and dark clumps, over the host's floor), so colour still says which gem
+// the ground pays first; what the donor brings is drawn into it at build time, the same on every host, so that it
+// is learnt once: rime with white sparkles where the ground freezes, scorch with embers where there is lava, moss
+// with lime flecks where there are pods, sand with gold glints where there are spark crystals.
+//
+// The plan's first figures (the host's b mixed 35% toward the donor's main colour, the donor's accent as speckle
+// over 7% of the tile) were tried and rejected by eye: the flecks lay as confetti, hid the ore and showed the grid,
+// and a third of the pairs did not read apart from their hosts. So the patches are mixed further, toward the colour
+// that is the donor's own at a glance (for the mire its moss, not its loam), and the accent lies in them as a few
+// drawn marks.
+const channels = hex => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
+export const mix = (from, to, t) => {
+  const a = channels(from), b = channels(to);
+  return '#' + a.map((v, i) => Math.round(v + (b[i] - v) * t).toString(16).padStart(2, '0')).join('');
+};
+const ground = name => ROCKS.find(r => r.name === name).palette;
+// Up to `count` pixels of one key, `apart` from each other and a pixel in from the tile's border.
+const among = (fill, key, count, apart) => {
+  const out = [];
+  for (let tries = 0; out.length < count && tries < 300; tries++) {
+    const x = fill.int(1, 14), y = fill.int(1, 14);
+    if (fill.get(x, y) === key && out.every(([u, v]) => Math.max(Math.abs(u - x), Math.abs(v - y)) >= apart)) out.push([x, y]);
+  }
+  return out;
+};
+const AROUND = [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]];
+// Each direction as a host (the size of its dark clumps, as in its own set) and as a donor: `patch`, the colour its
+// patches are mixed toward; `accent` (key c) and, if it has one, a dimmer tone beside it (key d); and its marks,
+// drawn on the patches.
+const KIN = {
+  // Rime: one crystal, a white pixel with four pale arms, and loose sparkles.
+  frost: { size: 6, patch: '#d6eaf8', accent: '#e8fbff', dim: '#8cc8ee', mark(fill) {
+    const [star, ...rest] = among(fill, 'b', 5, 3);
+    if (star) { for (const [dx, dy] of [[1, 0], [0, 1], [-1, 0], [0, -1]]) fill.set(star[0] + dx, star[1] + dy, 'd'); fill.set(star[0], star[1], 'c'); }
+    for (const [x, y] of rest) fill.set(x, y, 'c');
+  } },
+  // Scorch: embers, each bright with a dull one beside it, and a couple gone dull.
+  ember: { size: 5, patch: '#5e3230', accent: '#ff8a3a', dim: '#b84a22', mark(fill) {
+    for (const [x, y] of among(fill, 'b', 4, 4)) { const [dx, dy] = AROUND[fill.int(0, 7)]; fill.set(x + dx, y + dy, 'd').set(x, y, 'c'); }
+    for (const [x, y] of among(fill, 'b', 2, 3)) fill.set(x, y, 'd');
+  } },
+  // Moss: lime flecks in it, and one or two fallen beside it.
+  mire: { size: 6, patch: '#5f9450', accent: '#b4e878', mark(fill) {
+    for (const [x, y] of among(fill, 'b', 5, 3)) fill.set(x, y, 'c');
+    for (const [x, y] of among(fill, 'f', 2, 3)) fill.set(x, y, 'c');
+  } },
+  // Sand: glints of gold, two pixels on a slant, and pale grains.
+  lode: { size: 6, patch: '#cca06c', accent: '#ffe08a', dim: '#e4c68e', mark(fill) {
+    for (const [x, y] of among(fill, 'b', 3, 4)) fill.set(x + (fill.next() < 0.5 ? 1 : -1), y - 1, 'c').set(x, y, 'c');
+    for (const [x, y] of among(fill, 'b', 4, 3)) fill.set(x, y, 'd');
+  } },
+};
+export const KINS = Object.keys(KIN);
+// How far a host's second tone goes toward the donor's patch colour: half way, or as far as the eye asked for.
+// Charred moss has to go nearly black-brown to show on violet loam; scorch and moss are both close to sandstone.
+const TAKES = { 'frost-lode': 0.65, 'ember-lode': 0.75, 'mire-ember': 0.8, 'lode-ember': 0.6, 'lode-mire': 0.75 };
+// What a cross looks like away from its sheet, which the build writes beside its frames in the atlas: its colour on
+// the map and what flies off it when it is cut (main colour, patch, lit rim). The map colour is the host's main
+// colour 40% toward the donor's patch colour. The plan's 30% toward the donor's main colour was drawn as the map
+// shades unseen ground (three tenths as bright) and hardly showed, and with the mire as donor it showed as firn does.
+export const crossLook = (host, donor) => {
+  const p = ground(host), d = KIN[donor], b = mix(p.b, d.patch, TAKES[`${host}-${donor}`] ?? 0.5);
+  return { b, map: channels(mix(p.f, d.patch, 0.4)), debris: [p.f, b, p.L] };
+};
+export const cross = (host, donor) => {
+  const p = ground(host), h = KIN[host], d = KIN[donor];
+  // Seeds 47 apart: a set's five variants take its seed and the 7th, 19th, 31st and 43rd after it.
+  const seed = 181 + (KINS.indexOf(host) * 3 + KINS.filter(k => k !== host).indexOf(donor)) * 47;
+  return strain(`x-${host}-${donor}`, { ...p, b: crossLook(host, donor).b, c: d.accent, ...(d.dim && { d: d.dim }) }, seed, fill => {
+    // The host's dark clumps as in its own set, then the donor's patches in two sizes: one size alone lays one
+    // blob a tile, which shows the grid.
+    fill.clumps('a', 0.2, h.size).clumps('b', 0.14, 4).clumps('b', 0.07, 3);
+    d.mark(fill);
+  });
+};
+// The pairs, host by host, and each one's verdict by eye beside its host (tools/compare.py, and in the game under
+// its dark): all twelve read apart, so none is switched off. So far the north's are built.
+export const PAIRS = KINS.slice(0, 1).flatMap(host => KINS.filter(donor => donor !== host).map(donor => [host, donor]));
+export const CROSSES = PAIRS.map(([host, donor]) => cross(host, donor));
+export const CROSS_LOOKS = Object.fromEntries(PAIRS.map(([host, donor]) => { const { map, debris } = crossLook(host, donor); return [`x-${host}-${donor}`, { map, debris }]; }));
+
 // Lava that has run into a tunnel: one blob set whose three frames move the bright crust along.
 export const LAVA = {
   format: 'pixelforge-autotile', version: 1, name: 'lava', tile: 16,
