@@ -1254,14 +1254,15 @@ export class Game {
         this.effect('steam', 'smoke-puff', (x + 0.5) * T, (y + 0.5) * T);
       }
     }
-    // Spores: a burst pod hangs a cloud that stuns what flies into it, then moss closes the ground round it.
+    // Spores: a burst pod hangs a cloud that stuns what flies into it, then moss closes the ground round it: soft
+    // rock of whatever ground each cell lies in.
     for (const c of this.clouds) {
       c.t += dt;
       if (Math.max(Math.abs(dcx - c.x), Math.abs(dcy - c.y)) <= 1 && c.t < 0.2) this.jolt(0.4);
       if (c.t < c.life) continue;
       for (let v = -1; v <= 1; v++) for (let u = -1; u <= 1; u++) {
         const j = (c.y + v) * N + c.x + u;
-        if (w.k(j) === K.EMPTY && !lies(j) && !w.lava.has(j) && Math.max(Math.abs(dcx - c.x - u), Math.abs(dcy - c.y - v)) > 1) { w.setK(j, K.SOFT); w.setB(j, B.MIRE); closed.push(j); }
+        if (w.k(j) === K.EMPTY && !lies(j) && !w.lava.has(j) && Math.max(Math.abs(dcx - c.x - u), Math.abs(dcy - c.y - v)) > 1) { w.setK(j, K.SOFT); closed.push(j); }
       }
     }
     this.clouds = this.clouds.filter(c => c.t < c.life);
