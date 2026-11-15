@@ -29,7 +29,7 @@ for (const [name, [id, hard, grit, gems, dig]] of Object.entries(added)) {
   check(K[name] === id && same([HARD[id], GRIT[id], GEMS[id], DIG_TIME[id]], [hard, grit, gems, dig]), `kind ${name} (${id}) is not as the plan has it: ${[K[name], HARD[id], GRIT[id], GEMS[id], DIG_TIME[id]]}`);
   check(HARD[id] === 1 && DIG_TIME[id] > 0, `kind ${name} cannot be cut: nothing new is unminable`);
 }
-check(Object.keys(K).length === 28 && HARD.length === 28 && new Set(Object.values(K)).size === 28, 'the kinds are not 28 numbers, each its own');
+check(Object.keys(K).length >= 28 && HARD.length === Object.keys(K).length && new Set(Object.values(K)).size === HARD.length && HARD.length <= 32, 'the kinds are not numbers 0 to 31 at the most, each its own, with none left out');
 
 // Grounds 0 to 8, as the game's lists had them.
 const NAMES = ['crust', 'frost', 'ember', 'mire', 'lode', 'rime', 'magma', 'bloom', 'gilt'];

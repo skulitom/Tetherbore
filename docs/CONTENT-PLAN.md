@@ -102,6 +102,14 @@ The check, tools/world-hash.mjs (pure, imports world.js): for seeds 1, 7 and 123
 
 Size M. Risk: a transcribed threshold; the hash check catches it.
 
+S1 AS BUILT (read this with the above; where they differ, this is the code):
+- Rows are made with biome({ id, name, ... }) in world.js, which fills in what is left out and makes row.lay, the thresholds as kindAt reads them. A row must give gloom, mote, map and debris; sheet, floor and items default to name, name-floor and the kin's items sheet. Rows also carry `items` (the sheet of dense rock and ore), which the row shape above leaves out.
+- rowOf(b) is the row of a ground's number (the home ground's for a number with no row); world.row(i) the row of a cell; hazOf(k, row) and world.hazAt(i) the hazard type of a cell ('lava', 'spore', 'spark' or null); gemKin(k, row); digTime(k, row). HAZARDS has each type's kin, sheet and share (HAZ_SHEET above is HAZARDS[type].sheet).
+- kindAt keeps the order the code had when this was built, which is the plan's order backwards with the first that holds settling the cell (great caverns, small caves, vault, slate, hazard, second hazard, ore B, ore A, dense): the same ground, asked more cheaply. Extras, pockets and slabs have no hook in it yet.
+- game.overlay(k, row) returns [sheet, frame] or null and itemSheet is gone; game.debris(k, b) gives a cell's chip colours and chips() takes the colours; the depth of the dark is game.murk, eased to row.dark.
+- Noise layers are numbered 0 to 127 (a layer added to the seed is its own number): pass the number as the fourth argument, as kindAt does.
+- The check: `node tools/world-hash.mjs --check` against test/world-hash.txt (96 lines), held by test/regress/s1-world-hash.mjs. An item that lays new ground on purpose records the lines again with --write and says so.
+
 --------------------------------------------------------------
 S2. Loose ground from a whole set of cuts; one pay function; the light haul
 --------------------------------------------------------------
