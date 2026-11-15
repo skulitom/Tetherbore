@@ -35,11 +35,11 @@ globalThis.fetch = async url => { const text = await readFile(new URL(String(url
 
 const atlas = await import(new URL('js/atlas.js', root));
 await atlas.loadAtlas('assets/');
-const { Game, UPGRADES, income, richness, haulBonus } = await import(new URL('js/game.js', root));
+const { Game, UPGRADES, SHOP, income, richness, haulBonus } = await import(new URL('js/game.js', root));
 const world = await import(new URL('js/world.js', root));
 
 export const { N, C, K, B, sight, cellsAlong, HOME_R } = world;
-export { Game, UPGRADES, income, richness, haulBonus, world };
+export { Game, UPGRADES, SHOP, income, richness, haulBonus, world };
 
 // A fresh game on world `seed`, with the title screen already left.
 export async function makeGame(seed = 7, levels = {}) {

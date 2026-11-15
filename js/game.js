@@ -61,8 +61,12 @@ export const UPGRADES = [
   { id: 'momentum', icon: 'momentum', name: 'RAM', what: 'FLIES FASTER', values: [1, 1.25, 1.5, 1.8, 2.2], gem: B.LODE, ...levels([0.7, 2.4, 4.2, 6.2], 0.4), show: v => `x${v}` },
   // The bomb: a charge blows the plain rock out of a room round the drill and wakes nothing (`SIFT`, `sifts`). What
   // was worth having stands loose in the room, to be flown round. A level is another charge and, later, a wider room.
+  // It is not sold (`SHOP`): the owner took the bomb out of the upgrades. The row stays here so that a save which
+  // bought it keeps its charges and the rule stays whole and tested.
   { id: 'bombs', icon: 'bomb', name: 'BLAST', what: 'BOMB: SHAKES ORE LOOSE', values: [0, 1, 2, 3, 4], gem: B.EMBER, ...levels([1, 2.8, 5, 7.4], 0.4), show: v => `${v}` },
 ];
+// The rows the shop shows and sells.
+export const SHOP = UPGRADES.filter(u => u.id !== 'bombs');
 // A charge clears a disc of this radius round the drill's cell, in cells, by the level of BLAST (the cells whose
 // middles lie that near: 21, 21, 37 and 69 of them). Only plain rock goes (`PLAIN`: soft and dense rock, ice,
 // basalt, glass and fault rock): ore, slate, slag and steel, hazards asleep, caches and whatever else was laid to be
@@ -1905,7 +1909,7 @@ export class Game {
     const ox = Math.round(this.cam.x - W / 2 + sx), oy = Math.round(this.cam.y - H / 2 + sy);
     ctx.fillStyle = '#07060b';
     ctx.fillRect(0, 0, W, H);
-    this.ropes.length = 0;
+    this.ropes.length = 0; this.drillDrawn = null;
     // The ground is painted once into 8 x 8 cell pieces and redrawn only when it changes; a frame lays those
     // down, then draws what moves over them.
     const x0 = Math.floor(ox / T), y0 = Math.floor(oy / T), x1 = Math.floor((ox + W) / T), y1 = Math.floor((oy + H) / T);
@@ -2065,7 +2069,8 @@ export class Game {
       for (let g = 3; g >= 1; g--) { ctx.globalAlpha = 0.34 - g * 0.09; this.drawDrill(dx - d.vx / speed * g * 7, dy - d.vy / speed * g * 7, d.ang, this.S.lv.drill, this.S.lv.momentum, -1, along, across); }
       ctx.globalAlpha = 1;
     }
-    this.drawDrill(dx, dy, d.ang, this.S.lv.drill, this.S.lv.momentum, d.dig >= 0 || speed > 1 ? now : -1, along, across);
+    this.drillDrawn = [dx, dy, d.ang, this.S.lv.drill, this.S.lv.momentum, d.dig >= 0 || speed > 1 ? now : -1, along, across];
+    this.drawDrill(...this.drillDrawn);
     // Blasts left, racked across the drill's tail.
     for (let n = 0; n < this.bombs; n++) {
       const side = (n - (this.bombs - 1) / 2) * 3, bx = Math.round(dx - Math.cos(d.ang) * 9 - Math.sin(d.ang) * side - 1), by = Math.round(dy - Math.sin(d.ang) * 9 + Math.cos(d.ang) * side - 1);
@@ -2134,8 +2139,8 @@ export class Game {
 
   // The drill as its upgrades have made it (the bit's metal, whatever the ram has bolted on), drawn about its
   // middle at any heading, `along` and `across` times its size.
-  drawDrill(x, y, ang, bit, ram, now, along = 1, across = 1) {
-    const { ctx } = this, body = now >= 0 ? frameAt('drill', `right-${bit}`, now) : `right-a-${bit}`, s = sheets.drill;
+  drawDrill(x, y, ang, bit, ram, now, along = 1, across = 1, ctx = this.ctx) {
+    const body = now >= 0 ? frameAt('drill', `right-${bit}`, now) : `right-a-${bit}`, s = sheets.drill;
     ctx.save();
     ctx.translate(Math.round(x), Math.round(y));
     ctx.rotate(ang);
@@ -2205,6 +2210,13 @@ export class Game {
       o.globalCompositeOperation = 'source-atop'; o.imageSmoothingEnabled = true; o.globalAlpha = 0.85;
       o.drawImage(this.dark, ...this.darkAt);
       o.globalCompositeOperation = 'source-over'; o.globalAlpha = 1;
+    }
+    // The tether lies under the drill: it is cut away in the drill's own shape, so that at the core, where its end
+    // is made fast under the drill, and wherever the drill flies back over it, the drill is whole on top.
+    if (this.drillDrawn) {
+      o.globalCompositeOperation = 'destination-out'; o.imageSmoothingEnabled = false;
+      this.drawDrill(...this.drillDrawn, o);
+      o.globalCompositeOperation = 'source-over';
     }
     // Never over the interface: the top bar, the map, the buttons, and the small panels that come and go under the
     // top bar (a place's plate, the count of specimens), which the frame's own drawing of the interface listed.
@@ -2542,7 +2554,7 @@ export class Game {
       text(ctx, `${this.bombs}`, 31, by + 22, '#ffffff', 1);
       this.button(0, by - 6, 44, 46, () => this.blast());
     }
-    const afford = UPGRADES.some(u => this.canBuy(u));
+    const afford = SHOP.some(u => this.canBuy(u));
     if (this.atCore && !this.shop && d.mode === 'free') {
       const w = 84, x = Math.round(W / 2 - w / 2) - 14, up = afford && ((now / 300) | 0) % 2;
       slice9(ctx, 'ui', afford ? (up ? 'button-down' : 'button') : 'panel', x, by + 6, w, 24);
@@ -2672,15 +2684,15 @@ export class Game {
   drawShop() {
     const { ctx, W, H, S } = this;
     ctx.globalAlpha = 0.6 * this.shopRise; ctx.fillStyle = '#07060b'; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1;
-    const pw = Math.min(W - 8, 200), px = Math.round((W - pw) / 2), rh = Math.max(24, Math.min(32, Math.floor((H - 100) / UPGRADES.length)));
-    const rise = 1 - this.shopRise, ph = 22 + rh * UPGRADES.length + 22, py = Math.max(44, Math.round((H - ph) / 2)) + Math.round(rise * rise * 60);
+    const pw = Math.min(W - 8, 200), px = Math.round((W - pw) / 2), rh = Math.max(24, Math.min(32, Math.floor((H - 100) / SHOP.length)));
+    const rise = 1 - this.shopRise, ph = 22 + rh * SHOP.length + 22, py = Math.max(44, Math.round((H - ph) / 2)) + Math.round(rise * rise * 60);
     slice9(ctx, 'ui', 'panel', px, py, pw, ph);
     this.button(px, py, pw, ph, () => {});
     text(ctx, 'UPGRADES', px + 8, py + 7, '#ffe14a');
     if (this.shopNote && this.shopNote.t > 0) { this.shopNote.t -= 1 / 60; text(ctx, this.shopNote.text, px + pw - 28, py + 7, this.shopNote.color, 1); }
     text(ctx, 'x', px + pw - 12, py + 6, '#ffffff');
     this.buttons.unshift({ x: px + pw - 24, y: py, w: 24, h: 22, act: () => { this.shop = false; sfx.tap(); } });
-    UPGRADES.forEach((u, n) => {
+    SHOP.forEach((u, n) => {
       const y = py + 20 + n * rh, c = this.cost(u), can = this.canBuy(u), lit = this.bought?.id === u.id;
       slice9(ctx, 'ui', lit ? 'button-down' : !c ? 'button-max' : can ? 'button' : 'button-off', px + 4, y, pw - 8, rh - 1);
       // What it will look like once bought (or does now, at its last level).
