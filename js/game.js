@@ -161,7 +161,7 @@ export class Game {
     this.effects = []; this.popups = []; this.hauls = []; this.clouds = []; this.sparks = new Map(); this.lavaVol = new Map(); this.frostOpen = [];
     this.parts = []; this.rings = []; this.motes = []; this.gloom = [10, 8, 7]; this.murk = 1; this.flash = 0; this.counted = 0; this.chime = 3; this.clock = 0;
     this.shake = 0; this.twang = 0; this.edge = 0; this.hurt = 0; this.coreFlash = 0; this.banner = null; this.shop = false; this.shopRise = 0; this.confirmReset = 0;
-    this.buttons = [];
+    this.buttons = []; this.panels = [];    // what can be tapped this frame; and the small panels up this frame, each [x, y, w, h]
     this.chunks = new Map(); this.version = 0;
     this.daylight = false;                  // no dark is laid over the ground: only a staged view asks for it (js/shot.js)
     this.place = null; this.placeKey = null; this.motifAt = -9;      // the name on show, the place the drill is in, when a place last sounded
@@ -2206,10 +2206,12 @@ export class Game {
       o.drawImage(this.dark, ...this.darkAt);
       o.globalCompositeOperation = 'source-over'; o.globalAlpha = 1;
     }
-    // Never over the interface.
+    // Never over the interface: the top bar, the map, the buttons, and the small panels that come and go under the
+    // top bar (a place's plate, the count of specimens), which the frame's own drawing of the interface listed.
     o.clearRect(0, 0, W, 43);
     if (this.mapRect) o.clearRect(...this.mapRect);
     for (const b of this.buttons) o.clearRect(b.x, b.y, b.w, b.h);
+    for (const p of this.panels) o.clearRect(...p);
   }
   // A rope through `pts` (a closed loop if `closed`), as one clean line of pixels: a smooth curve through the points,
   // with no doubled corners.
@@ -2440,7 +2442,7 @@ export class Game {
   specNeed(kin) { return 0; }
   drawHud(ox, oy) {
     const { ctx, W, H, S } = this, now = this.time * 1000, d = this.drill;
-    this.buttons.length = 0;
+    this.buttons.length = 0; this.panels.length = 0;
     // Banner of the last haul.
     if (this.banner) {
       const b = this.banner, pop = Math.min(1, b.t / 0.12), y = Math.round(H * 0.2 - (1 - pop) * 8);
@@ -2512,6 +2514,7 @@ export class Game {
       const more = place.also ? 11 : 0, slide = Math.min(1, place.t / 0.15), pw = textWidth(place.title) + 23 + more, px = 4 - Math.round((1 - slide) * (1 - slide) * 10);
       ctx.globalAlpha = Math.min(1, slide, (place.life - place.t) / 0.3);
       slice9(ctx, 'ui', 'panel', px, 44, pw, 14);
+      this.panels.push([px, 44, pw, 14]);
       if (place.mineral) this.drawMineral(ctx, place.mineral, px + 3, 45); else draw(ctx, 'icons', place.icon, px + 4, 46);
       if (place.also) draw(ctx, 'icons', place.also, px + 15, 46);
       text(ctx, place.title, px + 17 + more, 46, place.colour);
@@ -2525,6 +2528,7 @@ export class Game {
       const slide = Math.min(1, line.t / 0.15), pw = textWidth(label) + 23, px = 4 - Math.round((1 - slide) * (1 - slide) * 10);
       ctx.globalAlpha = Math.min(1, slide, (line.life - line.t) / 0.3);
       slice9(ctx, 'ui', 'panel', px, 60, pw, 14);
+      this.panels.push([px, 60, pw, 14]);
       draw(ctx, 'icons', `spec-${GEM_ICON[line.kin]}`, px + 4, 62);
       text(ctx, label, px + 17, 62, GEM_COLOR[line.kin]);
       ctx.globalAlpha = 1;
