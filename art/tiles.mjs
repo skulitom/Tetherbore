@@ -159,6 +159,59 @@ export const STRAINS = [
   }),
 ];
 
+// ---- the pockets
+// Small places with ground of their own, a mineral and one rule each. A pocket has to read at a glance as somewhere
+// else: its ground looks like none of the directions' grounds, and it lies over a floor of its own, which is drawn
+// too (three variants: a floor is only ever seen dark).
+const drawnFloor = (name, palette, seed, draw) => {
+  const [first, ...rest] = drawn(seed, draw).slice(0, 3);
+  return { ...floor(name, palette, { pattern: first }, seed), variants: [
+    { name: 'a' },
+    ...rest.map((pattern, n) => ({ name: VARIANTS[n + 1], terrain: { fill: { pattern } } })),
+  ] };
+};
+
+// Honeycomb: cells eight pixels wide in rows eight apart, every other row half a cell along. The comb is the same
+// in every variant and meets a tile's sides at the same places, so it runs on through the wax.
+const COMB = [[2, 3, 5, 6], [1, 7], [0], [0], [0], [0], [0], [0], [1, 2, 6, 7], [3, 5], [4], [4], [4], [4], [4], [4]];
+const onComb = (x, y) => COMB[(y + 16) % 16].includes((x + 16) % 8);
+// The comb's walls in one colour and, if a second is given, the shade they throw into each cell from the upper left.
+const comb = (fill, wall, shade) => {
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+    if (onComb(x, y)) fill.set(x, y, wall);
+    else if (shade && (onComb(x - 1, y) || onComb(x, y - 1))) fill.set(x, y, shade);
+  }
+};
+// One cell filled, every pixel of it that is not wall: the left or the right cell of the upper row, which lie whole
+// in the tile, or the one whole cell of the lower row, whose last four pixels lie in the tile below and are left.
+const CELL = ['...#...', '.#####.', '#######', '#######', '#######', '#######', '#######', '#######', '..###..', '...#...'];
+const LOWER = ['...#...', '.#####.', '#######', '#######', '#######', '#######', '#######', '#######'];
+const cell = (fill, which, key, glint) => {
+  const [x0, y0, rows] = which === 'lower' ? [5, 8, LOWER] : [which === 'right' ? 9 : 1, 0, CELL];
+  rows.forEach((row, v) => [...row].forEach((on, u) => { if (on === '#') fill.set(x0 + u, y0 + v, key); }));
+  if (glint) fill.set(x0 + 1, y0 + 3, glint).set(x0 + 2, y0 + 2, glint);
+};
+
+export const POCKETS = [
+  // Amber Hive (west): beeswax comb. The cell walls are pale and stand proud of the hollows; a cell here and there
+  // is full of dark honey, or capped over. Nothing in the wax is as orange as the amber that lies in it.
+  strain('wax', { k: '#3a2208', D: '#8a5a14', L: '#ffe89a', s: '#1a0c0059', f: '#d89a2a', a: '#b87818', b: '#f6d066', c: '#fff2c0', h: '#a8600c', H: '#e0a040' }, 163, (fill, n) => {
+    comb(fill, 'b', 'a');
+    if (n === 1) cell(fill, 'left', 'h', 'H');
+    if (n === 2) cell(fill, 'right', 'b');
+    if (n === 3) cell(fill, 'lower', 'h', 'H');
+    for (const [x, y] of fill.places(2, 5, 1)) if (onComb(x, y)) fill.set(x, y, 'c');
+  }),
+];
+
+export const POCKET_FLOORS = [
+  // The hive's chambers: dark, with the comb still faintly on the floor.
+  drawnFloor('wax-floor', { f: '#201206', a: '#1a0e04', b: '#2a1a0a' }, 16, fill => {
+    fill.clumps('a', 0.25, 5);
+    comb(fill, 'b');
+  }),
+];
+
 export const FLOORS = [
   floor('rime-floor', { f: '#102830', a: '#0c2028', b: '#18363c' }, { color: 'f', speckle: [{ color: 'a', amount: 0.25, size: 6 }, { color: 'b', amount: 0.1, size: 3 }] }, 12),
   floor('magma-floor', { f: '#260c0a', a: '#1e0808', b: '#361410' }, { color: 'f', speckle: [{ color: 'a', amount: 0.25, size: 5 }, { color: 'b', amount: 0.1, size: 3 }] }, 13),

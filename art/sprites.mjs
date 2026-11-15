@@ -793,7 +793,54 @@ export const finds = {
   animations: { prism: { frames: ['prism', 'prism-b', 'prism-c'] } },
 };
 
-export const RECIPES = [finds, cracks, dish, frost, ember, mire, lode, drill, core, icons, upgrades, ui, logo, tough];
+// What the pockets hold, each lying in its pocket's own ground: amber in the hive's wax, with the stalk a nugget
+// hangs by. A stalk is a strand right across a block of wax, so its frames fill the whole cell.
+const STALK = [
+  '................',
+  '................',
+  '................',
+  '................',
+  '................',
+  'eeeeeeeeeeeeeeee',
+  'SSStSSStSSStSSSt',
+  'sstssstssstsssts',
+  'stssstssstssstss',
+  'ettsettsettsetts',
+  'eeeeeeeeeeeeeeee',
+  '................',
+  '................',
+  '................',
+  '................',
+  '................',
+];
+export const minerals = {
+  version: 1, name: 'minerals', width: 16, height: 16,
+  palette: { k: '#3a2208', a: '#ff9a1a', A: '#ffd070', B: '#a85a10', w: '#fff6d8', s: '#f4dc9a', S: '#fff4c8', t: '#d0a050', e: '#7a4a10' },
+  symbols: {
+    amber: [
+      '.....kk.....',
+      '....kAak....',
+      '....kAak....',
+      '...kAaaak...',
+      '...kAaaBk...',
+      '..kAAaaaBk..',
+      '.kAwAaaaaBk.',
+      '.kAAaaakaBk.',
+      '.kAaaaaaBBk.',
+      '.kaaaaaBBBk.',
+      '..kaBBBBBk..',
+      '...kkkkkk...',
+    ],
+    stalk: STALK,
+    // The same strand turned upright, lit on its left as the level one is on its top.
+    upright: STALK.map((row, y) => [...row].map((_, x) => STALK[x][y]).join('')),
+  },
+  frames: [frame('amber', 'amber'),
+    { name: 'stalk-h', duration: 300, ops: [{ op: 'stamp', symbol: 'stalk', x: 0, y: 0 }] },
+    { name: 'stalk-v', duration: 300, ops: [{ op: 'stamp', symbol: 'upright', x: 0, y: 0 }] }],
+};
+
+export const RECIPES = [finds, cracks, dish, frost, ember, mire, lode, minerals, drill, core, icons, upgrades, ui, logo, tough];
 
 // The home-screen icon: the core on dark ground, with the drill out on its tether.
 const shift = (ops, dx, dy) => ops.map(op => ({ ...op, x: op.x + dx, y: op.y + dy }));
