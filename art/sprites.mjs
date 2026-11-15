@@ -624,7 +624,23 @@ export const tough = {
   ],
 };
 
-export const RECIPES = [frost, ember, mire, lode, drill, core, icons, upgrades, ui, logo, tough];
+// A block being cut: four stages of cracks, each adding to the last, dark with a light lip beside them.
+const CRACKS = [
+  [[8, 2, 7, 6], [7, 6, 9, 8]],
+  [[9, 8, 6, 12], [7, 6, 3, 7]],
+  [[9, 8, 13, 9], [6, 12, 5, 14], [3, 7, 2, 4]],
+  [[13, 9, 14, 13], [9, 8, 11, 4], [6, 12, 10, 14], [3, 7, 4, 11]],
+];
+const crackOps = n => CRACKS.slice(0, n).flat().flatMap(([x, y, x2, y2]) => [
+  { op: 'line', x: x + 1, y, x2: x2 + 1, y2, color: 'l' }, { op: 'line', x, y, x2, y2, color: 'k' },
+]);
+export const cracks = {
+  version: 1, name: 'cracks', width: 16, height: 16,
+  palette: { k: '#0c0a12d0', l: '#ffffff60' },
+  frames: [1, 2, 3, 4].map(n => ({ name: `crack-${n}`, ops: crackOps(n) })),
+};
+
+export const RECIPES = [cracks, frost, ember, mire, lode, drill, core, icons, upgrades, ui, logo, tough];
 
 // The home-screen icon: the core on dark ground, with the drill out on its tether.
 const shift = (ops, dx, dy) => ops.map(op => ({ ...op, x: op.x + dx, y: op.y + dy }));
