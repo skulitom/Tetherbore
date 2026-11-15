@@ -291,18 +291,27 @@ export class Game {
     return best;
   }
   // The bends a string picks up as its end moves from `from` to `to` while the rest holds at `pivot`, in order from
-  // the pivot outward; undefined when that could not be worked out.
+  // the pivot outward. A triangle too large to search at once is swept a part at a time: the end goes part of the
+  // way, then on, which is the same sweep, so no sweep is ever given up.
   caught(pivot, from, to, skip = []) {
     const out = [];
-    let cur = from;
+    let cur = from, aim = to;
     skip = skip.slice();
     if (pivot[4] !== undefined) skip.push(pivot[4]);
-    for (let guard = 0; guard < 40; guard++) {
-      const q = this.catchIn(pivot, cur, to, skip);
-      if (q === undefined) return undefined;
-      if (!q) break;
+    for (let guard = 0; guard < 4000; guard++) {
+      // About how many cells the search would look at: over the most it will, the end goes only so far first.
+      const cells = Math.abs((cur[0] - pivot[0]) * (aim[1] - pivot[1]) - (cur[1] - pivot[1]) * (aim[0] - pivot[0])) / 2
+        + 4 * (Math.max(pivot[1], cur[1], aim[1]) - Math.min(pivot[1], cur[1], aim[1]) + 3);
+      if (cells > 300000) { const part = 250000 / cells; aim = [cur[0] + (aim[0] - cur[0]) * part, cur[1] + (aim[1] - cur[1]) * part]; }
+      const q = this.catchIn(pivot, cur, aim, skip);
+      if (q === undefined) { aim = [(cur[0] + aim[0]) / 2, (cur[1] + aim[1]) / 2]; continue; }
+      if (!q) {
+        if (aim === to) break;
+        cur = aim; aim = to;
+        continue;
+      }
       // Where the moving end was when the string met the corner.
-      const ax = q[0] - pivot[0], ay = q[1] - pivot[1], mx = to[0] - cur[0], my = to[1] - cur[1], den = mx * ay - my * ax;
+      const ax = q[0] - pivot[0], ay = q[1] - pivot[1], mx = aim[0] - cur[0], my = aim[1] - cur[1], den = mx * ay - my * ax;
       const t = den ? Math.max(0, Math.min(1, -((cur[0] - pivot[0]) * ay - (cur[1] - pivot[1]) * ax) / den)) : 0;
       cur = [cur[0] + mx * t, cur[1] + my * t];
       pivot = [q[0], q[1], Math.sign(ax * (to[1] - q[1]) - ay * (to[0] - q[0])) || 1, q[2], q[3]];
