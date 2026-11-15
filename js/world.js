@@ -32,12 +32,23 @@ const hash = (x, y, s) => {
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 };
 export const cellHash = hash;
-const noise = (x, y, s) => {
-  const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi;
+// Smooth noise in [0, 1): the hashes at the four whole points round (x, y), blended. `s` is the world's seed plus
+// the layer's number `k`, and each layer remembers the four hashes of the square it was last asked about: a piece
+// of the world is made a row at a time, so most cells ask about the square the cell before them did.
+const kept = new Float64Array(32 * 7).fill(NaN);
+const noise = (x, y, s, k = s & 31) => {
+  const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi, m = k * 7;
   const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
-  const a = hash(xi, yi, s), b = hash(xi + 1, yi, s), c = hash(xi, yi + 1, s), d = hash(xi + 1, yi + 1, s);
+  if (kept[m] !== xi || kept[m + 1] !== yi || kept[m + 2] !== s) {
+    kept[m] = xi; kept[m + 1] = yi; kept[m + 2] = s;
+    kept[m + 3] = hash(xi, yi, s); kept[m + 4] = hash(xi + 1, yi, s); kept[m + 5] = hash(xi, yi + 1, s); kept[m + 6] = hash(xi + 1, yi + 1, s);
+  }
+  const a = kept[m + 3], b = kept[m + 4], c = kept[m + 5], d = kept[m + 6];
   return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
 };
+// Noise never leaves [0, 1) by more than rounding, so where a test against it is settled whatever it is, it is not
+// worked out at all: `SURE` is the margin kept for that rounding.
+const SURE = 1e-6;
 
 export class World {
   constructor() {
@@ -46,6 +57,8 @@ export class World {
     this.lava = new Map();                 // seconds of lava left in an open cell
     this.dug = new Map();                  // when the drill opened a cell of the north (for the ice to close it)
     this.seed = 1;
+    this.made = 0;                         // pieces of the world made, for tests of how much work is done
+    this.sector = { sx: NaN, sy: NaN, seed: NaN, what: 1, fx: 0, fy: 0, size: 3 };      // the sector `findAt` last looked at
     this.relicAt = [0, 1, 2, 3].map(d => (C + DY[d] * RELIC_R) * N + C + DX[d] * RELIC_R);
   }
   // Where the eight wrecks lie in this world: [x, y] each, in a direction of its own.
@@ -56,19 +69,28 @@ export class World {
         const ux = hash(n, 1, this.seed + 31) - 0.5, uy = hash(n, 2, this.seed + 31) - 0.5, len = Math.sqrt(ux * ux + uy * uy) || 1;
         return [C + Math.round(ux / len * r), C + Math.round(uy / len * r)];
       });
+      this.wreckX = Int32Array.from(this.wreckSpots, p => p[0]); this.wreckY = Int32Array.from(this.wreckSpots, p => p[1]);
     }
     return this.wreckSpots;
   }
-  // What a sector's find puts in a cell, or -1 where it puts nothing.
+  // What a sector's find puts in a cell, or -1 where it puts nothing. What the sector holds and where is worked out
+  // once and kept while cells of the same sector are asked about.
   findAt(x, y) {
-    const seed = this.seed, sx = Math.floor((x - C) / FIND), sy = Math.floor((y - C) / FIND), what = hash(sx, sy, seed + 21);
+    const seed = this.seed, sx = Math.floor((x - C) / FIND), sy = Math.floor((y - C) / FIND), S = this.sector;
+    if (S.sx !== sx || S.sy !== sy || S.seed !== seed) {
+      S.sx = sx; S.sy = sy; S.seed = seed; S.what = hash(sx, sy, seed + 21);
+      if (S.what < 0.7) {
+        S.fx = C + sx * FIND + 8 + Math.floor(hash(sx, sy, seed + 22) * (FIND - 16)); S.fy = C + sy * FIND + 8 + Math.floor(hash(sx, sy, seed + 23) * (FIND - 16));
+        if (Math.hypot(S.fx - C, S.fy - C) < 16) S.what = 1;
+        else if (S.what < 0.38) S.size = hash(sx, sy, seed + 24) < 0.4 ? 4 : 3;
+      }
+    }
+    const what = S.what;
     if (what >= 0.7) return -1;
-    const fx = C + sx * FIND + 8 + Math.floor(hash(sx, sy, seed + 22) * (FIND - 16)), fy = C + sy * FIND + 8 + Math.floor(hash(sx, sy, seed + 23) * (FIND - 16));
-    if (Math.hypot(fx - C, fy - C) < 16) return -1;
-    const dx = x - fx, dy = y - fy;
+    const dx = x - S.fx, dy = y - S.fy;
     if (what < 0.38) {
       // A geode: slate outside, ore within, and in the bigger ones a hollow at the heart.
-      const size = hash(sx, sy, seed + 24) < 0.4 ? 4 : 3, far = Math.sqrt(dx * dx + dy * dy);
+      const size = S.size, far = Math.sqrt(dx * dx + dy * dy);
       if (far > size - 0.2) return -1;
       return far > size - 1.3 ? K.SLATE : size === 4 && far < 0.5 ? K.EMPTY : K.ORE_B;
     }
@@ -79,41 +101,47 @@ export class World {
     this.seed = seed;
     this.chunks = new Array(CW * CW);
     this.touched.clear(); this.lava.clear(); this.dug.clear();
+    this.made = 0;
   }
 
   // Whose ground a cell is, from the seed alone.
   biomeAt(x, y) {
     const seed = this.seed, dx = x - C, dy = y - C, r = Math.sqrt(dx * dx + dy * dy);
-    if (r < HOME_R + (noise(x / 30, y / 30, seed + 3) - 0.5) * 50) return B.CRUST;
+    if (r < HOME_R - 25 - SURE || (r < HOME_R + 25 + SURE && r < HOME_R + (noise(x / 30, y / 30, seed + 3, 3) - 0.5) * 50)) return B.CRUST;
     // The larger of the two distances, on a border that wanders in long sweeps and small wobbles.
     const far = Math.min(90, r * 0.2), near = Math.min(8, r * 0.1);
-    const ax = Math.abs(dx) + (noise(x / 61, y / 61, seed + 1) - 0.5) * far + (noise(x / 9, y / 9, seed + 16) - 0.5) * near;
-    const ay = Math.abs(dy) + (noise(x / 61, y / 61, seed + 2) - 0.5) * far + (noise(x / 9, y / 9, seed + 17) - 0.5) * near;
+    const ax = Math.abs(dx) + (noise(x / 61, y / 61, seed + 1, 1) - 0.5) * far + (noise(x / 9, y / 9, seed + 16, 16) - 0.5) * near;
+    const ay = Math.abs(dy) + (noise(x / 61, y / 61, seed + 2, 2) - 0.5) * far + (noise(x / 9, y / 9, seed + 17, 17) - 0.5) * near;
     const b = ax > ay ? (dx > 0 ? B.LODE : B.MIRE) : (dy < 0 ? B.FROST : B.EMBER);
-    const deep = r > DEEP_R + (noise(x / 50, y / 50, seed + 14) - 0.5) * 200
-      && Math.min(Math.abs(dx), Math.abs(dy)) > Math.max(Math.abs(dx), Math.abs(dy)) * 0.36 + (noise(x / 37, y / 37, seed + 15) - 0.5) * 60;
+    if (r <= DEEP_R - 100 - SURE) return b;
+    const least = Math.min(Math.abs(dx), Math.abs(dy)), flank = Math.max(Math.abs(dx), Math.abs(dy)) * 0.36;
+    if (least <= flank - 30 - SURE) return b;
+    const deep = r > DEEP_R + (noise(x / 50, y / 50, seed + 14, 14) - 0.5) * 200 && least > flank + (noise(x / 37, y / 37, seed + 15, 15) - 0.5) * 60;
     return deep ? b + 4 : b;
   }
   // What a cell is before anything has touched it, from the seed alone.
   kindAt(x, y, b) {
     const seed = this.seed, dx = x - C, dy = y - C, r = Math.sqrt(dx * dx + dy * dy);
-    if (r > WORLD_R + (noise(x / 5, y / 5, seed + 4) - 0.5) * 3) return K.BEDROCK;
+    if (r > WORLD_R + 1.5 + SURE || (r > WORLD_R - 1.5 - SURE && r > WORLD_R + (noise(x / 5, y / 5, seed + 4, 4) - 0.5) * 3)) return K.BEDROCK;
     // The core is a platform: its nine cells and the gap round them are open. Beside it lies a first piece already
     // cut loose, to show what drawing the tether round something does.
     if (Math.abs(dx) <= 2 && Math.abs(dy) <= 2) return K.EMPTY;
     if (dx >= 3 && dx <= 6 && dy >= -2 && dy <= 1) return dx === 3 || dx === 6 || dy === -2 || dy === 1 ? K.EMPTY : (dx + dy) % 2 ? K.ORE_A : K.SOFT;
-    // What each direction hides: a relic sealed in ancient stone.
-    for (let d = 0; d < 4; d++) {
+    // What each direction hides: a relic sealed in ancient stone. (Asked only of cells that far out.)
+    if (r > RELIC_R - 8 && r < RELIC_R + 8) for (let d = 0; d < 4; d++) {
       const edge = Math.max(Math.abs(dx - DX[d] * RELIC_R), Math.abs(dy - DY[d] * RELIC_R));
       if (edge === 0) return K.RELIC;
       if (edge <= 3) return K.VAULT;
       if (edge <= 5) return K.SOFT;
     }
-    for (const [wx, wy] of this.wrecks) {
-      const edge = Math.max(Math.abs(x - wx), Math.abs(y - wy));
+    if (this.wrecksFor !== seed) this.wrecks;
+    for (let n = 0, wx = this.wreckX, wy = this.wreckY; n < wx.length; n++) {
+      const ex = x - wx[n], ey = y - wy[n];
+      if (ex > 3 || ex < -3 || ey > 3 || ey < -3) continue;
+      const edge = Math.max(Math.abs(ex), Math.abs(ey));
       if (edge === 0) return K.WRECK;
       if (edge === 1) return hash(x, y, seed + 32) < 0.55 ? K.SLATE : K.EMPTY;
-      if (edge <= 3) return K.EMPTY;
+      return K.EMPTY;
     }
     const find = r > 12 ? this.findAt(x, y) : -1;
     if (find >= 0) return find;
@@ -121,25 +149,27 @@ export class World {
     let k = K.SOFT;
     if (b === B.CRUST) {
       // Home ground: soft, with stones to go round, nuggets worth lassoing, and further out seams of slate.
-      if (r > 5 && noise(x / 4, y / 4, seed + 5) > 0.7) k = K.DENSE;
-      if (r > 4.5 && noise(x / 3, y / 3, seed + 6) > 0.64 && h < 0.6) k = K.ORE_A;
-      if (r > 55 && noise(x / 3.5, y / 3.5, seed + 7) > 0.78 && h < 0.5) k = K.ORE_B;
-      if (r > 35 && Math.abs(noise(x / 9, y / 9, seed + 11) - 0.5) < 0.022) k = K.SLATE;
-      if (r > 22 && noise(x / 5, y / 5, seed + 13) > 0.8) k = K.EMPTY;
-      if (r > 60 && noise(x / 19, y / 19, seed + 18) > 0.76) k = K.EMPTY;      // great open caverns
+      // (The last of these to hold is what the cell is, so they are asked last first, and the first that holds
+      // settles it: an open cell asks about nothing else.)
+      if (r > 60 && noise(x / 19, y / 19, seed + 18, 18) > 0.76) return K.EMPTY;      // great open caverns
+      if (r > 22 && noise(x / 5, y / 5, seed + 13, 13) > 0.8) return K.EMPTY;
+      if (r > 35 && Math.abs(noise(x / 9, y / 9, seed + 11, 11) - 0.5) < 0.022) return K.SLATE;
+      if (r > 55 && h < 0.5 && noise(x / 3.5, y / 3.5, seed + 7, 7) > 0.78) return K.ORE_B;
+      if (r > 4.5 && h < 0.6 && noise(x / 3, y / 3, seed + 6, 6) > 0.64) return K.ORE_A;
+      if (r > 5 && noise(x / 4, y / 4, seed + 5, 5) > 0.7) return K.DENSE;
       return k;
     }
-    if (noise(x / 4, y / 4, seed + 5) > (kin === B.EMBER ? 0.64 : 0.68)) k = K.DENSE;
-    if (noise(x / 3, y / 3, seed + 6) > (deep ? 0.6 : 0.66) && h < 0.62) k = K.ORE_A;
-    if (noise(x / 3.5, y / 3.5, seed + 7) > (deep ? 0.66 : 0.74) && h < 0.5) k = K.ORE_B;
     const more = deep ? 1.8 : 1;
-    if (kin === B.EMBER && noise(x / 2.5, y / 2.5, seed + 8) > (deep ? 0.72 : 0.78) && h > 0.45) k = K.HAZARD;
-    if (kin === B.MIRE && hash(x, y, seed + 10) < 0.022 * more) k = K.HAZARD;
-    if (kin === B.LODE && hash(x, y, seed + 10) < 0.026 * more) k = K.HAZARD;
-    if (Math.abs(noise(x / 9, y / 9, seed + 11) - 0.5) < (kin === B.LODE ? 0.05 : 0.03)) k = K.SLATE;
-    if (r > 600 && Math.abs(noise(x / 8, y / 8, seed + 12) - 0.5) < 0.028) k = K.VAULT;
-    if (noise(x / 5, y / 5, seed + 13) > (kin === B.MIRE ? 0.68 : 0.8)) k = K.EMPTY;
-    if (noise(x / 19, y / 19, seed + 18) > (kin === B.MIRE ? 0.7 : 0.78)) k = K.EMPTY;
+    if (noise(x / 19, y / 19, seed + 18, 18) > (kin === B.MIRE ? 0.7 : 0.78)) return K.EMPTY;
+    if (noise(x / 5, y / 5, seed + 13, 13) > (kin === B.MIRE ? 0.68 : 0.8)) return K.EMPTY;
+    if (r > 600 && Math.abs(noise(x / 8, y / 8, seed + 12, 12) - 0.5) < 0.028) return K.VAULT;
+    if (Math.abs(noise(x / 9, y / 9, seed + 11, 11) - 0.5) < (kin === B.LODE ? 0.05 : 0.03)) return K.SLATE;
+    if (kin === B.LODE && hash(x, y, seed + 10) < 0.026 * more) return K.HAZARD;
+    if (kin === B.MIRE && hash(x, y, seed + 10) < 0.022 * more) return K.HAZARD;
+    if (kin === B.EMBER && h > 0.45 && noise(x / 2.5, y / 2.5, seed + 8, 8) > (deep ? 0.72 : 0.78)) return K.HAZARD;
+    if (h < 0.5 && noise(x / 3.5, y / 3.5, seed + 7, 7) > (deep ? 0.66 : 0.74)) return K.ORE_B;
+    if (h < 0.62 && noise(x / 3, y / 3, seed + 6, 6) > (deep ? 0.6 : 0.66)) return K.ORE_A;
+    if (noise(x / 4, y / 4, seed + 5, 5) > (kin === B.EMBER ? 0.64 : 0.68)) return K.DENSE;
     return k;
   }
   // The piece of world holding a cell, made now if nothing has looked there before.
@@ -147,6 +177,7 @@ export class World {
     let p = this.chunks[id];
     if (p) return p;
     p = this.chunks[id] = { kind: new Uint8Array(CH * CH), biome: new Uint8Array(CH * CH), seen: new Uint8Array(CH * CH) };
+    this.made++;
     const x0 = (id % CW) * CH, y0 = ((id / CW) | 0) * CH;
     for (let v = 0; v < CH; v++) for (let u = 0; u < CH; u++) {
       const b = this.biomeAt(x0 + u, y0 + v);
