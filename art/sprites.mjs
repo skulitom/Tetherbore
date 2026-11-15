@@ -1,6 +1,8 @@
 // The hand-drawn recipes: what lies in the rock, the drill, the core, the interface.
 // Ore and hazard drawings are 12 x 12 in the middle of a 16 x 16 frame, so they sit inside a tile's rim.
 
+// A frame that only recolours another is drawn from the symbol again with its own palette: a frame copied with
+// `from` keeps the pixels of the first, colours and all.
 const frame = (name, symbol, extra = {}) => ({ name, duration: 300, ops: [{ op: 'stamp', symbol, x: 2, y: 2 }], ...extra });
 
 const RELIC = [
@@ -21,7 +23,7 @@ const RELIC = [
 ];
 const relic = (palette) => ([
   { name: 'relic', duration: 400, ops: [{ op: 'stamp', symbol: 'relic', x: 1, y: 1 }] },
-  { name: 'relic-glint', duration: 160, from: 'relic', palette: { ...palette, g: '#ffffff' } },
+  { name: 'relic-glint', duration: 160, palette: { ...palette, g: '#ffffff' }, ops: [{ op: 'stamp', symbol: 'relic', x: 1, y: 1 }] },
 ]);
 
 export const frost = {
@@ -172,7 +174,7 @@ export const ember = {
     relic: RELIC,
   },
   frames: [frame('dense', 'dense'), frame('oreA', 'oreA'), frame('oreB', 'oreB'),
-    frame('hazard', 'lava', { duration: 260 }), { name: 'hazard-b', from: 'hazard', duration: 260, palette: { y: '#ff8a2a', o: '#ffd84a' } },
+    frame('hazard', 'lava', { duration: 260 }), frame('hazard-b', 'lava', { duration: 260, palette: { y: '#ff8a2a', o: '#ffd84a' } }),
     ...relic({}),
     frame('slag', 'slag'), frame('steel', 'steel', { duration: 500 }), frame('steel-glint', 'steel', { duration: 140, palette: { i: '#ffffff', I: '#d8e8ff', z: '#ffffff' } }),
     // The flash as slag is quenched to steel: the bar with every colour white.
@@ -245,7 +247,7 @@ export const mire = {
     relic: RELIC,
   },
   frames: [frame('dense', 'dense'), frame('oreA', 'oreA'), frame('oreB', 'oreB'),
-    frame('hazard', 'pod', { duration: 500 }), { name: 'hazard-b', from: 'hazard', duration: 220, palette: { u: '#ffffff', v: '#c880e8' } },
+    frame('hazard', 'pod', { duration: 500 }), frame('hazard-b', 'pod', { duration: 220, palette: { u: '#ffffff', v: '#c880e8' } }),
     ...relic({})],
   animations: { hazard: { frames: ['hazard', 'hazard-b'] }, relic: { frames: ['relic', 'relic', 'relic', 'relic-glint'] } },
 };
@@ -314,7 +316,7 @@ export const lode = {
     relic: RELIC,
   },
   frames: [frame('dense', 'dense'), frame('oreA', 'oreA'), frame('oreB', 'oreB'),
-    frame('hazard', 'spark', { duration: 700 }), { name: 'hazard-b', from: 'hazard', duration: 120, palette: { z: '#ffffff', Z: '#fff08a' } },
+    frame('hazard', 'spark', { duration: 700 }), frame('hazard-b', 'spark', { duration: 120, palette: { z: '#ffffff', Z: '#fff08a' } }),
     ...relic({})],
   animations: { hazard: { frames: ['hazard', 'hazard-b'] }, relic: { frames: ['relic', 'relic', 'relic', 'relic-glint'] } },
 };
