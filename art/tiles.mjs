@@ -111,6 +111,22 @@ export const STRAINS = [
       fill.wander(x, y, flat ? [[1, side], [0, side], [0, side]] : [[side, 1], [side, 0], [side, 0]], far, 'c', 2);
     }
   }),
+  // South. Scoria: froth gone hard, full of bubbles. A bubble is dark under its near lip and lit on its far one.
+  strain('scoria', { k: '#1a0a08', D: '#4a2420', L: '#dc9c7c', s: '#00000066', f: '#96584a', a: '#7a4438', b: '#aa6c58', c: '#2a1210', l: '#cc9274' }, 131, fill => {
+    fill.clumps('a', 0.22, 4).clumps('b', 0.14, 3);
+    const BUBBLES = [['.cc.', 'cDDl', 'cDDl', '.ll.'], ['cc.', 'cDl', '.ll'], ['cD', 'Dl'], ['c.', '.l'], ['c.', '.l'], ['D']];
+    fill.places(6, 4, 1).forEach(([x, y], i) => { const rows = BUBBLES[i]; fill.stamp(Math.min(x, 15 - rows.length), Math.min(y, 15 - rows.length), rows); });
+  }),
+  // Forge: clinker, dark and cindery, still lit in short cracks: bright at the middle, dim at the ends.
+  strain('forge', { k: '#120808', D: '#34222a', L: '#b89080', s: '#00000066', f: '#664644', a: '#523838', b: '#7e5a56', c: '#ff9a3a', o: '#b84a22' }, 137, fill => {
+    fill.clumps('a', 0.28, 4).clumps('b', 0.16, 3);
+    const WAYS = [[1, 0], [1, 1], [0, 1], [-1, 1]];
+    for (const [x, y] of fill.places(2, 6, 3)) {
+      const [dx, dy] = WAYS[fill.int(0, 3)];
+      fill.set(x, y, 'c').set(x + dx, y + dy, fill.next() < 0.5 ? 'c' : 'o').set(x - dx, y - dy, 'o');
+    }
+    fill.dots('o', 2, 2);
+  }),
 ];
 
 export const FLOORS = [
