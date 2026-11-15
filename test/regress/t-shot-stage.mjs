@@ -209,5 +209,30 @@ check(await open('', 'example.org') === undefined, 'away from localhost an ordin
   check(plain.shot.facts().pocket === null && plain.game.S.spec.every(n => n === 0), '`haul` without `pocket` hauled something');
 }
 
+// `pocket` in the other two kinds. A pumice drift, the north's first (14,-165): the drill stands among the four
+// boulders round its middle, every one of them standing and in the books; `haul` brings a whole boulder home, rock
+// and all. An ash flat, the south's first (-14,165), which has no open cell: the drill stands in its middle cell
+// at the end of a way one cell wide, with ash on both sides of it.
+{
+  const t = await open('?shot&seed=7&at=14,-160&pocket&met'), game = t.game, w = game.world, d = game.drill, f = t.shot.facts();
+  const Z = w.zoneOf(0, -2), x = Math.floor(d.x), y = Math.floor(d.y), loose = cells => game.pieces.filter(piece => w.b(piece[0]) === Z.row).length;
+  check(f.pocket && f.pocket.ground === 'drift' && f.ground === 'drift' && Math.max(Math.abs(x - Z.cx), Math.abs(y - Z.cy)) === 3 && w.k(y * N + x) === K.EMPTY, `staged in the drift: ${JSON.stringify(f.pocket)}, the drill ${x - Z.cx},${y - Z.cy} from its middle`);
+  t.shot.fit();
+  check(loose() === 4 && f.pocket.hauled === 0 && tetherFaults(game).length === 0, `${loose()} boulders of the drift stand loose in the staged view; the tether: ${tetherFaults(game).join('; ')}`);
+  t.advance(500);
+  check(game.place && game.place.title === 'PUMICE DRIFT' && game.place.mineral === 'aerolite' && loose() === 4, `half a second on: ${JSON.stringify(game.place)}, ${loose()} boulders loose`);
+  const one = await open('?shot&seed=7&at=14,-160&pocket&haul=1'), h = one.game.hauled, got = one.shot.facts().pocket.hauled;
+  one.shot.fit();
+  check(got >= 4 && got <= 12 && h.n === got && h.minerals >= 1 && h.minerals < got && h.light && h.chain === 1 && Math.abs(one.game.S.spec[1] - 0.9 * h.minerals) < 1e-9 && one.game.pieces.filter(piece => one.game.world.b(piece[0]) === Z.row).length === 3,
+    `staged with haul=1 in the drift: ${got} cells hauled, ${h.minerals} of them aerolite, specimens ${one.game.S.spec}`);
+  const ash = await open('?shot&seed=7&at=-14,160&pocket&met'), A = ash.game.world.zoneOf(-1, 1), ax = Math.floor(ash.game.drill.x), ay = Math.floor(ash.game.drill.y), aw = ash.game.world;
+  check(ash.shot.facts().pocket?.ground === 'ash' && ax === A.cx && ay === A.cy && aw.k(ay * N + ax) === K.EMPTY, `staged in the ash flat: ${JSON.stringify(ash.shot.facts().pocket)}, the drill at ${ax - C},${ay - C}`);
+  let open3 = 0;
+  for (let v = -1; v <= 1; v++) for (let u = -1; u <= 1; u++) if (aw.k((ay + v) * N + ax + u) === K.EMPTY) open3++;
+  check(open3 <= 3 && tetherFaults(ash.game).length === 0, `${open3} of the nine cells round the drill are open in the ash; the tether: ${tetherFaults(ash.game).join('; ')}`);
+  ash.advance(500);
+  check(ash.game.place && ash.game.place.title === 'ASH FLATS' && ash.game.place.mineral === 'tektite', `half a second on in the ash: ${JSON.stringify(ash.game.place)}`);
+}
+
 if (fails.length) { console.log(`FAIL: ${fails.join('\n      ')}`); process.exit(1); }
 console.log('ok: an ordinary start is as it was; `?shot` stages the view asked for and leaves the saved game alone');

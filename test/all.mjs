@@ -1,8 +1,8 @@
 // Every test in one command: each script in test/regress (each fails while the defect it was written for is there),
 // the smoke test, and the rope fuzz on seeds 11 to 18 from the core, from a start 200 cells out each way and from
 // inside a province of each strain of ground, from a deep flank, from inside provinces of generated crosses, from
-// the cracks of keystone slabs, and from inside amber hives; and the slabs themselves, as they lie in 200 worlds
-// (slab-moat.mjs).
+// the cracks of keystone slabs, and from inside amber hives, pumice drifts and ash flats; and the slabs themselves,
+// as they lie in 200 worlds (slab-moat.mjs).
 //   node test/all.mjs [only: a word the test's name must hold]
 // One line a test, and the last line of a failing test's own output under it. Exits 1 if any failed. Tests run side by
 // side, as many as the machine has cores to spare, and the whole run takes a few minutes.
@@ -60,9 +60,16 @@ const ARGS = {
     // open the rock a key holds to), the middle of a cobble field, and the widest slab there is (with bombs).
     [7, 300, 3, 3, 44, 60], [7, 300, 7, 334, 375, 'mix', 'bombs'], [7, 300, 7, 192, -500, 60], [11, 300, 6, 222, 82, 60, 'bombs'],
     // From a start inside an amber hive (`node tools/zone-budget.mjs --where 7` says where pockets lie): the west's
-    // first, a great hive of forty chambers (with bombs, which open its wax and leave its nuggets hanging), the
-    // north's first, and a middling one with bombs and trips home at thirty frames a second.
-    [7, 300, 6, -205, -11, 60], [7, 300, 7, -456, -72, 'mix', 'bombs'], [7, 300, 5, 14, -162, 60], [7, 300, 6, -209, 53, 30, 'bombs,home']],
+    // first, a great hive of forty chambers (with bombs, which open its wax and leave its nuggets hanging), one
+    // 23 cells in radius, and a middling one with bombs and trips home at thirty frames a second.
+    [7, 300, 6, -205, -11, 60], [7, 300, 7, -456, -72, 'mix', 'bombs'], [7, 300, 7, -464, 49, 60], [7, 300, 6, -209, 53, 30, 'bombs,home'],
+    // From a start inside a pumice drift, among boulders that hang on nothing from the first: the north's first,
+    // the richest near the core (fifteen boulders, with bombs, which blow the pumice off the aerolite), and one of
+    // seven with bombs and trips home at thirty frames a second (its boulders leave the books and come back).
+    [7, 300, 5, 14, -165, 60], [7, 300, 7, 470, 431, 'mix', 'bombs'], [7, 300, 5, 174, -78, 30, 'bombs,home'],
+    // From a start inside an ash flat, where the drill ploughs: the south's first, and a great one with bombs
+    // (which blow the ash off the tektites) and with the best ram.
+    [7, 300, 5, -14, 165, 60], [7, 300, 6, -207, 211, 'mix', 'bombs'], [7, 300, 6, -207, 211, 60, 'ram']],
 };
 const tests = [];
 for (const file of readdirSync(here + 'regress').filter(name => name.endsWith('.mjs')).sort()) {
@@ -93,8 +100,14 @@ for (const [seed, x, y, reach, what] of [[7, 3, 44, 3, 'the first slab'], [7, 33
 }
 
 // And from inside an amber hive, where the string lies on walls of wax a cell thick and on nuggets that hang by a
-// stalk: the west's first hive, a great one, and the north's first.
-for (const [x, y, reach, what] of [[-205, -11, 6, 'the west\'s first hive'], [-456, -72, 7, 'a great hive'], [14, -162, 5, 'the north\'s first hive']]) {
+// stalk: the west's first hive, a great one, and one 23 cells in radius.
+for (const [x, y, reach, what] of [[-205, -11, 6, 'the west\'s first hive'], [-456, -72, 7, 'a great hive'], [-464, 49, 7, 'a hive 23 in radius']]) {
+  tests.push({ name: `rope-fuzz.mjs 7 400 ${reach} ${x} ${y} (${what})`, run: ['rope-fuzz.mjs', 7, 400, reach, x, y] });
+}
+
+// And from inside a pumice drift, where the string lies on boulders that hang on nothing and go when it is round
+// them, and an ash flat, which the drill ploughs through at any angle: each direction's first and a great one.
+for (const [x, y, reach, what] of [[14, -165, 5, 'the north\'s first drift'], [470, 431, 7, 'a drift of fifteen boulders'], [-14, 165, 5, 'the south\'s first ash flat'], [-207, 211, 6, 'a great ash flat']]) {
   tests.push({ name: `rope-fuzz.mjs 7 400 ${reach} ${x} ${y} (${what})`, run: ['rope-fuzz.mjs', 7, 400, reach, x, y] });
 }
 

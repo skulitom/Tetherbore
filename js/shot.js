@@ -22,11 +22,13 @@
 // little way (`tetherbore.advance(500)`), the cut is half made and its glow holds the whole slab; stepped for two
 // seconds, the slab hangs loose.
 // `pocket` stands the drill inside the pocket nearest `at` (within POCKET cells): in the open cell of its middle
-// that is nearest the core (of a hive, in the lane of the chamber at its middle, beside the nugget), at the end
-// of a tunnel from the core that stops short of the pocket and a way one cell wide bitten on from there; no room
-// is carved. `haul=n` then brings home the n nuggets of the pocket's mineral nearest the drill, as a loop drawn
-// round them would: one is a light haul, which says what it paid where it lay, and two have a banner; either
-// brings out the count of specimens under the top bar.
+// that is nearest the core (of a hive, in the lane of the chamber at its middle, beside the nugget; of a drift,
+// among the four boulders round its middle), at the end of a tunnel from the core that stops short of the pocket
+// and a way one cell wide bitten on from there; no room is carved. A pocket with no open cell in it (an ash flat)
+// has the drill in its middle cell, at the end of that way. `haul=n` then brings home the n nuggets of the
+// pocket's mineral nearest the drill, as a loop drawn round them would (of a drift, the whole boulder each lies
+// in): one is a light haul, which says what it paid where it lay, and two have a banner; either brings out the
+// count of specimens under the top bar.
 //
 // The view is held still: `tetherbore.advance(ms)` steps it, `tetherbore.resume()` lets it play.
 import * as world from './world.js';
@@ -43,7 +45,7 @@ const POCKET = 150;                             // and the middle of a pocket to
 // near. The place is an open cell among those three cells from the pocket's middle (in a hive, the lane of the
 // middle chamber), or failing that among all the pocket's cells: the one the straight way to which from the core
 // goes through the fewest cells of the pocket's mineral and its stalks (the way in is bitten through whatever lies
-// on it), and of those the nearest the core.
+// on it), and of those the nearest the core. Where the pocket has no open cell at all, its middle cell.
 function inPocket(game, ax, ay) {
   const w = game.world, near = [];
   for (let v = -2; v <= 2; v++) for (let u = -2; u <= 2; u++) near.push(w.zoneOf(Math.floor((ax - C) / world.ZONE) + u, Math.floor((ay - C) / world.ZONE) + v));
@@ -66,10 +68,11 @@ function inPocket(game, ax, ay) {
     }
     if (best) break;
   }
-  return best && { zone: Z, at: best.at };
+  return { zone: Z, at: best ? best.at : [Z.cx, Z.cy] };
 }
 // The cells of the `count` nuggets of a pocket's mineral that lie nearest the drill: each the cells of mineral
-// joined to one another and whatever special cells (a stalk) are joined to those.
+// joined to one another and whatever special cells (a stalk) are joined to those; or, where the mineral lies in a
+// piece of ground that hangs loose (a drift's boulder), the whole of that piece.
 function nuggets(game, Z, count) {
   const w = game.world, d = game.drill, seen = new Set(), found = [], most = Math.ceil(Z.reach);
   for (let v = -most; v <= most; v++) for (let u = -most; u <= most; u++) {
@@ -78,7 +81,16 @@ function nuggets(game, Z, count) {
     const cells = [i];
     seen.add(i);
     for (const c of cells) for (const s of [1, N, -1, -N]) { const j = c + s, k = w.k(j); if (!seen.has(j) && w.b(j) === Z.row && (k === Z.mineral || k === K.NODE)) { seen.add(j); cells.push(j); } }
-    found.push({ cells, far: Math.hypot((i % N) + 1.5 - d.x, Math.floor(i / N) + 1.5 - d.y) });
+    // (A drift's boulder: the ground joined to the mineral, which the game knows as loose once any cell on its
+    // outside has been looked at.)
+    let piece = null;
+    if (world.BIOMES[Z.row].pocket.twist === 'drift') {
+      const ground = [i], got = new Set(ground);
+      for (const c of ground) { game.spot(c); for (const s of [1, N, -1, -N]) { const j = c + s; if (!got.has(j) && w.b(j) === Z.row && w.k(j) !== K.EMPTY && ground.length < 64) { got.add(j); ground.push(j); } } }
+      piece = game.pieceOf.get(i) ?? null;
+      if (piece) for (const c of piece) seen.add(c);
+    }
+    found.push({ cells: piece ? piece.slice() : cells, far: Math.hypot((i % N) + 1.5 - d.x, Math.floor(i / N) + 1.5 - d.y) });
   }
   return found.sort((a, b) => a.far - b.far).slice(0, count).flatMap(n => n.cells);
 }
@@ -162,6 +174,9 @@ export function stage(game, query) {
       if (pocket && (u || v) && Math.hypot(x - pocket.zone.cx, y - pocket.zone.cy) < pocket.zone.reach + 3) continue;
       w.setK(y * N + x, K.EMPTY);
     }
+    // (And every cell the straight line from the core passes through there, so the tether lies in open ground
+    // all the way: a way one cell wide, cut a cell at a time, does not hold a line that runs askew.)
+    if (pocket) for (const i of world.cellsAlong(HX, HY, C + dx + 0.5, C + dy + 0.5, Math.ceil(far * 2) + 8)) w.setK(i, K.EMPTY);
     if (!bombs && !key && !pocket) for (let v = -ROOM; v <= ROOM; v++) for (let u = -ROOM; u <= ROOM; u++) w.setK((C + dy + v) * N + C + dx + u, K.EMPTY);
     d.x = d.px = C + dx + 0.5; d.y = d.py = C + dy + 0.5; d.mode = 'free';
     game.band = [[d.x, d.y], [HX, HY]];
