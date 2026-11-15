@@ -100,6 +100,11 @@ const QUENCH = 0.12;
 // How long a charged crystal's fuse burns when it is woken by a cut beside it, in seconds: at the slowest the drill
 // flies (9 cells a second) that is seven cells, twice the reach of the arc.
 const FUSE = 0.8;
+// Ground that cuts this quick (its row's `dig` under PLOUGH: ash) is ploughed, not cut a block at a time: a cell
+// of it is gone in a twentieth of a second, so pushing into it neither breaks the drill's run nor draws the drill
+// square on to each block, and the loop a thumb draws is the loop that is cut. Ore cut into there says CRUSHED no
+// more often than every CRUSH_EVERY seconds: a plough goes through a mineral a second.
+const PLOUGH = 0.3, CRUSH_EVERY = 1;
 // The boulders of a drift (a pocket whose row's `twist` is 'drift') are in the books of loose ground while the
 // drill is in the drift or near it, and leave them once it is out and they are AWAY cells off the screen: so the
 // books do not grow by a drift's boulders for every drift crossed.
@@ -166,6 +171,7 @@ export class Game {
     this.specLine = null;                                             // the count of specimens just banked, on show under the top bar
     this.pips = []; this.pipsFor = '';                                // the pockets the map marks, and what that list was made for
     this.drifts = new Map();                                          // the drifts whose boulders are in the books, by their keys
+    this.crushedAt = -9;                                              // when ore cut into last said CRUSHED
     this.fresh((Math.random() * 1e9) | 0, true);
   }
 
@@ -187,7 +193,7 @@ export class Game {
     this.cam = { x: HX * T, y: HY * T };
     this.band = [[HX, HY], [HX, HY]];
     this.pieces = []; this.pieceOf = new Map(); this.taken.length = 0; this.homeKey = ''; this.homeEnd = [HX, HY];
-    this.chain = null; this.hauled = null; this.specLine = null; this.pipsFor = ''; this.drifts.clear();
+    this.chain = null; this.hauled = null; this.specLine = null; this.pipsFor = ''; this.drifts.clear(); this.crushedAt = -9;
     w.see(C, C, this.val('scanner') + 4);
     // Where the game begins is where the player already is: its name does not come up, now or as a new place later.
     const here = this.placeAt(this.di);
@@ -897,12 +903,18 @@ export class Game {
     }
     // Pushed into ground, it cuts.
     if (m > 0 && (hitX || hitY)) {
-      d.run = 0;
       // A cut in progress goes on while the drill is still pressed into that cell and the stick has not turned from
       // where it was when the cut began (a new direction cancels it). In a notch, pushed into two cells at once on
       // the diagonal, which of them the stick favours changes with a hair's turn of the thumb, and with the drill's
       // own squaring up to the cell it cuts: without this neither would ever be cut through.
       const i = this.bite(ix, iy, hitX, hitY, d.dig >= 0 && ix * d.digX + iy * d.digY > 0.94 ? d.dig : -1);
+      // Ground that cuts like air is ploughed (`PLOUGH`): the run goes on through it, and the drill is not drawn
+      // square on to each block of it, or cells gone in a twentieth of a second would stutter, not plough. (Sliding
+      // past a block at speed, the drill may be stopped by one that is no longer before the bit when the frame
+      // ends: in ploughed ground, which is the ground it stands in when there is no cell to say, that does not
+      // break its run either. With a bit that cuts ash in one frame it happens several times a second.)
+      const plough = w.row(i >= 0 ? i : this.di).dig < PLOUGH;
+      if (!plough) d.run = 0;
       if (i < 0) { d.dig = -1; if (hitX) d.vx = 0; if (hitY) d.vy = 0; }
       else {
         const k = w.k(i);
@@ -917,8 +929,10 @@ export class Game {
           if (((d.digT * 30) | 0) !== ((before * 30) | 0) && d.digDur > 0.15) { sfx.grind(); if (d.digDur > 0.4) this.shake = Math.max(this.shake, 1.2); }
           if (((d.digT * 18) | 0) !== ((before * 18) | 0)) this.chips(i % N, Math.floor(i / N), this.debris(k, w.b(i)), 2, d.ang, 0.6);
           // Cutting draws the drill square on to the block, so tunnels come out clean: never past the tether's reach.
+          // (Not in ground that is ploughed: there the cut goes where the thumb draws it.)
           const cx = (i % N) + 0.5, cy = Math.floor(i / N) + 0.5, inReach = (x, y) => { const to = Math.hypot(x - HX, y - HY); return to <= R || to <= Math.hypot(d.x - HX, d.y - HY); };
-          if (Math.abs(cx - d.x) > Math.abs(cy - d.y)) { const ny = d.y + (cy - d.y) * Math.min(1, dt * 6); if (this.free(d.x, ny) && inReach(d.x, ny)) d.y = ny; }
+          if (plough) { /* no squaring up */ }
+          else if (Math.abs(cx - d.x) > Math.abs(cy - d.y)) { const ny = d.y + (cy - d.y) * Math.min(1, dt * 6); if (this.free(d.x, ny) && inReach(d.x, ny)) d.y = ny; }
           else { const nx = d.x + (cx - d.x) * Math.min(1, dt * 6); if (this.free(nx, d.y) && inReach(nx, d.y)) d.x = nx; }
           this.tend();
           if (d.digT >= d.digDur) this.finishDig(i);
@@ -1125,7 +1139,8 @@ export class Game {
     this.chips(x, y, this.debris(k, b), 9 + tough * 3, d.ang, 1);
     this.effect('dust', 'dust', (x + 0.5) * T, (y + 0.5) * T);
     if (tough >= 2 || k === K.ICE) this.effect('shatter', 'shatter', (x + 0.5) * T, (y + 0.5) * T);
-    if (k === K.ORE_A || k === K.ORE_B || k === K.STEEL || k === K.PRISM || mineral) this.popup(x, y, 'CRUSHED', '#9a94a8');
+    // (Ploughing, the drill goes through a mineral every second or so: it says so no more often than that.)
+    if ((k === K.ORE_A || k === K.ORE_B || k === K.STEEL || k === K.PRISM || mineral) && (row.dig >= PLOUGH || this.time - this.crushedAt >= CRUSH_EVERY)) { this.crushedAt = this.time; this.popup(x, y, 'CRUSHED', '#9a94a8'); }
     this.shake = Math.max(this.shake, 1 + tough * 0.5);
     // The hazard that was cut into wakes, and a hazard beside the cut: each may open cells (its own; the slate an
     // arc shatters), and every cell opened goes to `changed` together.
