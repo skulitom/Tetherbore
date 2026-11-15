@@ -25,10 +25,10 @@ const RIMEMOSS = crossId(B.MIRE, B.FROST), HOARSAND = crossId(B.LODE, B.FROST), 
 check(BIOMES[THAW].title === 'THAW' && BIOMES[QUENCH].title === 'QUENCH' && BIOMES[MOULDSTONE].title === 'MOULDSTONE', 'the crosses are not at the numbers this test stages them by');
 
 // Above the core three strips (thaw, quench, sootfen), below it three (mouldstone, flashrock, rimemoss), hoarsand
-// straight east.
+// straight east and the east's own ground straight west.
 const game = await makeGame(7), w = game.world, d = game.drill, S = game.S;
 arena(game, 40, K.SOFT, B.CRUST);
-rect(game, 3, -3, 40, 3, K.SOFT, HOARSAND);
+rect(game, 3, -3, 40, 3, K.SOFT, HOARSAND); rect(game, -40, -3, -3, 3, K.SOFT, B.LODE);
 rect(game, -40, -40, -14, -8, K.SOFT, THAW); rect(game, -13, -40, 13, -8, K.SOFT, QUENCH); rect(game, 14, -40, 40, -8, K.SOFT, SOOTFEN);
 rect(game, -40, 8, -14, 40, K.SOFT, MOULDSTONE); rect(game, -13, 8, 13, 40, K.SOFT, FLASHROCK); rect(game, 14, 8, 40, 40, K.SOFT, RIMEMOSS);
 game.changed();
@@ -122,6 +122,12 @@ check(game.place?.icon === 'lode' && game.place?.also === 'frost', `hoarsand's p
 if (flyTo(game, 0, 0) < 0) check(false, 'the drill never came home');
 check(game.place?.title === 'CRUST' && game.place.also === null, `the home ground's place: ${JSON.stringify(game.place)}`);
 idle(game, 0.5);      // (the thumb lifts: the drill leaves the core on a fresh stroke)
+// Hand-made ground pays one direction's gems and has that one gem on its plate.
+rect(game, -8, 0, -3, 0, K.EMPTY); game.changed();
+if (flyTo(game, -7, 0) < 0) check(false, 'the drill never reached the plain ground of the east');
+check(game.place?.title === 'LODE' && game.place.icon === 'lode' && game.place.also === null, `the place named on coming into the east's own ground: ${JSON.stringify(game.place)}`);
+if (flyTo(game, 0, 0) < 0) check(false, 'the drill never came home a second time');
+idle(game, 0.5);
 if (flyTo(game, 7, 0) < 0) check(false, 'the drill never reached the hoarsand a second time');
 check(game.place?.title === 'HOARSAND' && game.place.card === false && game.place.also === 'frost', `the place named on coming into hoarsand again: ${JSON.stringify(game.place)}`);
 game.render();
