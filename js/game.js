@@ -700,9 +700,13 @@ export class Game {
       }
       if (w.k(i) === K.EMPTY && this.free(Math.floor(d.x) + 0.5, Math.floor(d.y) + 0.5)) {
         d.x = Math.floor(d.x) + 0.5; d.y = Math.floor(d.y) + 0.5;
-        // No further out than the tether reaches, where it fits there (it is the same cell still).
-        const out = this.far, R = this.val('tether'), x = HX + (d.x - HX) / out * R, y = HY + (d.y - HY) / out * R;
-        if (out > R && this.free(x, y)) { d.x = x; d.y = y; }
+        // No further out than the tether reaches, where it fits there, or as near to that as it fits (it is the
+        // same cell still). Hemmed in by lava at the very end of its reach it may have to stand a little beyond.
+        const out = this.far, R = this.val('tether'), cx = d.x, cy = d.y;
+        if (out > R) for (let back = 1; back > 0; back -= 0.125) {
+          const to = out + (R - out) * back, x = HX + (cx - HX) / out * to, y = HY + (cy - HY) / out * to;
+          if (this.free(x, y)) { d.x = x; d.y = y; break; }
+        }
         this.tend();
       }
     }
