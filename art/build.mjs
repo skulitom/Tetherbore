@@ -3,14 +3,15 @@
 //
 //   node art/build.mjs [--pixelbolt <Pixelbolt checkout>] [--only name,name]
 //
-// Writes assets/<name>.png for each sheet, assets/atlas.json (every sheet's frames and animations in one file) and
+// Writes assets/<name>.png for each sheet, assets/atlas.json (every sheet's frames and animations in one file; a
+// cross also has `map`, its colour on the map, and `debris`, the colours that fly off it) and
 // art/recipes/<name>.json, the compiled recipe of each sheet, to inspect with `pixelbolt inspect`.
 // The output is deterministic: the same sources and Pixelbolt commit give the same bytes.
 import { readFile, writeFile, mkdir, rm } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { ROCKS, FLOORS, LAVA } from './tiles.mjs';
+import { ROCKS, STRAINS, POCKETS, CROSSES, CROSS_LOOKS, FLOORS, POCKET_FLOORS, LAVA } from './tiles.mjs';
 import { RECIPES, appIcon } from './sprites.mjs';
 
 const ART = dirname(fileURLToPath(import.meta.url));
@@ -46,10 +47,10 @@ async function emit(recipe, name = recipe.name, extra = {}) {
 }
 
 // ---- terrain
-for (const source of [...ROCKS, ...FLOORS, LAVA]) {
+for (const source of [...ROCKS, ...STRAINS, ...POCKETS, ...CROSSES, ...FLOORS, ...POCKET_FLOORS, LAVA]) {
   if (!wanted(source.name)) continue;
   const { recipe } = pb.compileAutotile(source);
-  await emit(recipe);
+  await emit(recipe, recipe.name, CROSS_LOOKS[source.name]);
 }
 
 // ---- hand-drawn

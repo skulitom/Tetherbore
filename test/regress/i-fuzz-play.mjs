@@ -114,7 +114,7 @@ game.haul = cells => {
   haul0(cells);
   haulsThisFrame++;
   stats.hauls++; stats.hauled += cells.length; stats.biggest = Math.max(stats.biggest, cells.length);
-  const b = game.banner;
+  const b = game.hauled;
   if (!b) { note('haul: no banner', ''); return; }
   if (game.S.grit - g0 !== b.grit) note('haul: banner grit is not what was credited', `banner ${b.grit}, credited ${game.S.grit - g0}`);
   if (game.pending.grit - p0 !== b.grit) note('haul: banner grit is not what was put on its way', `banner ${b.grit}, pending ${game.pending.grit - p0}`);

@@ -1,10 +1,10 @@
 // Tetherbore: the game. A drill flies free on a tether from a fixed core, cuts whatever ground it is pushed into,
 // and reels in any piece of ground it has drawn the tether round.
-import { World, N, C, K, B, HARD, GRIT, GEMS, DX, DY, BIOME_NAMES, base, cellHash, sight, cellsAlong, RELIC_R, HOME_R } from './world.js';
+import { World, N, C, K, B, HARD, GRIT, GEMS, DX, DY, BIOMES, HAZARDS, ZONE, FIND, rowOf, hazOf, gemKin, digTime, cellHash, sight, cellsAlong, RELIC_R, HOME_R } from './world.js';
 import { sheets, draw, drawScaled, frameAt, duration, slice9, text, textWidth } from './atlas.js';
 import { sfx, unlock, isMuted, setMuted, setAmbience } from './audio.js';
 
-const T = 16;                                   // pixels in a cell
+export const T = 16;                            // pixels in a cell
 const HX = C + 0.5, HY = C + 0.5;               // the middle of the core, in cells
 const SAVE_KEY = 'tetherbore-save-v3';
 const DIR_BIOME = [B.LODE, B.EMBER, B.MIRE, B.FROST];
@@ -36,6 +36,9 @@ const WINCH_LOAD = [150, 400, 1000, 2300, 5000, 12000];
 export const overload = (n, level) => n <= WINCH_LOAD[level] ? 1 : (WINCH_LOAD[level] / n) ** 0.35;
 export const income = R => { const side = Math.max(4, Math.min(48, R / 3)); return side * PACE / 4 * WORTH * richness(R * 0.7) * haulBonus(side * side); };
 const round2 = n => { const unit = 10 ** Math.max(0, Math.floor(Math.log10(n)) - 1); return Math.round(n / unit) * unit; };
+// A haul of fewer cells than LIGHT, with nothing in it to make a show of, is a light one: it stops nothing and
+// says what it paid where it lay. A haul made within CHAIN seconds of the one before is a link in a chain.
+const LIGHT = 12, CHAIN = 6;
 // What the step up from each level of reach costs: the first is within the first haul, then 1.5 minutes of income
 // rising to 7.
 const REACH_COST = REACH.slice(0, -1).map((R, l) => l === 0 ? 15 : round2(income(R) * (40 + 50 * l)));
@@ -56,22 +59,68 @@ export const UPGRADES = [
   { id: 'winch', icon: 'winch', name: 'WINCH', what: 'BIGGER HAULS AT FULL PAY', values: [1, 1.3, 1.6, 2, 2.5, 3], gem: B.FROST, ...levels([0.8, 2, 3.6, 5.4, 7.2], 0.5), show: v => `x${v}` },
   { id: 'scanner', icon: 'scanner', name: 'SCAN', what: 'SEES DEEPER IN ROCK', values: [3, 4, 5, 7, 9], gem: B.FROST, ...levels([0.4, 1.6, 3.4, 5.8], 0.3), show: v => `${v}` },
   { id: 'momentum', icon: 'momentum', name: 'RAM', what: 'FLIES FASTER', values: [1, 1.25, 1.5, 1.8, 2.2], gem: B.LODE, ...levels([0.7, 2.4, 4.2, 6.2], 0.4), show: v => `x${v}` },
-  { id: 'bombs', icon: 'bomb', name: 'BLAST', what: 'BOMB: CLEARS ROCK', values: [0, 1, 2, 3, 4], gem: B.EMBER, ...levels([1, 2.8, 5, 7.4], 0.35), show: v => `${v}` },
+  // The bomb: a charge blows the plain rock out of a room round the drill and wakes nothing (`SIFT`, `sifts`). What
+  // was worth having stands loose in the room, to be flown round. A level is another charge and, later, a wider room.
+  { id: 'bombs', icon: 'bomb', name: 'BLAST', what: 'BOMB: SHAKES ORE LOOSE', values: [0, 1, 2, 3, 4], gem: B.EMBER, ...levels([1, 2.8, 5, 7.4], 0.4), show: v => `${v}` },
 ];
+// A charge clears a disc of this radius round the drill's cell, in cells, by the level of BLAST (the cells whose
+// middles lie that near: 21, 21, 37 and 69 of them). Only plain rock goes (`PLAIN`: soft and dense rock, ice,
+// basalt, glass and fault rock): ore, slate, slag and steel, hazards asleep, caches and whatever else was laid to be
+// found stand. So that what stands can be flown round, the plain rock round it goes too, `room` cells deep on
+// every side and at the corners, past the disc's edge where it stands near the edge; and a lump that runs on out
+// of the disc is followed `shake` cells past its edge. (Played with no hand on it, tools/sift.mjs,
+// 214 charges aimed where ore stands, on four worlds. As first planned, a plain disc with dense rock left standing,
+// two charges in three shook nothing loose: half the room stood, and a lump of ore nearly always runs on over the
+// disc's edge and holds to the wall. As it is, one in thirty-five. `room` is two cells because the drill is 0.68 of
+// a cell wide and cuts whatever it is pushed into: a lane one cell wide past a nugget is a nugget crushed.)
+export const SIFT = { radius: [0, 2.5, 2.5, 3.5, 4.5], shake: 2, room: 2 };
+const PLAIN = []; for (const k of [K.SOFT, K.DENSE, K.ICE, K.BASALT, K.GLASS, K.FAULT]) PLAIN[k] = true;
 // Where each direction's gems are found, for a price that cannot be met yet.
 const GEM_WHERE = [null, 'NORTH', 'SOUTH', 'WEST', 'EAST'];
-// What flies off each kind of ground when it is cut, the dark each direction's ground lies in, its motes, and its
-// colour on the map.
-const DEBRIS = {
-  crust: ['#6f5b49', '#806a55', '#a08a6c'], frost: ['#bcd8ee', '#ffffff', '#a2c4e2'], ember: ['#74403a', '#c07a5c', '#ff8a3a'],
-  mire: ['#665478', '#5f9450', '#b4e878'], lode: ['#b98a5a', '#f0d8a0', '#a57648'], slate: ['#6a7080', '#a4acbc', '#454a5a'],
-  vault: ['#463a68', '#8a78c0', '#c8a8ff'], ice: ['#6fb0e0', '#d8f4ff', '#ffffff'], basalt: ['#463e4c', '#7a6a78', '#8a3424'],
-  rime: ['#62b8b4', '#d8fff4', '#84d4c8'], magma: ['#7a2418', '#e8743a', '#ffb040'], bloom: ['#8a3c8c', '#ffa0e0', '#7af0d0'],
-  gilt: ['#6e5a34', '#ffe680', '#ffd040'], bedrock: ['#1e1e26', '#34343e'],
+// What is called out the first time it is seen (`World.see` says what it is): the name that comes up, and the
+// colour of that name, of the ring round the thing and of its dot on the map. A relic's colour is its direction's
+// gem's, and a pocket's mineral has its own name and its pocket's colour. Names only: nothing here says what a
+// thing is for.
+const SPOT = {
+  cache: ['CACHE', '#ffe14a'], geode: ['GEODE', '#f4ecd8'], wreck: ['WRECK', '#ff9a3a'], key: ['KEYSTONE', '#a4acbc'], prism: ['PRISM', '#ffffff'],
+  relic: ['RELIC', '#ffffff'], mineral: ['MINERAL', '#ffffff'],
 };
-const GLOOM = [[10, 8, 7], [5, 12, 30], [22, 5, 6], [14, 6, 26], [22, 13, 4], [3, 18, 24], [30, 5, 3], [26, 4, 28], [24, 18, 2]];
-const MOTE = ['#8a7a66', '#ffffff', '#ff9a3a', '#a5f0a0', '#ffe08a', '#d8fff4', '#ffc040', '#ffa0e0', '#ffe680'];
-const MAPC = [[111, 91, 73], [188, 216, 238], [116, 64, 58], [102, 84, 120], [185, 138, 90], [98, 184, 180], [122, 36, 24], [138, 60, 140], [110, 90, 52]];
+// A place's name is written in the colour it has on the map, as bright as that colour goes.
+const bright = ([r, g, b]) => { const k = 255 / Math.max(1, r, g, b); return `rgb(${Math.round(r * k)},${Math.round(g * k)},${Math.round(b * k)})`; };
+// How long a place's name stays up: on its plate, and across the screen the first time the place is met. How
+// many dots of things seen the map keeps, and how near an unclaimed wreck is heard.
+const PLATE = 2.4, CARD = 1.6, MARKS = 24, HEAR = 30;
+// How long the count of specimens stays up after a haul adds to it, and how many pockets the map marks at once.
+const SPEC_LINE = 3, PIPS = 24;
+// How long after a spore pod bursts the pods round it burst, in seconds, and how many pods the glow follows a bunch
+// through.
+const POD_CHAIN = 0.15, BUNCH = 64;
+// How long slag shows white as lava quenches it to steel, in seconds.
+const QUENCH = 0.12;
+// How long a charged crystal's fuse burns when it is woken by a cut beside it, in seconds: at the slowest the drill
+// flies (9 cells a second) that is seven cells, twice the reach of the arc.
+const FUSE = 0.8;
+// Ground that cuts this quick (its row's `dig` under PLOUGH: ash) is ploughed, not cut a block at a time: a cell
+// of it is gone in a twentieth of a second, so pushing into it neither breaks the drill's run nor draws the drill
+// square on to each block, and the loop a thumb draws is the loop that is cut. Ore cut into there says CRUSHED no
+// more often than every CRUSH_EVERY seconds: a plough goes through a mineral a second.
+const PLOUGH = 0.3, CRUSH_EVERY = 1;
+// The boulders of a drift (a pocket whose row's `twist` is 'drift') are in the books of loose ground while the
+// drill is in the drift or near it, and leave them once it is out and they are AWAY cells off the screen: so the
+// books do not grow by a drift's boulders for every drift crossed.
+const AWAY = 6;
+// What flies off the kinds of rock that look the same in every ground, by the sheet each is drawn from. A ground's
+// own rock sheds the colours in its row (js/world.js: BIOMES), where the dark it lies in, its motes and its colour
+// on the map are too.
+const DEBRIS = {
+  slate: ['#6a7080', '#a4acbc', '#454a5a'], vault: ['#463a68', '#8a78c0', '#c8a8ff'], ice: ['#6fb0e0', '#d8f4ff', '#ffffff'],
+  basalt: ['#463e4c', '#7a6a78', '#8a3424'], bedrock: ['#1e1e26', '#34343e'],
+};
+// And off what is found in the ground, whatever ground it lies in: a keystone's iron and rust, a prism's glass.
+const CHIPS = [];
+CHIPS[K.KEY] = ['#8a94a8', '#eef4ff', '#b0603a']; CHIPS[K.PRISM] = ['#ffffff', '#bfe6ff', '#d8b8ff'];
+// How many keystones in view glint in the dark at once (the nearest the drill), how bright, and how far.
+const KEY_GLINTS = 12, KEY_GLINT = 0.4, KEY_GLOW = 2;
 // How the tether looks at each level of reach: rope, braid, cable, then lines of light.
 const TETHERS = [
   { a: '#e8dcc0', b: '#e8dcc0', dash: 1 }, { a: '#e8dcc0', b: '#b89a6c', dash: 0.5 }, { a: '#f0d890', b: '#b0803a', dash: 0.5 },
@@ -79,8 +128,8 @@ const TETHERS = [
   { a: '#ffe89a', b: '#c89020', dash: 0.25, thick: true }, { a: '#fff4c0', b: '#e8a020', dash: 0.5, thick: true },
   { a: '#a8fff0', b: '#30c8c0', dash: 0.5, thick: true }, { a: '#ffc8f4', b: '#b050d0', dash: 0.5, thick: true }, { a: '#ffffff', b: '#5cc4f0', dash: 0.5, thick: true },
 ];
-// Nothing is too hard to cut: tougher ground only takes longer, and a better bit cuts all of it faster.
-const DIG_TIME = [0, 0, 0, 0.24, 0.45, 0.24, 0.45, 1.0, 1.8, 0.24, 0, 0.18, 0.45, 0.6, 0];
+// Nothing is too hard to cut: tougher ground only takes longer (js/world.js: `digTime`), and a better bit cuts all
+// of it faster.
 const SPEED = [1, 1.6, 2.4, 3.6, 5];
 const FLY = 9, BODY = 0.34;                     // cells a second in open ground; the drill's half-width in cells
 const SIDE = [1, N, -1, -N];                    // the cells beside a cell, as steps of its number: east, south, west, north
@@ -110,17 +159,26 @@ export class Game {
     this.taken = []; this.walked = new Set(); this.boxes = new WeakMap(); this.cuts = 0; this.homeKey = '';
     this.swept = 0;                         // cells the tether's sweeps have looked at, for tests of how much work is done
     this.effects = []; this.popups = []; this.hauls = []; this.clouds = []; this.sparks = new Map(); this.lavaVol = new Map(); this.frostOpen = [];
-    this.parts = []; this.rings = []; this.motes = []; this.gloom = [10, 8, 7]; this.flash = 0; this.counted = 0; this.chime = 3; this.clock = 0;
+    this.parts = []; this.rings = []; this.motes = []; this.gloom = [10, 8, 7]; this.murk = 1; this.flash = 0; this.counted = 0; this.chime = 3; this.clock = 0;
     this.shake = 0; this.twang = 0; this.edge = 0; this.hurt = 0; this.coreFlash = 0; this.banner = null; this.shop = false; this.shopRise = 0; this.confirmReset = 0;
-    this.buttons = [];
+    this.buttons = []; this.panels = [];    // what can be tapped this frame; and the small panels up this frame, each [x, y, w, h]
     this.chunks = new Map(); this.version = 0;
+    this.daylight = false;                  // no dark is laid over the ground: only a staged view asks for it (js/shot.js)
+    this.place = null; this.placeKey = null; this.motifAt = -9;      // the name on show, the place the drill is in, when a place last sounded
+    this.called = new Set(); this.calledAt = {};                      // things called out since the game began, and when each kind last was
+    this.tickIn = 0; this.ticks = 0;                                  // until a wreck's next tick, and how many there have been
+    this.quenched = new Map();                                        // slag just turned to steel: how long each cell still shows white
+    this.specLine = null;                                             // the count of specimens just banked, on show under the top bar
+    this.pips = []; this.pipsFor = '';                                // the pockets the map marks, and what that list was made for
+    this.drifts = new Map();                                          // the drifts whose boulders are in the books, by their keys
+    this.crushedAt = -9;                                              // when ore cut into last said CRUSHED
     this.fresh((Math.random() * 1e9) | 0, true);
   }
 
   // ------------------------------------------------------------ state
   fresh(seed, quiet = false) {
     this.S = { seed, grit: 0, gems: [0, 0, 0, 0, 0], lv: Object.fromEntries(UPGRADES.map(u => [u.id, 0])), relics: [0, 0, 0, 0], wrecks: [0, 0, 0, 0, 0, 0, 0, 0],
-      stats: { hauls: 0, best: 0, buys: 0, moves: 0, time: 0 }, won: false };
+      stats: { hauls: 0, best: 0, buys: 0, moves: 0, time: 0 }, won: false, met: {}, marks: [], visited: {}, spec: [0, 0, 0, 0, 0] };
     this.world.reset(seed);
     this.begin();
     if (!quiet) store().then(db => db.transaction('pieces', 'readwrite').objectStore('pieces').clear()).catch(() => {});
@@ -129,13 +187,18 @@ export class Game {
     const w = this.world;
     this.pending = { grit: 0, gems: [0, 0, 0, 0, 0] };
     this.parts.length = 0; this.rings.length = 0; this.effects.length = 0; this.popups.length = 0; this.hauls.length = 0; this.clouds.length = 0;
-    this.sparks.clear(); this.lavaVol.clear(); this.frostOpen.length = 0; w.lava.clear(); w.dug.clear();
+    this.sparks.clear(); this.lavaVol.clear(); this.quenched.clear(); this.frostOpen.length = 0; w.lava.clear(); w.dug.clear();
     this.drill = { x: HX, y: HY, px: HX, py: HY, vx: 0, vy: 0, ang: 0, mode: 'free', tx: 0, ty: 0, speed: 0, dig: -1, digT: 0, digDur: 1, stun: 0, squash: 0, run: 0, armed: true, cell: -1, home: true };
     this.bombs = this.val('bombs');
     this.cam = { x: HX * T, y: HY * T };
     this.band = [[HX, HY], [HX, HY]];
     this.pieces = []; this.pieceOf = new Map(); this.taken.length = 0; this.homeKey = ''; this.homeEnd = [HX, HY];
+    this.chain = null; this.hauled = null; this.specLine = null; this.pipsFor = ''; this.drifts.clear(); this.crushedAt = -9;
     w.see(C, C, this.val('scanner') + 4);
+    // Where the game begins is where the player already is: its name does not come up, now or as a new place later.
+    const here = this.placeAt(this.di);
+    this.place = null; this.placeKey = here.key; this.S.met[here.row.id] = 1;
+    this.called.clear(); this.calledAt = {}; this.tickIn = 0;
     // The first piece, beside the core, lies loose from the start: the open cell between them tells of it.
     this.changed([C * N + C + 3]);
     this.shop = false;
@@ -173,6 +236,9 @@ export class Game {
         });
       } catch { rows = []; }
       this.S = S;
+      // What a game saved before these were kept does not have: the wrecks' parts, the grounds met, the dots of
+      // things seen on the map, the pockets visited, the specimens of each direction.
+      S.wrecks ??= [0, 0, 0, 0, 0, 0, 0, 0]; S.met ??= {}; S.marks ??= []; S.visited ??= {}; S.spec ??= [0, 0, 0, 0, 0];
       for (const u of UPGRADES) this.S.lv[u.id] = Math.min(this.S.lv[u.id] ?? 0, u.values.length - 1);
       this.world.reset(S.seed);
       for (const [id, p] of rows) this.world.chunks[id] = p;
@@ -509,13 +575,53 @@ export class Game {
     this.retighten();
     this.discover(this.taken.splice(0), 600, this.walked);
     this.reelIfRound();
+    // A dot on the map stays until the thing it marks is gone: cut, hauled, or turned into something else.
+    const marks = this.S.marks;
+    if (marks.length && marks.some(m => { const k = w.laid(m[0]); return k >= 0 && k !== m[1]; })) this.S.marks = marks.filter(m => { const k = w.laid(m[0]); return k < 0 || k === m[1]; });
   }
   // A piece of loose ground goes into the books. Ground known as loose before that lies within it is part of it now.
+  // (A drift's boulder: its drift is one whose boulders are in the books, until the drill is well away: `driftsOut`.)
   enter(cells) {
     const of = this.pieceOf, within = new Set();
     for (const c of cells) { const piece = of.get(c); if (piece) within.add(piece); of.set(c, cells); }
     if (within.size) this.pieces = this.pieces.filter(piece => !within.has(piece));
     this.pieces.push(cells);
+    const w = this.world, i = cells[0];
+    if (w.row(i).pocket?.twist === 'drift') { const Z = w.pocketOf(i % N, Math.floor(i / N)); if (Z !== null && Z.row === w.b(i)) this.drifts.set(Z.key, Z); }
+  }
+  // The drill has come into a drift: every boulder that stands in it is in the books of loose ground from now,
+  // seen or not, and shows its edge through the dark. What stands there is asked of the cells themselves, each
+  // looked at as ground that comes into view is (`spot`): the pocket's record says only where to look.
+  driftIn(Z) {
+    const w = this.world, most = Math.ceil(Z.reach);
+    for (let y = Z.cy - most; y <= Z.cy + most; y++) for (let x = Z.cx - most; x <= Z.cx + most; x++) {
+      const i = y * N + x;
+      if (w.k(i) !== K.EMPTY && w.b(i) === Z.row) this.spot(i);
+    }
+    this.drifts.set(Z.key, Z);
+  }
+  // The drifts whose boulders are in the books and that the drill has left behind, out of the drift and AWAY
+  // cells further off than the screen shows: their boulders go out of the books, so that the books hold no more
+  // for every drift crossed. A boulder the tether lies against stays (the lasso may yet close on it), and its
+  // drift is asked about again. A boulder left out is no less loose: it is found again when it next comes into
+  // view, when the drill comes back in, or when the tether is drawn round it (`spot`, `discover`, `sweepHome`).
+  driftsOut() {
+    const w = this.world, d = this.drill, of = this.pieceOf, away = Math.hypot(this.W, this.H) / 2 / T + AWAY;
+    for (const [key, Z] of this.drifts) {
+      if (key === this.placeKey || Math.hypot(Z.cx + 0.5 - d.x, Z.cy + 0.5 - d.y) <= Z.reach + away) continue;
+      const held = new Set(), most = Z.reach + 1;
+      for (const b of this.band) { const piece = b[3] === undefined ? undefined : of.get(b[3]); if (piece) held.add(piece); }
+      let kept = false;
+      this.pieces = this.pieces.filter(cells => {
+        // (Only a piece that lies wholly in this drift's own ground: a boulder, or what is left of one.)
+        const x = cells[0] % N - Z.cx, y = Math.floor(cells[0] / N) - Z.cy;
+        if (x > most || x < -most || y > most || y < -most || cells.length > 64 || !cells.every(c => w.b(c) === Z.row)) return true;
+        if (held.has(cells)) { kept = true; return true; }
+        for (const c of cells) if (of.get(c) === cells) of.delete(c);
+        return false;
+      });
+      if (!kept) this.drifts.delete(key);
+    }
   }
   // One cell of ground is looked at: is it part of an island nobody knew, ground the world itself made standing
   // free or that grew in the open? If so the island is entered among the loose pieces. Only ground the world has
@@ -700,7 +806,7 @@ export class Game {
       const i = this.di, k = w.k(i);
       if (k !== K.EMPTY && HARD[k] < 99) {
         w.setK(i, K.EMPTY);
-        if (base(w.b(i)) === B.FROST) { w.dug.set(i, this.clock); this.frostOpen.push(i); }
+        if (w.row(i).freeze > 0) { w.dug.set(i, this.clock); this.frostOpen.push(i); }
         this.changed([i]);
       }
       if (w.k(i) === K.EMPTY && this.free(Math.floor(d.x) + 0.5, Math.floor(d.y) + 0.5)) {
@@ -797,12 +903,18 @@ export class Game {
     }
     // Pushed into ground, it cuts.
     if (m > 0 && (hitX || hitY)) {
-      d.run = 0;
       // A cut in progress goes on while the drill is still pressed into that cell and the stick has not turned from
       // where it was when the cut began (a new direction cancels it). In a notch, pushed into two cells at once on
       // the diagonal, which of them the stick favours changes with a hair's turn of the thumb, and with the drill's
       // own squaring up to the cell it cuts: without this neither would ever be cut through.
       const i = this.bite(ix, iy, hitX, hitY, d.dig >= 0 && ix * d.digX + iy * d.digY > 0.94 ? d.dig : -1);
+      // Ground that cuts like air is ploughed (`PLOUGH`): the run goes on through it, and the drill is not drawn
+      // square on to each block of it, or cells gone in a twentieth of a second would stutter, not plough. (Sliding
+      // past a block at speed, the drill may be stopped by one that is no longer before the bit when the frame
+      // ends: in ploughed ground, which is the ground it stands in when there is no cell to say, that does not
+      // break its run either. With a bit that cuts ash in one frame it happens several times a second.)
+      const plough = w.row(i >= 0 ? i : this.di).dig < PLOUGH;
+      if (!plough) d.run = 0;
       if (i < 0) { d.dig = -1; if (hitX) d.vx = 0; if (hitY) d.vy = 0; }
       else {
         const k = w.k(i);
@@ -811,14 +923,16 @@ export class Game {
           d.dig = -1;
         } else if (!this.within((i % N) + 0.5, Math.floor(i / N) + 0.5)) { if (this.edge <= 0) this.refuse(); d.dig = -1; }
         else {
-          if (d.dig !== i) { d.dig = i; d.digT = 0; d.digDur = DIG_TIME[k] / SPEED[this.S.lv.drill]; d.digX = ix; d.digY = iy; this.foresee(i); }
+          if (d.dig !== i) { d.dig = i; d.digT = 0; d.digDur = digTime(k, w.row(i)) / SPEED[this.S.lv.drill]; d.digX = ix; d.digY = iy; this.foresee(i); }
           const before = d.digT;
           d.digT += dt;
           if (((d.digT * 30) | 0) !== ((before * 30) | 0) && d.digDur > 0.15) { sfx.grind(); if (d.digDur > 0.4) this.shake = Math.max(this.shake, 1.2); }
-          if (((d.digT * 18) | 0) !== ((before * 18) | 0)) this.chips(i % N, Math.floor(i / N), this.rockSheet(k, w.b(i)), 2, d.ang, 0.6);
+          if (((d.digT * 18) | 0) !== ((before * 18) | 0)) this.chips(i % N, Math.floor(i / N), this.debris(k, w.b(i)), 2, d.ang, 0.6);
           // Cutting draws the drill square on to the block, so tunnels come out clean: never past the tether's reach.
+          // (Not in ground that is ploughed: there the cut goes where the thumb draws it.)
           const cx = (i % N) + 0.5, cy = Math.floor(i / N) + 0.5, inReach = (x, y) => { const to = Math.hypot(x - HX, y - HY); return to <= R || to <= Math.hypot(d.x - HX, d.y - HY); };
-          if (Math.abs(cx - d.x) > Math.abs(cy - d.y)) { const ny = d.y + (cy - d.y) * Math.min(1, dt * 6); if (this.free(d.x, ny) && inReach(d.x, ny)) d.y = ny; }
+          if (plough) { /* no squaring up */ }
+          else if (Math.abs(cx - d.x) > Math.abs(cy - d.y)) { const ny = d.y + (cy - d.y) * Math.min(1, dt * 6); if (this.free(d.x, ny) && inReach(d.x, ny)) d.y = ny; }
           else { const nx = d.x + (cx - d.x) * Math.min(1, dt * 6); if (this.free(nx, d.y) && inReach(nx, d.y)) d.x = nx; }
           this.tend();
           if (d.digT >= d.digDur) this.finishDig(i);
@@ -883,11 +997,88 @@ export class Game {
       if (this.world.see(x, y, r)) this.version++;
       // Ground that has come into view is looked at: an island among it is known as loose from the first sight.
       for (let v = y - r; v <= y + r; v++) for (let u = x - r; u <= x + r; u++) if (Math.abs(u - px) > r || Math.abs(v - py) > r) this.spot(v * N + u);
+      this.arrive(cell);
+      if (this.drifts.size) this.driftsOut();
     }
+    if (this.world.spotted.length) this.callOut();
     const home = this.atCore;
     if (home && !d.home && this.bombs < this.val('bombs')) { this.bombs = this.val('bombs'); sfx.dock(); this.coreFlash = 0.25; }
     if (home && !d.home) { this.homecoming(); this.save(); }
     d.home = home;
+  }
+  // The place a cell lies in: the row of its ground, and the key the place is known by. A pocket is a place of
+  // its own (`zone`: the world's record of it), so two pockets of one kind are two places; any other ground is one
+  // place wherever it lies. What ground a cell is, the cell itself says.
+  placeAt(i) {
+    const w = this.world, row = w.row(i);
+    const zone = row.pocket ? w.zoneOf(Math.floor(((i % N) - C) / ZONE), Math.floor((Math.floor(i / N) - C) / ZONE)) : null;
+    return { key: zone ? zone.key : row.id, row, zone };
+  }
+  // The drill has come into another cell. If that is another place, its name comes up: on a plate under the top
+  // bar with its direction's gem beside it (and, where its rich ore pays another direction's gems, as a cross's
+  // does, that gem after it), or, the first time ever that this ground is met, alone across the screen. The name
+  // and nothing more.
+  arrive(i) {
+    const here = this.placeAt(i);
+    if (here.key === this.placeKey) return;
+    this.placeKey = here.key;
+    const S = this.S, row = here.row, card = !S.met[row.id];
+    S.met[row.id] = 1;
+    if (here.zone) S.visited[here.key] = 1;
+    // (In a drift everything lies loose already, and is in the books from the moment the drill comes in.)
+    if (here.zone && row.pocket.twist === 'drift') this.driftIn(here.zone);
+    // (A pocket's plate has its mineral on it, where the mineral has a picture; any other place its direction's gem.)
+    this.place = { title: row.title, icon: GEM_ICON[row.kin] ?? 'grit', mineral: this.mineralOf(row), also: row.gemB !== row.kin ? GEM_ICON[row.gemB] ?? null : null, colour: bright(row.map), t: 0, card, life: card ? CARD : PLATE };
+    // (A border that wanders is crossed many times in a few cells: the name changes each time, the sound does not.)
+    if (card) sfx.arrive(row.kin); else if (this.time - this.motifAt > PLATE) sfx.place(row.kin);
+    this.motifAt = this.time;
+  }
+  // The name of a ground's mineral, where it is a pocket's and the mineral has a picture on the 'minerals' sheet:
+  // null otherwise. And that picture drawn, twelve pixels square with its corner at (x, y).
+  mineralOf(row) { const name = row.pocket?.mineral; return name && sheets.minerals?.frames[name] ? name : null; }
+  drawMineral(ctx, name, x, y) { const r = sheets.minerals.frames[name]; ctx.drawImage(sheets.minerals.image, r[0] + 2, r[1] + 2, 12, 12, Math.round(x), Math.round(y), 12, 12); }
+  // Things seen for the first time are called out: a ring spreading from the thing, its name, a few notes, and a
+  // dot on the map that stays until it is gone (but for wrecks and relics, which the map shows anyway). One call
+  // for each thing, however many of its cells come into view and however often (a thing is known by what it is and
+  // the sector of FIND cells its middle lies in), and no more than one of a kind every three seconds: what comes
+  // sooner still gets its dot.
+  callOut() {
+    const w = this.world, S = this.S;
+    for (const [what, seen, mid] of w.spotted.splice(0)) {
+      const x = mid % N, y = Math.floor(mid / N), key = `${what}:${Math.floor((x - C) / FIND)},${Math.floor((y - C) / FIND)}`;
+      if (this.called.has(key)) continue;
+      this.called.add(key);
+      // The cell the thing is marked by is one that goes when it is taken: a geode's is a cell of its ore.
+      const cell = what === 'geode' && w.k(mid + 1) === K.ORE_B ? mid + 1 : seen, kind = w.k(cell);
+      if (kind === K.EMPTY || S.marks.some(m => m[0] === cell)) continue;
+      const row = w.row(seen), dir = w.relicAt.indexOf(seen);
+      const name = what === 'mineral' ? (row.pocket?.mineral ?? SPOT.mineral[0]).toUpperCase() : SPOT[what][0];
+      const colour = what === 'mineral' ? bright(row.map) : what === 'relic' && dir >= 0 ? GEM_COLOR[DIR_BIOME[dir]] : SPOT[what][1];
+      if (what !== 'wreck' && what !== 'relic') { S.marks.push([cell, kind, colour]); if (S.marks.length > MARKS) S.marks.shift(); }
+      if (this.time - (this.calledAt[what] ?? -9) < 3) continue;
+      this.calledAt[what] = this.time;
+      this.ring((x + 0.5) * T, (y + 0.5) * T, colour, 30);
+      this.sparkle((x + 0.5) * T, (y + 0.5) * T, 5, colour);
+      this.popup(x, y - 1, name, colour);
+      sfx.spot(what);
+    }
+  }
+  // A wreck nobody has claimed, within hearing, ticks: softly, and quicker the nearer the drill is to it.
+  listen(dt) {
+    const w = this.world, d = this.drill, held = this.S.wrecks ?? [], spots = w.wrecks;
+    let near = HEAR;
+    for (let n = 0; n < spots.length; n++) {
+      if (held[n]) continue;
+      const far = Math.hypot(spots[n][0] + 0.5 - d.x, spots[n][1] + 0.5 - d.y);
+      // (The wreck itself must be there, where the world has been made: one that is on its way home is not.)
+      if (far < near && w.laid(spots[n][1] * N + spots[n][0]) !== K.EMPTY) near = far;
+    }
+    if (near >= HEAR) { this.tickIn = 0; return; }
+    this.tickIn -= dt;
+    if (this.tickIn > 0) return;
+    this.tickIn = 0.22 + 1.4 * near / HEAR;
+    this.ticks++;
+    sfx.ping(1 - near / HEAR);
   }
   // Home with the tether still wound round something: ground it lies against that nobody knew was loose is found
   // now (`discover`) and what the tether is round is reeled in. Reeling lets the string settle on whatever lay
@@ -918,34 +1109,47 @@ export class Game {
     this.twang = 0.45; this.edge = 1.2; sfx.twang(); d.squash = 0.14;
     this.popup(d.x - 0.5, d.y - 1, 'REACH', '#ff7a5a', 'tether');
   }
-  // The last cut glows: the ground that would come free if this cell were cut.
-  foresee(i) {
+  // The last cut glows: the ground that would come free if this cell were cut. `also` is whatever else the cut
+  // would open besides its own cell (a pane that shatters whole, a crack that runs on, the cells a punch goes
+  // through): those glow with it, and what they would leave hanging is found as what the cut itself would.
+  foresee(i, also = []) {
     // A lava pocket or a spore pod beside the cut bursts with it, and what comes free is what both leave hanging.
-    const w = this.world, cells = [i];
+    // A pod takes its whole bunch with it (`bunch`), as it will a moment after the cut.
+    const w = this.world, cells = [i], here = w.hazAt(i);
+    if (here === 'spore') this.bunch(i, cells);
+    // A charged crystal cut into arcs at once, and the slate it shatters opens with the cut.
+    if (here === 'spark') also = also.concat(this.shatters(i % N, Math.floor(i / N)));
     for (let s = 0; s < 4; s++) {
       const j = i + DY[s] * N + DX[s];
-      if (w.k(j) === K.HAZARD && (base(w.b(j)) === B.EMBER || base(w.b(j)) === B.MIRE)) cells.push(j);
+      const haz = w.hazAt(j);
+      if (haz === 'lava') cells.push(j);
+      else if (haz === 'spore') this.bunch(j, cells);
     }
-    const found = w.freed(cells, 2000);
-    this.preview = found.length ? [{ i, cells: found.flat() }] : [{ i, cells: [] }];
+    const open = also.filter(j => j !== i && w.k(j) !== K.EMPTY), found = w.freed(cells, 2000, open.length ? new Set(open) : null);
+    this.preview = [{ i, cells: open.concat(...found) }];
   }
   finishDig(i) {
-    const w = this.world, d = this.drill, x = i % N, y = Math.floor(i / N), k = w.k(i), b = w.b(i);
+    const w = this.world, d = this.drill, x = i % N, y = Math.floor(i / N), k = w.k(i), b = w.b(i), row = rowOf(b), haz = hazOf(k, row);
     w.setK(i, K.EMPTY);
-    if (base(b) === B.FROST) { w.dug.set(i, this.clock); this.frostOpen.push(i); }
-    const tough = k === K.SLATE ? 3 : k === K.VAULT ? 4 : k === K.DENSE || k === K.ORE_B || k === K.BASALT ? 2 : 1;
+    if (row.freeze > 0) { w.dug.set(i, this.clock); this.frostOpen.push(i); }
+    // (A keystone is iron: it rings and shatters as slate does. A prism breaks like any crystal.)
+    const mineral = row.pocket !== null && k === (row.pocket.kind ?? K.MINERAL);
+    const tough = k === K.SLATE || k === K.KEY ? 3 : k === K.VAULT ? 4 : k === K.DENSE || k === K.ORE_B || k === K.BASALT || k === K.SLAG || k === K.STEEL || k === K.PRISM || mineral ? 2 : 1;
     sfx.dig(tough);
-    this.chips(x, y, this.rockSheet(k, b), 9 + tough * 3, d.ang, 1);
+    this.chips(x, y, this.debris(k, b), 9 + tough * 3, d.ang, 1);
     this.effect('dust', 'dust', (x + 0.5) * T, (y + 0.5) * T);
     if (tough >= 2 || k === K.ICE) this.effect('shatter', 'shatter', (x + 0.5) * T, (y + 0.5) * T);
-    if (k === K.ORE_A || k === K.ORE_B) this.popup(x, y, 'CRUSHED', '#9a94a8');
+    // (Ploughing, the drill goes through a mineral every second or so: it says so no more often than that.)
+    if ((k === K.ORE_A || k === K.ORE_B || k === K.STEEL || k === K.PRISM || mineral) && (row.dig >= PLOUGH || this.time - this.crushedAt >= CRUSH_EVERY)) { this.crushedAt = this.time; this.popup(x, y, 'CRUSHED', '#9a94a8'); }
     this.shake = Math.max(this.shake, 1 + tough * 0.5);
-    if (k === K.HAZARD) this.trigger(i, b, true);
-    // A hazard beside the cut wakes, and may open its own cell: every cell opened goes to `changed` together.
+    // The hazard that was cut into wakes, and a hazard beside the cut: each may open cells (its own; the slate an
+    // arc shatters), and every cell opened goes to `changed` together.
     const opened = [i];
+    if (haz) for (const j of this.trigger(i, haz, true)) if (j !== i) opened.push(j);
     for (let s = 0; s < 4; s++) {
       const j = (y + DY[s]) * N + x + DX[s];
-      if (w.k(j) === K.HAZARD) opened.push(...this.trigger(j, w.b(j), false));
+      const beside = w.hazAt(j);
+      if (beside) opened.push(...this.trigger(j, beside, false));
     }
     d.dig = -1; this.preview = [];
     w.see(x, y, 1);
@@ -953,31 +1157,96 @@ export class Game {
   }
 
   // ------------------------------------------------------------ hauling
-  haul(cells) {
-    const w = this.world, S = this.S, n = cells.length;
-    let grit = 0, relic = -1, cx = 0, cy = 0, caches = 0, lump = 0, parts = 0;
-    S.wrecks ??= [0, 0, 0, 0, 0, 0, 0, 0];
-    const gems = [0, 0, 0, 0, 0], sprites = [], show = Math.max(1, Math.ceil(n / 400));
-    cells.forEach((i, at) => {
-      const x = i % N, y = Math.floor(i / N), k = w.k(i), b = w.b(i), far = Math.hypot(x - C, y - C), rich = richness(far) * (b > 4 ? 2 : 1);
-      const gem = b ? GEMS[k] * (b > 4 ? 2 : 1) : 0;
-      grit += GRIT[k] * rich; gems[base(b)] += gem;
+  // What a haul of these cells would pay, were it made now. Asking changes nothing: the haul itself asks and then
+  // does as this says, and so may anything that shows what a piece is worth before it is hauled, which then cannot
+  // say otherwise than the haul will. `extra` is cells that are no longer in the world but come home with the haul,
+  // each { k, b, x, y } (a kind, a ground and where it lay): counted in the haul's size and paid at its multiplier.
+  //   n                 how many cells, the extra ones among them
+  //   grit, gems        what is paid: grit in all, and gems of each direction (1 north, 2 south, 3 west, 4 east)
+  //   lump              the part of the grit paid as it stands, whatever the size of the haul: caches, and the
+  //                     mineral of a pocket (which, in a pocket whose row says `chain`, pays more for each haul
+  //                     before it in a chain)
+  //   chain             what such a mineral's lump was multiplied by for the hauls before this one: 1 with none
+  //                     before it, and 0 where no cell is a mineral that pays more in a chain
+  //   spec, minerals    specimens of each direction, and how many cells of a pocket's mineral there are
+  //   mineral           the name of that mineral (the last met), or null
+  //   prisms, shine     cells of prism, and what they multiply every gem by: half as much again each, to three
+  //   relic             which direction's relic is among the cells, or -1
+  //   caches, parts     caches; and wreck parts not held yet (`wrecks`: which wrecks they are)
+  //   mult, over        what the cells' grit is multiplied by, and the share of it left by a piece over the winch's load
+  payOf(cells, extra = []) {
+    const w = this.world, S = this.S, n = cells.length + extra.length, gems = [0, 0, 0, 0, 0], spec = [0, 0, 0, 0, 0], wrecks = [], held = S.wrecks ?? [];
+    const chain = 1 + 0.2 * Math.min(5, this.chain && this.time - this.chain.t <= CHAIN ? this.chain.n : 0);
+    let grit = 0, lump = 0, relic = -1, caches = 0, minerals = 0, mineral = null, prisms = 0, chains = false;
+    const one = (k, b, x, y) => {
+      const row = rowOf(b), far = Math.hypot(x - C, y - C), rich = richness(far) * row.rich * row.worth, P = row.pocket;
+      // Whose gems a cell pays is its kind's and its ground's to say; the home ground pays none.
+      grit += GRIT[k] * rich; gems[gemKin(k, row)] += GEMS[k] * row.gemx;
       if (b === B.CRUST && (k === K.ORE_A || k === K.ORE_B)) grit += (k === K.ORE_B ? 20 : 4) * rich;
-      if (k === K.RELIC) relic = w.relicAt.indexOf(i);
+      if (k === K.RELIC) relic = w.relicAt.indexOf(y * N + x);
       // A cache holds what a quarter of a minute's cutting out here would earn; a wreck gives up its part.
-      if (k === K.CACHE) { caches++; lump += round2(income(Math.max(22, far)) * 12); }
-      if (k === K.WRECK) { const which = w.wrecks.findIndex(([wx, wy]) => wx === x && wy === y); if (which >= 0 && !S.wrecks[which]) { S.wrecks[which] = 1; parts++; } }
+      else if (k === K.CACHE) { caches++; lump += round2(income(Math.max(22, far)) * 12); }
+      else if (k === K.WRECK) { const which = w.wrecks.findIndex(([wx, wy]) => wx === x && wy === y); if (which >= 0 && !held[which] && !wrecks.includes(which)) wrecks.push(which); }
+      else if (k === K.PRISM) prisms++;
+      // A pocket's mineral pays so many seconds of what cutting out here would earn, and specimens of the
+      // direction the pocket lies in.
+      if (P !== null && k === (P.kind ?? K.MINERAL)) {
+        minerals++; mineral = P.mineral ?? null;
+        if (P.chain) chains = true;
+        lump += round2(income(Math.max(22, far)) * P.lump * (P.chain ? chain : 1));
+        spec[w.zoneOf(Math.floor((x - C) / ZONE), Math.floor((y - C) / ZONE))?.kin ?? row.kin] += P.spec;
+      }
+    };
+    for (const i of cells) one(w.k(i), w.b(i), i % N, Math.floor(i / N));
+    for (const e of extra) one(e.k, e.b, e.x, e.y);
+    // Each part brought home from a wreck makes every haul pay a tenth more, the haul that brings it too.
+    // (A piece over the winch's load pays less for each cell's own grit, and its banner says so; where the cells
+    // are worth nothing themselves, as a loop of ash is, nothing is lost and nothing is said.)
+    const parts = wrecks.length, over = grit > 0 ? overload(n, S.lv.winch) : 1, mult = haulBonus(n, this.val('winch')) * (1 + 0.1 * (held.filter(Boolean).length + parts)) * over;
+    const shine = 1 + 0.5 * Math.min(prisms, 3);
+    for (let b = 1; b < 5; b++) gems[b] = Math.round(gems[b] * shine);
+    return { n, grit: Math.round(grit * mult) + lump, gems, lump, spec, minerals, mineral, prisms, shine, relic, caches, parts, wrecks, mult, over, chain: chains ? chain : 0 };
+  }
+  // The tether is round these cells: they go, and what they are worth is on its way home.
+  haul(cells) {
+    // (A haul of nothing would never be over: it ends when the last of its rubble is home.)
+    if (!cells.length) return;
+    const w = this.world, S = this.S, n = cells.length, pay = this.payOf(cells), { grit, gems, relic, caches, parts, mult, over } = pay;
+    S.wrecks ??= [0, 0, 0, 0, 0, 0, 0, 0];
+    for (const which of pay.wrecks) S.wrecks[which] = 1;
+    // A very large piece is shown by a share of its cells.
+    const sprites = [], show = Math.max(1, Math.ceil(n / 400));
+    let cx = 0, cy = 0;
+    for (let at = 0; at < n; at++) {
+      const i = cells[at], x = i % N, y = Math.floor(i / N);
       cx += x; cy += y;
-      // A very large piece is shown by a share of its cells.
-      if (at % show === 0) sprites.push({ x, y, tile: this.rockRect(x, y, k, b), over: this.overlay(k), gem: gem ? base(b) : 0, gems: gem * show, biome: b, far });
-    });
+      if (at % show) continue;
+      const k = w.k(i), b = w.b(i), row = rowOf(b), gem = GEMS[k] * row.gemx * pay.shine, kin = gemKin(k, row);
+      sprites.push({ x, y, tile: this.rockRect(x, y, k, b), over: this.overlay(k, row, i), debris: this.debris(k, b), gem: gem ? kin : 0, gems: gem * show, far: Math.hypot(x - C, y - C) });
+    }
     for (const i of cells) w.setK(i, K.EMPTY);
-    // Each part brought home from a wreck makes every haul pay a tenth more.
-    const over = overload(n, S.lv.winch), mult = haulBonus(n, this.val('winch')) * (1 + 0.1 * S.wrecks.filter(Boolean).length) * over;
-    grit = Math.round(grit * mult) + lump;
-    for (let b = 1; b < 5; b++) gems[b] = Math.round(gems[b]);
+    // A haul made soon after another is a link in a chain: `n` is how many came before it.
+    const linked = this.chain && this.time - this.chain.t <= CHAIN ? this.chain.n : 0;
+    this.chain = { t: this.time, n: linked + 1 };
+    // Small, and with nothing in it to make a show of, it is a light haul: flight is not stopped for it. (A prism
+    // is something to make a show of: the banner says what it did to the gems.)
+    const light = n < LIGHT && relic < 0 && !caches && !parts && !pay.prisms;
     S.grit += grit; this.pending.grit += grit;
     for (let b = 1; b < 5; b++) { S.gems[b] += gems[b]; this.pending.gems[b] += gems[b]; }
+    // Specimens of a pocket's mineral: a count for each direction, kept to the fraction and shown whole. `specUp`
+    // is how far the whole count rose, of the direction that gained most (`specOf`).
+    S.spec ??= [0, 0, 0, 0, 0];
+    let specOf = 0, specUp = 0;
+    for (let b = 1; b < 5; b++) {
+      if (!(pay.spec[b] > 0)) continue;
+      const had = Math.floor(S.spec[b] + 1e-9);
+      S.spec[b] += pay.spec[b];
+      if (!specOf || pay.spec[b] > pay.spec[specOf]) { specOf = b; specUp = Math.floor(S.spec[b] + 1e-9) - had; }
+    }
+    // (A mineral that pays more in a chain rings at every haul, a note higher for each haul before it, as far as
+    // the pay rises; any other rings when the whole count of specimens does.)
+    if (specOf) this.specLine = { kin: specOf, t: 0, life: SPEC_LINE };
+    if (pay.chain || (specOf && specUp > 0)) sfx.gem(Math.min(5, linked));
     S.stats.hauls++; S.stats.best = Math.max(S.stats.best, n);
     sprites.sort((a, b) => a.far - b.far);
     const count = sprites.length, spread = Math.min(1.0, 0.2 + count * 0.012), lift = Math.min(0.5, 0.26 + count * 0.003);
@@ -985,31 +1254,47 @@ export class Game {
     const route = this.lay().map(([x, y]) => [x * T, y * T]), cum = [0];
     for (let k = 1; k < route.length; k++) cum.push(cum[k - 1] + Math.hypot(route[k][0] - route[k - 1][0], route[k][1] - route[k - 1][1]));
     const length = cum[cum.length - 1];
-    // Small pieces break fine, big ones coarse, so there are never too many bits of ground to push about.
-    const per = count <= 24 ? 4 : count <= 140 ? 2 : 1, size = T / per, h = { sprites, t: 0, n, count, grit, gems, left: grit, paid: 0, lift, relic, route, cum, length,
-      bits: [], total: count * per * per, size, v: 0, hole: 0, gathered: lift + spread + 0.3 };
+    // Small pieces break fine, big ones coarse, so there are never too many bits of ground to push about; and
+    // in a chain, where one heap of rubble follows another, none break fine.
+    const per = count <= 24 && !linked ? 4 : count <= 140 ? 2 : 1, size = T / per, h = { sprites, t: 0, n, count, grit, gems, left: grit, paid: 0, lift, relic, route, cum, length,
+      bits: [], total: count * per * per, size, v: 0, hole: 0, gathered: lift + spread + 0.3, light };
     let at = 0;
     sprites.forEach((s, i) => {
       s.go = lift + (count > 1 ? i / (count - 1) : 0) * spread; s.left = per * per;
       const [u, k] = this.onRoute(h, (s.x + 0.5) * T, (s.y + 0.5) * T, 0, route.length);
       s.k = k; at += u / count;
-      if (s.over) { const items = this.itemSheet(s.biome, s.over), f = s.over === 'hazard' || s.over === 'relic' ? frameAt(items, s.over, 0) : sheets[items].frames[s.over]; s.item = [sheets[items].image, f]; }
+      if (s.over) { const [items, frame] = s.over, f = frame === 'hazard' || frame === 'relic' ? frameAt(items, frame, 0) : sheets[items].frames[frame]; s.item = [sheets[items].image, f]; }
     });
     // The rubble gathers on the tether beside where it lay. From here the haul has a rope of its own, and the drill
     // is free to go.
     h.S = at;
     this.hauls.push(h);
-    cx = (cx / n + 0.5) * T; cy = (cy / n + 0.5) * T;
+    const mx = cx / n, my = cy / n;
+    cx = (mx + 0.5) * T; cy = (my + 0.5) * T;
     this.effect('haul', 'impact', cx, cy);
-    if (n >= 20) this.effect('bank', 'area', cx, cy);
-    this.shake = Math.max(this.shake, Math.min(9, 2.5 + n * 0.12));
-    this.hitstop = Math.min(0.16, 0.05 + n * 0.002);
     sfx.crack(n);
-    this.flash = Math.min(0.5, 0.12 + n * 0.006);
-    this.ring(cx, cy, '#fff6c8', 30 + Math.min(60, n * 1.5));
-    for (const sp of sprites) if (count < 60 || cellHash(sp.x, sp.y, 9) < 0.4) this.chips(sp.x, sp.y, sp.tile[0], 2, null, 0.7);
+    for (const sp of sprites) if (count < 60 || cellHash(sp.x, sp.y, 9) < 0.4) this.chips(sp.x, sp.y, sp.debris, 2, null, 0.7);
     const title = relic >= 0 ? 'RELIC!' : parts ? 'WRECK PART! PAY +10%' : caches ? 'CACHE!' : n >= 200 ? 'COLOSSAL!' : n >= 80 ? 'HUGE HAUL!' : n >= 30 ? 'BIG HAUL!' : n >= 10 ? 'NICE CUT!' : 'HAUL';
-    this.banner = { title, n, mult, over, grit, gems, t: 0, life: 2.2 + Math.min(1.2, n * 0.01) };
+    // What the last haul was and paid (`hauled`). Any but a light one says so across the screen, with a flash and
+    // a beat of stillness. A light one says what it paid where it lay, and leaves the banner of a bigger haul up.
+    const mineral = pay.mineral && sheets.minerals?.frames[pay.mineral] ? pay.mineral : null;
+    this.hauled = { title, n, mult, over, grit, gems, light, shine: pay.shine, minerals: pay.minerals, mineral, spec: specUp, specOf, chain: pay.chain, t: 0, life: 2.2 + Math.min(1.2, n * 0.01) };
+    if (light) {
+      this.shake = Math.max(this.shake, Math.min(1.5, 0.7 + n * 0.08));
+      this.ring(cx, cy, '#fff6c8', 12 + n);
+      // (What a pocket's mineral paid has the mineral beside it, and under it the specimens it added.)
+      this.popup(mx, my - 0.6, `+${compact(grit)}`, '#ffe14a', mineral ? ['minerals', mineral] : 'grit');
+      let up = 1;
+      if (specUp > 0) this.popup(mx, my - 0.6 - 0.6 * up++, `+${specUp}`, GEM_COLOR[specOf], `spec-${GEM_ICON[specOf]}`);
+      for (let g = 1; g < 5; g++) if (gems[g] > 0) this.popup(mx, my - 0.6 - 0.6 * up++, `+${compact(gems[g])}`, GEM_COLOR[g], GEM_ICON[g]);
+    } else {
+      if (n >= 20) this.effect('bank', 'area', cx, cy);
+      this.shake = Math.max(this.shake, Math.min(9, 2.5 + n * 0.12));
+      this.hitstop = Math.min(0.16, 0.05 + n * 0.002);
+      this.flash = Math.min(0.5, 0.12 + n * 0.006);
+      this.ring(cx, cy, '#fff6c8', 30 + Math.min(60, n * 1.5));
+      this.banner = this.hauled;
+    }
     if (parts || caches) sfx.relic();
     if (relic >= 0) { S.relics[relic] = 1; sfx.relic(); if (S.relics.every(Boolean) && !S.won) { S.won = true; this.wonAt = this.time; } }
   }
@@ -1050,7 +1335,7 @@ export class Game {
           const qx = q % per, qy = (q / per) | 0, a = Math.atan2(qy - (per - 1) / 2, qx - (per - 1) / 2) + (Math.random() - 0.5) * 2, v = 25 + Math.random() * 70;
           bits.push({ s, sx: qx * size, sy: qy * size, x: s.x * T + (qx + 0.5) * size, y: s.y * T + (qy + 0.5) * size, vx: Math.cos(a) * v, vy: Math.sin(a) * v, born: h.t, k: s.k, st: 0, ft: 0, stall: 0, ghost: false });
         }
-        if (h.count < 80 || cellHash(s.x, s.y, 9) < 0.35) this.chips(s.x, s.y, s.tile[0], 3, null, 0.8);
+        if (h.count < 80 || cellHash(s.x, s.y, 9) < 0.35) this.chips(s.x, s.y, s.debris, 3, null, 0.8);
         if (this.time - (this.lastSnap ?? 0) > 0.05) { this.lastSnap = this.time; sfx.dig((s.x + s.y) & 1); }
       }
       // Once the blocks have broken up, the rope draws the lot in. A long way out it is carried
@@ -1139,7 +1424,7 @@ export class Game {
       for (const b of bits) if (b.st === 1) { b.ft += dt; if (b.ft > 0.16) b.st = 2; }
       // Dust shed along the way.
       if (h.v > 50 && this.parts.length < 380 && bits.length && Math.random() < dt * 30) {
-        const b = bits[(Math.random() * bits.length) | 0], colors = DEBRIS[b.s.tile[0]] ?? DEBRIS.crust;
+        const b = bits[(Math.random() * bits.length) | 0], colors = b.s.debris;
         if (!b.st) this.parts.push({ x: b.x, y: b.y, vx: (Math.random() - 0.5) * 16, vy: (Math.random() - 0.5) * 16, t: 0, life: 0.2 + Math.random() * 0.3, color: colors[(Math.random() * colors.length) | 0], size: 1 });
       }
       if (arrived) {
@@ -1152,7 +1437,7 @@ export class Game {
         if (h.paid >= h.total && h.doneAt === undefined) {
           h.doneAt = h.t;
           sfx.banked(h.n);
-          this.effect('bank', 'area', HX * T, HY * T);
+          if (!h.light) this.effect('bank', 'area', HX * T, HY * T);
           this.save();
         }
       }
@@ -1164,28 +1449,54 @@ export class Game {
 
   // ------------------------------------------------------------ hazards
   // A hazard wakes when the drill cuts beside it (or into it: `direct`). Lassoed asleep, it is worth gems.
-  // Returns the cells it opened, for `changed`.
-  trigger(i, biome, direct) {
+  // What it does is its type's (`haz`: world.hazAt), whatever ground it lies in. Returns the cells it opened, for
+  // `changed`.
+  trigger(i, haz, direct) {
     const w = this.world, x = i % N, y = Math.floor(i / N);
-    biome = base(biome);
-    if (biome === B.EMBER) {
-      w.setK(i, K.EMPTY); w.lava.set(i, 9); this.lavaVol.set(i, 5);
+    if (haz === 'lava') {
+      w.setK(i, K.EMPTY); w.lava.set(i, 9); this.lavaVol.set(i, w.row(i).lavaVol);
       sfx.hiss(); this.effect('steam', 'smoke-puff', (x + 0.5) * T, (y + 0.5) * T);
+      this.quench(i);
       if (direct) { this.jolt(0.5); this.shake = 5; }
       return [i];
     }
-    if (biome === B.MIRE) {
+    if (haz === 'spore') {
       w.setK(i, K.EMPTY);
       this.clouds.push({ x, y, t: 0, life: 6 });
       sfx.puff();
       return [i];
     }
-    if (biome === B.LODE) {
-      if (direct) this.zap(x, y);
-      else { const s = this.sparks.get(i); if (!s || s.cool <= 0) this.sparks.set(i, { fuse: 0.55, cool: 0 }); }
+    if (haz === 'spark') {
+      // Cut into, a crystal arcs at once, and what the arc shattered is opened with the cut. Cut beside, its fuse is
+      // lit: long enough to pull back out of the arc's reach before it goes.
+      if (direct) return this.zap(x, y);
+      const s = this.sparks.get(i);
+      if (!s || s.cool <= 0) this.sparks.set(i, { fuse: FUSE, cool: 0 });
     }
     return [];
   }
+  // Lava has come into cell `i`: the slag beside it is quenched to steel, white for a moment. A sleeping pocket's
+  // rind is dull slag, worth little; woken, the lava makes steel of all the slag it touches, where it lay and
+  // wherever it pours. Nothing opens or closes, so the books of loose ground are as they were, and the ground is
+  // drawn again. Returns how many cells turned.
+  quench(i) {
+    const w = this.world;
+    let turned = 0;
+    for (const s of SIDE) {
+      const j = i + s;
+      if (w.k(j) !== K.SLAG) continue;
+      w.setK(j, K.STEEL); this.quenched.set(j, QUENCH); turned++;
+      const x = j % N, y = Math.floor(j / N);
+      if (this.onScreen(x, y)) this.sparkle((x + 0.5) * T, (y + 0.5) * T, 4, '#d8e8ff');
+    }
+    if (turned) { this.version++; if (this.onScreen(i % N, Math.floor(i / N))) { sfx.clink(); sfx.hiss(); } }
+    return turned;
+  }
+  // A charged crystal arcs. The drill is jolted if it is near; every crystal within three cells is set to follow;
+  // and the slate among the eight cells round the crystal is shattered (`shatters`). Crystals stud the flanks of
+  // slate, so one nick, and room to pull back while the fuse burns, unzips a rib. Shattered slate is crushed: it
+  // pays nothing. Returns the cells opened, for `changed`: whoever called tells the books of loose ground once, with
+  // everything that opened together, so ground the slate was holding is known as loose.
   zap(x, y) {
     const w = this.world, d = this.drill;
     this.effect('zap', 'impact', (x + 0.5) * T, (y + 0.5) * T);
@@ -1193,8 +1504,56 @@ export class Game {
     if (Math.max(Math.abs(d.x - x - 0.5), Math.abs(d.y - y - 0.5)) <= 3.5) { this.jolt(0.7); this.shake = Math.max(this.shake, 5); this.twang = 0.3; }
     for (let v = -3; v <= 3; v++) for (let u = -3; u <= 3; u++) {
       const j = (y + v) * N + x + u;
-      if ((u || v) && w.k(j) === K.HAZARD && base(w.b(j)) === B.LODE && !this.sparks.has(j)) this.sparks.set(j, { fuse: 0.3 + cellHash(u, v, 7) * 0.3, cool: 0 });
+      if ((u || v) && w.hazAt(j) === 'spark' && !this.sparks.has(j)) this.sparks.set(j, { fuse: 0.3 + cellHash(u, v, 7) * 0.3, cool: 0 });
     }
+    const opened = this.shatters(x, y);
+    for (const j of opened) {
+      const jx = j % N, jy = Math.floor(j / N);
+      w.setK(j, K.EMPTY);
+      // (Open ground in the north closes over with ice, whatever opened it.)
+      if (w.row(j).freeze > 0) { w.dug.set(j, this.clock); this.frostOpen.push(j); }
+      if (!this.onScreen(jx, jy)) continue;
+      this.chips(jx, jy, DEBRIS.slate, 8, null, 0.9);
+      this.effect('shatter', 'shatter', (jx + 0.5) * T, (jy + 0.5) * T);
+    }
+    // An arc lights what it breaks: the ground it opened, and what stood behind, is seen.
+    if (opened.length) { sfx.dig(3); w.see(x, y, 2); }
+    return opened;
+  }
+  // The slate an arc from the crystal at (x, y) shatters: every cell of slate among the eight round it that the
+  // tether can reach.
+  shatters(x, y) {
+    const w = this.world, cells = [];
+    for (let v = -1; v <= 1; v++) for (let u = -1; u <= 1; u++) {
+      const j = (y + v) * N + x + u;
+      if ((u || v) && w.k(j) === K.SLATE && this.within(x + u + 0.5, y + v + 0.5)) cells.push(j);
+    }
+    return cells;
+  }
+  // Vein frost: does a cut that is closing over lie beside ore? Then it heals as ore, the plainer kind, where it
+  // would have closed with ice: a vein grows a cell into the cut made against it. Only ore the world itself laid
+  // counts (`World.first`), never ore that healed: a cut beside healed ore closes with ice, or one cut against one
+  // nugget would turn the whole tunnel behind it to ore, cell after cell as each closed beside the last.
+  veined(i) {
+    const w = this.world;
+    for (const s of SIDE) { const k = w.k(i + s); if ((k === K.ORE_A || k === K.ORE_B) && w.first(i + s) === k) return true; }
+    return false;
+  }
+  // The spore pods that go off with a pod: itself and every pod joined to it through pods, side by side or corner
+  // to corner. A pod that bursts sets off the pods round it a moment later (`updateHazards`), so one nick takes a
+  // whole bunch. They are added to `into` (BUNCH at the most, and none twice), which is returned.
+  bunch(j, into = []) {
+    const w = this.world;
+    let n = into.indexOf(j);
+    if (n < 0) n = into.push(j) - 1;
+    for (const most = into.length + BUNCH; n < into.length && into.length < most; n++) {
+      if (w.hazAt(into[n]) !== 'spore') continue;
+      for (let v = -1; v <= 1; v++) for (let u = -1; u <= 1; u++) {
+        const q = into[n] + v * N + u;
+        if ((u || v) && w.hazAt(q) === 'spore' && !into.includes(q)) into.push(q);
+      }
+    }
+    return into;
   }
   // A hazard's bite: the drill is knocked senseless for a moment.
   jolt(time) { const d = this.drill; d.stun = Math.max(d.stun, time); this.hurt = time; d.vx = d.vy = 0; d.dig = -1; }
@@ -1231,7 +1590,9 @@ export class Game {
       }
       return this.under.has(i);
     };
-    // Lava: a pocket pours a stream as long as its volume down the open ground, then sets.
+    for (const [i, t] of this.quenched) { if (t > dt) this.quenched.set(i, t - dt); else this.quenched.delete(i); }
+    // Lava: a pocket pours a stream as long as its volume down the open ground, then sets. Slag beside a cell the
+    // lava comes into is quenched to steel (`quench`).
     this.lavaTick = (this.lavaTick ?? 0) + dt;
     const flow = this.lavaTick >= 0.26;
     if (flow) this.lavaTick = 0;
@@ -1241,48 +1602,65 @@ export class Game {
         const vol = this.lavaVol.get(i) ?? 1, start = (cellHash(x, y, (this.time * 10) | 0) * 4) | 0;
         for (let s = 0; s < 4; s++) {
           const j = (y + DY[(s + start) % 4]) * N + x + DX[(s + start) % 4];
-          if (w.k(j) === K.HAZARD && base(w.b(j)) === B.EMBER) { opened.push(...this.trigger(j, B.EMBER, false)); continue; }
+          if (w.hazAt(j) === 'lava') { opened.push(...this.trigger(j, 'lava', false)); continue; }
           if (vol > 1 && w.k(j) === K.EMPTY && !w.lava.has(j) && j !== here && w.s(j) && Math.hypot(x - C, y - C) > 3) {
             w.lava.set(j, 8); this.lavaVol.set(j, vol - 1); this.lavaVol.set(i, 1);
+            this.quench(j);
             break;
           }
         }
       }
       if (life - dt > 0) { w.lava.set(i, life - dt); continue; }
       w.lava.delete(i); this.lavaVol.delete(i);
-      if (!lies(i) && Math.abs(dcx - x) + Math.abs(dcy - y) > 1) {
+      // (Nothing closes over in a pocket: lava that ran into one only goes out.)
+      if (!lies(i) && Math.abs(dcx - x) + Math.abs(dcy - y) > 1 && w.row(i).pocket === null) {
         w.setK(i, K.BASALT); closed.push(i);
         this.effect('steam', 'smoke-puff', (x + 0.5) * T, (y + 0.5) * T);
       }
     }
-    // Spores: a burst pod hangs a cloud that stuns what flies into it, then moss closes the ground round it.
+    // Spores: a burst pod hangs a cloud that stuns what flies into it, then moss closes the ground round it: soft
+    // rock of whatever ground each cell lies in. The pods round one that has burst, side by side or corner to
+    // corner, burst a moment after it, so a bunch of pods goes off one after another from a single nick (`bunch`
+    // says which, for the glow). (A pod woken here joins the list and is met later in this same pass, a moment
+    // younger.)
     for (const c of this.clouds) {
       c.t += dt;
       if (Math.max(Math.abs(dcx - c.x), Math.abs(dcy - c.y)) <= 1 && c.t < 0.2) this.jolt(0.4);
+      if (!c.spread && c.t >= POD_CHAIN) {
+        c.spread = true;
+        for (let v = -1; v <= 1; v++) for (let u = -1; u <= 1; u++) { const j = (c.y + v) * N + c.x + u; if (w.hazAt(j) === 'spore') opened.push(...this.trigger(j, 'spore', false)); }
+      }
       if (c.t < c.life) continue;
       for (let v = -1; v <= 1; v++) for (let u = -1; u <= 1; u++) {
         const j = (c.y + v) * N + c.x + u;
-        if (w.k(j) === K.EMPTY && !lies(j) && !w.lava.has(j) && Math.max(Math.abs(dcx - c.x - u), Math.abs(dcy - c.y - v)) > 1) { w.setK(j, K.SOFT); w.setB(j, B.MIRE); closed.push(j); }
+        if (w.k(j) === K.EMPTY && !lies(j) && !w.lava.has(j) && Math.max(Math.abs(dcx - c.x - u), Math.abs(dcy - c.y - v)) > 1 && w.row(j).pocket === null) { w.setK(j, K.SOFT); closed.push(j); }
       }
     }
     this.clouds = this.clouds.filter(c => c.t < c.life);
     // Charged crystals: a short fuse, then an arc that jumps to every crystal near it.
     for (const [i, s] of this.sparks) {
-      if (w.k(i) !== K.HAZARD) { this.sparks.delete(i); continue; }
-      if (s.fuse > 0) { s.fuse -= dt; if (s.fuse <= 0) { s.cool = 3; this.zap(i % N, Math.floor(i / N)); } }
+      if (w.hazAt(i) !== 'spark') { this.sparks.delete(i); continue; }
+      if (s.fuse > 0) { s.fuse -= dt; if (s.fuse <= 0) { s.cool = 3; opened.push(...this.zap(i % N, Math.floor(i / N))); } }
       else { s.cool -= dt; if (s.cool <= 0) this.sparks.delete(i); }
     }
-    // Frost: a cut in the north closes over with ice unless the tether lies in it.
+    // Frost: a cut in ground that freezes (the north's) closes over with ice, after as long as its row says, unless
+    // the tether lies in it. Beside ore it closes as ore (`veined`).
     this.frostTick = (this.frostTick ?? 0) + dt;
     if (this.frostTick > 0.4) {
       this.frostTick = 0;
       this.frostOpen = this.frostOpen.filter(i => {
-        if (w.k(i) !== K.EMPTY) { w.dug.delete(i); return false; }
-        if (this.clock - w.dug.get(i) < 30) return true;
+        const freeze = w.row(i).freeze;
+        if (w.k(i) !== K.EMPTY || !freeze) { w.dug.delete(i); return false; }
+        if (this.clock - w.dug.get(i) < freeze) return true;
         const x = i % N, y = Math.floor(i / N);
         if (lies(i) || Math.max(Math.abs(dcx - x), Math.abs(dcy - y)) <= 1 || w.lava.has(i)) return true;
-        w.setK(i, K.ICE); w.dug.delete(i); closed.push(i);
-        if (this.onScreen(x, y)) { this.effect('freeze', 'impact', (x + 0.5) * T, (y + 0.5) * T); sfx.freeze(); }
+        // Vein frost: beside ore the cut heals as ore, not as ice.
+        const vein = this.veined(i);
+        w.setK(i, vein ? K.ORE_A : K.ICE); w.dug.delete(i); closed.push(i);
+        if (this.onScreen(x, y)) {
+          this.effect('freeze', 'impact', (x + 0.5) * T, (y + 0.5) * T);
+          if (vein) { this.sparkle((x + 0.5) * T, (y + 0.5) * T, 6, '#a8fff0'); sfx.gem(0); } else sfx.freeze();
+        }
         return false;
       });
     }
@@ -1290,21 +1668,57 @@ export class Game {
   }
 
   // ------------------------------------------------------------ blast, shop
-  blast() {
-    const w = this.world, d = this.drill;
-    if (this.bombs <= 0) { if (this.val('bombs')) sfx.deny(); return; }
-    const r = this.S.lv.bombs >= 3 ? 2 : 1, cx = Math.floor(d.x), cy = Math.floor(d.y), opened = [];
-    this.bombs--;
-    for (let v = -r; v <= r; v++) for (let u = -r; u <= r; u++) {
+  // The cells a charge set off in cell (cx, cy) would open, at this level of BLAST or for a disc of radius `r`
+  // (`SIFT` says what goes and what stands). Asking changes nothing. Nothing beyond the tether's reach opens.
+  sifts(cx, cy, r = SIFT.radius[this.S.lv.bombs]) {
+    const w = this.world, open = new Set(), stand = [], most = Math.ceil(r), far = (r + SIFT.shake) * (r + SIFT.shake);
+    for (let v = -most; v <= most; v++) for (let u = -most; u <= most; u++) {
+      if (u * u + v * v > r * r) continue;
       const i = (cy + v) * N + cx + u, k = w.k(i);
       if (k === K.EMPTY || HARD[k] >= 99 || !this.within(cx + u + 0.5, cy + v + 0.5)) continue;
-      w.setK(i, K.EMPTY); opened.push(i);
-      if (base(w.b(i)) === B.FROST) { w.dug.set(i, this.clock); this.frostOpen.push(i); }
+      if (PLAIN[k]) open.add(i); else stand.push(i);
+    }
+    // What stands in the disc, and as much of each lump as lies within `shake` cells of the disc's edge.
+    const lump = new Set(stand);
+    for (let n = 0; n < stand.length; n++) for (const s of SIDE) {
+      const j = stand[n] + s, u = (j % N) - cx, v = Math.floor(j / N) - cy, k = w.k(j);
+      if (k === K.EMPTY || PLAIN[k] || HARD[k] >= 99 || u * u + v * v > far || lump.has(j)) continue;
+      lump.add(j); stand.push(j);
+    }
+    // The plain rock round it, `room` cells deep on every side and at the corners: room to fly round it.
+    for (const i of stand) for (let v = -SIFT.room; v <= SIFT.room; v++) for (let u = -SIFT.room; u <= SIFT.room; u++) {
+      const j = i + v * N + u;
+      if (PLAIN[w.k(j)] && this.within((j % N) + 0.5, Math.floor(j / N) + 0.5)) open.add(j);
+    }
+    return [...open];
+  }
+  // A charge goes off where the drill is: the plain rock round it is gone, and everything it held stands as it
+  // stood, asleep if it slept (nothing is cut, so nothing wakes). The books of loose ground hear of all the cells
+  // at once, so every lump the rock was holding is known as loose. A charge that would open nothing is not spent,
+  // and says so; so does a tap with none left.
+  blast() {
+    const w = this.world, d = this.drill;
+    if (!this.val('bombs')) return;
+    if (this.bombs <= 0) { sfx.deny(); this.popup(d.x - 0.5, d.y - 1, 'NO BOMBS', '#ff7a5a'); return; }
+    const cx = Math.floor(d.x), cy = Math.floor(d.y), opened = this.sifts(cx, cy);
+    if (!opened.length) { sfx.deny(); this.popup(d.x - 0.5, d.y - 1, 'NO ROCK', '#ff7a5a'); return; }
+    this.bombs--;
+    const known = new Set(this.pieces);
+    for (const i of opened) {
+      const x = i % N, y = Math.floor(i / N);
+      if (this.onScreen(x, y)) this.chips(x, y, this.debris(w.k(i), w.b(i)), 3, null, 1.2);
+      w.setK(i, K.EMPTY);
+      if (w.row(i).freeze > 0) { w.dug.set(i, this.clock); this.frostOpen.push(i); }
     }
     this.effect('blast', 'fire-explosion', d.x * T, d.y * T);
     this.shake = 9; sfx.blast();
-    w.see(cx, cy, r + 1);
+    w.see(cx, cy, Math.ceil(SIFT.radius[this.S.lv.bombs] + SIFT.shake) + SIFT.room + 1);
     this.changed(opened);
+    // What the charge shook loose glints, a lump at a time.
+    for (const cells of this.pieces) {
+      if (known.has(cells) || cells.length > 400) continue;
+      for (const i of cells) if (cellHash(i % N, Math.floor(i / N), 5) < 0.5) this.sparkle((i % N + 0.5) * T, (Math.floor(i / N) + 0.5) * T, 2, '#fff6c8');
+    }
   }
   cost(u) { const l = this.S.lv[u.id]; return l >= u.values.length - 1 ? null : { grit: u.grit[l], gems: u.gems[l] }; }
   // What can be spent is what has come home: grit and gems still on their way up the tether are not banked yet,
@@ -1329,9 +1743,9 @@ export class Game {
   }
 
   // ------------------------------------------------------------ feel
-  // Chips of the ground's own colours. `ang` is the way the drill was cutting (they fly back at it), null for all round.
-  chips(cx, cy, sheet, count, ang, speed) {
-    const colors = DEBRIS[sheet] ?? DEBRIS.crust;
+  // Chips of the ground's own colours (`debris`). `ang` is the way the drill was cutting (they fly back at it), null
+  // for all round.
+  chips(cx, cy, colors, count, ang, speed) {
     if (this.parts.length > 420) return;
     for (let n = 0; n < count; n++) {
       const a = Math.random() * 6.283, v = (20 + Math.random() * 70) * speed;
@@ -1352,7 +1766,7 @@ export class Game {
   land() {
     const d = this.drill, x = Math.floor(d.x + Math.cos(d.ang) * 0.8), y = Math.floor(d.y + Math.sin(d.ang) * 0.8), k = this.world.at(x, y);
     this.shake = Math.max(this.shake, 2.2);
-    if (k !== K.EMPTY) this.chips(d.x - 0.5 + Math.cos(d.ang) * 0.5, d.y - 0.5 + Math.sin(d.ang) * 0.5, this.rockSheet(k, this.world.b(y * N + x)), 6, d.ang, 0.8);
+    if (k !== K.EMPTY) this.chips(d.x - 0.5 + Math.cos(d.ang) * 0.5, d.y - 0.5 + Math.sin(d.ang) * 0.5, this.debris(k, this.world.b(y * N + x)), 6, d.ang, 0.8);
     this.effect('dust', 'dust', (d.x + Math.cos(d.ang) * 0.4) * T, (d.y + Math.sin(d.ang) * 0.4) * T);
   }
   // Everything that only sets the mood: chips in flight, rings, drifting motes, glints on ore, the colour of the
@@ -1364,35 +1778,39 @@ export class Game {
     for (const r of this.rings) r.t += dt;
     this.rings = this.rings.filter(r => r.t < 0.5);
     this.flash = Math.max(0, this.flash - dt); this.counted = Math.max(0, this.counted - dt);
-    const here = w.b(this.di), want = GLOOM[here], k = 1 - Math.exp(-dt * 1.5);
+    // The dark eases to the colour and the depth of the ground the drill is in.
+    const here = w.row(this.di), want = here.gloom, k = 1 - Math.exp(-dt * 1.5);
     for (let c = 0; c < 3; c++) this.gloom[c] += (want[c] - this.gloom[c]) * k;
+    this.murk += (here.dark - this.murk) * k;
     // Motes hang in open ground near the view; each belongs to the ground it was born over.
     while (this.motes.length < 34) {
       const x = this.cam.x + (Math.random() - 0.5) * (W + 60), y = this.cam.y + (Math.random() - 0.5) * (H + 60);
-      this.motes.push({ x, y, seed: Math.random() * 100, t: 0, life: 4 + Math.random() * 5, biome: w.b(Math.floor(y / T) * N + Math.floor(x / T)) });
+      this.motes.push({ x, y, seed: Math.random() * 100, t: 0, life: 4 + Math.random() * 5, mote: w.row(Math.floor(y / T) * N + Math.floor(x / T)).mote });
     }
     for (const m of this.motes) {
       m.t += dt;
-      const b = base(m.biome), sway = Math.sin(this.time * 1.3 + m.seed);
-      if (b === B.FROST) { m.y += 9 * dt; m.x += sway * 6 * dt; }
-      else if (b === B.EMBER) { m.y -= 14 * dt; m.x += sway * 4 * dt; }
-      else if (b === B.MIRE) { m.y += Math.cos(this.time * 0.9 + m.seed) * 4 * dt; m.x += sway * 5 * dt; }
+      const drift = m.mote[1], sway = Math.sin(this.time * 1.3 + m.seed);
+      if (drift === 'fall') { m.y += 9 * dt; m.x += sway * 6 * dt; }
+      else if (drift === 'rise') { m.y -= 14 * dt; m.x += sway * 4 * dt; }
+      else if (drift === 'sway') { m.y += Math.cos(this.time * 0.9 + m.seed) * 4 * dt; m.x += sway * 5 * dt; }
       else { m.y -= 2 * dt; m.x += sway * 2 * dt; }
     }
     this.motes = this.motes.filter(m => m.t < m.life && Math.abs(m.x - this.cam.x) < W / 2 + 40 && Math.abs(m.y - this.cam.y) < H / 2 + 40);
     // A glint now and then on ore in view.
     for (let n = 0; n < 2; n++) {
       const x = Math.floor((this.cam.x + (Math.random() - 0.5) * W) / T), y = Math.floor((this.cam.y + (Math.random() - 0.5) * H) / T), kk = w.peek(x, y);
-      if ((kk === K.ORE_A || kk === K.ORE_B || kk === K.RELIC || kk === K.CACHE || kk === K.WRECK) && Math.random() < (kk >= K.CACHE ? 1 : 0.5)) this.parts.push({ x: (x + 0.25 + Math.random() * 0.5) * T, y: (y + 0.25 + Math.random() * 0.5) * T, vx: 0, vy: 0, t: 0, life: 0.35, color: '#ffffff', size: 1, star: true });
+      if ((kk === K.ORE_A || kk === K.ORE_B || kk === K.STEEL || kk === K.RELIC || kk === K.CACHE || kk === K.WRECK) && Math.random() < (kk === K.CACHE || kk === K.WRECK ? 1 : 0.5)) this.parts.push({ x: (x + 0.25 + Math.random() * 0.5) * T, y: (y + 0.25 + Math.random() * 0.5) * T, vx: 0, vy: 0, t: 0, life: 0.35, color: '#ffffff', size: 1, star: true });
     }
-    setAmbience(base(here), here > 4);
+    setAmbience(here.kin, here.rich >= 2);
     this.chime -= dt;
-    if (this.chime <= 0) { this.chime = 2.5 + Math.random() * 4.5; sfx.chime(base(here)); }
+    if (this.chime <= 0) { this.chime = 2.5 + Math.random() * 4.5; sfx.chime(here.kin); }
   }
 
   // ------------------------------------------------------------ small things
   effect(sheet, animation, x, y) { this.effects.push({ sheet, animation, x, y, t: 0 }); }
-  popup(cx, cy, label, color, icon) { this.popups = this.popups.filter(p => p.label !== label); this.popups.push({ x: (cx + 0.5) * T, y: cy * T, label, color, icon, t: 0 }); }
+  // Words that rise from a cell and fade (with an icon of the `icons` sheet before them). The same words in the
+  // same colour take the place of those already up.
+  popup(cx, cy, label, color, icon) { this.popups = this.popups.filter(p => p.label !== label || p.color !== color); this.popups.push({ x: (cx + 0.5) * T, y: cy * T, label, color, icon, t: 0 }); }
   onScreen(x, y) { const sx = x * T - this.cam.x + this.W / 2, sy = y * T - this.cam.y + this.H / 2; return sx > -T && sy > -T && sx < this.W && sy < this.H; }
 
   // ------------------------------------------------------------ update
@@ -1418,6 +1836,7 @@ export class Game {
       if (this.sweepHome(this.reelTick > 0.1)) met = true;
       if (met || this.reelTick > 0.1) { this.reelTick = 0; this.reelIfRound(); }
       this.updateHazards(dt);
+      this.listen(dt);
       // The station makes a trickle of grit of its own: however a world has been spent, the next reach is never out
       // of reach for good.
       this.trickle = (this.trickle ?? 0) + dt;
@@ -1433,6 +1852,8 @@ export class Game {
     for (const p of this.popups) p.t += dt;
     this.popups = this.popups.filter(p => p.t < 0.9);
     if (this.banner) { this.banner.t += dt; if (this.banner.t > this.banner.life) this.banner = null; }
+    if (this.place) { this.place.t += dt; if (this.place.t > this.place.life) this.place = null; }
+    if (this.specLine) { this.specLine.t += dt; if (this.specLine.t > this.specLine.life) this.specLine = null; }
     // The camera eases after the drill, a little ahead of the way it is flying.
     const k = 1 - Math.exp(-dt * 8), lead = Math.min(3, Math.hypot(d.vx, d.vy) * 0.1), speed = Math.hypot(d.vx, d.vy) || 1;
     this.cam.x += ((d.x + d.vx / speed * lead) * T - this.cam.x) * k; this.cam.y += ((d.y + d.vy / speed * lead) * T - this.cam.y) * k;
@@ -1443,14 +1864,40 @@ export class Game {
 
   // ------------------------------------------------------------ drawing
   rockSheet(k, b) {
-    return k === K.BEDROCK ? 'bedrock' : k === K.SLATE ? 'slate' : k === K.VAULT || k === K.RELIC ? 'vault' : k === K.ICE ? 'ice' : k === K.BASALT ? 'basalt' : BIOME_NAMES[b];
+    return k === K.BEDROCK ? 'bedrock' : k === K.SLATE ? 'slate' : k === K.VAULT || k === K.RELIC ? 'vault' : k === K.ICE ? 'ice' : k === K.BASALT ? 'basalt' : rowOf(b).sheet;
+  }
+  // The colours of the chips that fly off a cell of kind `k` in ground `b`.
+  debris(k, b) {
+    const row = rowOf(b), P = row.pocket;
+    return P !== null && P.chips && k === (P.kind ?? K.MINERAL) ? P.chips : CHIPS[k] ?? DEBRIS[this.rockSheet(k, b)] ?? row.debris;
   }
   rockRect(x, y, k, b) {
     const sheet = this.rockSheet(k, b), rects = sheets[sheet].tiles[this.world.mask(x, y)];
     return [sheet, rects[(cellHash(x, y, 3) * rects.length) | 0]];
   }
-  overlay(k) { return k === K.DENSE ? 'dense' : k === K.ORE_A ? 'oreA' : k === K.ORE_B ? 'oreB' : k === K.HAZARD ? 'hazard' : k === K.RELIC ? 'relic' : k === K.CACHE ? 'cache' : k === K.WRECK ? 'part' : null; }
-  itemSheet(b, over) { return over === 'cache' || over === 'part' ? 'finds' : b === B.CRUST ? 'lode-items' : `${BIOME_NAMES[base(b)]}-items`; }
+  // What is drawn over a cell's rock, as [sheet, frame], or null for nothing: dense rock and ore from its ground's
+  // own sheet (`row`), a hazard from its type's, a relic from its direction's, a find from the finds'. A cross's
+  // rich ore is its donor's, and is drawn as the donor's (`itemsB`), so that what it looks like is what it pays.
+  // A pocket's mineral is its own frame of the 'minerals' sheet, and its special cell (a hive's stalk) one of two:
+  // the one that runs level or the one that stands upright, as the cell `i` lies between what it joins (asked of
+  // the cells beside it; upright where `i` is not given).
+  overlay(k, row, i) {
+    const P = row.pocket;
+    if (P !== null && (k === K.NODE || k === (P.kind ?? K.MINERAL))) {
+      if (k === (P.kind ?? K.MINERAL)) return this.mineralOf(row) ? ['minerals', P.mineral] : null;
+      const w = this.world, joins = j => { const q = w.k(j); return q === K.NODE || q === (P.kind ?? K.MINERAL); };
+      const frame = `${P.node}-${i !== undefined && !joins(i - N) && !joins(i + N) && (joins(i - 1) || joins(i + 1)) ? 'h' : 'v'}`;
+      return sheets.minerals?.frames[frame] ? ['minerals', frame] : null;
+    }
+    if (k === K.ORE_B) return [row.itemsB, 'oreB'];
+    if (k === K.DENSE || k === K.ORE_A) return [row.items, k === K.DENSE ? 'dense' : 'oreA'];
+    if (k === K.HAZARD || k === K.HAZARD2) { const haz = hazOf(k, row); return haz ? [HAZARDS[haz].sheet, 'hazard'] : null; }
+    // Slag and the steel it is quenched to are the lava's, drawn from the lava's sheet whatever ground they lie in.
+    if (k === K.SLAG || k === K.STEEL) return [HAZARDS.lava.sheet, k === K.SLAG ? 'slag' : 'steel'];
+    // A keystone is an iron staple across its block of rock; a prism turns through the gems' colours (`render`).
+    return k === K.RELIC ? [rowOf(row.kin).items, 'relic'] : k === K.CACHE ? ['finds', 'cache'] : k === K.WRECK ? ['finds', 'part']
+      : k === K.KEY ? ['finds', 'key'] : k === K.PRISM ? ['finds', 'prism'] : null;
+  }
 
   render() {
     const { ctx, W, H, world: w } = this, d = this.drill, now = this.time * 1000;
@@ -1469,20 +1916,26 @@ export class Game {
     }
     for (const i of this.frostOpen) {
       // Ice about to close over a cut: a rim of it creeps in first.
-      const age = this.clock - (w.dug.get(i) ?? this.clock);
-      if (age <= 22 || this.under.has(i)) continue;
-      ctx.globalAlpha = Math.min(0.8, (age - 22) / 8);
+      const age = this.clock - (w.dug.get(i) ?? this.clock), rim = w.row(i).freeze - 8;
+      if (age <= rim || this.under.has(i)) continue;
+      ctx.globalAlpha = Math.min(0.8, (age - rim) / 8);
       draw(ctx, 'ice', sheets.ice.tiles[0][0], (i % N) * T - ox, Math.floor(i / N) * T - oy);
       ctx.globalAlpha = 1;
     }
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
       const k = w.peek(x, y);
-      if (k !== K.HAZARD && k !== K.RELIC) continue;
-      const i = y * N + x, b = w.b(i), m = w.mask(x, y), ux = x * T - ox - ((m & 4) ? 0 : 1), uy = y * T - oy - ((m & 16) ? 0 : 1);
-      if (k === K.HAZARD) {
-        const items = this.itemSheet(b), s = this.sparks.get(i);
-        draw(ctx, items, s && s.fuse > 0 ? (((now / 60) | 0) % 2 ? 'hazard-b' : 'hazard') : frameAt(items, 'hazard', now + cellHash(x, y, 4) * 900), ux, uy);
-      } else { const rs = `${BIOME_NAMES[DIR_BIOME[w.relicAt.indexOf(i)] ?? base(b)]}-items`; draw(ctx, rs, frameAt(rs, 'relic', now), ux, uy); }
+      if (k !== K.HAZARD && k !== K.HAZARD2 && k !== K.RELIC && k !== K.STEEL && k !== K.PRISM) continue;
+      const i = y * N + x, row = w.row(i), m = w.mask(x, y), ux = x * T - ox - ((m & 4) ? 0 : 1), uy = y * T - oy - ((m & 16) ? 0 : 1);
+      // A prism turns through the gems' colours, each in its own time.
+      if (k === K.PRISM) { draw(ctx, 'finds', frameAt('finds', 'prism', now + cellHash(x, y, 4) * 720), ux, uy); continue; }
+      // Steel glints now and then, each bar in its own time, and is white for a moment as it is quenched.
+      if (k === K.STEEL) { const items = HAZARDS.lava.sheet; draw(ctx, items, this.quenched.has(i) ? 'quench' : frameAt(items, 'steel', now + cellHash(x, y, 4) * 1140), ux, uy); continue; }
+      if (k === K.RELIC) { const rs = rowOf(DIR_BIOME[w.relicAt.indexOf(i)] ?? row.kin).items; draw(ctx, rs, frameAt(rs, 'relic', now), ux, uy); continue; }
+      // A hazard looks as its type does, whatever ground it lies in.
+      const haz = hazOf(k, row);
+      if (!haz) continue;
+      const items = HAZARDS[haz].sheet, s = this.sparks.get(i);
+      draw(ctx, items, s && s.fuse > 0 ? (((now / 60) | 0) % 2 ? 'hazard-b' : 'hazard') : frameAt(items, 'hazard', now + cellHash(x, y, 4) * 900), ux, uy);
     }
     // The block being cut cracks further the nearer it is to giving way, and what it would free glows.
     if (d.dig >= 0) {
@@ -1501,7 +1954,7 @@ export class Game {
       draw(ctx, 'core', this.coreFlash > 0 ? `core-flash-${hull}` : this.S.won ? `core-c-${hull}` : frameAt('core', `idle-${hull}`, now), coreX, coreY);
       draw(ctx, 'dish', frameAt('dish', `dish-${this.S.lv.scanner}`, now), coreX + 34, coreY - 6);
       [[39, 20], [20, 39], [1, 20], [20, 1]].forEach(([u, v], dir) => {
-        if (this.S.relics[dir]) drawScaled(ctx, `${BIOME_NAMES[DIR_BIOME[dir]]}-items`, 'relic', coreX + u, coreY + v, 8, 8);
+        if (this.S.relics[dir]) drawScaled(ctx, BIOMES[DIR_BIOME[dir]].items, 'relic', coreX + u, coreY + v, 8, 8);
       });
     }
     this.drawTether(ox, oy);
@@ -1632,7 +2085,7 @@ export class Game {
     }
     for (const m of this.motes) {
       if (w.peek(Math.floor(m.x / T), Math.floor(m.y / T)) !== K.EMPTY) continue;
-      ctx.globalAlpha = Math.max(0, Math.min(1, m.t, m.life - m.t)) * (0.35 + 0.3 * Math.sin(this.time * 3 + m.seed)); ctx.fillStyle = MOTE[m.biome];
+      ctx.globalAlpha = Math.max(0, Math.min(1, m.t, m.life - m.t)) * (0.35 + 0.3 * Math.sin(this.time * 3 + m.seed)); ctx.fillStyle = m.mote[0];
       ctx.fillRect(Math.round(m.x - ox), Math.round(m.y - oy), 1, 1);
     }
     ctx.globalAlpha = 1;
@@ -1670,7 +2123,8 @@ export class Game {
     for (const p of this.popups) {
       const py = p.y - oy - p.t * 18, px = p.x - ox;
       ctx.globalAlpha = Math.min(1, (0.9 - p.t) * 4);
-      if (p.icon) draw(ctx, 'icons', p.icon, px - textWidth(p.label) / 2 - 11, py - 1);
+      if (typeof p.icon === 'string') draw(ctx, 'icons', p.icon, px - textWidth(p.label) / 2 - 11, py - 1);
+      else if (p.icon) this.drawMineral(ctx, p.icon[1], px - textWidth(p.label) / 2 - 13, py - 3);
       text(ctx, p.label, px, py, p.color, 0.5);
       ctx.globalAlpha = 1;
     }
@@ -1752,10 +2206,12 @@ export class Game {
       o.drawImage(this.dark, ...this.darkAt);
       o.globalCompositeOperation = 'source-over'; o.globalAlpha = 1;
     }
-    // Never over the interface.
+    // Never over the interface: the top bar, the map, the buttons, and the small panels that come and go under the
+    // top bar (a place's plate, the count of specimens), which the frame's own drawing of the interface listed.
     o.clearRect(0, 0, W, 43);
     if (this.mapRect) o.clearRect(...this.mapRect);
     for (const b of this.buttons) o.clearRect(b.x, b.y, b.w, b.h);
+    for (const p of this.panels) o.clearRect(...p);
   }
   // A rope through `pts` (a closed loop if `closed`), as one clean line of pixels: a smooth curve through the points,
   // with no doubled corners.
@@ -1804,8 +2260,8 @@ export class Game {
     const w = this.world;
     ctx.globalAlpha = 1; ctx.fillStyle = '#07060b'; ctx.fillRect(0, 0, 128, 128);
     for (let y = y0; y < y0 + 8; y++) for (let x = x0; x < x0 + 8; x++) {
-      const i = y * N + x, k = w.k(i), b = w.b(i), px = (x - x0) * T, py = (y - y0) * T;
-      const floorSheet = `${BIOME_NAMES[b]}-floor`, floors = sheets[floorSheet].tiles[255], floor = floors[(cellHash(x, y, 1) * floors.length) | 0];
+      const i = y * N + x, k = w.k(i), b = w.b(i), row = rowOf(b), px = (x - x0) * T, py = (y - y0) * T;
+      const floorSheet = row.floor, floors = sheets[floorSheet].tiles[255], floor = floors[(cellHash(x, y, 1) * floors.length) | 0];
       if (!w.s(i)) {
         // Ground the scanner has not reached: only whose it is shows, dimly.
         if (k !== K.BEDROCK) { ctx.globalAlpha = 0.42; draw(ctx, floorSheet, floor, px, py); ctx.globalAlpha = 1; }
@@ -1818,8 +2274,8 @@ export class Game {
       draw(ctx, sheet, rects[(cellHash(x, y, 3) * rects.length) | 0], px, py);
       const ux = px - ((m & 4) ? 0 : 1), uy = py - ((m & 16) ? 0 : 1);
       if (k === K.SLATE || k === K.VAULT) draw(ctx, 'tough', k === K.SLATE ? 'slate' : 'vault', ux, uy);
-      const over = this.overlay(k);
-      if (over && over !== 'hazard' && over !== 'relic') draw(ctx, this.itemSheet(b, over), over, ux, uy);
+      const over = this.overlay(k, row, i);
+      if (over && over[1] !== 'hazard' && over[1] !== 'relic' && over[1] !== 'prism') draw(ctx, over[0], over[1], ux, uy);
     }
   }
 
@@ -1860,7 +2316,13 @@ export class Game {
       [L.lit, L.next] = [L.next, L.lit]; L.x0 = x0; L.y0 = y0;
     }
     L.want.fill(0);
-    for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) L.solid[y * cols + x] = w.peek(x0 + x, y0 + y) === K.EMPTY ? 0 : 1;
+    const keys = L.keys ??= [];
+    keys.length = 0;
+    for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) {
+      const k = w.peek(x0 + x, y0 + y);
+      L.solid[y * cols + x] = k === K.EMPTY ? 0 : 1;
+      if (k === K.KEY) keys.push((y0 + y) * N + x0 + x);
+    }
     const flick = 1 + Math.sin(this.time * 9) * 0.03;
     this.shine(Math.floor(d.x), Math.floor(d.y), (d.dig >= 0 ? 1.08 : 1) * flick, 8.5);
     this.shine(C, C, 1 + this.coreFlash * 1.5 + Math.sin(this.time * 2) * 0.04, 8 + this.coreFlash * 10);
@@ -1868,6 +2330,14 @@ export class Game {
     for (const i of w.lava.keys()) { if (lavas++ > 40) break; this.shine(i % N, Math.floor(i / N), 0.85, 3.5); }
     for (const e of this.effects) if (e.sheet === 'blast' || e.sheet === 'zap' || e.sheet === 'haul' || e.sheet === 'bank') this.shine(Math.floor(e.x / T), Math.floor(e.y / T), 1, 6);
     for (const [i, sp] of this.sparks) if (sp.fuse > 0) this.shine(i % N, Math.floor(i / N), 0.9, 3);
+    for (const i of this.quenched.keys()) this.shine(i % N, Math.floor(i / N), 0.8, 2.5);
+    // Keystones that have been seen glint, so that they read from across the screen: the nearest dozen.
+    if (keys.length > KEY_GLINTS) {
+      const far = i => ((i % N) + 0.5 - d.x) ** 2 + (Math.floor(i / N) + 0.5 - d.y) ** 2;
+      keys.sort((a, b) => far(a) - far(b)); keys.length = KEY_GLINTS;
+    }
+    this.glints = keys.length;
+    for (const i of keys) this.shine(i % N, Math.floor(i / N), KEY_GLINT, KEY_GLOW);
     // One pixel of darkness per cell, drawn sixteen times the size and smoothed.
     const mcols = vx1 - vx0 + 1, mrows = vy1 - vy0 + 1;
     let map = this.dark;
@@ -1876,7 +2346,7 @@ export class Game {
     for (let i = 0; i < L.lit.length; i++) L.lit[i] += (Math.min(1, L.want[i]) - L.lit[i]) * 0.3;
     for (let y = 0; y < mrows; y++) for (let x = 0; x < mcols; x++) {
       const l = L.lit[(y + pad) * cols + x + pad], o = (y * mcols + x) * 4;
-      px[o] = r; px[o + 1] = g; px[o + 2] = b; px[o + 3] = 168 * (1 - l * (2 - l));
+      px[o] = r; px[o + 1] = g; px[o + 2] = b; px[o + 3] = this.daylight ? 0 : 168 * this.murk * (1 - l * (2 - l));
     }
     mc.putImageData(data, 0, 0);
     ctx.imageSmoothingEnabled = true;
@@ -1962,25 +2432,58 @@ export class Game {
   }
 
   button(x, y, w, h, act) { this.buttons.push({ x, y, w, h, act }); }
+  // What a haul's banner says besides its title and what it paid: how many cells came and what their grit was
+  // multiplied by, and that the piece was over the winch's load where it was (a keystone slab is the haul the winch
+  // is for); and, where a prism came with it, what the prism multiplied the gems by (null: no prism).
+  // And third, where the haul held a pocket's mineral that raised a count of specimens: by how many.
+  bannerSays(b) { return [`${b.n} x${b.mult.toFixed(1)}${b.over < 1 ? ' WINCH OVER LOAD' : ''}`, b.shine > 1 ? `PRISM x${b.shine}` : null, b.spec > 0 ? `+${b.spec}` : null]; }
+  // What the next thing to be bought with a direction's specimens asks of them, or 0 where nothing is to be
+  // bought. (Nothing is yet: the WORKS tab, docs/CONTENT-PLAN.md S6, sells for specimens. Until then they count.)
+  specNeed(kin) { return 0; }
   drawHud(ox, oy) {
     const { ctx, W, H, S } = this, now = this.time * 1000, d = this.drill;
-    this.buttons.length = 0;
+    this.buttons.length = 0; this.panels.length = 0;
     // Banner of the last haul.
     if (this.banner) {
       const b = this.banner, pop = Math.min(1, b.t / 0.12), y = Math.round(H * 0.2 - (1 - pop) * 8);
       ctx.globalAlpha = Math.min(1, (b.life - b.t) * 3);
       const big = (b.n >= 10 ? 2 : 1) + (b.t < 0.07 ? 1 : 0);
       text(ctx, b.title, W / 2, y, b.n >= 30 ? '#ffe14a' : '#ffffff', 0.5, big);
-      text(ctx, b.over < 1 ? `${b.n} x${b.mult.toFixed(1)} WINCH OVER LOAD` : `${b.n} x${b.mult.toFixed(1)}`, W / 2, y + 11 * big + 2, b.over < 1 ? '#ffb060' : '#bfe6ff', 0.5);
+      const [size, prism, spec] = this.bannerSays(b);
+      text(ctx, size, W / 2, y + 11 * big + 2, b.over < 1 ? '#ffb060' : '#bfe6ff', 0.5);
       let line = `+${compact(b.grit)}`, lw = textWidth(line) + 11;
       const gems = [1, 2, 3, 4].filter(g => b.gems[g] > 0);
       for (const g of gems) lw += textWidth(`+${compact(b.gems[g])}`) + 15;
+      if (spec) lw += textWidth(spec) + 17;
       let lx = Math.round(W / 2 - lw / 2), ly = y + 11 * big + 14;
       draw(ctx, 'icons', 'grit', lx, ly - 1); text(ctx, line, lx + 11, ly, '#ffe14a'); lx += textWidth(line) + 15;
       for (const g of gems) { draw(ctx, 'icons', GEM_ICON[g], lx, ly - 1); text(ctx, `+${compact(b.gems[g])}`, lx + 11, ly, GEM_COLOR[g]); lx += textWidth(`+${compact(b.gems[g])}`) + 15; }
+      // The specimens a pocket's mineral added, with the mineral itself beside the figure.
+      if (spec) { if (b.mineral) this.drawMineral(ctx, b.mineral, lx - 1, ly - 3); else draw(ctx, 'icons', `spec-${GEM_ICON[b.specOf]}`, lx, ly - 1); text(ctx, spec, lx + 13, ly, GEM_COLOR[b.specOf]); }
+      // A prism among the cells: what it multiplied the gems by, in the gems' colours by turns.
+      if (prism) text(ctx, prism, W / 2, ly + 12, GEM_COLOR[1 + ((now / 240) | 0) % 4], 0.5);
       ctx.globalAlpha = 1;
     }
     if (S.won && this.wonAt !== undefined && this.time - this.wonAt < 6) text(ctx, 'CORE RESTORED', W / 2, H * 0.36, '#ffe14a', 0.5, 2);
+    // A ground met for the first time: its name alone, large, a little under where a haul's banner goes (and under
+    // the banner itself, if one is up). A name too long for the screen is set on two lines, or small.
+    const place = this.place;
+    if (place && place.card) {
+      const pop = Math.min(1, place.t / 0.12), words = place.title.split(' '), fits = s => textWidth(s, 2) <= W - 8;
+      let lines = [place.title], big = 2;
+      if (!fits(place.title)) {
+        let best = null;
+        for (let n = 1; n < words.length; n++) {
+          const a = words.slice(0, n).join(' '), b = words.slice(n).join(' '), wide = Math.max(textWidth(a, 2), textWidth(b, 2));
+          if (fits(a) && fits(b) && (!best || wide < best[2])) best = [a, b, wide];
+        }
+        if (best) lines = [best[0], best[1]]; else big = 1;
+      }
+      const under = this.banner ? Math.round(H * 0.2) + 11 * (this.banner.n >= 10 ? 2 : 1) + (this.banner.shine > 1 ? 42 : 30) : 0, y = Math.max(under, Math.round(H * 0.3 - (1 - pop) * 8));
+      ctx.globalAlpha = Math.min(1, (place.life - place.t) * 3);
+      lines.forEach((line, n) => text(ctx, line, W / 2, y + n * 11 * big, place.colour, 0.5, big + (n === 0 && lines.length === 1 && place.t < 0.07 ? 1 : 0)));
+      ctx.globalAlpha = 1;
+    }
     // Top: what has been banked, and how much of its reach the tether has left.
     slice9(ctx, 'ui', 'panel', 2, 2, W - 4, 40);
     draw(ctx, 'icons', 'grit', 6, 5);
@@ -2005,6 +2508,31 @@ export class Game {
     this.button(W - ww - 6, 42, ww + 6, 20, () => {
       if (this.confirmReset > 0) { this.confirmReset = 0; this.fresh((Math.random() * 1e9) | 0); this.save(); sfx.relic(); } else { this.confirmReset = 2.5; sfx.tap(); }
     });
+    // The place the drill has come into: its name on a plate, with its direction's gem (and a second gem, where
+    // the place pays two).
+    if (place && !place.card) {
+      const more = place.also ? 11 : 0, slide = Math.min(1, place.t / 0.15), pw = textWidth(place.title) + 23 + more, px = 4 - Math.round((1 - slide) * (1 - slide) * 10);
+      ctx.globalAlpha = Math.min(1, slide, (place.life - place.t) / 0.3);
+      slice9(ctx, 'ui', 'panel', px, 44, pw, 14);
+      this.panels.push([px, 44, pw, 14]);
+      if (place.mineral) this.drawMineral(ctx, place.mineral, px + 3, 45); else draw(ctx, 'icons', place.icon, px + 4, 46);
+      if (place.also) draw(ctx, 'icons', place.also, px + 15, 46);
+      text(ctx, place.title, px + 17 + more, 46, place.colour);
+      ctx.globalAlpha = 1;
+    }
+    // Specimens just banked: the count of that direction's slides out under the top bar, below where a place's
+    // plate goes, with what the next thing they buy asks, while there is one.
+    const line = this.specLine;
+    if (line) {
+      const need = this.specNeed(line.kin), label = `${Math.floor(S.spec[line.kin] + 1e-9)}${need ? `/${need}` : ''}`;
+      const slide = Math.min(1, line.t / 0.15), pw = textWidth(label) + 23, px = 4 - Math.round((1 - slide) * (1 - slide) * 10);
+      ctx.globalAlpha = Math.min(1, slide, (line.life - line.t) / 0.3);
+      slice9(ctx, 'ui', 'panel', px, 60, pw, 14);
+      this.panels.push([px, 60, pw, 14]);
+      draw(ctx, 'icons', `spec-${GEM_ICON[line.kin]}`, px + 4, 62);
+      text(ctx, label, px + 17, 62, GEM_COLOR[line.kin]);
+      ctx.globalAlpha = 1;
+    }
     this.drawMap(W - 54, H - 58);
     // Bottom: the blast, and the shop when the drill is home.
     const by = H - 46;
@@ -2043,7 +2571,9 @@ export class Game {
     if (this.shop) this.drawShop();
   }
   // The map: everything within the tether's reach, the core in the middle. Ground that has been seen shows as
-  // rock or open; the rest only as whose ground it is, so there is always somewhere to choose to go.
+  // rock or open; the rest only as whose ground it is, so there is always somewhere to choose to go. Whose it is
+  // is asked of the world as far as it is known (`biomeKnown`): what a piece already made holds, seen or not, so
+  // that an older saved game's map never shows a place that its ground does not have.
   drawMap(x, y) {
     const { ctx } = this, w = this.world, d = this.drill, size = 46, R = this.val('tether'), per = Math.max(0.6, R * 2.25 / size);
     slice9(ctx, 'ui', 'panel', x - 3, y - 3, size + 6, size + 6);
@@ -2055,7 +2585,7 @@ export class Game {
       const px = this.mapData.data;
       for (let v = 0; v < size; v++) for (let u = 0; u < size; u++) {
         const wx = Math.floor(HX + (u - size / 2 + 0.5) * per), wy = Math.floor(HY + (v - size / 2 + 0.5) * per), o = (v * size + u) * 4, k = w.peek(wx, wy);
-        const [r, g, b] = MAPC[k < 0 ? w.biomeAt(wx, wy) : w.b(wy * N + wx)];
+        const [r, g, b] = rowOf(w.biomeKnown(wx, wy)).map;
         const inside = Math.hypot(wx - C, wy - C) <= R, shade = (k < 0 ? 0.3 : k === K.EMPTY ? 0.12 : 0.85) * (inside ? 1 : 0.45);
         px[o] = r * shade + 8; px[o + 1] = g * shade + 7; px[o + 2] = b * shade + 10; px[o + 3] = 255;
       }
@@ -2077,15 +2607,61 @@ export class Game {
       const [mx, my] = at(HX + DX[dir] * RELIC_R, HY + DY[dir] * RELIC_R);
       ctx.fillStyle = GEM_COLOR[DIR_BIOME[dir]]; ctx.fillRect(Math.round(mx) - 1, Math.round(my) - 1, 3, 3);
     }
+    // The first keystone slab, a ring of its own size, until it hangs by no key: somewhere to go. While the reach
+    // is too short for the map to show where it lies (the map shows a little more than the reach), the ring is
+    // drawn small at the map's edge, on the way to it.
+    const slab = this.firstRing();
+    if (slab) {
+      let [mx, my] = at(slab.cx + 0.5, slab.cy + 0.5), r = Math.max(1.5, slab.p / per);
+      const ox = mx - x - size / 2, oy = my - y - size / 2, off = Math.max(Math.abs(ox), Math.abs(oy)), edge = size / 2 - 4;
+      if (off > edge) { mx = Math.floor(x + size / 2 + ox * edge / off) + 0.5; my = Math.floor(y + size / 2 + oy * edge / off) + 0.5; r = 2; }
+      ctx.fillStyle = SPOT.key[1];
+      for (let a = 0; a < 6.283; a += 0.7 / r) ctx.fillRect(Math.round(mx + Math.cos(a) * r - 0.5), Math.round(my + Math.sin(a) * r - 0.5), 1, 1);
+    }
+    // Things seen and not yet taken, each a dot in its own colour.
+    for (const [cell, , colour] of this.S.marks) {
+      const wx = cell % N, wy = Math.floor(cell / N);
+      if (Math.hypot(wx + 0.5 - HX, wy + 0.5 - HY) > R) continue;
+      const [mx, my] = at(wx + 0.5, wy + 0.5);
+      ctx.fillStyle = '#0c0a12'; ctx.fillRect(Math.round(mx) - 1, Math.round(my) - 1, 3, 3);
+      ctx.fillStyle = colour; ctx.fillRect(Math.round(mx) - 1, Math.round(my) - 1, 2, 2);
+    }
     if (((this.time * 2) | 0) % 2) this.world.wrecks.forEach(([wx, wy], n) => {
       if (this.S.wrecks?.[n] || Math.hypot(wx + 0.5 - HX, wy + 0.5 - HY) > R) return;
       const [mx, my] = at(wx + 0.5, wy + 0.5);
       ctx.fillStyle = '#ff9a3a'; ctx.fillRect(Math.round(mx) - 1, Math.round(my), 3, 1); ctx.fillRect(Math.round(mx), Math.round(my) - 1, 1, 3);
     });
+    // Pockets within reach that the drill has not been into: a pip each, in the pocket's own colour.
+    for (const Z of this.pocketPips()) {
+      const [mx, my] = at(Z.cx + 0.5, Z.cy + 0.5);
+      ctx.fillStyle = '#0c0a12'; ctx.fillRect(Math.round(mx) - 2, Math.round(my) - 2, 4, 4);
+      ctx.fillStyle = rowOf(Z.row).pocket.pip ?? bright(rowOf(Z.row).map); ctx.fillRect(Math.round(mx) - 1, Math.round(my) - 1, 2, 2);
+    }
     ctx.fillStyle = '#84dcff'; ctx.fillRect(x + size / 2 - 1, y + size / 2 - 1, 3, 3);
     const [dx, dy] = at(d.x, d.y);
     ctx.fillStyle = ((this.time * 3) | 0) % 2 ? '#ffffff' : '#ffd83a'; ctx.fillRect(Math.round(dx) - 1, Math.round(dy) - 1, 3, 3);
     ctx.restore();
+  }
+  // The pockets the map marks: those whose middles lie within the tether's reach and that the drill has not been
+  // into, the PIPS nearest the drill. One whose ground was made before pockets were laid (an older saved game's:
+  // the cell at its middle holds some other ground) is not there, and is not marked. The list is made again when
+  // the drill comes into another sector of pockets, the reach changes or a pocket is visited: not every frame.
+  pocketPips() {
+    const w = this.world, d = this.drill, S = this.S, R = this.val('tether');
+    const key = `${S.seed}:${Math.floor((d.x - C) / ZONE)},${Math.floor((d.y - C) / ZONE)}:${R}:${Object.keys(S.visited).length}`;
+    if (key !== this.pipsFor) {
+      this.pipsFor = key;
+      const far = Z => (Z.cx + 0.5 - d.x) ** 2 + (Z.cy + 0.5 - d.y) ** 2;
+      this.pips = w.pocketsWithin(R).filter(Z => !S.visited[Z.key] && w.biomeKnown(Z.cx, Z.cy) === Z.row).sort((a, b) => far(a) - far(b)).slice(0, PIPS);
+    }
+    return this.pips;
+  }
+  // The first keystone slab, while it is there to be found: the world's record of it, or null once none of its
+  // keys is left (cut, or hauled with it), or where the ground there was made before slabs were (an older saved
+  // game: what is there is the cells' to say). Where the ground is not made yet, it will be.
+  firstRing() {
+    const w = this.world, slab = w.firstSlab;
+    return slab && slab.keys.some(i => { const k = w.laid(i); return k < 0 || k === K.KEY; }) ? slab : null;
   }
   bar(x, y, w, icon, fill, color, flash) {
     const { ctx } = this;

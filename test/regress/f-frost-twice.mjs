@@ -27,7 +27,7 @@ async function run(wait) {
   go([[13, -5], [16, -5]]);                                // back, and cut the stem again where it was cut before
   const afterRecut = game.pieces.map(p => p.length), twice = game.loose.length - new Set(game.loose).size;
   let banner = null;
-  const each = () => { if (!banner && game.banner) banner = { n: game.banner.n, grit: game.banner.grit }; };
+  const each = () => { if (!banner && game.hauled) banner = { n: game.hauled.n, grit: game.hauled.grit }; };
   for (const [x, y] of [[21, -5], [21, 4], [12, 4], [12, -1]]) if (flyTo(game, x, y, { each }) < 0) throw new Error(`never reached ${x},${y} from ${where(game)}`);
   idle(game, 1, each);
   const out = { wait, afterFirstCut, afterSecondCut, ice, registeredWhileFrozenOn, pieceLooseWhileFrozenOn: stillLoose, afterRecut, cellsRegisteredTwice: twice, hauls: game.S.stats.hauls, banner };

@@ -22,13 +22,13 @@ console.log(JSON.stringify({ step: 'right round the wreck, still out there', hau
 go([[col, 0]]);
 flyTo(game, 0, 0, { tol: 0.05, frames: 6000 }); idle(game, 0.5);
 const left = []; for (let y = -1; y <= 1; y++) for (let x = -1; x <= 1; x++) if (w.k(at(wx + x, wy + y))) left.push([x, y, w.k(at(wx + x, wy + y)) === K.WRECK ? 'WRECK' : 'slate']);
-console.log(JSON.stringify({ step: 'home', hauls: game.S.stats.hauls, banner: game.banner && { title: game.banner.title, n: game.banner.n }, partHeld: game.S.wrecks[which], leftRoundTheWreck: left, band: bandRel(game).map(([x, y]) => [x - wx, y - wy]) }));
+console.log(JSON.stringify({ step: 'home', hauls: game.S.stats.hauls, banner: game.hauled && { title: game.hauled.title, n: game.hauled.n }, partHeld: game.S.wrecks[which], leftRoundTheWreck: left, band: bandRel(game).map(([x, y]) => [x - wx, y - wy]) }));
 // Leave the core and come back, without unwinding.
 const first = game.S.wrecks[which];
 if (!first) {
   idle(game, 0.5); go([[Math.sign(col) * 2 || -2, 0]]); idle(game, 0.3);
   flyTo(game, 0, 0, { tol: 0.05 }); idle(game, 0.5);
-  console.log(JSON.stringify({ step: 'out of the core and home a second time', hauls: game.S.stats.hauls, partHeld: game.S.wrecks[which], banner: game.banner && { title: game.banner.title, n: game.banner.n } }));
+  console.log(JSON.stringify({ step: 'out of the core and home a second time', hauls: game.S.stats.hauls, partHeld: game.S.wrecks[which], banner: game.hauled && { title: game.hauled.title, n: game.hauled.n } }));
 }
 console.log(first ? 'part fetched on the first homecoming' : 'DEFECT: the tether went right round the wreck and came home, but the part was not hauled on that homecoming');
 process.exit(first ? 0 : 1);

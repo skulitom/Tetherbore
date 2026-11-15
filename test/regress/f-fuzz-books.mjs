@@ -40,12 +40,12 @@ for (let turn = 0; turn < turns; turn++) {
     try { game.update(1 / 60); } catch (e) { note('threw', e.stack.split('\n').slice(0, 4).join(' | '), frames); }
     frames++;
     if (game.S.stats.hauls !== hauls) {
-      hauls = game.S.stats.hauls; lastHaul = frames; lastHaulN = game.banner?.n; lastHaulHome = game.atCore;
+      hauls = game.S.stats.hauls; lastHaul = frames; lastHaulN = game.hauled?.n; lastHaulHome = game.atCore;
       // What went: cells of previously registered pieces that are now open.
     }
     { const delta = game.S.grit - grit0, shown = game.S.grit - game.pending.grit, got = game.S.stats.hauls - hauls0;
       if (got === 0 && delta !== 0 && delta !== 2) note('grit changed with no haul', `${delta}`, frames);
-      if (got === 1 && delta !== game.banner.grit && delta !== game.banner.grit + 2) note('haul paid other than its banner', `${delta} against ${game.banner.grit}`, frames);
+      if (got === 1 && delta !== game.hauled.grit && delta !== game.hauled.grit + 2) note('haul paid other than its banner', `${delta} against ${game.hauled.grit}`, frames);
       if (got > 1) note('two hauls in one frame', `${got}`, frames);
       if (shown < shown0 - 1e-9) note('shown grit went down', `${shown0} to ${shown}`, frames);
       if (game.pending.grit < 0 || shown < 0) note('negative', `${shown} ${game.pending.grit}`, frames);

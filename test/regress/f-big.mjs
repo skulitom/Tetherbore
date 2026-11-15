@@ -33,7 +33,7 @@ for (let f = 0; f < 600; f++) {
   const t0 = performance.now(); game.update(1 / 60); const ms = performance.now() - t0;
   worst = Math.max(worst, ms);
   if (cutFrame < 0 && w.k(at(11, 4)) === K.EMPTY) cutFrame = f;
-  if (hauledFrame < 0 && game.S.stats.hauls && game.banner) { hauledFrame = f; banner = { n: game.banner.n, grit: game.banner.grit, over: +game.banner.over.toFixed(3) }; }
+  if (hauledFrame < 0 && game.S.stats.hauls && game.hauled) { hauledFrame = f; banner = { n: game.hauled.n, grit: game.hauled.grit, over: +game.hauled.over.toFixed(3) }; }
   if (far < 0.2) break;
 }
 idle(game, 1);
@@ -44,5 +44,5 @@ const hauledOnlyAtHome = !hauledWhereItWasCut && game.S.stats.hauls === 1;
 let finish = -1, worstHaul = 0;
 for (let f = 0; f < 60 * 120 && finish < 0; f++) { const t0 = performance.now(); game.update(1 / 60); worstHaul = Math.max(worstHaul, performance.now() - t0); if (!game.hauls.length) finish = f; }
 console.log(JSON.stringify({ side: s, cells: s * s + (bump ? 1 : 0), bump, stagedMs: Math.round(staged), freedBeforeCut: direct.map(p => p.length), cutFrame, hauledFrame, worstFrameMs: Math.round(worst), banner,
-  blockCellsLeftAfterCut: stillThere, hauledWhereItWasCut, hauledOnlyAtHome, homeBanner: game.banner && game.banner.n, registered: game.pieces.map(p => p.length), hauls: game.S.stats.hauls, haulFinishedAfterFrames: finish, worstHaulFrameMs: Math.round(worstHaul), pendingLeft: game.pending.grit, drill: where(game), bends: game.band.length }));
+  blockCellsLeftAfterCut: stillThere, hauledWhereItWasCut, hauledOnlyAtHome, homeBanner: game.hauled && game.hauled.n, registered: game.pieces.map(p => p.length), hauls: game.S.stats.hauls, haulFinishedAfterFrames: finish, worstHaulFrameMs: Math.round(worstHaul), pendingLeft: game.pending.grit, drill: where(game), bends: game.band.length }));
 process.exit(s * s <= 120000 && !hauledWhereItWasCut ? 1 : 0);

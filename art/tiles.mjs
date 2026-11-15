@@ -2,6 +2,8 @@
 // upper left: a light rim on the north and west faces, a dark one with a cast shadow on the south and east.
 // The floors are the same fills in the dark, for the ground the drill has already cut away.
 
+import { drawn, VARIANTS } from './fills.mjs';
+
 const rock = (name, palette, fill, seed) => ({
   format: 'pixelforge-autotile', version: 1, name, tile: 16, palette,
   terrain: {
@@ -77,6 +79,164 @@ export const ROCKS = [
     { color: 'f', speckle: [{ color: 'a', amount: 0.22, size: 6 }, { color: 'b', amount: 0.16, size: 4 }, { color: 'c', amount: 0.06, size: 2 }] }, 109),
 ];
 
+// ---- the strains
+// Two named kinds of each direction's ground, laid as provinces. Each keeps its direction's hue family, so colour
+// still says which gem the ground pays, and lies over its kin's floor. Their fills are drawn (art/fills.mjs): clumps
+// as above, then the marks that make the ground itself. Marks show the tile's grid sooner than clumps do, so a strain
+// has five variants where the older sets have three.
+const strain = (name, palette, seed, draw) => {
+  const [first, ...rest] = drawn(seed, draw);
+  return { ...rock(name, palette, { pattern: first }, seed), variants: [
+    { name: 'a', weight: 1 },
+    ...rest.map((pattern, n) => ({ name: VARIANTS[n + 1], weight: 1, terrain: { fill: { pattern } } })),
+  ] };
+};
+
+export const STRAINS = [
+  // North. Firn: old ice, massive and dull, in level sheets.
+  strain('firn', { k: '#1c2e4a', D: '#5f7ea8', L: '#eef6ff', s: '#06102659', f: '#9ab4d2', a: '#8ca8c8', b: '#a8c0dc', c: '#dcecf8' }, 113, fill => {
+    fill.clumps('a', 0.26, 5).clumps('b', 0.16, 4);
+    for (const [x, y] of fill.places(3, 4, 2)) fill.line(x, y, x + fill.int(3, 5), y, 'b');
+    fill.dots('c', 2, 2);
+  }),
+  // Serac: shattered ice, white shards between blue cracks.
+  strain('serac', { k: '#2a4a72', D: '#8ab8e0', L: '#ffffff', s: '#06102659', f: '#eaf8ff', a: '#cfe8f8', b: '#ffffff', c: '#6cb2e4' }, 127, fill => {
+    fill.clumps('a', 0.28, 5).clumps('b', 0.12, 3);
+    // One long fracture from side to side with a kink in it, and a splinter or two off it.
+    const flat = fill.next() < 0.5, p = fill.int(2, 13), q = fill.int(2, 13), m = fill.int(5, 10), n = fill.int(3, 12);
+    const [x0, y0, x1, y1, xm, ym] = flat ? [1, p, 14, q, m, n] : [p, 1, q, 14, n, m];
+    fill.line(x0, y0, xm, ym, 'c').line(xm, ym, x1, y1, 'c');
+    for (let i = fill.int(1, 2); i > 0; i--) {
+      const t = fill.int(2, 8) / 10, x = Math.round(x0 + (xm - x0) * t), y = Math.round(y0 + (ym - y0) * t), far = fill.int(3, 5), side = fill.next() < 0.5 ? 1 : -1;
+      fill.wander(x, y, flat ? [[1, side], [0, side], [0, side]] : [[side, 1], [side, 0], [side, 0]], far, 'c', 2);
+    }
+  }),
+  // South. Scoria: froth gone hard, full of bubbles. A bubble is dark under its near lip and lit on its far one.
+  strain('scoria', { k: '#1a0a08', D: '#4a2420', L: '#dc9c7c', s: '#00000066', f: '#96584a', a: '#7a4438', b: '#aa6c58', c: '#2a1210', l: '#cc9274' }, 131, fill => {
+    fill.clumps('a', 0.22, 4).clumps('b', 0.14, 3);
+    const BUBBLES = [['.cc.', 'cDDl', 'cDDl', '.ll.'], ['cc.', 'cDl', '.ll'], ['cD', 'Dl'], ['c.', '.l'], ['c.', '.l'], ['D']];
+    fill.places(6, 4, 1).forEach(([x, y], i) => { const rows = BUBBLES[i]; fill.stamp(Math.min(x, 15 - rows.length), Math.min(y, 15 - rows.length), rows); });
+  }),
+  // Forge: clinker, dark and cindery, still lit in short cracks: bright at the middle, dim at the ends.
+  strain('forge', { k: '#120808', D: '#34222a', L: '#b89080', s: '#00000066', f: '#664644', a: '#523838', b: '#7e5a56', c: '#ff9a3a', o: '#b84a22' }, 137, fill => {
+    fill.clumps('a', 0.28, 4).clumps('b', 0.16, 3);
+    const WAYS = [[1, 0], [1, 1], [0, 1], [-1, 1]];
+    for (const [x, y] of fill.places(2, 6, 3)) {
+      const [dx, dy] = WAYS[fill.int(0, 3)];
+      fill.set(x, y, 'c').set(x + dx, y + dy, fill.next() < 0.5 ? 'c' : 'o').set(x - dx, y - dy, 'o');
+    }
+    fill.dots('o', 2, 2);
+  }),
+  // West. Tangle: deep moss shot through with roots.
+  strain('tangle', { k: '#0e1a12', D: '#24402c', L: '#a8e070', s: '#05020a59', f: '#3e5a40', a: '#324a36', b: '#5a4a70', c: '#c8f08a', r: '#5e8a48' }, 139, fill => {
+    fill.clumps('a', 0.22, 6).clumps('b', 0.12, 5);
+    for (const [x, y] of fill.places(3, 5, 2)) {
+      const dx = fill.next() < 0.5 ? 1 : -1;
+      fill.wander(x, y, [[dx, 1], [0, 1], [0, 1], [dx, 0]], fill.int(5, 8), 'r');
+    }
+    fill.dots('c', 3, 2);
+  }),
+  // Sporefall: pale ground dusted with what the pods let fall.
+  strain('sporefall', { k: '#22142c', D: '#5a4070', L: '#f0c8ff', s: '#05020a59', f: '#a888b8', a: '#9a7aac', b: '#b898c6', c: '#b4e878', g: '#6aa050' }, 149, fill => {
+    fill.clumps('a', 0.2, 4).clumps('b', 0.16, 3).dots('c', 4, 1).dots('g', 3, 1);
+  }),
+  // East. Redrock: iron sandstone in level beds. The beds meet a block's sides at the same rows in every variant,
+  // so they run on through the ground; inside a block a bed steps up or down a pixel here and there.
+  strain('redrock', { k: '#2e120a', D: '#703420', L: '#f0b080', s: '#1a0c0459', f: '#a85a3a', a: '#904830', b: '#bc6e48', c: '#e09a6a' }, 151, fill => {
+    const BEDS = 'fffabbcfffaabbbf';
+    const steps = [0, 1, 2].map(() => ({ x: fill.int(2, 8), w: fill.int(3, 6), y: fill.int(0, 15), h: fill.int(4, 7), by: fill.next() < 0.5 ? 1 : -1 }));
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+      const lift = steps.reduce((sum, s) => sum + (x >= s.x && x < s.x + s.w && (y - s.y + 16) % 16 < s.h ? s.by : 0), 0);
+      fill.set(x, y, BEDS[(y + lift + 16) % 16]);
+    }
+    fill.dots('a', 4, 1).dots('b', 4, 1);
+  }),
+  // Loess: pale silt, soft, that stands in fine upright grain.
+  strain('loess', { k: '#4a4030', D: '#a89878', L: '#ffffff', s: '#1a140c59', f: '#e4dcc8', a: '#d4cab0', b: '#f0ead8', c: '#fffaf0', g: '#c4b898' }, 157, fill => {
+    fill.clumps('a', 0.18, 5).clumps('b', 0.14, 4);
+    for (const [x, y] of fill.places(5, 3, 2)) fill.line(x, y, x, y + fill.int(1, 2), 'g');
+    fill.dots('c', 2, 2);
+  }),
+];
+
+// ---- the pockets
+// Small places with ground of their own, a mineral and one rule each. A pocket has to read at a glance as somewhere
+// else: its ground looks like none of the directions' grounds, and it lies over a floor of its own, which is drawn
+// too (three variants unless more are asked for: a floor is only ever seen dark).
+const drawnFloor = (name, palette, seed, draw, variants = 3) => {
+  const [first, ...rest] = drawn(seed, draw).slice(0, variants);
+  return { ...floor(name, palette, { pattern: first }, seed), variants: [
+    { name: 'a' },
+    ...rest.map((pattern, n) => ({ name: VARIANTS[n + 1], terrain: { fill: { pattern } } })),
+  ] };
+};
+
+// Honeycomb: cells eight pixels wide in rows eight apart, every other row half a cell along. The comb is the same
+// in every variant and meets a tile's sides at the same places, so it runs on through the wax.
+const COMB = [[2, 3, 5, 6], [1, 7], [0], [0], [0], [0], [0], [0], [1, 2, 6, 7], [3, 5], [4], [4], [4], [4], [4], [4]];
+const onComb = (x, y) => COMB[(y + 16) % 16].includes((x + 16) % 8);
+// The comb's walls in one colour and, if a second is given, the shade they throw into each cell from the upper left.
+const comb = (fill, wall, shade) => {
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+    if (onComb(x, y)) fill.set(x, y, wall);
+    else if (shade && (onComb(x - 1, y) || onComb(x, y - 1))) fill.set(x, y, shade);
+  }
+};
+// One cell filled, every pixel of it that is not wall: the left or the right cell of the upper row, which lie whole
+// in the tile, or the one whole cell of the lower row, whose last four pixels lie in the tile below and are left.
+const CELL = ['...#...', '.#####.', '#######', '#######', '#######', '#######', '#######', '#######', '..###..', '...#...'];
+const LOWER = ['...#...', '.#####.', '#######', '#######', '#######', '#######', '#######', '#######'];
+const cell = (fill, which, key, glint) => {
+  const [x0, y0, rows] = which === 'lower' ? [5, 8, LOWER] : [which === 'right' ? 9 : 1, 0, CELL];
+  rows.forEach((row, v) => [...row].forEach((on, u) => { if (on === '#') fill.set(x0 + u, y0 + v, key); }));
+  if (glint) fill.set(x0 + 1, y0 + 3, glint).set(x0 + 2, y0 + 2, glint);
+};
+
+// The same set with its outer corners cut rounder.
+const rounded = (round, set) => ({ ...set, terrain: { ...set.terrain, round } });
+
+export const POCKETS = [
+  // Amber Hive (west): beeswax comb. The cell walls are pale and stand proud of the hollows; a cell here and there
+  // is full of dark honey, or capped over. Nothing in the wax is as orange as the amber that lies in it.
+  strain('wax', { k: '#3a2208', D: '#8a5a14', L: '#ffe89a', s: '#1a0c0059', f: '#d89a2a', a: '#b87818', b: '#f6d066', c: '#fff2c0', h: '#a8600c', H: '#e0a040' }, 163, (fill, n) => {
+    comb(fill, 'b', 'a');
+    if (n === 1) cell(fill, 'left', 'h', 'H');
+    if (n === 2) cell(fill, 'right', 'b');
+    if (n === 3) cell(fill, 'lower', 'h', 'H');
+    for (const [x, y] of fill.places(2, 5, 1)) if (onComb(x, y)) fill.set(x, y, 'c');
+  }),
+  // Pumice Drift (anywhere): boulders of grey froth lying loose in open dark, their corners worn round. Full of
+  // holes, each dark under its near lip and lit on its far one.
+  rounded(3, strain('pumice', { k: '#2a2630', D: '#5a5466', L: '#e8e2f0', s: '#00000059', f: '#a8a0b4', a: '#948ca2', b: '#bdb6c8', c: '#d8d2e4', p: '#4e485c', q: '#6e6880' }, 167, fill => {
+    fill.clumps('a', 0.24, 4).clumps('b', 0.12, 3);
+    const HOLES = [['.pp.', 'pppc', 'pqqc', '.cc.'], ['pp.', 'pqc', '.cc'], ['pq', 'qc'], ['p.', '.c'], ['q.', '.c'], ['q']];
+    fill.places(6, 4, 1).forEach(([x, y], i) => { const rows = HOLES[i]; fill.stamp(Math.min(x, 15 - rows.length), Math.min(y, 15 - rows.length), rows); });
+  })),
+  // Ash Flats (south): fallen ash, pale and soft, that cuts like air. Low in contrast, with a fleck of char here
+  // and there.
+  rounded(2, strain('ash', { k: '#3a3a40', D: '#77777f', L: '#f4f4f0', s: '#00000040', f: '#c4c4c0', a: '#b8b8b5', b: '#cfcfcb', c: '#e0e0dc', g: '#9c9c9e', G: '#6c6c74' }, 173, (fill, n) => {
+    fill.clumps('a', 0.2, 6).clumps('b', 0.14, 5);
+    fill.dots('c', 2, 1).dots('g', 3, 1);
+    if (n % 2) fill.dots('G', 1, 2);
+  })),
+];
+
+export const POCKET_FLOORS = [
+  // The hive's chambers: dark, with the comb still faintly on the floor.
+  drawnFloor('wax-floor', { f: '#201206', a: '#1a0e04', b: '#2a1a0a' }, 16, fill => {
+    fill.clumps('a', 0.25, 5);
+    comb(fill, 'b');
+  }),
+  // The drift's cavern: night blue with a few far stars, so the open reads as sky.
+  drawnFloor('pumice-floor', { f: '#0e1420', a: '#0a101a', b: '#141c2c', s: '#3c5486', S: '#8cb0ea' }, 17, (fill, n) => {
+    fill.clumps('a', 0.25, 6).clumps('b', 0.1, 3);
+    fill.dots('s', [2, 1, 3, 0, 2][n], 2);
+    if (n === 0 || n === 2) fill.dots('S', 1, 3);
+  }, 5),
+  // The flats, cut away: the dark of cold cinders.
+  floor('ash-floor', { f: '#1a1a1e', a: '#151518', b: '#222226' }, { color: 'f', speckle: [{ color: 'a', amount: 0.25, size: 6 }, { color: 'b', amount: 0.1, size: 3 }] }, 18),
+];
+
 export const FLOORS = [
   floor('rime-floor', { f: '#102830', a: '#0c2028', b: '#18363c' }, { color: 'f', speckle: [{ color: 'a', amount: 0.25, size: 6 }, { color: 'b', amount: 0.1, size: 3 }] }, 12),
   floor('magma-floor', { f: '#260c0a', a: '#1e0808', b: '#361410' }, { color: 'f', speckle: [{ color: 'a', amount: 0.25, size: 5 }, { color: 'b', amount: 0.1, size: 3 }] }, 13),
@@ -88,6 +248,90 @@ export const FLOORS = [
   floor('mire-floor', { f: '#1e1628', a: '#181120', b: '#243020' }, { color: 'f', speckle: [{ color: 'a', amount: 0.25, size: 5 }, { color: 'b', amount: 0.1, size: 3 }] }, 8),
   floor('lode-floor', { f: '#3a2616', a: '#301e11', b: '#48301c' }, { color: 'f', speckle: [{ color: 'a', amount: 0.25, size: 6 }, { color: 'b', amount: 0.1, size: 3 }] }, 9),
 ];
+
+// ---- the crosses
+// Generated ground: a host direction's ground with a donor direction's hazard in it. The sheet is the host's own
+// (its outline, lit rim, shadow, main colour and dark clumps, over the host's floor), so colour still says which gem
+// the ground pays first; what the donor brings is drawn into it at build time, the same on every host, so that it
+// is learnt once: rime with white sparkles where the ground freezes, scorch with embers where there is lava, moss
+// with lime flecks where there are pods, sand with gold glints where there are spark crystals.
+//
+// The plan's first figures (the host's b mixed 35% toward the donor's main colour, the donor's accent as speckle
+// over 7% of the tile) were tried and rejected by eye: the flecks lay as confetti, hid the ore and showed the grid,
+// and a third of the pairs did not read apart from their hosts. So the patches are mixed further, toward the colour
+// that is the donor's own at a glance (for the mire its moss, not its loam), and the accent lies in them as a few
+// drawn marks.
+const channels = hex => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
+export const mix = (from, to, t) => {
+  const a = channels(from), b = channels(to);
+  return '#' + a.map((v, i) => Math.round(v + (b[i] - v) * t).toString(16).padStart(2, '0')).join('');
+};
+const ground = name => ROCKS.find(r => r.name === name).palette;
+// Up to `count` pixels of one key, `apart` from each other and a pixel in from the tile's border.
+const among = (fill, key, count, apart) => {
+  const out = [];
+  for (let tries = 0; out.length < count && tries < 300; tries++) {
+    const x = fill.int(1, 14), y = fill.int(1, 14);
+    if (fill.get(x, y) === key && out.every(([u, v]) => Math.max(Math.abs(u - x), Math.abs(v - y)) >= apart)) out.push([x, y]);
+  }
+  return out;
+};
+const AROUND = [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]];
+// Each direction as a host (the size of its dark clumps, as in its own set) and as a donor: `patch`, the colour its
+// patches are mixed toward; `accent` (key c) and, if it has one, a dimmer tone beside it (key d); and its marks,
+// drawn on the patches.
+const KIN = {
+  // Rime: one crystal, a white pixel with four pale arms, and loose sparkles.
+  frost: { size: 6, patch: '#d6eaf8', accent: '#e8fbff', dim: '#8cc8ee', mark(fill) {
+    const [star, ...rest] = among(fill, 'b', 5, 3);
+    if (star) { for (const [dx, dy] of [[1, 0], [0, 1], [-1, 0], [0, -1]]) fill.set(star[0] + dx, star[1] + dy, 'd'); fill.set(star[0], star[1], 'c'); }
+    for (const [x, y] of rest) fill.set(x, y, 'c');
+  } },
+  // Scorch: embers, each bright with a dull one beside it, and a couple gone dull.
+  ember: { size: 5, patch: '#5e3230', accent: '#ff8a3a', dim: '#b84a22', mark(fill) {
+    for (const [x, y] of among(fill, 'b', 4, 4)) { const [dx, dy] = AROUND[fill.int(0, 7)]; fill.set(x + dx, y + dy, 'd').set(x, y, 'c'); }
+    for (const [x, y] of among(fill, 'b', 2, 3)) fill.set(x, y, 'd');
+  } },
+  // Moss: lime flecks in it, and one or two fallen beside it.
+  mire: { size: 6, patch: '#5f9450', accent: '#b4e878', mark(fill) {
+    for (const [x, y] of among(fill, 'b', 5, 3)) fill.set(x, y, 'c');
+    for (const [x, y] of among(fill, 'f', 2, 3)) fill.set(x, y, 'c');
+  } },
+  // Sand: glints of gold, two pixels on a slant, and pale grains.
+  lode: { size: 6, patch: '#cca06c', accent: '#ffe08a', dim: '#e4c68e', mark(fill) {
+    for (const [x, y] of among(fill, 'b', 3, 4)) fill.set(x + (fill.next() < 0.5 ? 1 : -1), y - 1, 'c').set(x, y, 'c');
+    for (const [x, y] of among(fill, 'b', 4, 3)) fill.set(x, y, 'd');
+  } },
+};
+export const KINS = Object.keys(KIN);
+// How far a host's second tone goes toward the donor's patch colour: half way, or as far as the eye asked for.
+// Charred moss has to go nearly black-brown to show on violet loam; scorch and moss are both close to sandstone.
+const TAKES = { 'frost-lode': 0.65, 'ember-lode': 0.75, 'mire-ember': 0.8, 'lode-ember': 0.6, 'lode-mire': 0.75 };
+// What a cross looks like away from its sheet, which the build writes beside its frames in the atlas: its colour on
+// the map and what flies off it when it is cut (main colour, patch, lit rim). The map colour is the host's main
+// colour 40% toward the donor's patch colour. The plan's 30% toward the donor's main colour was drawn as the map
+// shades unseen ground (three tenths as bright) and hardly showed, and with the mire as donor it showed as firn does.
+export const crossLook = (host, donor) => {
+  const p = ground(host), d = KIN[donor], b = mix(p.b, d.patch, TAKES[`${host}-${donor}`] ?? 0.5);
+  return { b, map: channels(mix(p.f, d.patch, 0.4)), debris: [p.f, b, p.L] };
+};
+export const cross = (host, donor) => {
+  const p = ground(host), h = KIN[host], d = KIN[donor];
+  // Seeds 47 apart: a set's five variants take its seed and the 7th, 19th, 31st and 43rd after it.
+  const seed = 181 + (KINS.indexOf(host) * 3 + KINS.filter(k => k !== host).indexOf(donor)) * 47;
+  return strain(`x-${host}-${donor}`, { ...p, b: crossLook(host, donor).b, c: d.accent, ...(d.dim && { d: d.dim }) }, seed, fill => {
+    // The host's dark clumps as in its own set, then the donor's patches in two sizes: one size alone lays one
+    // blob a tile, which shows the grid.
+    fill.clumps('a', 0.2, h.size).clumps('b', 0.14, 4).clumps('b', 0.07, 3);
+    d.mark(fill);
+  });
+};
+// The pairs, host by host. Each was judged by eye beside its host, the host's strains and its deep flank
+// (tools/compare.py at 4x and 1x), as solid ground, and in the game under its dark in its host's place: all twelve
+// read apart at phone size, so none is switched off.
+export const PAIRS = KINS.flatMap(host => KINS.filter(donor => donor !== host).map(donor => [host, donor]));
+export const CROSSES = PAIRS.map(([host, donor]) => cross(host, donor));
+export const CROSS_LOOKS = Object.fromEntries(PAIRS.map(([host, donor]) => { const { map, debris } = crossLook(host, donor); return [`x-${host}-${donor}`, { map, debris }]; }));
 
 // Lava that has run into a tunnel: one blob set whose three frames move the bright crust along.
 export const LAVA = {

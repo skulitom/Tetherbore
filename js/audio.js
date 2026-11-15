@@ -113,9 +113,27 @@ export function setAmbience(biome, deep) {
   bed.out.gain.setTargetAtTime(0.06, t, 1.5);
 }
 const MOODS = [[0, 4, 7], [7, 9, 12, 14, 16], [0, 3, 5], [2, 4, 9, 11], [0, 4, 7, 9]];
+const TOP = [440, 880, 165, 330, 440];                                     // the note each direction's scale stands on
 sfx.chime = biome => {
   const steps = MOODS[biome] ?? MOODS[0], step = steps[(Math.random() * steps.length) | 0];
-  const top = biome === 1 ? 880 : biome === 2 ? 165 : biome === 3 ? 330 : 440, f = top * 2 ** (step / 12);
+  const f = (TOP[biome] ?? TOP[0]) * 2 ** (step / 12);
   tone(f, 1.6, { type: 'sine', gain: 0.045, attack: 0.08 });
   tone(f * 1.5, 1.2, { type: 'sine', gain: 0.02, attack: 0.1, delay: 0.22 });
 };
+// A place's name comes up on its plate: two notes of its direction's scale, the lowest and then the highest.
+sfx.place = kin => {
+  const steps = MOODS[kin] ?? MOODS[0], top = TOP[kin] ?? TOP[0];
+  tone(top * 2 ** (steps[0] / 12), 0.28, { type: 'triangle', gain: 0.085, attack: 0.01 });
+  tone(top * 2 ** (steps[steps.length - 1] / 12), 0.5, { type: 'triangle', gain: 0.085, attack: 0.01, delay: 0.13 });
+};
+// A ground met for the first time: the notes of its scale together, spread a little, over the note it stands on.
+sfx.arrive = kin => {
+  const steps = MOODS[kin] ?? MOODS[0], top = TOP[kin] ?? TOP[0];
+  tone(top / 2, 1.8, { type: 'triangle', gain: 0.07, attack: 0.03 });
+  steps.slice(0, 4).forEach((step, n) => tone(top * 2 ** (step / 12), 1.5, { type: 'sine', gain: 0.07, attack: 0.03, delay: 0.05 + n * 0.07 }));
+};
+// Something seen for the first time: a few notes of its own for each kind of thing.
+const SPOTS = { cache: [10, 12], geode: [7, 9, 12], wreck: [6, 3], key: [5, 5], prism: [12, 14, 17], relic: [5, 7, 9, 12], mineral: [8, 11] };
+sfx.spot = what => (SPOTS[what] ?? SPOTS.cache).forEach((step, n) => tone(note(step), 0.3, { type: 'triangle', gain: 0.11, delay: n * 0.09 }));
+// A wreck close by ticks: `near` is 0 at the edge of hearing and 1 beside it.
+sfx.ping = near => tone(620 + 260 * near, 0.07, { type: 'sine', gain: 0.035 + 0.05 * near, attack: 0.002 });

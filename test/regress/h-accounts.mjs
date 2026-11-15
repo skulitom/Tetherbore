@@ -19,7 +19,7 @@ const trickle0 = S.grit;
 let trickle = 0, lastGrit = S.grit;
 const each = () => {
   frames++;
-  if (game.banner && game.banner !== lastBanner) { lastBanner = game.banner; banners.push({ frame: frames, n: game.banner.n, grit: game.banner.grit, gems: game.banner.gems.slice() }); }
+  if (game.hauled && game.hauled !== lastBanner) { lastBanner = game.hauled; banners.push({ frame: frames, n: game.hauled.n, grit: game.hauled.grit, gems: game.hauled.gems.slice() }); }
   const shown = S.grit - game.pending.grit, g = S.gems[1] - game.pending.gems[1];
   minShown = Math.min(minShown, shown); if (shown < prev - 1e-9) wentDown++; prev = shown;
   if (g < prevGems) gemsDown++; prevGems = g; if (g < 0) negGems++;
