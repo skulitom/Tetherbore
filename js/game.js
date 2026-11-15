@@ -762,14 +762,17 @@ export class Game {
     this.drawTether(ox, oy);
     // Cut pieces: they lift, gather into a bundle behind the drill, ride home with it, then drop into the core.
     const hx = (C + 0.5) * T - ox, hy = (C + 0.5) * T - oy;
-    const tailX = d.fx * T + 8 - ox - DX[d.dir] * 12, tailY = d.fy * T + 8 - oy - DY[d.dir] * 12;
     for (const h of this.hauls) {
+      // The bundle is packed as a disc as wide as the piece was big, slung behind the drill on a short line.
+      const girth = Math.min(40, 4 + Math.sqrt(h.n) * 4.2), sway = Math.sin(this.time * 7) * 2;
+      const tailX = d.fx * T + 8 - ox - DX[d.dir] * (12 + girth) + DY[d.dir] * sway, tailY = d.fy * T + 8 - oy - DY[d.dir] * (12 + girth) + DX[d.dir] * sway;
+      if (h.home === undefined && h.t > h.lift) { ctx.fillStyle = '#f4ecd8'; this.line(d.fx * T + 8 - ox, d.fy * T + 8 - oy, tailX, tailY); }
       const flash = h.t < h.lift && ((h.t * 24) | 0) % 2 === 0;
       h.sprites.forEach((s, n) => {
         if (s.done) return;
         const u = Math.max(0, Math.min(1, (h.t - s.go) / 0.42)), e = u * u;
         const lift = Math.min(1, h.t / h.lift) * 3;
-        const ring = Math.min(11, 2 + Math.sqrt(n) * 2.1), turn = n * 2.4 + h.t * 1.5;
+        const ring = Math.sqrt((n + 0.5) / h.n) * girth, turn = n * 2.39996 + h.t * 0.6;
         let bx = tailX + Math.cos(turn) * ring - 8, by = tailY + Math.sin(turn) * ring - 8;
         if (h.home !== undefined) {
           // Home: each piece in turn leaves the bundle for the core.
@@ -777,7 +780,7 @@ export class Game {
           bx += (hx - 8 - bx) * v * v; by += (hy - 8 - by) * v * v;
         }
         let px = s.x * T - ox, py = s.y * T - oy - lift, size = T;
-        if (u > 0) { px += (bx - px) * e; py += (by - py) * e; size = Math.round(T - 8 * u); }
+        if (u > 0) { px += (bx - px) * e; py += (by - py) * e; size = Math.round(T - 5 * u); }
         if (px < -T || py < -T || px > W || py > H) return;
         if (u > 0 && u < 1) { ctx.fillStyle = '#fff6c8'; this.line(px + 8, py + 8, tailX, tailY, 0.25); }
         const off = (T - size) / 2;
