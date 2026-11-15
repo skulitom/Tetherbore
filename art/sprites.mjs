@@ -448,11 +448,18 @@ const icons8 = {
   grit: ['........', '..ddd...', '.dllld..', 'dlllddd.', 'dlldddD.', '.ddDDD..', '........', '........'],
   tether: ['.yy.....', 'y..y....', 'y..y....', '.yy.y...', '....y...', '....y.y.', '.....y..', '........'],
 };
+const SPECIMEN = ['..aaa...', '.abaac..', 'abaaaac.', 'aaaaacc.', 'aaaaccc.', '.aaccc..', '..ccc...', '........'];
 export const icons = {
   version: 1, name: 'icons', width: 10, height: 10,
   palette: { k: '#16121c', w: '#ffffff', i: '#bfe6ff', o: '#ff7a1c', y: '#ffd84a', W: '#fff6c8', g: '#8ce060', G: '#4aa040', s: '#d8d0c0',
-    p: '#d8b8ff', q: '#ffffff', P: '#8a5ad8', z: '#ffe14a', d: '#9a8a74', l: '#d4c4a8', D: '#6a5c4c' },
-  frames: Object.entries(icons8).map(([name, rows]) => ({ name, ops: [{ op: 'grid', x: 1, y: 1, rows }, { op: 'outline', color: 'k', position: 'outside' }] })),
+    p: '#d8b8ff', q: '#ffffff', P: '#8a5ad8', z: '#ffe14a', d: '#9a8a74', l: '#d4c4a8', D: '#6a5c4c', a: '#bfe6ff', b: '#ffffff', c: '#5a9ad8' },
+  frames: [
+    ...Object.entries(icons8).map(([name, rows]) => ({ name, ops: [{ op: 'grid', x: 1, y: 1, rows }, { op: 'outline', color: 'k', position: 'outside' }] })),
+    // A specimen: a cut stone, six-sided, in the colour of the direction it was found in (north, south, west,
+    // east, as the gems are). One drawing, each frame with its own three colours.
+    ...[['frost', '#bfe6ff', '#ffffff', '#5a9ad8'], ['ember', '#ffb060', '#fff6c8', '#c8501c'], ['mire', '#b8f06a', '#f4ffd8', '#4aa040'], ['lode', '#d8b8ff', '#ffffff', '#8a5ad8']]
+      .map(([name, a, b, c]) => ({ name: `spec-${name}`, palette: { a, b, c }, ops: [{ op: 'grid', x: 1, y: 1, rows: SPECIMEN }, { op: 'outline', color: 'k', position: 'outside' }] })),
+  ],
 };
 
 const up12 = {

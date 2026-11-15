@@ -52,7 +52,7 @@ expect('four prisms count as three', [game.payOf([...ores, ...prisms]).gems[B.LO
 
 // ---- a pocket's mineral
 const looks = { sheet: 'mire', floor: 'mire-floor', gloom: [1, 2, 3], mote: ['#ffffff', 'still'], map: [1, 2, 3], debris: ['#000000'], gen: BIOMES[3].gen };
-const hive = biome({ id: 121, name: 'test-hive', kin: B.MIRE, worth: 0, pocket: { mineral: 'amber', lump: 4, spec: 1.5 }, ...looks });
+const hive = biome({ id: 121, name: 'test-hive', kin: B.MIRE, worth: 0, pocket: { mineral: 'amber', lump: 4, spec: 1.5, chain: true }, ...looks });
 const nodes = biome({ id: 122, name: 'test-nodes', kin: 0, pocket: { mineral: 'opal', kind: K.NODE, lump: 2, spec: 1 }, ...looks });
 const amber = lay(-70, 5, [K.MINERAL, K.SOFT, K.MINERAL, K.NODE], hive.id);
 const lumpOf = (cells, seconds, chain = 1) => cells.reduce((sum, i) => sum + round2(income(Math.max(22, Math.hypot(i % N - C, Math.floor(i / N) - C))) * seconds * chain), 0);
@@ -71,6 +71,8 @@ for (let link = 1; link <= 7; link++) {
   game.haul(lay(-70, 20 + link, [K.SOFT], B.CRUST));
   expect(`the lump after ${link} hauls in a chain`, game.payOf(amber).lump, lumpOf([amber[0], amber[2]], 4, 1 + 0.2 * Math.min(5, link)));
 }
+// (Only where the pocket's row says so: in any other a chain raises nothing.)
+expect('a chain in a pocket that has none', game.payOf(opal).lump, lumpOf(opal.slice(1), 2));
 for (let f = 0; f < 600; f++) game.update(1 / 60);
 expect('the chain runs out', game.payOf(amber).lump, lumpOf([amber[0], amber[2]], 4));
 

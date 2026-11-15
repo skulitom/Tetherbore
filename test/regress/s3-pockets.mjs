@@ -113,6 +113,13 @@ const out = {};
   // (With half the weight it takes about a quarter of the sectors the hive had from 400 out, and all the others'.)
   check(took > kept * 0.15 && took < kept * 0.6 && fresh > 200, `the new kind took ${took} of the hive's sectors and left it ${kept}; it lies in ${fresh} sectors that had none`);
   out.added = { took, kept, fresh };
+  // A kind that may lie as near the core as it likes still lies no nearer than any pocket may: 170 cells.
+  biome({ ...hive, id: 62, name: 'test-near', pocket: { ...hive.pocket, kins: 'any', minR: 0 } });
+  {
+    const close = [];
+    for (let seed = 1; seed <= 40; seed++) close.push(...world(seed).pocketsWithin(300).filter(Z => !Z.herald));
+    check(close.length > 100 && close.some(Z => Z.row === 62 && far(Z) < 200) && close.every(Z => far(Z) >= 170), `with a kind that may lie anywhere, the nearest pockets of forty worlds lie ${close.map(Z => Math.round(far(Z))).sort((a, b) => a - b).slice(0, 8)} out`);
+  }
   // (The row is made one that no sector chooses, which is what takes it off the list: tests share the table.)
   biome({ ...hive, id: 62, name: 'test-gone', pocket: { ...hive.pocket, shape: undefined } });
   const after = world(7);
