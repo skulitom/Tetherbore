@@ -1,6 +1,6 @@
 // Every test in one command: each script in test/regress (each fails while the defect it was written for is there),
 // the smoke test, and the rope fuzz on seeds 11 to 18 from the core, from a start 200 cells out each way and from
-// inside a province of each strain of ground, and from a deep flank.
+// inside a province of each strain of ground, from a deep flank, and from inside provinces of generated crosses.
 //   node test/all.mjs [only: a word the test's name must hold]
 // One line a test, and the last line of a failing test's own output under it. Exits 1 if any failed. Tests run side by
 // side, as many as the machine has cores to spare, and the whole run takes a few minutes.
@@ -22,7 +22,12 @@ const ARGS = {
     [7, 300, -384, -128, 0.08, 7], [7, 300, 128, 384, 0.08, 7],
     // The east's own ground with few hazards planted, so that the crystals are mostly the world's own, on the
     // flanks of its slate: their arcs shatter the slate beside the string.
-    [8, 300, 200, 0, 0.02]],
+    [8, 300, 200, 0, 0.02],
+    // Inside provinces of generated crosses (`node tools/crosses.mjs --where 7` says where), with both of a cross's
+    // hazards planted: smoulder (pods and lava), kilnstone (crystals and lava), buzzmire (pods and crystals), thaw
+    // (lava in ground that freezes) and mouldstone (crystals and pods).
+    [7, 300, -1152, -384, 0.08, 8, 'second'], [7, 300, 1152, 384, 0.08, 8, 'second'], [7, 300, -640, -640, 0.08, 8, 'second'],
+    [7, 300, -128, -1408, 0.08, 9, 'second'], [7, 300, 1920, 640, 0.08, 9, 'second']],
   'f-big': [[71], [250], [205, 'jog'], [150, 'bump']],
   'f-freed-diff': [[1, 4000, 14, 0.55], [5, 6000, 20, 0.62], [9, 3000, 20, 0.62]],
   'f-fuzz-books': [[2, 300], [7, 300], [9, 300], [12, 300]],
@@ -36,7 +41,13 @@ const ARGS = {
     [11, 300, 7, -384, 128, 60], [7, 300, 7, -384, -128, 60], [11, 300, 7, 384, -384, 60], [7, 300, 7, 384, -128, 30],
     // The east's own ground, where arcs shatter slate (with bombs too, at mixed frame lengths), the south's own,
     // where lava quenches its slag to steel, and the north's own, where a cut beside ore heals as ore.
-    [21, 300, 5, 190, 10, 60], [23, 300, 5, 190, 10, 'mix', 'bombs'], [22, 300, 5, 20, 180, 60], [24, 300, 5, 10, -190, 60]],
+    [21, 300, 5, 190, 10, 60], [23, 300, 5, 190, 10, 'mix', 'bombs'], [22, 300, 5, 20, 180, 60], [24, 300, 5, 10, -190, 60],
+    // From a start inside a province of a generated cross, one of each host with each donor between them and
+    // each structure: buzzmire, hollow flashrock, thaw, crazed rimemoss, crazed quench, kilnstone, crazed tundra,
+    // mouldstone, frothy hailstone, banded kilnstone.
+    [7, 300, 8, -640, -640, 60], [7, 300, 8, 384, 1152, 'mix', 'bombs'], [7, 300, 9, -128, -1408, 60], [7, 300, 9, -1408, -128, 60, 'bombs'],
+    [7, 300, 9, -128, 1920, 60], [7, 300, 8, 1152, 384, 30], [7, 300, 9, 384, -1408, 'mix'], [7, 300, 9, 1920, 640, 60],
+    [7, 300, 9, -128, -1920, 60], [7, 300, 9, 1408, 384, 60]],
 };
 const tests = [];
 for (const file of readdirSync(here + 'regress').filter(name => name.endsWith('.mjs')).sort()) {
@@ -50,6 +61,12 @@ for (const [seed, x, y, way] of [[11, 0, -200, 'north'], [12, 0, 200, 'south'], 
 // And from inside a province of each strain, where the ground has shapes of its own for the string to lie on.
 for (const [seed, x, y, strain] of [[7, -128, -384, 'firn'], [7, 128, -384, 'serac'], [7, -128, 384, 'scoria'], [7, 128, 384, 'forge'], [11, -384, 128, 'tangle'], [7, -384, -128, 'sporefall'], [11, 384, -384, 'redrock'], [7, 384, -128, 'loess']]) {
   tests.push({ name: `rope-fuzz.mjs ${seed} 400 7 ${x} ${y} (${strain})`, run: ['rope-fuzz.mjs', seed, 400, 7, x, y] });
+}
+
+// And from inside provinces of generated crosses, with each structure among them: great caves, lanes of ice,
+// bubbles and level beds for the string to lie on.
+for (const [x, y, reach, cross] of [[-640, -640, 8, 'buzzmire'], [384, 1152, 8, 'hollow flashrock'], [384, -1408, 9, 'crazed tundra'], [-128, -1920, 9, 'frothy hailstone'], [1408, 384, 9, 'banded kilnstone'], [-1408, -384, 9, 'banded rimemoss']]) {
+  tests.push({ name: `rope-fuzz.mjs 7 400 ${reach} ${x} ${y} (${cross})`, run: ['rope-fuzz.mjs', 7, 400, reach, x, y] });
 }
 
 // And in a deep flank, where the crystals and the lava are thickest.

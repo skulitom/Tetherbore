@@ -4,9 +4,9 @@
 //   - the order of the rules: the home ground and the deep flanks are never a strain's, and the four provinces
 //     round the core are their direction's own ground;
 //   - a strain lies only in its own direction's ground;
-//   - how many provinces are strains: two thirds of those that are not kept for crosses, a share that grows from
-//     nothing under 500 cells out to 0.35 from 1,375 on; and each direction's two strains about as often as each
-//     other;
+//   - how many provinces are strains: two thirds of those that are not generated crosses, a share that grows from
+//     nothing under 500 cells out to 0.35 from 1,375 on (test/regress/c3-cross-provinces.mjs holds the crosses);
+//     and each direction's two strains about as often as each other;
 //   - what a province is does not depend on what was asked before, and differs from seed to seed;
 //   - a strain added later takes provinces only from the direction's own ground and from the other strains, never
 //     moving a province from one of the older strains to the other.
@@ -14,6 +14,7 @@
 import { World, C, BIOMES, B, PROVINCE, HOME_R, DEEP_R, biome } from '../../js/world.js';
 
 const fails = [], check = (ok, what) => { if (!ok) fails.push(what); };
+const isStrain = b => b >= 17 && b <= 31, isCross = b => b >= 128 && b <= 187;
 // The world as it was before provinces: every province its direction's own ground.
 class Bare extends World { province(px, py, kin) { return kin; } }
 
@@ -24,11 +25,13 @@ for (const seed of [1, 7, 34]) {
   const w = new World(), bare = new Bare();
   w.reset(seed); bare.reset(seed);
   for (let y = -2300; y <= 2300; y += 13) for (let x = -2300; x <= 2300; x += 13) {
-    const b = w.biomeAt(C + x, C + y), was = bare.biomeAt(C + x, C + y), strain = b >= 17 && b <= 31;
+    const b = w.biomeAt(C + x, C + y), was = bare.biomeAt(C + x, C + y), strain = isStrain(b);
     cells++; met.add(b);
     // Ground that is a deep flank's wherever its borders wander: far enough out, and far enough from the middle
     // line of its direction (the borders wander 100 cells and 30 at the most).
     if (Math.sqrt(x * x + y * y) > DEEP_R + 101 && Math.min(Math.abs(x), Math.abs(y)) > Math.max(Math.abs(x), Math.abs(y)) * 0.36 + 31 && Math.sqrt(x * x + y * y) < 2390) { deep++; if (b < 5 || b > 8) inDeep++; }
+    // (A cross lies where its host direction's own ground would: never in the home ground or a deep flank either.)
+    if (isCross(b)) { if (was === B.CRUST) inHome++; else if (was > 4) inDeep++; else if (BIOMES[b].kin !== was) astray++; continue; }
     if (!strain) { if (b !== was) lost++; continue; }
     strains++;
     if (Math.max(Math.abs(x), Math.abs(y)) < PROVINCE - 60) near++;
@@ -47,7 +50,7 @@ check(near === 0, `${near} cells of the four provinces round the core are a stra
 check(inHome === 0, `${inHome} cells of the home ground are not the home ground's`);
 check(inDeep === 0 && deep > cells * 0.2, `${inDeep} of ${deep} cells of the deep flanks are not a deep flank's: strains never take the place of deep ground`);
 check(astray === 0, `${astray} cells are a strain of another direction than the one they lie in`);
-check(lost === 0, `${lost} cells that are no strain's are not what they were before provinces`);
+check(lost === 0, `${lost} cells that are no strain's and no cross's are not what they were before provinces`);
 
 // ---- provinces: how many are strains, and which
 const share = { near: [0, 0], far: [0, 0] }, each = {};
@@ -59,8 +62,8 @@ for (let seed = 1; seed <= 40; seed++) {
     if (b !== kin && BIOMES[b].kin !== kin) astray++;
     if (rc < 220) { if (b !== kin) inner++; continue; }
     const band = rc <= 500 ? share.near : rc >= 1375 ? share.far : null;
-    if (band) { band[0] += b !== kin; band[1]++; }
-    if (b !== kin) each[b] = (each[b] ?? 0) + 1;
+    if (band) { band[0] += isStrain(b); band[1]++; }
+    if (isStrain(b)) each[b] = (each[b] ?? 0) + 1;
   }
 }
 const nearShare = share.near[0] / share.near[1], farShare = share.far[0] / share.far[1];
@@ -98,8 +101,8 @@ for (let kin = 1; kin <= 4; kin++) {
   all(after);
   let taken = 0, wrong = 0, were = 0;
   for (let n = 0; n < before.length; n++) {
-    if (before[n] !== B.FROST) were++;
-    if (after[n] === 25) { taken++; if (before[n] === B.FROST) wrong++; }
+    if (isStrain(before[n])) were++;
+    if (after[n] === 25) { taken++; if (!isStrain(before[n])) wrong++; }
     else if (after[n] !== before[n]) wrong++;
   }
   check(wrong === 0, `a third strain of the north moved ${wrong} provinces that it did not take for itself from a strain`);

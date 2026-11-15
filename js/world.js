@@ -103,6 +103,7 @@ const KIN_ITEMS = ['lode-items', 'frost-items', 'ember-items', 'mire-items', 'lo
 //   rich, gemx, worth   what multiplies a hauled cell's grit (rich, worth) and gems (gemx)
 //   dig                 what multiplies the time to cut a cell
 //   sheet, floor, items the terrain sheet of its rock, of its floor, and the sheet of its dense rock and ores
+//   itemsB              the sheet its rich ore is drawn from, where that is not `items`: a cross's is its donor's
 //   gloom, dark         the colour of its dark, and how deep the dark is (1 as everywhere today)
 //   mote                [colour, drift]: the motes in its air, and whether they 'fall', 'rise', 'sway' or hang 'still'
 //   map, debris         its colour on the map (its sheet's own ground colour) and the three colours of its chips
@@ -112,6 +113,7 @@ const KIN_ITEMS = ['lode-items', 'frost-items', 'ember-items', 'mire-items', 'lo
 //                       (and what goes with a hazard, where the ground's figure is not its type's: `HAZARDS`)
 //   lavaVol, freeze     how far a lava pocket of it pours; seconds until a cut closes with ice (0: never)
 //   extras              the names of what else is laid in it, each a rule of `TELLS`
+//   cross               of a generated cross, what it was made from: { host, donor, structure } (null: hand-made)
 //   glass, pocket       for ground yet to come (docs/CONTENT-PLAN.md S1): nothing reads them yet
 // and `lay`, made from gen, the hazards and the extras: the same numbers as `kindAt` wants them, worked out once.
 export const BIOMES = [];
@@ -172,10 +174,10 @@ export function biome(f) {
   return BIOMES[id] = {
     id, name, title: f.title ?? name.toUpperCase(), kin, gemA: f.gemA ?? kin, gemB: f.gemB ?? kin,
     rich: f.rich ?? 1, gemx: f.gemx ?? 1, worth: f.worth ?? 1, dig: f.dig ?? 1,
-    sheet: f.sheet ?? name, floor: f.floor ?? `${name}-floor`, items: f.items ?? KIN_ITEMS[kin],
+    sheet: f.sheet ?? name, floor: f.floor ?? `${name}-floor`, items: f.items ?? KIN_ITEMS[kin], itemsB: f.itemsB ?? f.items ?? KIN_ITEMS[kin],
     gloom: f.gloom, dark: f.dark ?? 1, mote: f.mote, map: f.map, debris: f.debris,
     gen: g, haz: f.haz ?? null, haz2: f.haz2 ?? null, lavaVol: f.lavaVol ?? 5, freeze: f.freeze ?? 0,
-    glass: f.glass ?? false, extras: f.extras ?? [], pocket: f.pocket ?? null,
+    glass: f.glass ?? false, extras: f.extras ?? [], pocket: f.pocket ?? null, cross: f.cross ?? null,
     lay: g && { dense: g.dense, oreA: g.oreA, oreB: g.oreB, slate: g.slate, cave: g.cave, cavern: g.cavern, haz, hazT, haz2, haz2T,
       rind: withIt(f.haz, 'rind'), rind2: withIt(f.haz2, 'rind'), ribs: withIt(f.haz, 'ribs') * (f.haz?.rate ?? 1), ribs2: withIt(f.haz2, 'ribs') * (f.haz2?.rate ?? 1), ...tells },
   };
@@ -240,6 +242,57 @@ strain(22, 'sporefall', B.MIRE, { rich: 1.2, haz: { type: 'spore', rate: 0.5 }, 
 strain(23, 'redrock', B.LODE, { rich: 1, gen: { slate: 0 }, extras: ['strata'], map: [168, 90, 58], debris: ['#a85a3a', '#bc6e48', '#f0b080'] });
 strain(24, 'loess', B.LODE, { rich: 0.85, dig: 0.5, gen: { dense: 0.76, oreA: 0.72, oreB: 0.80, slate: 0.02 }, haz: { type: 'spark', rate: 0.5 }, map: [228, 220, 200], debris: ['#e4dcc8', '#f0ead8', '#ffffff'] });
 
+// ---------------------------------------------------------------- generated ground: crosses
+// Everything above is made by hand. A cross is made by rule from three hand-made parts, so that a player who knows
+// the parts can read it at a glance (docs/CONTENT-PLAN.md, section 4 (a)):
+//   host       one of the four directions' own grounds. The cross lies in that direction and is that ground: its
+//              thresholds, its floor, its dark and motes, its ore's sheet, its own hazard as thick as ever, and
+//              its plain ore pays its gems.
+//   donor      one of the other three. Its rich ore is the donor's (drawn as the donor's, paying the donor's gems)
+//              and it has the donor's trait at WEAK strength: the north's, a cut closes with ice after 30 seconds;
+//              the others', their hazard as the ground's second, six tenths as thick (lava in smaller pockets, as
+//              scoria's is), each with what goes with it wherever it lies (`HAZARDS`: slag round the lava, crystals
+//              on the flanks of slate).
+//   structure  one shape in the ground, a hand-made strain's tell: 0 none, 1 HOLLOW (tangle's great caves),
+//              2 CRAZED (serac's lanes of ice: only where the host or the donor is the north, since ice belongs to
+//              nobody else; elsewhere it is no structure), 3 FROTHY (scoria's bubbles), 4 BANDED (redrock's level
+//              beds of slate, in place of the host's ribs).
+// Sixty rows at numbers that never move: CROSS + (host - 1) x 15 + (which of the three donors, in the order of
+// their numbers) x 5 + structure. Every one pays a quarter more than its host (as a strain's `rich` follows its
+// danger: 1 + 0.4 x WEAK, near enough) and needs nothing new to be paid in: hazards pay their own kind's gems.
+// What is hand-made of each pair is in `CROSS_LOOKS`: its sheet of rock (art/tiles.mjs: `cross`, the host's rock
+// with the donor drawn into it, built with the art and never tinted here), its name, its colour on the map and the
+// colour of the donor's patches among its chips (assets/atlas.json has the last two as the art made them;
+// test/regress/c3-cross-rows.mjs holds them equal), and the verdict of the eye on the sheet beside its host:
+// a pair that did not read apart would be switched off in `CROSS_OK`, and its provinces would be the host's own.
+// All twelve passed.
+export const CROSS = 128, WEAK = 0.6, STRUCTURES = ['', 'HOLLOW', 'CRAZED', 'FROTHY', 'BANDED'];
+// The three other directions, in the order of their numbers, for each host.
+export const DONORS = [[], [B.EMBER, B.MIRE, B.LODE], [B.FROST, B.MIRE, B.LODE], [B.FROST, B.EMBER, B.LODE], [B.FROST, B.EMBER, B.MIRE]];
+export const crossId = (host, donor, structure = 0) => CROSS + (host - 1) * 15 + DONORS[host].indexOf(donor) * 5 + structure;
+// Whether a structure is one in a cross of these two: lanes of ice only where one of them is the north.
+const shaped = (host, donor, structure) => structure === 2 && host !== B.FROST && donor !== B.FROST ? 0 : structure;
+const CROSS_LOOKS = [null,
+  [null, null, ['THAW', [150, 150, 162], '#9a8e94'], ['TUNDRA', [151, 189, 175], '#9bbfa4'], ['HAILSTONE', [194, 194, 186], '#d0ba9d']],
+  [null, ['QUENCH', [155, 132, 134], '#b09d9e'], null, ['SOOTFEN', [108, 98, 67], '#75724a'], ['FLASHROCK', [151, 102, 78], '#bc8c62']],
+  [null, ['RIMEMOSS', [147, 144, 171], '#9bbfa4'], ['SMOULDER', [99, 70, 91], '#5e4636'], null, ['BUZZMIRE', [143, 114, 115], '#969a5e']],
+  [null, ['HOARSAND', [197, 176, 153], '#d1c5b2'], ['KILNSTONE', [149, 103, 73], '#8a5e48'], ['MOULDSTONE', [149, 142, 86], '#7a9757'], null],
+];
+// The donor's brightest colour, the third of a cross's chips: sparkle, ember, lime fleck, gold glint.
+const ACCENT = [null, '#e8fbff', '#ff8a3a', '#b4e878', '#ffe08a'];
+// CROSS_OK[host][donor]: the eye's verdict on the pair's sheet.
+export const CROSS_OK = [[], [false, false, true, true, true], [false, true, false, true, true], [false, true, true, false, true], [false, true, true, true, false]];
+const SHAPES = [{}, { gen: { cavern: 0.62 } }, { extras: ['lanes'] }, { extras: ['bubbles'] }, { gen: { slate: 0 }, extras: ['strata'] }];
+export const crossRow = (host, donor, structure) => {
+  const own = BIOMES[host], from = BIOMES[donor], [noun, map, patch] = CROSS_LOOKS[host][donor], shape = shaped(host, donor, structure);
+  const title = shape ? `${STRUCTURES[shape]} ${noun}` : noun, hazard = from.haz && (from.haz.type === 'lava' ? { type: 'lava', rate: WEAK, t: 0.80 } : { type: from.haz.type, rate: WEAK });
+  return biome({ id: crossId(host, donor, structure), name: title.toLowerCase(), title, kin: host, gemB: donor, rich: 1.25,
+    sheet: `x-${own.name}-${from.name}`, floor: own.floor, items: own.items, itemsB: from.items, gloom: own.gloom, mote: own.mote,
+    map, debris: [own.debris[0], patch, ACCENT[donor]], gen: { ...own.gen, ...SHAPES[shape].gen }, extras: SHAPES[shape].extras,
+    haz: own.haz, haz2: hazard, freeze: own.freeze || from.freeze, cross: { host, donor, structure: shape } });
+};
+for (let host = B.FROST; host <= B.LODE; host++) for (const donor of DONORS[host]) for (let structure = 0; structure < 5; structure++) crossRow(host, donor, structure);
+
 export const DX = [1, 0, -1, 0], DY = [0, 1, 0, -1];
 // The cell next to a cell on each side, as steps of its number: east, south, west, north (as DX, DY). And how far
 // `freed` walks outlines: JOIN sides each while there is more than one to settle or one is known to be held, WALK
@@ -265,6 +318,9 @@ export const ZONE = 128;
 // Past the four pieces of ground round the core, each direction's ground is laid out in provinces PROVINCE cells
 // across, and a province may be a strain of the direction's ground (`World.province`).
 export const PROVINCE = 256;
+// Generated ground (crosses) is a share of the provinces that grows with the distance of a province's middle from
+// the core: none under CROSS_FROM cells out, then a part in 2,500 for each cell further, and never over CROSS_MOST.
+export const CROSS_FROM = 500, CROSS_MOST = 0.35;
 export const onCore = (x, y) => Math.abs(x - C) <= 1 && Math.abs(y - C) <= 1;
 
 const hash = (x, y, s) => {
@@ -279,7 +335,7 @@ export const cellHash = hash;
 // about the square the cell before them did.
 // Layers and hash seeds in use (added to the world's seed): 1-3 and 14-17 whose ground a cell is; 4 the world's
 // edge; 5-13 and 18 the ground itself; 21-24 finds; 31-32 wrecks; 55 and 300 + a strain's number, provinces (56 and
-// 57 are kept for crosses); 58-59 a second hazard; 64 grapes, 65 lanes, 66 rivers, 67 bubbles (strata are on 11,
+// 57: which cross a province is); 58-59 a second hazard; 64 grapes, 65 lanes, 66 rivers, 67 bubbles (strata are on 11,
 // stretched); 68 slag among lava. docs/CONTENT-PLAN.md (S3) allots the rest: take a number from there, so that no
 // two rules read the same layer.
 const kept = new Float64Array(128 * 7).fill(NaN);
@@ -385,7 +441,7 @@ export class World {
   //   3. which direction's ground, on borders that wander
   //   4. a seam along a diagonal   (not laid yet. Its place is after the direction is known and before the flanks)
   //   5. a deep flank: strains and crosses never take the place of one
-  //   6. the province the cell lies in: a cross (not laid yet), a hand-made strain of the direction, or
+  //   6. the province the cell lies in: a generated cross, a hand-made strain of the direction, or
   //   7. the direction's own ground.
   biomeAt(x, y) {
     const seed = this.seed, dx = x - C, dy = y - C, r = Math.sqrt(dx * dx + dy * dy);
@@ -408,11 +464,15 @@ export class World {
   }
   // What the ground of direction `kin` is in province (px, py), provinces being counted from the core's cell.
   // A province whose middle is under 220 cells out is its direction's own ground. Further out, by the province's
-  // own hash: a share `X` of provinces, none under 500 cells out and never more than 0.35, is kept for generated
-  // crosses (not laid yet: the direction's own ground until they are); two thirds of the rest are a hand-made
-  // strain of the direction, the one whose own hash for the province is largest, so that a strain added later
-  // takes few provinces from the others; the last third is the direction's own. A province on a border between
-  // two directions is asked for each. What is worked out is kept, a number for each province and direction.
+  // own hash: a share `X` of provinces, none under CROSS_FROM cells out, rising with the distance and never more
+  // than CROSS_MOST, is generated ground, a cross of the direction's ground (the host) with one of the other three
+  // (the donor, by a hash of its own) in one of the five structures (by another): `crossRow`. Where the pair's
+  // sheet did not pass the eye (`CROSS_OK`) the province is the direction's own. Two thirds of the rest are a
+  // hand-made strain of the direction, the one whose own hash for the province is largest, so that a strain
+  // added later takes few provinces from the others; the last third is the direction's own. So hand-made ground
+  // is never less than 1 - CROSS_MOST of the provinces, and all of the deep flanks and the home ground besides.
+  // A province on a border between two directions is asked for each. What is worked out is kept, a number for
+  // each province and direction.
   province(px, py, kin) {
     const seed = this.seed;
     if (this.provincesFor !== seed) { this.provincesFor = seed; this.provinces.fill(255); }
@@ -421,8 +481,11 @@ export class World {
     const mx = (px + 0.5) * PROVINCE, my = (py + 0.5) * PROVINCE, rc = Math.sqrt(mx * mx + my * my);
     let b = kin;
     if (rc >= 220) {
-      const X = Math.min(0.35, Math.max(0, (rc - 500) / 2500)), pick = hash(px, py, seed + 55);
-      if (pick >= X && pick < X + (1 - X) * 2 / 3) for (let n = 0, most = -1, list = STRAINS[kin]; n < list.length; n++) {
+      const X = Math.min(CROSS_MOST, Math.max(0, (rc - CROSS_FROM) / 2500)), pick = hash(px, py, seed + 55);
+      if (pick < X) {
+        const donor = DONORS[kin][Math.floor(hash(px, py, seed + 56) * 3)];
+        if (CROSS_OK[kin][donor]) b = crossId(kin, donor, shaped(kin, donor, Math.floor(hash(px, py, seed + 57) * 5)));
+      } else if (pick < X + (1 - X) * 2 / 3) for (let n = 0, most = -1, list = STRAINS[kin]; n < list.length; n++) {
         const h = hash(px, py, seed + 300 + list[n]);
         if (h > most) { most = h; b = list[n]; }
       }

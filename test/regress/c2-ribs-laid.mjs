@@ -20,7 +20,9 @@ const fails = [], check = (ok, what) => { if (!ok) fails.push(what); };
 const near = (a, b) => Math.abs(a - b) < 1e-9;
 check(HAZARDS.spark.ribs === 0.2 && !HAZARDS.lava.ribs && !HAZARDS.spore.ribs, `the share of a rib's flank that is crystal is ${HAZARDS.spark.ribs}`);
 for (const [id, want] of [[4, 0.2], [8, 0.36], [23, 0.2], [24, 0.1]]) check(near(BIOMES[id].lay.ribs, want) && BIOMES[id].lay.ribs2 === 0, `${BIOMES[id].name}: crystals are ${BIOMES[id].lay.ribs} of its ribs' flanks, not ${want}`);
-for (const row of BIOMES) if (row && row.lay && row.haz?.type !== 'spark') check(row.lay.ribs === 0 && row.lay.ribs2 === 0, `${row.name} has no crystals and ribs of ${row.lay.ribs}`);
+// (A cross that has crystals from the east as its second hazard has them on its slate's flanks, at its second
+// hazard's rate: test/regress/c3-cross-rows.mjs.)
+for (const row of BIOMES) if (row && row.lay && row.haz?.type !== 'spark') check(row.lay.ribs === 0 && near(row.lay.ribs2, row.haz2?.type === 'spark' ? 0.2 * row.haz2.rate : 0), `${row.name} has no crystals of its own and ribs of ${row.lay.ribs}, or ${row.lay.ribs2} for its second hazard`);
 
 // What is counted in real provinces (tools/strains.mjs), before the rows for this test alone are made.
 const counts = count(8), said = {};

@@ -16,7 +16,8 @@ const { World, C, K, B, BIOMES, HAZARDS, PROVINCE, biome } = world;
 const fails = [], check = (ok, what) => { if (!ok) fails.push(what); };
 check(HAZARDS.lava.rind === 0.07 && !HAZARDS.spore.rind && !HAZARDS.spark.rind, `the rind that goes with lava is ${HAZARDS.lava.rind}`);
 for (const [id, want] of [[2, 0.07], [6, 0.07], [19, 0.07], [20, 0.12]]) check(BIOMES[id].lay.rind === want && BIOMES[id].lay.rind2 === 0, `${BIOMES[id].name}: its rind of slag is ${BIOMES[id].lay.rind}, not ${want}`);
-for (const row of BIOMES) if (row && row.lay && row.haz?.type !== 'lava') check(row.lay.rind === 0 && row.lay.rind2 === 0, `${row.name} has no lava and a rind of ${row.lay.rind}`);
+// (A cross that has lava from the south as its second hazard has the rind with it: test/regress/c3-cross-rows.mjs.)
+for (const row of BIOMES) if (row && row.lay && row.haz?.type !== 'lava') check(row.lay.rind === 0 && row.lay.rind2 === (row.haz2?.type === 'lava' ? 0.07 : 0), `${row.name} has no lava of its own and a rind of ${row.lay.rind}, or ${row.lay.rind2} for its second hazard`);
 // Rows for this test alone: the south's own with no rind, and the west's own with lava as a second hazard.
 const bare = biome({ ...BIOMES[B.EMBER], id: 120, name: 'test-no-rind', sheet: 'ember', floor: 'ember-floor', haz: { ...BIOMES[B.EMBER].haz, rind: 0 } });
 const both = biome({ ...BIOMES[B.MIRE], id: 121, name: 'test-mire-lava', sheet: 'mire', floor: 'mire-floor', haz2: { type: 'lava', rate: 1, t: 0.78 } });
@@ -34,10 +35,10 @@ for (let seed = 1; seed <= 6; seed++) {
   windows.push([6, C + 1000, C + 1000], [6, C - 1000, C + 1100]);
   const grid = new Int16Array(SIZE * SIZE), mark = new Uint8Array(SIZE * SIZE);
   for (const [ground, x0, y0] of windows) {
-    const row = BIOMES[ground], lava = row.haz?.type === 'lava';
+    const row = BIOMES[ground], lava = row.haz?.type === 'lava' && !!tally[ground];
     let own = 0;
     for (let v = 0; v < SIZE; v++) for (let u = 0; u < SIZE; u++) { const b = w.biomeAt(x0 + u, y0 + v); grid[v * SIZE + u] = b === ground ? w.kindAt(x0 + u, y0 + v, b) : -1; own += b === ground; }
-    if (!lava) { for (let s = 0; s < SIZE * SIZE; s++) if (grid[s] === K.SLAG) elsewhere[row.name] = (elsewhere[row.name] ?? 0) + 1; }
+    if (!lava && row.haz?.type !== 'lava' && row.haz2?.type !== 'lava') { for (let s = 0; s < SIZE * SIZE; s++) if (grid[s] === K.SLAG) elsewhere[row.name] = (elsewhere[row.name] ?? 0) + 1; }
     if (own < SIZE * SIZE * 0.9) continue;
     // The same window laid as the west's own ground with lava for a second hazard, and as the south's with no rind.
     const lay = ground === B.MIRE ? [[121, tally[121], B.MIRE, K.HAZARD2]] : lava ? [[ground, tally[ground], 120, K.HAZARD]] : [];
