@@ -94,7 +94,7 @@ export class Game {
     this.effects.length = 0; this.popups.length = 0; this.hauls.length = 0; this.clouds.length = 0; this.sparks.clear(); this.lavaVol.clear(); this.frostOpen.length = 0;
     w.lava.fill(0); w.dugAt.fill(0); w.reached.fill(0); this.lavaCells.clear(); this.version++;
     w.reach(this.val('scanner'));
-    this.drill = { x: C, y: C, fx: C, fy: C, dir: 0, mode: 'idle', t: 0, wait: 0, bore: 0, target: -1, dur: 0, stun: 0, run: 0, rest: 0, squash: 0 };
+    this.drill = { x: C, y: C, fx: C, fy: C, dir: 0, mode: 'idle', t: 0, wait: 0, bore: 0, target: -1, dur: 0, stun: 0, run: 0, rest: 0, squash: 0, hold: 0 };
     this.bombs = this.val('bombs');
     this.cam = { x: this.drill.fx * T + 8, y: this.drill.fy * T + 8 };
     this.pos.fill(-1); this.hist = [C * N + C]; this.pos[C * N + C] = 0;
@@ -752,7 +752,7 @@ export class Game {
     this.shake = Math.max(0, this.shake - dt * 22);
     if (this.bought) { this.bought.t -= dt; if (this.bought.t <= 0) this.bought = null; }
     if (this.confirmReset > 0) this.confirmReset -= dt;
-    this.edge = Math.max(0, (this.edge ?? 0) - dt); d.stun = Math.max(0, d.stun - dt); d.squash = Math.max(0, d.squash - dt);
+    this.edge = Math.max(0, (this.edge ?? 0) - dt); d.stun = Math.max(0, d.stun - dt); d.hold = Math.max(0, d.hold - dt); d.squash = Math.max(0, d.squash - dt);
 
     if (!this.shop) {
       // What is drawn follows the drill's cell.
@@ -766,9 +766,9 @@ export class Game {
           if (far > step) { d.fx += dx / far * step; d.fy += dy / far * step; break; }
           d.fx = d.x; d.fy = d.y; step -= far; d.mode = 'idle';
           if (d.speed === 24) { sfx.thud(); this.land(); d.squash = 0.12; break; }
-          const want = inp.queued ?? inp.held;
+          const want = inp.queued ?? (d.hold <= 0 ? inp.held : null);
           if (d.next || want === null || d.wait > 0 || d.stun > 0) break;
-          inp.queued = null;
+          inp.queued = null;       // already moving: a turn carries straight on
           this.attempt(want, true);
         }
       } else if (d.mode === 'dig' && inp.queued !== null && inp.queued !== d.dir) {
@@ -786,8 +786,10 @@ export class Game {
         d.wait -= dt;
         d.rest += dt; if (d.rest > 0.12) d.run = 0;
         if (d.next) { d.next = false; this.attempt(d.dir, false); }
-        else if (inp.queued !== null) { const q = inp.queued; inp.queued = null; this.attempt(q, true); }
-        else if (inp.held !== null && d.wait <= 0) this.attempt(inp.held, true);
+        // A fresh stroke is one move. Kept held, it goes on after a beat, as a held key repeats: so one cell is a
+        // flick, and a run is a hold.
+        else if (inp.queued !== null) { const q = inp.queued; inp.queued = null; d.hold = d.run > 0 ? 0 : 0.24; this.attempt(q, true); }
+        else if (inp.held !== null && d.wait <= 0 && d.hold <= 0) this.attempt(inp.held, true);
       }
       this.updateHazards(dt);
       this.updateHauls(dt);
