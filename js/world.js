@@ -171,6 +171,13 @@ export const HOME_R = 130, DEEP_R = 900, RELIC_R = 2000, WORLD_R = 2400;
 // round rich ore) or a cache (a crate buried in stone). Eight wrecks lie at set distances, each in a hollow of its
 // own with what is left of its hull; each holds a part of an older machine.
 export const FIND = 48, WRECK_R = [45, 90, 160, 300, 500, 800, 1200, 1700];
+// What a sector holds is said by one hash of the sector, and the whole of its range is allotted here once: each
+// find has the band up to its figure from the one before, and what is over the last holds nothing. A geode and a
+// cache are laid by `findAt`. The other three have their bands and nothing laid yet (a prism only where its middle
+// is over PRISM_R cells out): whoever lays one adds its cells to `findAt`, and until then the sector's ground is
+// plain.
+export const FINDS = [[0.38, 'geode'], [0.70, 'cache'], [0.74, 'prism'], [0.80, 'twin'], [0.86, 'fossil']];
+const GEODES = FINDS[0][0], CACHES = FINDS[1][0], PRISMS = FINDS[2][0], HELD = FINDS[FINDS.length - 1][0], PRISM_R = 130;
 // Pockets (mini zones) are laid out in sectors ZONE cells across, one pocket at the most in each.
 export const ZONE = 128;
 export const onCore = (x, y) => Math.abs(x - C) <= 1 && Math.abs(y - C) <= 1;
@@ -229,25 +236,28 @@ export class World {
     }
     return this.wreckSpots;
   }
-  // What a sector of FIND cells holds and where, worked out into the record `S`: `what` is under 0.38 for a geode
-  // (`size` cells from its middle to the outside of its shell), under 0.7 for a cache, and anything else is
-  // nothing; `fx`, `fy` is the middle cell. A sector is its place counted from the core's: (x - C) / FIND, floored.
+  // What a sector of FIND cells holds and where, worked out into the record `S`: `what` is the sector's hash, which
+  // lies in the band of what it holds (`FINDS`: under 0.38 a geode, `size` cells from its middle to the outside of
+  // its shell; under 0.7 a cache; and so on), or is 1 where it holds nothing; `fx`, `fy` is the middle cell. A sector
+  // is its place counted from the core's: (x - C) / FIND, floored.
   find(sx, sy, S) {
     const seed = this.seed;
     S.sx = sx; S.sy = sy; S.seed = seed; S.what = hash(sx, sy, seed + 21);
-    if (S.what < 0.7) {
-      S.fx = C + sx * FIND + 8 + Math.floor(hash(sx, sy, seed + 22) * (FIND - 16)); S.fy = C + sy * FIND + 8 + Math.floor(hash(sx, sy, seed + 23) * (FIND - 16));
-      if (Math.hypot(S.fx - C, S.fy - C) < 16) S.what = 1;
-      else if (S.what < 0.38) S.size = hash(sx, sy, seed + 24) < 0.4 ? 4 : 3;
-    }
+    if (S.what >= HELD) { S.what = 1; return; }
+    S.fx = C + sx * FIND + 8 + Math.floor(hash(sx, sy, seed + 22) * (FIND - 16)); S.fy = C + sy * FIND + 8 + Math.floor(hash(sx, sy, seed + 23) * (FIND - 16));
+    const dx = S.fx - C, dy = S.fy - C, far = dx * dx + dy * dy;
+    if (far < 16 * 16 || (S.what >= CACHES && S.what < PRISMS && far <= PRISM_R * PRISM_R)) S.what = 1;
+    else if (S.what < GEODES) S.size = hash(sx, sy, seed + 24) < 0.4 ? 4 : 3;
   }
-  // What a sector holds, asked without making any of the world: ['geode' | 'cache' | null, x, y, size], the find's
-  // middle cell and, of a geode, its size. (What is truly there is the world's cells to say: a wreck or a relic's
-  // vault laid over a find has taken its place.)
+  // What a sector holds, asked without making any of the world: [what, x, y, size], `what` being a name from
+  // `FINDS` ('geode', 'cache', 'prism', 'twin', 'fossil') or null, with the find's middle cell and, of a geode, its
+  // size. (What is truly there is the world's cells to say: a wreck or a relic's vault laid over a find has taken
+  // its place, and the last three names have no cells laid yet.)
   findSpot(sx, sy) {
     const S = this.asked;
     if (S.sx !== sx || S.sy !== sy || S.seed !== this.seed) this.find(sx, sy, S);
-    return S.what < 0.38 ? ['geode', S.fx, S.fy, S.size] : S.what < 0.7 ? ['cache', S.fx, S.fy, 1] : [null, 0, 0, 0];
+    for (let n = 0; n < FINDS.length; n++) if (S.what < FINDS[n][0]) return [FINDS[n][1], S.fx, S.fy, n ? 1 : S.size];
+    return [null, 0, 0, 0];
   }
   // What a sector's find puts in a cell, or -1 where it puts nothing. What the sector holds and where is worked out
   // once and kept while cells of the same sector are asked about.
@@ -255,9 +265,9 @@ export class World {
     const sx = Math.floor((x - C) / FIND), sy = Math.floor((y - C) / FIND), S = this.sector;
     if (S.sx !== sx || S.sy !== sy || S.seed !== this.seed) this.find(sx, sy, S);
     const what = S.what;
-    if (what >= 0.7) return -1;
+    if (what >= CACHES) return -1;
     const dx = x - S.fx, dy = y - S.fy;
-    if (what < 0.38) {
+    if (what < GEODES) {
       // A geode: slate outside, ore within, and in the bigger ones a hollow at the heart.
       const size = S.size, far = Math.sqrt(dx * dx + dy * dy);
       if (far > size - 0.2) return -1;
