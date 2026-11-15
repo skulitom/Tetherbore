@@ -177,6 +177,14 @@ The map. drawMap asks biomeAt for unseen cells even where the chunk already exis
 
 Old saves: SAVE_KEY stays v3. Chunks already made keep their bytes; new places appear in ground not yet generated, and a place straddling an explored chunk is cut off at its edge. That is harmless (every cell is cuttable) and a NEW world has everything. Runtime rules must read real cells (w.k), never regenerate a place from its record and trust it.
 
+S3 AS BUILT, THE PROVINCE PART (read this with the above; where they differ, this is the code). Pockets (zoneOf), seams, crosses and slabs are not laid yet: their places in the order are marked in biomeAt's comment.
+- World.biomeAt asks in the plan's order: (1 a pocket, not laid), 2 the home ground, 3 the direction, (4 a seam, not laid), 5 a deep flank, 6 the province, 7 the direction's own ground. Past the world's edge no province is asked for.
+- A province is PROVINCE (256) cells across on borders that wander with the directions' own long sweeps: px = floor((dx + (n1 - 0.5) * 120) / 256), py likewise with n2. World.province(px, py, kin) says what the ground of direction `kin` is there and keeps the answer (a byte for each province and direction, forgotten when the seed changes). The four provinces round the core are never asked: their middles are 181 cells out, under the 220 the plan sets. So strains begin 200 to 320 cells out, depending on the sweep.
+- By hash(px, py, seed + 55): under X = clamp((rc - 500) / 2500, 0, 0.35) the province is kept for a cross and is the direction's own ground until crosses are built (seeds 56 and 57 are kept for them); under X + (1 - X) * 2/3 it is the strain of the direction with the largest hash(px, py, seed + 300 + id); else the direction's own. The strains of a direction are whatever rows 17 to 31 have its kin (STRAINS, filled by biome()).
+- World.biomeKnown(x, y) is the stored byte where the piece is made and biomeAt where it is not, and makes nothing; drawMap reads it for every cell. The pips for pockets wait for pockets.
+- The finds' bands are one table, FINDS = [[0.38, 'geode'], [0.70, 'cache'], [0.74, 'prism'], [0.80, 'twin'], [0.86, 'fossil']]. World.find works out the sector's middle for all five (a prism only where its middle is over 130 cells out, none within 16), findSpot names all five, and findAt lays only geodes and caches: whoever builds a prism, twin stones or a fossil adds its cells there. findSpot does not yet say null inside a pocket.
+- Tests: s3-provinces (the order, the shares, each strain in its own direction, a strain added later), s3-find-bands, s3-biome-known. test/regress/w-same-world.mjs, the plain reading of the ground, now has the provinces and the strains written out in it as plainly as the rest, so it holds them cell for cell; 38 of the 96 hashed pieces moved and were recorded again (none at the core; the pieces 200 out to the east and south reach into the next province).
+
 --------------------------------------------------------------
 S4. The resource set
 --------------------------------------------------------------
@@ -254,6 +262,35 @@ Art (art/tiles.mjs, one rock() call each, speckle as [colour, amount, size]):
 Code: eight rows, the province pick in biomeAt, five extras (rivers, lanes, bubbles, grapes, strata) as small functions.
 Model: rich 0.85 to 1.25 on two thirds of non-deep ground past 220, mean about 1.03. No change.
 Risk: a palette that strays loses which gem a place pays; the hue family and the gem icon guard it.
+
+ITEM 1 AS BUILT (read this with the above; where they differ, this is the code). The rows are in js/world.js, each made by strain(id, name, kin, { what differs }); the tells are rules of TELLS, one figure each, asked in kindAt at their place in its order. Counted with tools/strains.mjs on 8 seeds (a window of 96 x 96 cells in the middle of each province) and looked at with tools/shot.mjs, close, 75 cells wide and across a border of each direction.
+
+  row           gen (where not its direction's)                 freeze  dig  rich  hazard            tell (TELLS figure)
+  17 firn       dense 0.60, cave 0.86, cavern 0.84              45      1    0.95  none              rivers 0.02
+  18 serac      -                                               15      1    1.05  none              lanes 0.085
+  19 scoria     -                                               0       1    0.95  lava t 0.80       bubbles 0.8
+  20 forge      slate 0.04                                      0       1    1.25  lava t 0.735, lavaVol 7   none yet (the slag rind is item 2's)
+  21 tangle     cavern 0.60                                     0       1    1.0   spore rate 1      none (its caves are the tell)
+  22 sporefall  oreA 0.63                                       0       1    1.2   spore rate 0.5    grapes 0.85
+  23 redrock    slate 0                                         0       1    1.0   spark rate 1      strata 0.05
+  24 loess      dense 0.76, oreA 0.72, oreB 0.80, slate 0.02    0       0.5  0.85  spark rate 0.5    none
+
+What was counted (cells in a hundred of all cells, the direction's own ground in brackets):
+- Firn: rivers of ice 4.5, cut across in 3.3 cells; open 11.5 (21.6); dense 18.7 (11.7). A river is K.ICE where |noise(x/40, y/40, seed+66) - 0.5| < 0.02 (the plan's 0.012 is 2.8 cells in a hundred, a thread), and it runs through ore as through plain rock, so that it is one unbroken ribbon: slate, vault and caves still cross it.
+- Serac: lanes of ice 14.9, two cells wide, a mesh round blocks six to twelve cells across. |noise(x/6, y/6, seed+65) - 0.5| < 0.085 (the plan's 0.04 gave 7.3); only where plain rock would lie, so its ore is the north's.
+- Scoria: open 24.4 (19.6), 125 bubbles of one to three cells in a window (the south's own 6); lava 3.3 (4.3). A bubble is EMPTY where noise(x/2, y/2, seed+67) > 0.8: the plan's threshold of 0.7 opens 12 cells in a hundred, more cave than froth, and x/2 keeps a bubble to one to three cells.
+- Forge: lava 5.9 (4.3) in bigger pockets (a quarter of them four cells and more); slate 10.4 (7.7).
+- Tangle: open 49.5 (39.0).
+- Sporefall: pods 1.9 (1.2); 20 bunches of three and more in a window, two thirds of the bunches three to six pods, and 64 pods in a hundred hang in one. Bunches are laid on a grid of squares six cells across, not by the plan's noise, which cannot hold a bunch to three to six pods: a square has a bunch where hash(gx, gy, seed+64) >= 0.85, the same hash places its middle a cell or more inside the square, and the pods are the middle cell and those of the eight round it with hash(x, y, seed+10) < 0.6.
+- Redrock: slate 12.1 (12.2), in beds 6.2 cells long along a row and 1.4 thick (the east's own: 2.6 and 2.5); one bed in eight is twelve cells and more, the longest over fifty.
+- Loess: soft 50.3 (38.0), ore 9.7 (13.7), slate 4.9 (12.2), crystals 0.9 (1.7).
+What a solid cell pays in grit beside its direction's own ground, and what a second of cutting it does: firn 0.91 and 0.92, serac 0.94 and 0.99, scoria 0.96 and 0.95, forge 1.33 and 1.25, tangle 1.03 and 1.01, sporefall 1.21 and 1.22, redrock 0.99 and 1.00, loess 0.72 and 1.70. Loess is the one to watch in play: it pays less a cell and, cut in half the time, 1.7 times as much for a second of cutting. tools/ground-worth.mjs is not written yet; these are tools/strains.mjs's figures, held by test/regress/c1-tells.mjs.
+
+The chain of clouds: a spore pod that bursts sets off the pods round it, side by side or corner to corner, 0.15 s later (POD_CHAIN in game.js), in every ground, so one nick takes a whole bunch. Game.bunch(j) says which pods go with a pod, and the glow of a cut (foresee) holds them and what they leave hanging.
+
+By eye, in the game: all eight read as places of their own and of their direction, close and wide, and at their borders (firn against serac against the north's own; scoria against forge; sporefall against the west's own; loess against redrock). No sheet was changed. Forge and tangle are the darkest and scoria against forge the faintest border.
+
+Tests: c1-strain-rows (the table above, and the sheets), c1-tells (the counts above, in real provinces), c1-strain-play (ice, cutting, lava, pay, sheets, the name), c1-pod-bunch; the play fuzz and the rope fuzz fly from inside a province of each strain, and the hazard fuzz inside sporefall and forge (test/all.mjs). `node tools/strains.mjs --where 7` says where a province of each lies.
 
 --------------------------------------------------------------
 2. Three direction rules  (S each; they are also what the generator crosses)
