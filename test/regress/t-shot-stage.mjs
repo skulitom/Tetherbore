@@ -7,7 +7,9 @@
 //   canvas and leaves the tether's as it was; `lit` takes the dark away; `met` puts the place's name on its plate
 //   in place of the title card of a first meeting; `wake` wakes the hazard nearest the drill, as a cut beside it
 //   would, and nothing is woken without it; `bombs` gives the drill that level of BLAST and carves no room, and
-//   `blast` sets one charge off there; and stepped for three seconds, nothing
+//   `blast` sets one charge off there; `key` stands the drill at the last key of the slab nearest, the other keys
+//   cut through, pushing into it, so that stepped half a second the cut's glow holds the whole slab and stepped two
+//   the slab hangs loose and the drill has let go; and stepped for three seconds, nothing
 //   has moved the drill, nothing is wrong with the tether, and the saved game is as it was.
 import { makeGame, tetherFaults, sight, C, N, K } from '../harness.mjs';
 
@@ -153,6 +155,33 @@ check(await open('', 'example.org') === undefined, 'away from localhost an ordin
   check(!tetherFaults(after.game).length, `the tether in the room a charge made: ${tetherFaults(after.game).join('; ')}`);
   const idle = await open('?shot&seed=7&at=6,-156&blast');
   check(idle.shot.facts().opened === 0 && rock(idle.game) === 0, '`blast` without `bombs` set a charge off');
+}
+
+// `key`: the last cut of a keystone slab (seed 7's first slab lies 52 cells south of the core, 3 east).
+{
+  const t = await open('?shot&seed=7&at=3,52&key'), game = t.game, w = game.world, d = game.drill, S = w.firstSlab, f = t.shot.facts();
+  const left = S.keys.filter(i => w.k(i) === K.KEY), mid = S.cy * N + S.cx;
+  check(f.key && f.key.slab[0] === 3 && f.key.slab[1] === 52 && f.key.radius === 8, `staged with key: ${JSON.stringify(f.key)}`);
+  check(left.length >= 1 && left.length <= 3 && left.length < S.keys.length, `${left.length} of the slab's ${S.keys.length} cells of key are left standing`);
+  check(w.slabCell(S, Math.floor(d.x), Math.floor(d.y)) > 0 && w.k(game.di) === K.EMPTY && !game.pieceOf.has(mid), 'the drill does not stand in the crack, or the slab is loose before the cut');
+  check(game.S.lv.tether === 3 && !tetherFaults(game).length, `the reach is level ${game.S.lv.tether}; the tether: ${tetherFaults(game).join('; ')}`);
+  const [x0, y0] = [d.x, d.y];
+  t.advance(500);
+  const glow = t.shot.facts().key.glow, into = (C + f.key.into[1]) * N + C + f.key.into[0];
+  check(d.dig === into && w.k(into) === K.KEY, `half a second on the drill is cutting ${d.dig}, not the key at ${into}`);
+  check(glow >= 140 && game.preview[0].cells.includes(mid), `the glow of the cut in hand holds ${glow} cells`);
+  t.advance(1500);
+  const piece = game.pieceOf.get(mid);
+  check(w.k(into) === K.EMPTY && piece && piece.length === glow, `two seconds on the key is ${w.k(into) === K.EMPTY ? 'cut' : 'standing'} and ${piece ? piece.length : 'none'} of the slab's cells hang loose (the glow held ${glow})`);
+  check(Math.hypot(d.x - x0, d.y - y0) < 1.6 && game.input.auto === null, `with the key cut the drill has gone on ${Math.hypot(d.x - x0, d.y - y0).toFixed(1)} cells`);
+  check(!tetherFaults(game).length, `the tether beside the loose slab: ${tetherFaults(game).join('; ')}`);
+  // Steering is whoever's it was.
+  game.input.auto = [0, -1, 1];
+  check(game.input.auto?.[1] === -1, 'after a view staged with `key` the stick cannot be taken');
+  // Without it, and with no slab near: nothing of the kind.
+  const none = await open('?shot&seed=7&at=3,36'), far = await open('?shot&seed=7&at=0,-300&key');
+  check(none.shot.facts().key === null && none.game.world.firstSlab.keys.every(i => none.game.world.k(i) === K.KEY), 'a view staged without `key` cut keys');
+  check(far.shot.facts().key === null && far.game.drill.y === C - 300 + 0.5 && far.game.input.auto === null, 'with no slab within reach of `at`, `key` staged something');
 }
 
 if (fails.length) { console.log(`FAIL: ${fails.join('\n      ')}`); process.exit(1); }
