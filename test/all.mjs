@@ -69,7 +69,14 @@ const ARGS = {
     [7, 300, 5, 14, -165, 60], [7, 300, 7, 470, 431, 'mix', 'bombs'], [7, 300, 5, 174, -78, 30, 'bombs,home'],
     // From a start inside an ash flat, where the drill ploughs: the south's first, and a great one with bombs
     // (which blow the ash off the tektites) and with the best ram.
-    [7, 300, 5, -14, 165, 60], [7, 300, 6, -207, 211, 'mix', 'bombs'], [7, 300, 6, -207, 211, 60, 'ram']],
+    [7, 300, 5, -14, 165, 60], [7, 300, 6, -207, 211, 'mix', 'bombs'], [7, 300, 6, -207, 211, 60, 'ram'],
+    // The same grounds on two worlds more (the session's close flew every new ground on worlds 19 and 23, with
+    // both fuzzes, and all were clean; these are kept): crosses of hosts, donors and structures the flights above
+    // have not (crazed thaw, banded flashrock with bombs, frothy sootfen, hollow kilnstone with bombs), a cobble
+    // field of thirty-two blocks with bombs, a hive 21 cells in radius, a drift rich in aerolite with bombs and
+    // trips home, and a great ash flat with bombs.
+    [19, 300, 9, 128, -1408, 60], [19, 300, 8, -384, 640, 60, 'bombs'], [23, 300, 8, -640, 640, 'mix'], [23, 300, 8, 1152, 384, 60, 'bombs'],
+    [23, 300, 6, -310, 49, 'mix', 'bombs'], [23, 300, 6, -330, -54, 60], [19, 300, 6, 300, -171, 30, 'bombs,home'], [19, 300, 7, -212, 341, 'mix', 'bombs']],
 };
 const tests = [];
 for (const file of readdirSync(here + 'regress').filter(name => name.endsWith('.mjs')).sort()) {
@@ -109,6 +116,13 @@ for (const [x, y, reach, what] of [[-205, -11, 6, 'the west\'s first hive'], [-4
 // them, and an ash flat, which the drill ploughs through at any angle: each direction's first and a great one.
 for (const [x, y, reach, what] of [[14, -165, 5, 'the north\'s first drift'], [470, 431, 7, 'a drift of fifteen boulders'], [-14, 165, 5, 'the south\'s first ash flat'], [-207, 211, 6, 'a great ash flat']]) {
   tests.push({ name: `rope-fuzz.mjs 7 400 ${reach} ${x} ${y} (${what})`, run: ['rope-fuzz.mjs', 7, 400, reach, x, y] });
+}
+
+// And on two worlds more: a cross with lanes of ice and one with level beds, a cobble field of thirty-two blocks,
+// a hive, a drift and an ash flat.
+for (const [seed, x, y, reach, what] of [[19, 128, -1408, 9, 'crazed thaw'], [23, -1152, 384, 8, 'banded rimemoss'], [23, -310, 49, 6, 'a cobble field of 32'], [23, -330, -54, 6, 'a hive 21 in radius'],
+  [19, 300, -171, 6, 'a drift rich in aerolite'], [23, 88, 210, 6, 'a great ash flat']]) {
+  tests.push({ name: `rope-fuzz.mjs ${seed} 400 ${reach} ${x} ${y} (${what})`, run: ['rope-fuzz.mjs', seed, 400, reach, x, y] });
 }
 
 // And in a deep flank, where the crystals and the lava are thickest.
