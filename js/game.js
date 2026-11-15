@@ -13,7 +13,7 @@ const GEM_COLOR = [null, '#bfe6ff', '#ffb060', '#b8f06a', '#d8b8ff'];
 // ---------------------------------------------------------------- upgrades
 // `values` is what each level gives; `grit` and `gems` what the next level costs; `gem` whose gems it takes.
 export const UPGRADES = [
-  { id: 'tether', icon: 'string', name: 'TETHER', values: [12, 16, 22, 30, 40, 52, 66, 82, 100, 120], gem: B.MIRE,
+  { id: 'tether', icon: 'string', name: 'TETHER', values: [14, 19, 25, 32, 40, 52, 66, 82, 100, 120], gem: B.MIRE,
     grit: [8, 30, 70, 150, 280, 480, 800, 1300, 2000], gems: [0, 0, 2, 6, 14, 28, 48, 80, 120], show: v => `${v}` },
   { id: 'drill', icon: 'drill', name: 'BIT', values: [1, 2, 3, 4], gem: B.LODE, grit: [45, 320, 1300], gems: [0, 8, 36], show: v => `MK${v}` },
   { id: 'battery', icon: 'battery', name: 'CELL', values: [60, 85, 115, 150, 200, 270, 360], gem: B.EMBER,

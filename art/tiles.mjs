@@ -62,7 +62,7 @@ export const ROCKS = [
   rock('ice', { k: '#1c3a66', D: '#3f78b8', L: '#d8f4ff', s: '#06102659', f: '#6fb0e0', a: '#5a9cd2', b: '#8cc8ee', c: '#e8fbff' },
     { color: 'f', speckle: [{ color: 'a', amount: 0.22, size: 6 }, { color: 'b', amount: 0.16, size: 3 }, { color: 'c', amount: 0.03, size: 1 }] }, 83),
   // Lava gone cold in the south.
-  rock('basalt', { k: '#0c0608', D: '#1c1216', L: '#5a4046', s: '#00000066', f: '#30222a', a: '#261a20', b: '#3c2c34', c: '#6a2a1e' },
+  rock('basalt', { k: '#0c0608', D: '#2a1c22', L: '#8a6468', s: '#00000066', f: '#4a3840', a: '#3e2e36', b: '#58444c', c: '#8a3424' },
     { color: 'f', speckle: [{ color: 'a', amount: 0.26, size: 4 }, { color: 'b', amount: 0.14, size: 3 }, { color: 'c', amount: 0.03, size: 2 }] }, 89),
   // The far flanks: each direction's ground gone strange.
   rock('rime', { k: '#0e2a3a', D: '#2f7a8a', L: '#d8fff4', s: '#02101a59', f: '#62b8b4', a: '#4aa0a4', b: '#84d4c8', c: '#f0fff8' },
