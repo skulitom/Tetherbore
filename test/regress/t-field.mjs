@@ -7,8 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { decodePNG } from '../../tools/png.mjs';
-import { World, C } from '../../js/world.js';
-import { MAPC } from '../../js/game.js';
+import { World, C, BIOMES } from '../../js/world.js';
 
 const root = fileURLToPath(new URL('../../', import.meta.url)), fails = [];
 const check = (ok, what) => { if (!ok) fails.push(what); };
@@ -29,7 +28,7 @@ try {
     for (let v = 0; v < 64 && !wrongAt; v++) for (let u = 0; u < 64; u++) {
       const b = world.biomeAt(C - 32 + u, C - 130 - 32 + v), o = (v * 64 + u) * 4;
       grounds.add(b);
-      if (map.data[o] !== MAPC[b][0] || map.data[o + 1] !== MAPC[b][1] || map.data[o + 2] !== MAPC[b][2]) { wrongAt = [u - 32, v - 162]; break; }
+      if (map.data[o] !== BIOMES[b].map[0] || map.data[o + 1] !== BIOMES[b].map[1] || map.data[o + 2] !== BIOMES[b].map[2]) { wrongAt = [u - 32, v - 162]; break; }
     }
     check(map.width === 64 && map.height === 64 && !wrongAt, `the field's pixel for cell ${wrongAt} is not its ground's map colour`);
     check(grounds.size > 1, 'the field was checked where only one ground lies');

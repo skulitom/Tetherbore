@@ -11,17 +11,15 @@
 //
 // It asks the world itself (js/world.js: `biomeAt`, and `k` for --ground) and draws nothing of the game, so it
 // needs no browser. A colour is the ground's own on the game's map: its row's `map` in the world's table of
-// biomes once there is one, else `MAPC` in js/game.js, else a colour made from the id. The core is a white dot.
+// biomes (js/world.js: BIOMES), or a colour made from the id where a number has no row. The core is a white dot.
 // It prints, for every id in the square: its name, its colour, how much of the square it is, the box it lies in,
 // and the cell of it nearest the middle, which is a place to send tools/shot.mjs (`--at`). The last line is the
 // path that was written.
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import * as worldModule from '../js/world.js';
-import { MAPC } from '../js/game.js';
+import { World, N, C, K, WORLD_R, BIOMES } from '../js/world.js';
 import { encodePNG } from './png.mjs';
 
-const { World, N, C, K, WORLD_R } = worldModule;
 const usage = 'node tools/field.mjs <out.png> [--seed 7] [--at dx,dy] [--size 512] [--step 1] [--ground]';
 const wrong = why => { console.error(`${why}\n  ${usage}`); process.exit(2); };
 
@@ -52,8 +50,8 @@ out = path.resolve(out);
 
 const world = new World();
 world.reset(seed);
-const colourOf = b => worldModule.BIOMES?.[b]?.map ?? MAPC[b] ?? [64 + (b * 97) % 160, 64 + (b * 57) % 160, 64 + (b * 151) % 160];
-const nameOf = b => worldModule.BIOMES?.[b]?.name ?? worldModule.BIOME_NAMES?.[b] ?? '?';
+const colourOf = b => BIOMES[b]?.map ?? [64 + (b * 97) % 160, 64 + (b * 57) % 160, 64 + (b * 151) % 160];
+const nameOf = b => BIOMES[b]?.name ?? '?';
 const side = Math.ceil(size / step), x0 = C + at[0] - (size >> 1), y0 = C + at[1] - (size >> 1), middle = step >> 1;
 const rgba = new Uint8Array(side * side * 4), found = new Map();
 for (let v = 0; v < side; v++) for (let u = 0; u < side; u++) {

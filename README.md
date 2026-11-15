@@ -22,6 +22,8 @@ Progress is saved on the device: what you own in local storage, the ground in th
 
 The world is about 4,800 cells across, far too large to hold whole. `js/world.js` makes it a 64 x 64 piece at a time, from the seed alone, the first time anything looks there, and only pieces that have been seen or changed are kept and saved. `js/game.js` is the game: flight, the tether, hauling, hazards, drawing.
 
+What a cell can be and whose ground it lies in are two tables in `js/world.js`: `K`, the kinds, and `BIOMES`, a row for each ground. The numbers are what a saved game stores, so they never move. Everything that differs from one ground to another (its sheets, its dark and its motes, what a haul of it pays, the thresholds it is laid by, its hazards, whether a cut in it freezes over) is in its row, and the game reads the row wherever it needs to know; a hazard does, pays and looks as its type does (lava, spore, spark), whatever ground it lies in. A new ground is a new row.
+
 ## Running it
 
 It is a static site: serve the folder with any web server and open `index.html`.
@@ -36,7 +38,7 @@ python -m http.server 4791
 node test/all.mjs
 ```
 
-The game runs with no browser under `test/harness.mjs`. `test/all.mjs` runs every script in `test/regress/` (each fails while the defect it was written for is there), `test/smoke.mjs`, which plays every direction unattended, and the tether fuzz `test/rope-fuzz.mjs`: about two minutes, one line a test. Among the regress scripts, `i-fuzz-play.mjs` plays the whole game at random (throws, bombs, the shop) and checks the tether, the books of loose ground, the hauls and the money after every frame. Tests of speed count work, not time: `game.swept` (cells the tether's sweeps look at) and the world's `sides`, `followed` and `made` (outline sides walked, cells followed, pieces of world made). `test/frame-time.mjs` times a frame over the fuzz's flight. Three of the regress scripts are about the tools below: `t-shot-stage.mjs` runs `js/main.js` on a stand-in page, with and without `?shot`, `t-shot-tool.mjs` takes real pictures where a browser is installed, and `t-field.mjs` checks a map against the world.
+The game runs with no browser under `test/harness.mjs`. `test/all.mjs` runs every script in `test/regress/` (each fails while the defect it was written for is there), `test/smoke.mjs`, which plays every direction unattended, and the tether fuzz `test/rope-fuzz.mjs`: about two minutes, one line a test. Among the regress scripts, `i-fuzz-play.mjs` plays the whole game at random (throws, bombs, the shop) and checks the tether, the books of loose ground, the hauls and the money after every frame. Tests of speed count work, not time: `game.swept` (cells the tether's sweeps look at) and the world's `sides`, `followed` and `made` (outline sides walked, cells followed, pieces of world made). `test/frame-time.mjs` times a frame over the fuzz's flight. The world a seed makes must stay the world it made: `w-same-world.mjs` compares it cell for cell with the first, plain reading of the ground, and `s1-world-hash.mjs` holds 96 pieces of it to the hashes in `test/world-hash.txt` (`node tools/world-hash.mjs --check` names the pieces that moved; `--write` records them again, for a change that lays new ground on purpose). Three of the regress scripts are about the tools below: `t-shot-stage.mjs` runs `js/main.js` on a stand-in page, with and without `?shot`, `t-shot-tool.mjs` takes real pictures where a browser is installed, and `t-field.mjs` checks a map against the world.
 
 ## Looking at it
 

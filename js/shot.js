@@ -69,7 +69,7 @@ export function stage(game, query) {
       return {
         seed, at: [dx, dy], level, reach: reaches[level], zoom: shown, lit,
         cells: [Math.round(game.W / T), Math.round(game.H / T)], canvas: [game.W, game.H],
-        biome: b, ground: world.BIOMES?.[b]?.name ?? world.BIOME_NAMES?.[b] ?? `${b}`,
+        biome: b, ground: world.BIOMES[b]?.name ?? `${b}`,
         loose: game.pieces.length,
       };
     },

@@ -1,17 +1,159 @@
 // The world: a vast grid of cells round a fixed core, far too large to hold whole. It is made a 64 x 64 piece at
 // a time, the first time anything looks there, from the seed alone; only pieces that have been changed or seen are
-// kept. This module owns what each cell is and how the ground is laid out. It draws nothing.
+// kept. This module owns what each cell is and how the ground is laid out: the table of kinds (`K`), the table of
+// grounds (`BIOMES`, a row each) and the rules that lay them. It draws nothing, though a ground's row names the
+// sheets the game draws it from.
+//
+// What must stay true: the same seed makes the same world on every JavaScript engine (a new rule uses only `hash`,
+// `noise`, + - x / and sqrt; never Math.random, never a transcendental function), and nothing changes the ground a
+// seed makes unless it is meant to (test/regress/w-same-world.mjs, tools/world-hash.mjs). Kind numbers and ground
+// numbers never move: saved games hold them.
 
 export const N = 16384, C = 8192, CH = 64, CW = N / CH;      // a cell is y * N + x; the core's middle cell is (C, C)
-export const K = { EMPTY: 0, CORE: 1, BEDROCK: 2, SOFT: 3, DENSE: 4, ORE_A: 5, ORE_B: 6, SLATE: 7, VAULT: 8, HAZARD: 9, RELIC: 10, ICE: 11, BASALT: 12, CACHE: 13, WRECK: 14 };
+
+// ---------------------------------------------------------------- what a cell can be
+// One table of kinds. A kind's number is what a piece of the world stores for a cell (and what a saved game holds),
+// so a number never moves and never means something else: a new kind takes the next free number, up to 31.
+// Of each: what can cut it (`hard`: 1 anything, 99 nothing; nothing is unminable but the core, bedrock and what is
+// hauled whole), what a hauled cell pays in grit and in gems, and how long it takes to cut with the first bit, in
+// seconds (`dig`: tougher ground only takes longer).
+const KINDS = [];
+const kind = (id, name, hard, grit, gems, dig) => { KINDS[id] = { id, name, hard, grit, gems, dig }; return id; };
+export const K = {
+  EMPTY: kind(0, 'EMPTY', 0, 0, 0, 0),
+  CORE: kind(1, 'CORE', 99, 0, 0, 0),
+  BEDROCK: kind(2, 'BEDROCK', 99, 0, 0, 0),
+  SOFT: kind(3, 'SOFT', 1, 1, 0, 0.24),
+  DENSE: kind(4, 'DENSE', 1, 2, 0, 0.45),
+  ORE_A: kind(5, 'ORE_A', 1, 2, 1, 0.24),
+  ORE_B: kind(6, 'ORE_B', 1, 4, 5, 0.45),
+  SLATE: kind(7, 'SLATE', 1, 4, 0, 1.0),
+  VAULT: kind(8, 'VAULT', 1, 10, 0, 1.8),
+  HAZARD: kind(9, 'HAZARD', 1, 3, 2, 0.24),             // a ground's first hazard: which, its row says (`haz`)
+  RELIC: kind(10, 'RELIC', 99, 0, 0, 0),
+  ICE: kind(11, 'ICE', 1, 0, 0, 0.18),
+  BASALT: kind(12, 'BASALT', 1, 1, 0, 0.45),
+  CACHE: kind(13, 'CACHE', 1, 0, 0, 0.6),
+  WRECK: kind(14, 'WRECK', 99, 0, 0, 0),
+  // Kinds 15 and on are named here so their numbers are settled; the ground that lays them comes later.
+  MINERAL: kind(15, 'MINERAL', 1, 0, 0, 0.45),          // a pocket's mineral: which one, the cell's row says
+  NODE: kind(16, 'NODE', 1, 0, 0, 0.45),                // a pocket's special cell; its `dig` is its row's `pocket.nodeDig`
+  HAZARD2: kind(17, 'HAZARD2', 1, 3, 2, 0.24),          // a ground's second hazard (`haz2`)
+  KEY: kind(18, 'KEY', 1, 4, 0, 1.0),
+  FAULT: kind(19, 'FAULT', 1, 1, 0, 0.12),
+  SLAG: kind(20, 'SLAG', 1, 2, 0, 0.45),
+  STEEL: kind(21, 'STEEL', 1, 6, 2, 0.6),               // its gems are the south's
+  CAP: kind(22, 'CAP', 1, 1, 1, 0.24),                  // its gems are the west's
+  CAP_LIT: kind(23, 'CAP_LIT', 1, 1, 3, 0.24),          // its gems are the west's
+  PRISM: kind(24, 'PRISM', 1, 0, 0, 0.6),
+  GLASS: kind(25, 'GLASS', 1, 1, 0, 0.12),
+  TWIN: kind(26, 'TWIN', 1, 2, 0, 0.6),
+  FOSSIL: kind(27, 'FOSSIL', 1, 2, 0, 1.0),
+};
+export const KIND_NAMES = KINDS.map(k => k.name);
+export const HARD = KINDS.map(k => k.hard), GRIT = KINDS.map(k => k.grit), GEMS = KINDS.map(k => k.gems), DIG_TIME = KINDS.map(k => k.dig);
+
+// ---------------------------------------------------------------- whose ground a cell is
+// The four directions' own grounds, by number: north, south, west, east. The same numbers are the four gems', and a
+// ground's `kin` is which of the four it belongs to (0: none, the home ground).
 export const B = { CRUST: 0, FROST: 1, EMBER: 2, MIRE: 3, LODE: 4 };
-// Far out, the ground to either side of each direction's middle turns into a richer, meaner kind of the same.
-export const BIOME_NAMES = ['crust', 'frost', 'ember', 'mire', 'lode', 'rime', 'magma', 'bloom', 'gilt'];
+// (The kin of grounds 0 to 8 by arithmetic, as the world was first written. Only the plain reading of that first
+// world in test/regress/w-same-world.mjs still asks this way: everything else reads the ground's row.)
 export const base = b => b > 4 ? b - 4 : b;
-// What can be cut (99: nothing cuts it), and what a hauled cell pays in grit and in its direction's gem.
-export const HARD = [0, 99, 99, 1, 1, 1, 1, 1, 1, 1, 99, 1, 1, 1, 99];
-export const GRIT = [0, 0, 0, 1, 2, 2, 4, 4, 10, 3, 0, 0, 1, 0, 0];
-export const GEMS = [0, 0, 0, 0, 0, 1, 5, 0, 0, 2, 0, 0, 0, 0, 0];
+// What a hazard is and looks like comes from its type, never from the ground it lies in: whose gems it pays when
+// lassoed asleep, the sheet its sprite is on (never recoloured), and for the two that are scattered a cell at a
+// time, how many cells in one are hazards where the ground's `rate` is 1. Lava lies in pockets, where a layer of
+// noise is over the ground's own threshold `t`.
+export const HAZARDS = {
+  lava: { kin: B.EMBER, sheet: 'ember-items', share: 0 },
+  spore: { kin: B.MIRE, sheet: 'mire-items', share: 0.022 },
+  spark: { kin: B.LODE, sheet: 'lode-items', share: 0.026 },
+};
+const KIN_ITEMS = ['lode-items', 'frost-items', 'ember-items', 'mire-items', 'lode-items'];
+
+// One table of grounds (biomes), by number. The number is what a piece of the world stores for a cell, so, as with
+// kinds, it never moves:
+//   0-8      the home ground, the four directions' grounds and their four deep kinds
+//   9-16     seams          17-31    hand-made strains          32-63    pockets          64-127   more hand-made rows
+//   128-187  generated crosses                                  192-239  generated flank pockets
+// A row says everything that differs from ground to ground, and the game reads it wherever it once asked which
+// ground a number was:
+//   id, name, title (the name as it is shown)
+//   kin                 whose direction it is; gemA, gemB: whose gems its two ores pay
+//   rich, gemx, worth   what multiplies a hauled cell's grit (rich, worth) and gems (gemx)
+//   dig                 what multiplies the time to cut a cell
+//   sheet, floor, items the terrain sheet of its rock, of its floor, and the sheet of its dense rock and ores
+//   gloom, dark         the colour of its dark, and how deep the dark is (1 as everywhere today)
+//   mote                [colour, drift]: the motes in its air, and whether they 'fall', 'rise', 'sway' or hang 'still'
+//   map, debris         its colour on the map (its sheet's own ground colour) and the three colours of its chips
+//   gen                 the thresholds its standard ground is laid by: { dense, oreA, oreB, slate, cave, cavern }
+//                       (null: the home ground, which has rules of its own in `kindAt`)
+//   haz, haz2           its hazards, { type, rate, t } or null: K.HAZARD cells are the first, K.HAZARD2 the second
+//   lavaVol, freeze     how far a lava pocket of it pours; seconds until a cut closes with ice (0: never)
+//   glass, extras, pocket   for ground yet to come (docs/CONTENT-PLAN.md S1): nothing reads them yet
+// and `lay`, made from gen and the hazards: the same numbers as `kindAt` wants them, worked out once.
+export const BIOMES = [];
+const SCATTER = 2, POCKETS = 1;                 // how a hazard is laid: a cell at a time by its hash, or in pockets of noise
+const laid = (haz, what) => {
+  if (!haz) return [0, 0];
+  const type = HAZARDS[haz.type];
+  if (!type) throw new Error(`${what}: there is no hazard called ${haz.type}`);
+  if (!type.share && typeof haz.t !== 'number') throw new Error(`${what}: ${haz.type} needs its threshold t`);
+  return type.share ? [SCATTER, type.share * (haz.rate ?? 1)] : [POCKETS, haz.t];
+};
+// Adds a row to the table (or takes the place of one: tests do). Whatever is left out is as the plainest ground has
+// it; what a ground must say for itself is asked for.
+export function biome(f) {
+  const { id, name } = f, kin = f.kin ?? 0;
+  if (!Number.isInteger(id) || id < 0 || id > 255 || typeof name !== 'string') throw new Error(`a ground needs a number from 0 to 255 and a name: ${id} ${name}`);
+  for (const need of ['gloom', 'mote', 'map', 'debris']) if (!Array.isArray(f[need])) throw new Error(`${name}: a ground says its ${need}`);
+  const [haz, hazT] = laid(f.haz, name), [haz2, haz2T] = laid(f.haz2, name), g = f.gen ?? null;
+  return BIOMES[id] = {
+    id, name, title: f.title ?? name.toUpperCase(), kin, gemA: f.gemA ?? kin, gemB: f.gemB ?? kin,
+    rich: f.rich ?? 1, gemx: f.gemx ?? 1, worth: f.worth ?? 1, dig: f.dig ?? 1,
+    sheet: f.sheet ?? name, floor: f.floor ?? `${name}-floor`, items: f.items ?? KIN_ITEMS[kin],
+    gloom: f.gloom, dark: f.dark ?? 1, mote: f.mote, map: f.map, debris: f.debris,
+    gen: g, haz: f.haz ?? null, haz2: f.haz2 ?? null, lavaVol: f.lavaVol ?? 5, freeze: f.freeze ?? 0,
+    glass: f.glass ?? false, extras: f.extras ?? [], pocket: f.pocket ?? null,
+    lay: g && { dense: g.dense, oreA: g.oreA, oreB: g.oreB, slate: g.slate, cave: g.cave, cavern: g.cavern, haz, hazT, haz2, haz2T },
+  };
+}
+// The row of a ground's number: the home ground's for a number that has no row.
+export const rowOf = b => BIOMES[b] ?? BIOMES[0];
+// What hazard a cell of kind `k` in ground `row` is: 'lava', 'spore', 'spark', or null (not a hazard, or one of a
+// kind this ground has none of).
+export const hazOf = (k, row) => (k === K.HAZARD ? row.haz : k === K.HAZARD2 ? row.haz2 : null)?.type ?? null;
+// Whose gems a cell pays (1 north, 2 south, 3 west, 4 east).
+export const gemKin = (k, row) => k === K.ORE_A ? row.gemA : k === K.ORE_B ? row.gemB : k === K.STEEL ? B.EMBER : k === K.CAP || k === K.CAP_LIT ? B.MIRE
+  : k === K.HAZARD || k === K.HAZARD2 ? HAZARDS[hazOf(k, row)]?.kin ?? row.kin : row.kin;
+// How long a cell takes to cut with the first bit, in seconds.
+export const digTime = (k, row) => (k === K.NODE && row.pocket ? row.pocket.nodeDig : DIG_TIME[k]) * row.dig;
+
+// The home ground: its own rules of generation, and no gems.
+biome({ id: 0, name: 'crust', kin: 0, gemx: 0, gloom: [10, 8, 7], mote: ['#8a7a66', 'still'], map: [111, 91, 73], debris: ['#6f5b49', '#806a55', '#a08a6c'] });
+// The four directions. North: a cut closes over with ice. South: pockets of lava. West: more caves, and spore pods.
+// East: more slate, and charged crystals.
+const GROUND = { dense: 0.68, oreA: 0.66, oreB: 0.74, slate: 0.03, cave: 0.8, cavern: 0.78 };
+biome({ id: 1, name: 'frost', kin: B.FROST, gloom: [5, 12, 30], mote: ['#ffffff', 'fall'], map: [188, 216, 238], debris: ['#bcd8ee', '#ffffff', '#a2c4e2'],
+  gen: GROUND, freeze: 30 });
+biome({ id: 2, name: 'ember', kin: B.EMBER, gloom: [22, 5, 6], mote: ['#ff9a3a', 'rise'], map: [116, 64, 58], debris: ['#74403a', '#c07a5c', '#ff8a3a'],
+  gen: { ...GROUND, dense: 0.64 }, haz: { type: 'lava', rate: 1, t: 0.78 } });
+biome({ id: 3, name: 'mire', kin: B.MIRE, gloom: [14, 6, 26], mote: ['#a5f0a0', 'sway'], map: [102, 84, 120], debris: ['#665478', '#5f9450', '#b4e878'],
+  gen: { ...GROUND, cave: 0.68, cavern: 0.7 }, haz: { type: 'spore', rate: 1 } });
+biome({ id: 4, name: 'lode', kin: B.LODE, gloom: [22, 13, 4], mote: ['#ffe08a', 'still'], map: [185, 138, 90], debris: ['#b98a5a', '#f0d8a0', '#a57648'],
+  gen: { ...GROUND, slate: 0.05 }, haz: { type: 'spark', rate: 1 } });
+// Far out, the ground to either side of each direction's middle turns into a richer, meaner kind of the same: more
+// ore, twice the pay, and its hazard nearly twice as thick.
+const deep = (id, name, of, looks) => {
+  const { gen, haz, freeze } = BIOMES[of];
+  return biome({ id, name, kin: of, rich: 2, gemx: 2, gen: { ...gen, oreA: 0.6, oreB: 0.66 }, freeze,
+    haz: haz && (haz.type === 'lava' ? { ...haz, rate: 1.8, t: 0.72 } : { ...haz, rate: 1.8 }), ...looks });
+};
+deep(5, 'rime', B.FROST, { gloom: [3, 18, 24], mote: ['#d8fff4', 'fall'], map: [98, 184, 180], debris: ['#62b8b4', '#d8fff4', '#84d4c8'] });
+deep(6, 'magma', B.EMBER, { gloom: [30, 5, 3], mote: ['#ffc040', 'rise'], map: [122, 36, 24], debris: ['#7a2418', '#e8743a', '#ffb040'] });
+deep(7, 'bloom', B.MIRE, { gloom: [26, 4, 28], mote: ['#ffa0e0', 'sway'], map: [138, 60, 140], debris: ['#8a3c8c', '#ffa0e0', '#7af0d0'] });
+deep(8, 'gilt', B.LODE, { gloom: [24, 18, 2], mote: ['#ffe680', 'still'], map: [110, 90, 52], debris: ['#6e5a34', '#ffe680', '#ffd040'] });
+
 export const DX = [1, 0, -1, 0], DY = [0, 1, 0, -1];
 // The cell next to a cell on each side, as steps of its number: east, south, west, north (as DX, DY). And how far
 // `freed` walks outlines: JOIN sides each while there is more than one to settle or one is known to be held, WALK
@@ -34,10 +176,14 @@ const hash = (x, y, s) => {
 };
 export const cellHash = hash;
 // Smooth noise in [0, 1): the hashes at the four whole points round (x, y), blended. `s` is the world's seed plus
-// the layer's number `k`, and each layer remembers the four hashes of the square it was last asked about: a piece
-// of the world is made a row at a time, so most cells ask about the square the cell before them did.
-const kept = new Float64Array(32 * 7).fill(NaN);
-const noise = (x, y, s, k = s & 31) => {
+// the layer's number `k` (0 to 127: a layer added to the seed is its own number), and each layer remembers the four
+// hashes of the square it was last asked about: a piece of the world is made a row at a time, so most cells ask
+// about the square the cell before them did.
+// Layers and hash seeds in use (added to the world's seed): 1-3 and 14-17 whose ground a cell is; 4 the world's
+// edge; 5-13 and 18 the ground itself; 21-24 finds; 31-32 wrecks. docs/CONTENT-PLAN.md (S3)
+// allots the rest: take a number from there, so that no two rules read the same layer.
+const kept = new Float64Array(128 * 7).fill(NaN);
+const noise = (x, y, s, k = s & 127) => {
   const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi, m = k * 7;
   const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
   if (kept[m] !== xi || kept[m + 1] !== yi || kept[m + 2] !== s) {
@@ -147,9 +293,8 @@ export class World {
     }
     const find = r > 12 ? this.findAt(x, y) : -1;
     if (find >= 0) return find;
-    const h = hash(x, y, seed + 9), deep = b > 4, kin = base(b);
-    let k = K.SOFT;
-    if (b === B.CRUST) {
+    const h = hash(x, y, seed + 9), g = (BIOMES[b] ?? BIOMES[0]).lay;
+    if (g === null) {
       // Home ground: soft, with stones to go round, nuggets worth lassoing, and further out seams of slate.
       // (The last of these to hold is what the cell is, so they are asked last first, and the first that holds
       // settles it: an open cell asks about nothing else.)
@@ -159,20 +304,20 @@ export class World {
       if (r > 55 && h < 0.5 && noise(x / 3.5, y / 3.5, seed + 7, 7) > 0.78) return K.ORE_B;
       if (r > 4.5 && h < 0.6 && noise(x / 3, y / 3, seed + 6, 6) > 0.64) return K.ORE_A;
       if (r > 5 && noise(x / 4, y / 4, seed + 5, 5) > 0.7) return K.DENSE;
-      return k;
+      return K.SOFT;
     }
-    const more = deep ? 1.8 : 1;
-    if (noise(x / 19, y / 19, seed + 18, 18) > (kin === B.MIRE ? 0.7 : 0.78)) return K.EMPTY;
-    if (noise(x / 5, y / 5, seed + 13, 13) > (kin === B.MIRE ? 0.68 : 0.8)) return K.EMPTY;
+    // Every other ground is laid the same way, by its row's own thresholds (`lay`), and in the same order: the
+    // last of these to hold is what the cell is, as above.
+    if (noise(x / 19, y / 19, seed + 18, 18) > g.cavern) return K.EMPTY;
+    if (noise(x / 5, y / 5, seed + 13, 13) > g.cave) return K.EMPTY;
     if (r > 600 && Math.abs(noise(x / 8, y / 8, seed + 12, 12) - 0.5) < 0.028) return K.VAULT;
-    if (Math.abs(noise(x / 9, y / 9, seed + 11, 11) - 0.5) < (kin === B.LODE ? 0.05 : 0.03)) return K.SLATE;
-    if (kin === B.LODE && hash(x, y, seed + 10) < 0.026 * more) return K.HAZARD;
-    if (kin === B.MIRE && hash(x, y, seed + 10) < 0.022 * more) return K.HAZARD;
-    if (kin === B.EMBER && h > 0.45 && noise(x / 2.5, y / 2.5, seed + 8, 8) > (deep ? 0.72 : 0.78)) return K.HAZARD;
-    if (h < 0.5 && noise(x / 3.5, y / 3.5, seed + 7, 7) > (deep ? 0.66 : 0.74)) return K.ORE_B;
-    if (h < 0.62 && noise(x / 3, y / 3, seed + 6, 6) > (deep ? 0.6 : 0.66)) return K.ORE_A;
-    if (noise(x / 4, y / 4, seed + 5, 5) > (kin === B.EMBER ? 0.64 : 0.68)) return K.DENSE;
-    return k;
+    if (Math.abs(noise(x / 9, y / 9, seed + 11, 11) - 0.5) < g.slate) return K.SLATE;
+    if (g.haz === SCATTER) { if (hash(x, y, seed + 10) < g.hazT) return K.HAZARD; }
+    else if (g.haz === POCKETS && h > 0.45 && noise(x / 2.5, y / 2.5, seed + 8, 8) > g.hazT) return K.HAZARD;
+    if (h < 0.5 && noise(x / 3.5, y / 3.5, seed + 7, 7) > g.oreB) return K.ORE_B;
+    if (h < 0.62 && noise(x / 3, y / 3, seed + 6, 6) > g.oreA) return K.ORE_A;
+    if (noise(x / 4, y / 4, seed + 5, 5) > g.dense) return K.DENSE;
+    return K.SOFT;
   }
   // The piece of world holding a cell, made now if nothing has looked there before.
   piece(id) {
@@ -209,6 +354,9 @@ export class World {
   at(x, y) { return this.k(y * N + x); }
   solid(x, y) { return this.k(y * N + x) !== K.EMPTY; }
   lavaAt(i) { return this.lava.get(i) ?? 0; }
+  // The row of the ground a cell lies in, and what hazard the cell is ('lava', 'spore', 'spark') or null.
+  row(i) { return BIOMES[this.b(i)] ?? BIOMES[0]; }
+  hazAt(i) { const k = this.k(i); return k === K.HAZARD || k === K.HAZARD2 ? hazOf(k, this.row(i)) : null; }
 
   // An outline is walked a side at a time, the ground always on the same hand. A side is a cell of ground and which
   // of its sides faces open ground (0 east, 1 south, 2 west, 3 north), held as one number: the cell's, times four,

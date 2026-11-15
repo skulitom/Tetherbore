@@ -1,6 +1,6 @@
 // Tetherbore: the game. A drill flies free on a tether from a fixed core, cuts whatever ground it is pushed into,
 // and reels in any piece of ground it has drawn the tether round.
-import { World, N, C, K, B, HARD, GRIT, GEMS, DX, DY, BIOME_NAMES, base, cellHash, sight, cellsAlong, RELIC_R, HOME_R } from './world.js';
+import { World, N, C, K, B, HARD, GRIT, GEMS, DX, DY, BIOMES, HAZARDS, rowOf, hazOf, gemKin, digTime, cellHash, sight, cellsAlong, RELIC_R, HOME_R } from './world.js';
 import { sheets, draw, drawScaled, frameAt, duration, slice9, text, textWidth } from './atlas.js';
 import { sfx, unlock, isMuted, setMuted, setAmbience } from './audio.js';
 
@@ -60,18 +60,13 @@ export const UPGRADES = [
 ];
 // Where each direction's gems are found, for a price that cannot be met yet.
 const GEM_WHERE = [null, 'NORTH', 'SOUTH', 'WEST', 'EAST'];
-// What flies off each kind of ground when it is cut, the dark each direction's ground lies in, its motes, and its
-// colour on the map.
+// What flies off the kinds of rock that look the same in every ground, by the sheet each is drawn from. A ground's
+// own rock sheds the colours in its row (js/world.js: BIOMES), where the dark it lies in, its motes and its colour
+// on the map are too.
 const DEBRIS = {
-  crust: ['#6f5b49', '#806a55', '#a08a6c'], frost: ['#bcd8ee', '#ffffff', '#a2c4e2'], ember: ['#74403a', '#c07a5c', '#ff8a3a'],
-  mire: ['#665478', '#5f9450', '#b4e878'], lode: ['#b98a5a', '#f0d8a0', '#a57648'], slate: ['#6a7080', '#a4acbc', '#454a5a'],
-  vault: ['#463a68', '#8a78c0', '#c8a8ff'], ice: ['#6fb0e0', '#d8f4ff', '#ffffff'], basalt: ['#463e4c', '#7a6a78', '#8a3424'],
-  rime: ['#62b8b4', '#d8fff4', '#84d4c8'], magma: ['#7a2418', '#e8743a', '#ffb040'], bloom: ['#8a3c8c', '#ffa0e0', '#7af0d0'],
-  gilt: ['#6e5a34', '#ffe680', '#ffd040'], bedrock: ['#1e1e26', '#34343e'],
+  slate: ['#6a7080', '#a4acbc', '#454a5a'], vault: ['#463a68', '#8a78c0', '#c8a8ff'], ice: ['#6fb0e0', '#d8f4ff', '#ffffff'],
+  basalt: ['#463e4c', '#7a6a78', '#8a3424'], bedrock: ['#1e1e26', '#34343e'],
 };
-const GLOOM = [[10, 8, 7], [5, 12, 30], [22, 5, 6], [14, 6, 26], [22, 13, 4], [3, 18, 24], [30, 5, 3], [26, 4, 28], [24, 18, 2]];
-const MOTE = ['#8a7a66', '#ffffff', '#ff9a3a', '#a5f0a0', '#ffe08a', '#d8fff4', '#ffc040', '#ffa0e0', '#ffe680'];
-export const MAPC = [[111, 91, 73], [188, 216, 238], [116, 64, 58], [102, 84, 120], [185, 138, 90], [98, 184, 180], [122, 36, 24], [138, 60, 140], [110, 90, 52]];
 // How the tether looks at each level of reach: rope, braid, cable, then lines of light.
 const TETHERS = [
   { a: '#e8dcc0', b: '#e8dcc0', dash: 1 }, { a: '#e8dcc0', b: '#b89a6c', dash: 0.5 }, { a: '#f0d890', b: '#b0803a', dash: 0.5 },
@@ -79,8 +74,8 @@ const TETHERS = [
   { a: '#ffe89a', b: '#c89020', dash: 0.25, thick: true }, { a: '#fff4c0', b: '#e8a020', dash: 0.5, thick: true },
   { a: '#a8fff0', b: '#30c8c0', dash: 0.5, thick: true }, { a: '#ffc8f4', b: '#b050d0', dash: 0.5, thick: true }, { a: '#ffffff', b: '#5cc4f0', dash: 0.5, thick: true },
 ];
-// Nothing is too hard to cut: tougher ground only takes longer, and a better bit cuts all of it faster.
-const DIG_TIME = [0, 0, 0, 0.24, 0.45, 0.24, 0.45, 1.0, 1.8, 0.24, 0, 0.18, 0.45, 0.6, 0];
+// Nothing is too hard to cut: tougher ground only takes longer (js/world.js: `digTime`), and a better bit cuts all
+// of it faster.
 const SPEED = [1, 1.6, 2.4, 3.6, 5];
 const FLY = 9, BODY = 0.34;                     // cells a second in open ground; the drill's half-width in cells
 const SIDE = [1, N, -1, -N];                    // the cells beside a cell, as steps of its number: east, south, west, north
@@ -110,7 +105,7 @@ export class Game {
     this.taken = []; this.walked = new Set(); this.boxes = new WeakMap(); this.cuts = 0; this.homeKey = '';
     this.swept = 0;                         // cells the tether's sweeps have looked at, for tests of how much work is done
     this.effects = []; this.popups = []; this.hauls = []; this.clouds = []; this.sparks = new Map(); this.lavaVol = new Map(); this.frostOpen = [];
-    this.parts = []; this.rings = []; this.motes = []; this.gloom = [10, 8, 7]; this.flash = 0; this.counted = 0; this.chime = 3; this.clock = 0;
+    this.parts = []; this.rings = []; this.motes = []; this.gloom = [10, 8, 7]; this.murk = 1; this.flash = 0; this.counted = 0; this.chime = 3; this.clock = 0;
     this.shake = 0; this.twang = 0; this.edge = 0; this.hurt = 0; this.coreFlash = 0; this.banner = null; this.shop = false; this.shopRise = 0; this.confirmReset = 0;
     this.buttons = [];
     this.chunks = new Map(); this.version = 0;
@@ -701,7 +696,7 @@ export class Game {
       const i = this.di, k = w.k(i);
       if (k !== K.EMPTY && HARD[k] < 99) {
         w.setK(i, K.EMPTY);
-        if (base(w.b(i)) === B.FROST) { w.dug.set(i, this.clock); this.frostOpen.push(i); }
+        if (w.row(i).freeze > 0) { w.dug.set(i, this.clock); this.frostOpen.push(i); }
         this.changed([i]);
       }
       if (w.k(i) === K.EMPTY && this.free(Math.floor(d.x) + 0.5, Math.floor(d.y) + 0.5)) {
@@ -812,11 +807,11 @@ export class Game {
           d.dig = -1;
         } else if (!this.within((i % N) + 0.5, Math.floor(i / N) + 0.5)) { if (this.edge <= 0) this.refuse(); d.dig = -1; }
         else {
-          if (d.dig !== i) { d.dig = i; d.digT = 0; d.digDur = DIG_TIME[k] / SPEED[this.S.lv.drill]; d.digX = ix; d.digY = iy; this.foresee(i); }
+          if (d.dig !== i) { d.dig = i; d.digT = 0; d.digDur = digTime(k, w.row(i)) / SPEED[this.S.lv.drill]; d.digX = ix; d.digY = iy; this.foresee(i); }
           const before = d.digT;
           d.digT += dt;
           if (((d.digT * 30) | 0) !== ((before * 30) | 0) && d.digDur > 0.15) { sfx.grind(); if (d.digDur > 0.4) this.shake = Math.max(this.shake, 1.2); }
-          if (((d.digT * 18) | 0) !== ((before * 18) | 0)) this.chips(i % N, Math.floor(i / N), this.rockSheet(k, w.b(i)), 2, d.ang, 0.6);
+          if (((d.digT * 18) | 0) !== ((before * 18) | 0)) this.chips(i % N, Math.floor(i / N), this.debris(k, w.b(i)), 2, d.ang, 0.6);
           // Cutting draws the drill square on to the block, so tunnels come out clean: never past the tether's reach.
           const cx = (i % N) + 0.5, cy = Math.floor(i / N) + 0.5, inReach = (x, y) => { const to = Math.hypot(x - HX, y - HY); return to <= R || to <= Math.hypot(d.x - HX, d.y - HY); };
           if (Math.abs(cx - d.x) > Math.abs(cy - d.y)) { const ny = d.y + (cy - d.y) * Math.min(1, dt * 6); if (this.free(d.x, ny) && inReach(d.x, ny)) d.y = ny; }
@@ -925,28 +920,30 @@ export class Game {
     const w = this.world, cells = [i];
     for (let s = 0; s < 4; s++) {
       const j = i + DY[s] * N + DX[s];
-      if (w.k(j) === K.HAZARD && (base(w.b(j)) === B.EMBER || base(w.b(j)) === B.MIRE)) cells.push(j);
+      const haz = w.hazAt(j);
+      if (haz === 'lava' || haz === 'spore') cells.push(j);
     }
     const found = w.freed(cells, 2000);
     this.preview = found.length ? [{ i, cells: found.flat() }] : [{ i, cells: [] }];
   }
   finishDig(i) {
-    const w = this.world, d = this.drill, x = i % N, y = Math.floor(i / N), k = w.k(i), b = w.b(i);
+    const w = this.world, d = this.drill, x = i % N, y = Math.floor(i / N), k = w.k(i), b = w.b(i), row = rowOf(b), haz = hazOf(k, row);
     w.setK(i, K.EMPTY);
-    if (base(b) === B.FROST) { w.dug.set(i, this.clock); this.frostOpen.push(i); }
+    if (row.freeze > 0) { w.dug.set(i, this.clock); this.frostOpen.push(i); }
     const tough = k === K.SLATE ? 3 : k === K.VAULT ? 4 : k === K.DENSE || k === K.ORE_B || k === K.BASALT ? 2 : 1;
     sfx.dig(tough);
-    this.chips(x, y, this.rockSheet(k, b), 9 + tough * 3, d.ang, 1);
+    this.chips(x, y, this.debris(k, b), 9 + tough * 3, d.ang, 1);
     this.effect('dust', 'dust', (x + 0.5) * T, (y + 0.5) * T);
     if (tough >= 2 || k === K.ICE) this.effect('shatter', 'shatter', (x + 0.5) * T, (y + 0.5) * T);
     if (k === K.ORE_A || k === K.ORE_B) this.popup(x, y, 'CRUSHED', '#9a94a8');
     this.shake = Math.max(this.shake, 1 + tough * 0.5);
-    if (k === K.HAZARD) this.trigger(i, b, true);
+    if (haz) this.trigger(i, haz, true);
     // A hazard beside the cut wakes, and may open its own cell: every cell opened goes to `changed` together.
     const opened = [i];
     for (let s = 0; s < 4; s++) {
       const j = (y + DY[s]) * N + x + DX[s];
-      if (w.k(j) === K.HAZARD) opened.push(...this.trigger(j, w.b(j), false));
+      const beside = w.hazAt(j);
+      if (beside) opened.push(...this.trigger(j, beside, false));
     }
     d.dig = -1; this.preview = [];
     w.see(x, y, 1);
@@ -960,9 +957,10 @@ export class Game {
     S.wrecks ??= [0, 0, 0, 0, 0, 0, 0, 0];
     const gems = [0, 0, 0, 0, 0], sprites = [], show = Math.max(1, Math.ceil(n / 400));
     cells.forEach((i, at) => {
-      const x = i % N, y = Math.floor(i / N), k = w.k(i), b = w.b(i), far = Math.hypot(x - C, y - C), rich = richness(far) * (b > 4 ? 2 : 1);
-      const gem = b ? GEMS[k] * (b > 4 ? 2 : 1) : 0;
-      grit += GRIT[k] * rich; gems[base(b)] += gem;
+      const x = i % N, y = Math.floor(i / N), k = w.k(i), b = w.b(i), row = rowOf(b), far = Math.hypot(x - C, y - C), rich = richness(far) * row.rich * row.worth;
+      // Whose gems a cell pays is its kind's and its ground's to say; the home ground pays none.
+      const gem = GEMS[k] * row.gemx, kin = gemKin(k, row);
+      grit += GRIT[k] * rich; gems[kin] += gem;
       if (b === B.CRUST && (k === K.ORE_A || k === K.ORE_B)) grit += (k === K.ORE_B ? 20 : 4) * rich;
       if (k === K.RELIC) relic = w.relicAt.indexOf(i);
       // A cache holds what a quarter of a minute's cutting out here would earn; a wreck gives up its part.
@@ -970,7 +968,7 @@ export class Game {
       if (k === K.WRECK) { const which = w.wrecks.findIndex(([wx, wy]) => wx === x && wy === y); if (which >= 0 && !S.wrecks[which]) { S.wrecks[which] = 1; parts++; } }
       cx += x; cy += y;
       // A very large piece is shown by a share of its cells.
-      if (at % show === 0) sprites.push({ x, y, tile: this.rockRect(x, y, k, b), over: this.overlay(k), gem: gem ? base(b) : 0, gems: gem * show, biome: b, far });
+      if (at % show === 0) sprites.push({ x, y, tile: this.rockRect(x, y, k, b), over: this.overlay(k, row), debris: this.debris(k, b), gem: gem ? kin : 0, gems: gem * show, far });
     });
     for (const i of cells) w.setK(i, K.EMPTY);
     // Each part brought home from a wreck makes every haul pay a tenth more.
@@ -994,7 +992,7 @@ export class Game {
       s.go = lift + (count > 1 ? i / (count - 1) : 0) * spread; s.left = per * per;
       const [u, k] = this.onRoute(h, (s.x + 0.5) * T, (s.y + 0.5) * T, 0, route.length);
       s.k = k; at += u / count;
-      if (s.over) { const items = this.itemSheet(s.biome, s.over), f = s.over === 'hazard' || s.over === 'relic' ? frameAt(items, s.over, 0) : sheets[items].frames[s.over]; s.item = [sheets[items].image, f]; }
+      if (s.over) { const [items, frame] = s.over, f = frame === 'hazard' || frame === 'relic' ? frameAt(items, frame, 0) : sheets[items].frames[frame]; s.item = [sheets[items].image, f]; }
     });
     // The rubble gathers on the tether beside where it lay. From here the haul has a rope of its own, and the drill
     // is free to go.
@@ -1140,7 +1138,7 @@ export class Game {
       for (const b of bits) if (b.st === 1) { b.ft += dt; if (b.ft > 0.16) b.st = 2; }
       // Dust shed along the way.
       if (h.v > 50 && this.parts.length < 380 && bits.length && Math.random() < dt * 30) {
-        const b = bits[(Math.random() * bits.length) | 0], colors = DEBRIS[b.s.tile[0]] ?? DEBRIS.crust;
+        const b = bits[(Math.random() * bits.length) | 0], colors = b.s.debris;
         if (!b.st) this.parts.push({ x: b.x, y: b.y, vx: (Math.random() - 0.5) * 16, vy: (Math.random() - 0.5) * 16, t: 0, life: 0.2 + Math.random() * 0.3, color: colors[(Math.random() * colors.length) | 0], size: 1 });
       }
       if (arrived) {
@@ -1165,23 +1163,23 @@ export class Game {
 
   // ------------------------------------------------------------ hazards
   // A hazard wakes when the drill cuts beside it (or into it: `direct`). Lassoed asleep, it is worth gems.
-  // Returns the cells it opened, for `changed`.
-  trigger(i, biome, direct) {
+  // What it does is its type's (`haz`: world.hazAt), whatever ground it lies in. Returns the cells it opened, for
+  // `changed`.
+  trigger(i, haz, direct) {
     const w = this.world, x = i % N, y = Math.floor(i / N);
-    biome = base(biome);
-    if (biome === B.EMBER) {
-      w.setK(i, K.EMPTY); w.lava.set(i, 9); this.lavaVol.set(i, 5);
+    if (haz === 'lava') {
+      w.setK(i, K.EMPTY); w.lava.set(i, 9); this.lavaVol.set(i, w.row(i).lavaVol);
       sfx.hiss(); this.effect('steam', 'smoke-puff', (x + 0.5) * T, (y + 0.5) * T);
       if (direct) { this.jolt(0.5); this.shake = 5; }
       return [i];
     }
-    if (biome === B.MIRE) {
+    if (haz === 'spore') {
       w.setK(i, K.EMPTY);
       this.clouds.push({ x, y, t: 0, life: 6 });
       sfx.puff();
       return [i];
     }
-    if (biome === B.LODE) {
+    if (haz === 'spark') {
       if (direct) this.zap(x, y);
       else { const s = this.sparks.get(i); if (!s || s.cool <= 0) this.sparks.set(i, { fuse: 0.55, cool: 0 }); }
     }
@@ -1194,7 +1192,7 @@ export class Game {
     if (Math.max(Math.abs(d.x - x - 0.5), Math.abs(d.y - y - 0.5)) <= 3.5) { this.jolt(0.7); this.shake = Math.max(this.shake, 5); this.twang = 0.3; }
     for (let v = -3; v <= 3; v++) for (let u = -3; u <= 3; u++) {
       const j = (y + v) * N + x + u;
-      if ((u || v) && w.k(j) === K.HAZARD && base(w.b(j)) === B.LODE && !this.sparks.has(j)) this.sparks.set(j, { fuse: 0.3 + cellHash(u, v, 7) * 0.3, cool: 0 });
+      if ((u || v) && w.hazAt(j) === 'spark' && !this.sparks.has(j)) this.sparks.set(j, { fuse: 0.3 + cellHash(u, v, 7) * 0.3, cool: 0 });
     }
   }
   // A hazard's bite: the drill is knocked senseless for a moment.
@@ -1242,7 +1240,7 @@ export class Game {
         const vol = this.lavaVol.get(i) ?? 1, start = (cellHash(x, y, (this.time * 10) | 0) * 4) | 0;
         for (let s = 0; s < 4; s++) {
           const j = (y + DY[(s + start) % 4]) * N + x + DX[(s + start) % 4];
-          if (w.k(j) === K.HAZARD && base(w.b(j)) === B.EMBER) { opened.push(...this.trigger(j, B.EMBER, false)); continue; }
+          if (w.hazAt(j) === 'lava') { opened.push(...this.trigger(j, 'lava', false)); continue; }
           if (vol > 1 && w.k(j) === K.EMPTY && !w.lava.has(j) && j !== here && w.s(j) && Math.hypot(x - C, y - C) > 3) {
             w.lava.set(j, 8); this.lavaVol.set(j, vol - 1); this.lavaVol.set(i, 1);
             break;
@@ -1269,17 +1267,19 @@ export class Game {
     this.clouds = this.clouds.filter(c => c.t < c.life);
     // Charged crystals: a short fuse, then an arc that jumps to every crystal near it.
     for (const [i, s] of this.sparks) {
-      if (w.k(i) !== K.HAZARD) { this.sparks.delete(i); continue; }
+      if (w.hazAt(i) !== 'spark') { this.sparks.delete(i); continue; }
       if (s.fuse > 0) { s.fuse -= dt; if (s.fuse <= 0) { s.cool = 3; this.zap(i % N, Math.floor(i / N)); } }
       else { s.cool -= dt; if (s.cool <= 0) this.sparks.delete(i); }
     }
-    // Frost: a cut in the north closes over with ice unless the tether lies in it.
+    // Frost: a cut in ground that freezes (the north's) closes over with ice, after as long as its row says, unless
+    // the tether lies in it.
     this.frostTick = (this.frostTick ?? 0) + dt;
     if (this.frostTick > 0.4) {
       this.frostTick = 0;
       this.frostOpen = this.frostOpen.filter(i => {
-        if (w.k(i) !== K.EMPTY) { w.dug.delete(i); return false; }
-        if (this.clock - w.dug.get(i) < 30) return true;
+        const freeze = w.row(i).freeze;
+        if (w.k(i) !== K.EMPTY || !freeze) { w.dug.delete(i); return false; }
+        if (this.clock - w.dug.get(i) < freeze) return true;
         const x = i % N, y = Math.floor(i / N);
         if (lies(i) || Math.max(Math.abs(dcx - x), Math.abs(dcy - y)) <= 1 || w.lava.has(i)) return true;
         w.setK(i, K.ICE); w.dug.delete(i); closed.push(i);
@@ -1300,7 +1300,7 @@ export class Game {
       const i = (cy + v) * N + cx + u, k = w.k(i);
       if (k === K.EMPTY || HARD[k] >= 99 || !this.within(cx + u + 0.5, cy + v + 0.5)) continue;
       w.setK(i, K.EMPTY); opened.push(i);
-      if (base(w.b(i)) === B.FROST) { w.dug.set(i, this.clock); this.frostOpen.push(i); }
+      if (w.row(i).freeze > 0) { w.dug.set(i, this.clock); this.frostOpen.push(i); }
     }
     this.effect('blast', 'fire-explosion', d.x * T, d.y * T);
     this.shake = 9; sfx.blast();
@@ -1330,9 +1330,9 @@ export class Game {
   }
 
   // ------------------------------------------------------------ feel
-  // Chips of the ground's own colours. `ang` is the way the drill was cutting (they fly back at it), null for all round.
-  chips(cx, cy, sheet, count, ang, speed) {
-    const colors = DEBRIS[sheet] ?? DEBRIS.crust;
+  // Chips of the ground's own colours (`debris`). `ang` is the way the drill was cutting (they fly back at it), null
+  // for all round.
+  chips(cx, cy, colors, count, ang, speed) {
     if (this.parts.length > 420) return;
     for (let n = 0; n < count; n++) {
       const a = Math.random() * 6.283, v = (20 + Math.random() * 70) * speed;
@@ -1353,7 +1353,7 @@ export class Game {
   land() {
     const d = this.drill, x = Math.floor(d.x + Math.cos(d.ang) * 0.8), y = Math.floor(d.y + Math.sin(d.ang) * 0.8), k = this.world.at(x, y);
     this.shake = Math.max(this.shake, 2.2);
-    if (k !== K.EMPTY) this.chips(d.x - 0.5 + Math.cos(d.ang) * 0.5, d.y - 0.5 + Math.sin(d.ang) * 0.5, this.rockSheet(k, this.world.b(y * N + x)), 6, d.ang, 0.8);
+    if (k !== K.EMPTY) this.chips(d.x - 0.5 + Math.cos(d.ang) * 0.5, d.y - 0.5 + Math.sin(d.ang) * 0.5, this.debris(k, this.world.b(y * N + x)), 6, d.ang, 0.8);
     this.effect('dust', 'dust', (d.x + Math.cos(d.ang) * 0.4) * T, (d.y + Math.sin(d.ang) * 0.4) * T);
   }
   // Everything that only sets the mood: chips in flight, rings, drifting motes, glints on ore, the colour of the
@@ -1365,19 +1365,21 @@ export class Game {
     for (const r of this.rings) r.t += dt;
     this.rings = this.rings.filter(r => r.t < 0.5);
     this.flash = Math.max(0, this.flash - dt); this.counted = Math.max(0, this.counted - dt);
-    const here = w.b(this.di), want = GLOOM[here], k = 1 - Math.exp(-dt * 1.5);
+    // The dark eases to the colour and the depth of the ground the drill is in.
+    const here = w.row(this.di), want = here.gloom, k = 1 - Math.exp(-dt * 1.5);
     for (let c = 0; c < 3; c++) this.gloom[c] += (want[c] - this.gloom[c]) * k;
+    this.murk += (here.dark - this.murk) * k;
     // Motes hang in open ground near the view; each belongs to the ground it was born over.
     while (this.motes.length < 34) {
       const x = this.cam.x + (Math.random() - 0.5) * (W + 60), y = this.cam.y + (Math.random() - 0.5) * (H + 60);
-      this.motes.push({ x, y, seed: Math.random() * 100, t: 0, life: 4 + Math.random() * 5, biome: w.b(Math.floor(y / T) * N + Math.floor(x / T)) });
+      this.motes.push({ x, y, seed: Math.random() * 100, t: 0, life: 4 + Math.random() * 5, mote: w.row(Math.floor(y / T) * N + Math.floor(x / T)).mote });
     }
     for (const m of this.motes) {
       m.t += dt;
-      const b = base(m.biome), sway = Math.sin(this.time * 1.3 + m.seed);
-      if (b === B.FROST) { m.y += 9 * dt; m.x += sway * 6 * dt; }
-      else if (b === B.EMBER) { m.y -= 14 * dt; m.x += sway * 4 * dt; }
-      else if (b === B.MIRE) { m.y += Math.cos(this.time * 0.9 + m.seed) * 4 * dt; m.x += sway * 5 * dt; }
+      const drift = m.mote[1], sway = Math.sin(this.time * 1.3 + m.seed);
+      if (drift === 'fall') { m.y += 9 * dt; m.x += sway * 6 * dt; }
+      else if (drift === 'rise') { m.y -= 14 * dt; m.x += sway * 4 * dt; }
+      else if (drift === 'sway') { m.y += Math.cos(this.time * 0.9 + m.seed) * 4 * dt; m.x += sway * 5 * dt; }
       else { m.y -= 2 * dt; m.x += sway * 2 * dt; }
     }
     this.motes = this.motes.filter(m => m.t < m.life && Math.abs(m.x - this.cam.x) < W / 2 + 40 && Math.abs(m.y - this.cam.y) < H / 2 + 40);
@@ -1386,9 +1388,9 @@ export class Game {
       const x = Math.floor((this.cam.x + (Math.random() - 0.5) * W) / T), y = Math.floor((this.cam.y + (Math.random() - 0.5) * H) / T), kk = w.peek(x, y);
       if ((kk === K.ORE_A || kk === K.ORE_B || kk === K.RELIC || kk === K.CACHE || kk === K.WRECK) && Math.random() < (kk >= K.CACHE ? 1 : 0.5)) this.parts.push({ x: (x + 0.25 + Math.random() * 0.5) * T, y: (y + 0.25 + Math.random() * 0.5) * T, vx: 0, vy: 0, t: 0, life: 0.35, color: '#ffffff', size: 1, star: true });
     }
-    setAmbience(base(here), here > 4);
+    setAmbience(here.kin, here.rich >= 2);
     this.chime -= dt;
-    if (this.chime <= 0) { this.chime = 2.5 + Math.random() * 4.5; sfx.chime(base(here)); }
+    if (this.chime <= 0) { this.chime = 2.5 + Math.random() * 4.5; sfx.chime(here.kin); }
   }
 
   // ------------------------------------------------------------ small things
@@ -1444,14 +1446,21 @@ export class Game {
 
   // ------------------------------------------------------------ drawing
   rockSheet(k, b) {
-    return k === K.BEDROCK ? 'bedrock' : k === K.SLATE ? 'slate' : k === K.VAULT || k === K.RELIC ? 'vault' : k === K.ICE ? 'ice' : k === K.BASALT ? 'basalt' : BIOME_NAMES[b];
+    return k === K.BEDROCK ? 'bedrock' : k === K.SLATE ? 'slate' : k === K.VAULT || k === K.RELIC ? 'vault' : k === K.ICE ? 'ice' : k === K.BASALT ? 'basalt' : rowOf(b).sheet;
   }
+  // The colours of the chips that fly off a cell of kind `k` in ground `b`.
+  debris(k, b) { return DEBRIS[this.rockSheet(k, b)] ?? rowOf(b).debris; }
   rockRect(x, y, k, b) {
     const sheet = this.rockSheet(k, b), rects = sheets[sheet].tiles[this.world.mask(x, y)];
     return [sheet, rects[(cellHash(x, y, 3) * rects.length) | 0]];
   }
-  overlay(k) { return k === K.DENSE ? 'dense' : k === K.ORE_A ? 'oreA' : k === K.ORE_B ? 'oreB' : k === K.HAZARD ? 'hazard' : k === K.RELIC ? 'relic' : k === K.CACHE ? 'cache' : k === K.WRECK ? 'part' : null; }
-  itemSheet(b, over) { return over === 'cache' || over === 'part' ? 'finds' : b === B.CRUST ? 'lode-items' : `${BIOME_NAMES[base(b)]}-items`; }
+  // What is drawn over a cell's rock, as [sheet, frame], or null for nothing: dense rock and ore from its ground's
+  // own sheet (`row`), a hazard from its type's, a relic from its direction's, a find from the finds'.
+  overlay(k, row) {
+    if (k === K.DENSE || k === K.ORE_A || k === K.ORE_B) return [row.items, k === K.DENSE ? 'dense' : k === K.ORE_A ? 'oreA' : 'oreB'];
+    if (k === K.HAZARD || k === K.HAZARD2) { const haz = hazOf(k, row); return haz ? [HAZARDS[haz].sheet, 'hazard'] : null; }
+    return k === K.RELIC ? [rowOf(row.kin).items, 'relic'] : k === K.CACHE ? ['finds', 'cache'] : k === K.WRECK ? ['finds', 'part'] : null;
+  }
 
   render() {
     const { ctx, W, H, world: w } = this, d = this.drill, now = this.time * 1000;
@@ -1470,20 +1479,22 @@ export class Game {
     }
     for (const i of this.frostOpen) {
       // Ice about to close over a cut: a rim of it creeps in first.
-      const age = this.clock - (w.dug.get(i) ?? this.clock);
-      if (age <= 22 || this.under.has(i)) continue;
-      ctx.globalAlpha = Math.min(0.8, (age - 22) / 8);
+      const age = this.clock - (w.dug.get(i) ?? this.clock), rim = w.row(i).freeze - 8;
+      if (age <= rim || this.under.has(i)) continue;
+      ctx.globalAlpha = Math.min(0.8, (age - rim) / 8);
       draw(ctx, 'ice', sheets.ice.tiles[0][0], (i % N) * T - ox, Math.floor(i / N) * T - oy);
       ctx.globalAlpha = 1;
     }
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
       const k = w.peek(x, y);
-      if (k !== K.HAZARD && k !== K.RELIC) continue;
-      const i = y * N + x, b = w.b(i), m = w.mask(x, y), ux = x * T - ox - ((m & 4) ? 0 : 1), uy = y * T - oy - ((m & 16) ? 0 : 1);
-      if (k === K.HAZARD) {
-        const items = this.itemSheet(b), s = this.sparks.get(i);
-        draw(ctx, items, s && s.fuse > 0 ? (((now / 60) | 0) % 2 ? 'hazard-b' : 'hazard') : frameAt(items, 'hazard', now + cellHash(x, y, 4) * 900), ux, uy);
-      } else { const rs = `${BIOME_NAMES[DIR_BIOME[w.relicAt.indexOf(i)] ?? base(b)]}-items`; draw(ctx, rs, frameAt(rs, 'relic', now), ux, uy); }
+      if (k !== K.HAZARD && k !== K.HAZARD2 && k !== K.RELIC) continue;
+      const i = y * N + x, row = w.row(i), m = w.mask(x, y), ux = x * T - ox - ((m & 4) ? 0 : 1), uy = y * T - oy - ((m & 16) ? 0 : 1);
+      if (k === K.RELIC) { const rs = rowOf(DIR_BIOME[w.relicAt.indexOf(i)] ?? row.kin).items; draw(ctx, rs, frameAt(rs, 'relic', now), ux, uy); continue; }
+      // A hazard looks as its type does, whatever ground it lies in.
+      const haz = hazOf(k, row);
+      if (!haz) continue;
+      const items = HAZARDS[haz].sheet, s = this.sparks.get(i);
+      draw(ctx, items, s && s.fuse > 0 ? (((now / 60) | 0) % 2 ? 'hazard-b' : 'hazard') : frameAt(items, 'hazard', now + cellHash(x, y, 4) * 900), ux, uy);
     }
     // The block being cut cracks further the nearer it is to giving way, and what it would free glows.
     if (d.dig >= 0) {
@@ -1502,7 +1513,7 @@ export class Game {
       draw(ctx, 'core', this.coreFlash > 0 ? `core-flash-${hull}` : this.S.won ? `core-c-${hull}` : frameAt('core', `idle-${hull}`, now), coreX, coreY);
       draw(ctx, 'dish', frameAt('dish', `dish-${this.S.lv.scanner}`, now), coreX + 34, coreY - 6);
       [[39, 20], [20, 39], [1, 20], [20, 1]].forEach(([u, v], dir) => {
-        if (this.S.relics[dir]) drawScaled(ctx, `${BIOME_NAMES[DIR_BIOME[dir]]}-items`, 'relic', coreX + u, coreY + v, 8, 8);
+        if (this.S.relics[dir]) drawScaled(ctx, BIOMES[DIR_BIOME[dir]].items, 'relic', coreX + u, coreY + v, 8, 8);
       });
     }
     this.drawTether(ox, oy);
@@ -1633,7 +1644,7 @@ export class Game {
     }
     for (const m of this.motes) {
       if (w.peek(Math.floor(m.x / T), Math.floor(m.y / T)) !== K.EMPTY) continue;
-      ctx.globalAlpha = Math.max(0, Math.min(1, m.t, m.life - m.t)) * (0.35 + 0.3 * Math.sin(this.time * 3 + m.seed)); ctx.fillStyle = MOTE[m.biome];
+      ctx.globalAlpha = Math.max(0, Math.min(1, m.t, m.life - m.t)) * (0.35 + 0.3 * Math.sin(this.time * 3 + m.seed)); ctx.fillStyle = m.mote[0];
       ctx.fillRect(Math.round(m.x - ox), Math.round(m.y - oy), 1, 1);
     }
     ctx.globalAlpha = 1;
@@ -1805,8 +1816,8 @@ export class Game {
     const w = this.world;
     ctx.globalAlpha = 1; ctx.fillStyle = '#07060b'; ctx.fillRect(0, 0, 128, 128);
     for (let y = y0; y < y0 + 8; y++) for (let x = x0; x < x0 + 8; x++) {
-      const i = y * N + x, k = w.k(i), b = w.b(i), px = (x - x0) * T, py = (y - y0) * T;
-      const floorSheet = `${BIOME_NAMES[b]}-floor`, floors = sheets[floorSheet].tiles[255], floor = floors[(cellHash(x, y, 1) * floors.length) | 0];
+      const i = y * N + x, k = w.k(i), b = w.b(i), row = rowOf(b), px = (x - x0) * T, py = (y - y0) * T;
+      const floorSheet = row.floor, floors = sheets[floorSheet].tiles[255], floor = floors[(cellHash(x, y, 1) * floors.length) | 0];
       if (!w.s(i)) {
         // Ground the scanner has not reached: only whose it is shows, dimly.
         if (k !== K.BEDROCK) { ctx.globalAlpha = 0.42; draw(ctx, floorSheet, floor, px, py); ctx.globalAlpha = 1; }
@@ -1819,8 +1830,8 @@ export class Game {
       draw(ctx, sheet, rects[(cellHash(x, y, 3) * rects.length) | 0], px, py);
       const ux = px - ((m & 4) ? 0 : 1), uy = py - ((m & 16) ? 0 : 1);
       if (k === K.SLATE || k === K.VAULT) draw(ctx, 'tough', k === K.SLATE ? 'slate' : 'vault', ux, uy);
-      const over = this.overlay(k);
-      if (over && over !== 'hazard' && over !== 'relic') draw(ctx, this.itemSheet(b, over), over, ux, uy);
+      const over = this.overlay(k, row);
+      if (over && over[1] !== 'hazard' && over[1] !== 'relic') draw(ctx, over[0], over[1], ux, uy);
     }
   }
 
@@ -1877,7 +1888,7 @@ export class Game {
     for (let i = 0; i < L.lit.length; i++) L.lit[i] += (Math.min(1, L.want[i]) - L.lit[i]) * 0.3;
     for (let y = 0; y < mrows; y++) for (let x = 0; x < mcols; x++) {
       const l = L.lit[(y + pad) * cols + x + pad], o = (y * mcols + x) * 4;
-      px[o] = r; px[o + 1] = g; px[o + 2] = b; px[o + 3] = this.daylight ? 0 : 168 * (1 - l * (2 - l));
+      px[o] = r; px[o + 1] = g; px[o + 2] = b; px[o + 3] = this.daylight ? 0 : 168 * this.murk * (1 - l * (2 - l));
     }
     mc.putImageData(data, 0, 0);
     ctx.imageSmoothingEnabled = true;
@@ -2056,7 +2067,7 @@ export class Game {
       const px = this.mapData.data;
       for (let v = 0; v < size; v++) for (let u = 0; u < size; u++) {
         const wx = Math.floor(HX + (u - size / 2 + 0.5) * per), wy = Math.floor(HY + (v - size / 2 + 0.5) * per), o = (v * size + u) * 4, k = w.peek(wx, wy);
-        const [r, g, b] = MAPC[k < 0 ? w.biomeAt(wx, wy) : w.b(wy * N + wx)];
+        const [r, g, b] = rowOf(k < 0 ? w.biomeAt(wx, wy) : w.b(wy * N + wx)).map;
         const inside = Math.hypot(wx - C, wy - C) <= R, shade = (k < 0 ? 0.3 : k === K.EMPTY ? 0.12 : 0.85) * (inside ? 1 : 0.45);
         px[o] = r * shade + 8; px[o + 1] = g * shade + 7; px[o + 2] = b * shade + 10; px[o + 3] = 255;
       }
