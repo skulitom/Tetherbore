@@ -21,6 +21,8 @@ const ARGS = {
   'f-fuzz-books': [[2, 300], [7, 300], [9, 300], [12, 300]],
   'f-wreck': [[7, 0], [32, 0], [61, 0], [63, 0]],
   'g-far-wreck': [[7, 5, 60], [7, 7, 60]],
+  'i-fuzz-play': [[45, 500, 5, 0, 0, 30], [33, 400, 5, 60, 210, 60], [60, 400, 5, 141, 141, 60], [50, 400, 5, 60, 210, 60], [57, 260, 9, -1061, 1061, 'mix'],
+    [39, 260, 1, 0, 0, 60, 'lowdrill,home'], [51, 260, 5, 141, 141, 60, 'bombs,forceshop']],
 };
 const tests = [];
 for (const file of readdirSync(here + 'regress').filter(name => name.endsWith('.mjs')).sort()) {
