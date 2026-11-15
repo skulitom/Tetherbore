@@ -10,7 +10,7 @@ import { readFile, writeFile, mkdir, rm } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { ROCKS, FLOORS, LAVA } from './tiles.mjs';
+import { ROCKS, STRAINS, FLOORS, LAVA } from './tiles.mjs';
 import { RECIPES, appIcon } from './sprites.mjs';
 
 const ART = dirname(fileURLToPath(import.meta.url));
@@ -46,7 +46,7 @@ async function emit(recipe, name = recipe.name, extra = {}) {
 }
 
 // ---- terrain
-for (const source of [...ROCKS, ...FLOORS, LAVA]) {
+for (const source of [...ROCKS, ...STRAINS, ...FLOORS, LAVA]) {
   if (!wanted(source.name)) continue;
   const { recipe } = pb.compileAutotile(source);
   await emit(recipe);

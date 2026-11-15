@@ -2,6 +2,8 @@
 // upper left: a light rim on the north and west faces, a dark one with a cast shadow on the south and east.
 // The floors are the same fills in the dark, for the ground the drill has already cut away.
 
+import { drawn, VARIANTS } from './fills.mjs';
+
 const rock = (name, palette, fill, seed) => ({
   format: 'pixelforge-autotile', version: 1, name, tile: 16, palette,
   terrain: {
@@ -75,6 +77,40 @@ export const ROCKS = [
     { color: 'f', speckle: [{ color: 'a', amount: 0.22, size: 5 }, { color: 'b', amount: 0.18, size: 5 }, { color: 'c', amount: 0.035, size: 2 }] }, 107),
   rock('gilt', { k: '#1c1408', D: '#4a3a1c', L: '#ffe680', s: '#0c080259', f: '#6e5a34', a: '#5a4828', b: '#8a7240', c: '#ffd040' },
     { color: 'f', speckle: [{ color: 'a', amount: 0.22, size: 6 }, { color: 'b', amount: 0.16, size: 4 }, { color: 'c', amount: 0.06, size: 2 }] }, 109),
+];
+
+// ---- the strains
+// Two named kinds of each direction's ground, laid as provinces. Each keeps its direction's hue family, so colour
+// still says which gem the ground pays, and lies over its kin's floor. Their fills are drawn (art/fills.mjs): clumps
+// as above, then the marks that make the ground itself. Marks show the tile's grid sooner than clumps do, so a strain
+// has five variants where the older sets have three.
+const strain = (name, palette, seed, draw) => {
+  const [first, ...rest] = drawn(seed, draw);
+  return { ...rock(name, palette, { pattern: first }, seed), variants: [
+    { name: 'a', weight: 1 },
+    ...rest.map((pattern, n) => ({ name: VARIANTS[n + 1], weight: 1, terrain: { fill: { pattern } } })),
+  ] };
+};
+
+export const STRAINS = [
+  // North. Firn: old ice, massive and dull, in level sheets.
+  strain('firn', { k: '#1c2e4a', D: '#5f7ea8', L: '#eef6ff', s: '#06102659', f: '#9ab4d2', a: '#8ca8c8', b: '#a8c0dc', c: '#dcecf8' }, 113, fill => {
+    fill.clumps('a', 0.26, 5).clumps('b', 0.16, 4);
+    for (const [x, y] of fill.places(3, 4, 2)) fill.line(x, y, x + fill.int(3, 5), y, 'b');
+    fill.dots('c', 2, 2);
+  }),
+  // Serac: shattered ice, white shards between blue cracks.
+  strain('serac', { k: '#2a4a72', D: '#8ab8e0', L: '#ffffff', s: '#06102659', f: '#eaf8ff', a: '#cfe8f8', b: '#ffffff', c: '#6cb2e4' }, 127, fill => {
+    fill.clumps('a', 0.28, 5).clumps('b', 0.12, 3);
+    // One long fracture from side to side with a kink in it, and a splinter or two off it.
+    const flat = fill.next() < 0.5, p = fill.int(2, 13), q = fill.int(2, 13), m = fill.int(5, 10), n = fill.int(3, 12);
+    const [x0, y0, x1, y1, xm, ym] = flat ? [1, p, 14, q, m, n] : [p, 1, q, 14, n, m];
+    fill.line(x0, y0, xm, ym, 'c').line(xm, ym, x1, y1, 'c');
+    for (let i = fill.int(1, 2); i > 0; i--) {
+      const t = fill.int(2, 8) / 10, x = Math.round(x0 + (xm - x0) * t), y = Math.round(y0 + (ym - y0) * t), far = fill.int(3, 5), side = fill.next() < 0.5 ? 1 : -1;
+      fill.wander(x, y, flat ? [[1, side], [0, side], [0, side]] : [[side, 1], [side, 0], [side, 0]], far, 'c', 2);
+    }
+  }),
 ];
 
 export const FLOORS = [
