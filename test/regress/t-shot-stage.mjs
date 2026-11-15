@@ -5,7 +5,8 @@
 //   the end of an open tunnel from the core, the tether sound, on the first reach that gets there; every cell in
 //   view is uncovered; ground standing loose in view is known (a wreck in its hollow); `zoom` widens the game's
 //   canvas and leaves the tether's as it was; `lit` takes the dark away; `met` puts the place's name on its plate
-//   in place of the title card of a first meeting; and stepped for three seconds, nothing
+//   in place of the title card of a first meeting; `wake` wakes the hazard nearest the drill, as a cut beside it
+//   would, and nothing is woken without it; and stepped for three seconds, nothing
 //   has moved the drill, nothing is wrong with the tether, and the saved game is as it was.
 import { makeGame, tetherFaults, sight, C, N, K } from '../harness.mjs';
 
@@ -121,6 +122,20 @@ check(await open('', 'example.org') === undefined, 'away from localhost an ordin
   const t = await open(`?shot&seed=7&at=${ax},${ay}`), game = t.game;
   check(game.world.k(wy * N + wx) === K.WRECK, 'the wreck beside the room is gone');
   check(game.pieceOf.has(wy * N + wx), 'the wreck in view is not known as loose');
+}
+
+// `wake`: the lava nearest the drill is woken as a cut beside it would wake it, and stepped, it quenches its slag
+// to steel. Without it nothing is woken.
+{
+  const steel = game => { let n = 0; for (let y = -12; y <= 12; y++) for (let x = -12; x <= 12; x++) n += game.world.k((C + 158 + y) * N + C + 21 + x) === K.STEEL; return n; };
+  const still = await open('?shot&seed=7&at=21,158');
+  still.advance(2000);
+  check(still.shot.facts().woke === null && still.game.world.lava.size === 0 && steel(still.game) === 0, 'a hazard was woken in a view staged without `wake`');
+  const t = await open('?shot&seed=7&at=21,158&wake'), game = t.game;
+  check(t.shot.facts().woke === 'lava' && game.world.lava.size === 1, `the view staged with wake woke ${t.shot.facts().woke}, and ${game.world.lava.size} cells of lava are open`);
+  t.advance(2000);
+  check(game.world.lava.size > 1 && steel(game) > 0, `two seconds after the wake there are ${game.world.lava.size} cells of lava and ${steel(game)} of steel`);
+  check(!tetherFaults(game).length, `the tether beside woken lava: ${tetherFaults(game).join('; ')}`);
 }
 
 if (fails.length) { console.log(`FAIL: ${fails.join('\n      ')}`); process.exit(1); }

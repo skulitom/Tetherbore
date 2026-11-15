@@ -6,7 +6,8 @@
 //
 // Ground that was laid on purpose since is in the plain reading too, written out as plainly: the provinces and the
 // eight strains laid in them (docs/CONTENT-PLAN.md S3 and content item 1), each strain's figures as a line of
-// `STRAIN` below and its tell as one line of `kindAt`. So this is also what holds those figures and tells.
+// `STRAIN` below and its tell as one line of `kindAt`. So this is also what holds those figures and tells. And the
+// rind of slag round every pocket of lava, in every ground that has lava (content item 2): its last lines.
 //   node test/regress/w-same-world.mjs
 import { world } from '../harness.mjs';
 const { World, N, C, CH, CW, K, B, HOME_R, DEEP_R, RELIC_R, WORLD_R, FIND, WRECK_R, DX, DY, base, cellHash: hash } = world;
@@ -22,7 +23,7 @@ const STRAIN = {
   17: { kin: 1, dense: 0.60, cave: 0.86, cavern: 0.84, rivers: 0.02 },
   18: { kin: 1, lanes: 0.085 },
   19: { kin: 2, lava: 0.80, bubbles: 0.8 },
-  20: { kin: 2, lava: 0.735, slate: 0.04 },
+  20: { kin: 2, lava: 0.735, slate: 0.04, rind: 0.12 },
   21: { kin: 3, cavern: 0.60 },
   22: { kin: 3, oreA: 0.63, rate: 0.5, grapes: 0.85 },
   23: { kin: 4, slate: 0, strata: 0.05 },
@@ -125,6 +126,13 @@ const plain = seed => {
     if (S.bubbles && noise(x / 2, y / 2, seed + 67) > S.bubbles) k = K.EMPTY;
     if (noise(x / 5, y / 5, seed + 13) > (S.cave ?? (kin === B.MIRE ? 0.68 : 0.8))) k = K.EMPTY;
     if (noise(x / 19, y / 19, seed + 18) > (S.cavern ?? (kin === B.MIRE ? 0.7 : 0.78))) k = K.EMPTY;
+    // Slag, in the south's grounds, where plain rock is left when all the rest is laid: a rind round each pocket
+    // of lava, where the lava's layer is under the pocket's threshold by less than 0.07 (forge: 0.12), and half
+    // of the plain rock within the pocket.
+    if (kin === B.EMBER && (k === K.SOFT || k === K.DENSE)) {
+      const n = noise(x / 2.5, y / 2.5, seed + 8), t = S.lava ?? (deep ? 0.72 : 0.78);
+      if (n > t - (S.rind ?? 0.07) && (n <= t || hash(x, y, seed + 68) < 0.5)) k = K.SLAG;
+    }
     return k;
   };
   return { wrecks, biomeAt, kindAt };

@@ -20,10 +20,11 @@ const was = {
 };
 for (const [name, id] of Object.entries(was.K)) check(K[name] === id && KIND_NAMES[id] === name, `kind ${name} is no longer number ${id}`);
 for (const list of ['HARD', 'GRIT', 'GEMS', 'DIG_TIME']) check(same(world[list].slice(0, 15), was[list]), `${list} for kinds 0 to 14 is not as it was: ${world[list].slice(0, 15)}`);
-// Kinds 15 to 27: [hard, grit, gems, dig], from the plan.
+// Kinds 15 to 27: [hard, grit, gems, dig], from the plan. (But steel's gems: 4, not the plan's 2, set when slag
+// and steel were built, content item 2, so that waking a pocket of lava pays more than hauling it asleep.)
 const added = {
   MINERAL: [15, 1, 0, 0, 0.45], NODE: [16, 1, 0, 0, 0.45], HAZARD2: [17, 1, 3, 2, 0.24], KEY: [18, 1, 4, 0, 1.0], FAULT: [19, 1, 1, 0, 0.12], SLAG: [20, 1, 2, 0, 0.45],
-  STEEL: [21, 1, 6, 2, 0.6], CAP: [22, 1, 1, 1, 0.24], CAP_LIT: [23, 1, 1, 3, 0.24], PRISM: [24, 1, 0, 0, 0.6], GLASS: [25, 1, 1, 0, 0.12], TWIN: [26, 1, 2, 0, 0.6], FOSSIL: [27, 1, 2, 0, 1.0],
+  STEEL: [21, 1, 6, 4, 0.6], CAP: [22, 1, 1, 1, 0.24], CAP_LIT: [23, 1, 1, 3, 0.24], PRISM: [24, 1, 0, 0, 0.6], GLASS: [25, 1, 1, 0, 0.12], TWIN: [26, 1, 2, 0, 0.6], FOSSIL: [27, 1, 2, 0, 1.0],
 };
 for (const [name, [id, hard, grit, gems, dig]] of Object.entries(added)) {
   check(K[name] === id && same([HARD[id], GRIT[id], GEMS[id], DIG_TIME[id]], [hard, grit, gems, dig]), `kind ${name} (${id}) is not as the plan has it: ${[K[name], HARD[id], GRIT[id], GEMS[id], DIG_TIME[id]]}`);

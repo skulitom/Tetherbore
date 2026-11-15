@@ -18,7 +18,7 @@ const ROWS = {
   17: { name: 'firn', kin: B.FROST, rich: 0.95, freeze: 45, gen: { dense: 0.60, cave: 0.86, cavern: 0.84 }, extras: ['rivers'], map: [154, 180, 210] },
   18: { name: 'serac', kin: B.FROST, rich: 1.05, freeze: 15, extras: ['lanes'], map: [234, 248, 255] },
   19: { name: 'scoria', kin: B.EMBER, rich: 0.95, haz: { rate: 1, t: 0.80 }, extras: ['bubbles'], map: [150, 88, 74] },
-  20: { name: 'forge', kin: B.EMBER, rich: 1.25, haz: { rate: 1, t: 0.735 }, lavaVol: 7, gen: { slate: 0.04 }, map: [102, 70, 68] },
+  20: { name: 'forge', kin: B.EMBER, rich: 1.25, haz: { rate: 1, t: 0.735, rind: 0.12 }, lavaVol: 7, gen: { slate: 0.04 }, map: [102, 70, 68] },
   21: { name: 'tangle', kin: B.MIRE, rich: 1, gen: { cavern: 0.60 }, map: [62, 90, 64] },
   22: { name: 'sporefall', kin: B.MIRE, rich: 1.2, haz: { rate: 0.5 }, gen: { oreA: 0.63 }, extras: ['grapes'], map: [168, 136, 184] },
   23: { name: 'redrock', kin: B.LODE, rich: 1, gen: { slate: 0 }, extras: ['strata'], map: [168, 90, 58] },

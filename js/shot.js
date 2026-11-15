@@ -1,5 +1,5 @@
 // A staged view of the world, for tools/shot.mjs to photograph and for looking at a far place by hand:
-//   index.html?shot&seed=7&at=0,-300&reach=6&zoom=4&lit&met
+//   index.html?shot&seed=7&at=0,-300&reach=6&zoom=4&lit&met&wake
 // js/main.js loads this file only when the address has `shot`; ordinary play never fetches it.
 //
 // The view is a fresh world on `seed` (7 if none is given). It reads no saved game and is never saved. The drill
@@ -10,7 +10,9 @@
 // `reach` is the level of the tether (if none is given, the first that reaches the room with a little to spare).
 // `zoom` shows that many times as many cells across: the game's canvas is that much larger and the page scales
 // it down. `lit` leaves out the dark. `met` takes every ground as met before, so the name of the place the drill
-// stands in comes up on its plate and not, as the first time, across the screen.
+// stands in comes up on its plate and not, as the first time, across the screen. `wake` wakes the hazard nearest
+// the drill (within WAKE cells), as a cut beside it would: lava pours and quenches its slag, a pod bursts, a
+// crystal's fuse is lit; how far that has gone when the picture is taken is how long the view is stepped.
 //
 // The view is held still: `tetherbore.advance(ms)` steps it, `tetherbore.resume()` lets it play.
 import * as world from './world.js';
@@ -19,6 +21,7 @@ import { T, UPGRADES } from './game.js';
 const { N, C, K } = world, HX = C + 0.5, HY = C + 0.5;
 const ROOM = 2;                                 // the room is this many cells out from the drill's own, each way
 const MOST = 8192;                              // the widest the zoomed canvas may be, in its own pixels
+const WAKE = 12;                                // how far from the drill a hazard to wake is looked for, in cells
 
 export function stage(game, query) {
   const number = (name, fallback) => { const text = query.get(name); return text === null || text.trim() === '' || !Number.isFinite(+text) ? fallback : +text; };
@@ -28,6 +31,7 @@ export function stage(game, query) {
   const far = Math.hypot(dx, dy), least = reaches.findIndex(R => R >= far + 8);
   const level = Math.max(0, Math.min(reaches.length - 1, Math.floor(number('reach', least < 0 ? reaches.length - 1 : least))));
   const zoom = Math.max(1, number('zoom', 1)), lit = query.has('lit') && query.get('lit') !== '0', met = query.has('met') && query.get('met') !== '0';
+  const wake = query.has('wake') && query.get('wake') !== '0';
 
   game.save = () => {};
   game.fresh(seed, true);
@@ -45,6 +49,17 @@ export function stage(game, query) {
     game.S.stats.hauls = 1; game.S.stats.moves = 2;
   }
   game.cam.x = d.x * T; game.cam.y = d.y * T;
+  // The nearest hazard is woken as the game wakes one beside a cut, and what that opened is told as a cut is.
+  let woke = null;
+  if (wake) {
+    const x0 = Math.floor(d.x), y0 = Math.floor(d.y);
+    let best = -1, near = Infinity;
+    for (let v = -WAKE; v <= WAKE; v++) for (let u = -WAKE; u <= WAKE; u++) {
+      const j = (y0 + v) * N + x0 + u;
+      if (u * u + v * v < near && w.hazAt(j)) { best = j; near = u * u + v * v; }
+    }
+    if (best >= 0) { woke = w.hazAt(best); game.changed(game.trigger(best, woke, false)); }
+  }
 
   let shown = 1;                                // the zoom as it came out: no canvas is made wider than MOST
   return {
@@ -72,7 +87,7 @@ export function stage(game, query) {
         seed, at: [dx, dy], level, reach: reaches[level], zoom: shown, lit,
         cells: [Math.round(game.W / T), Math.round(game.H / T)], canvas: [game.W, game.H],
         biome: b, ground: world.BIOMES[b]?.name ?? `${b}`,
-        loose: game.pieces.length,
+        loose: game.pieces.length, woke,
       };
     },
   };

@@ -79,6 +79,8 @@ const PLATE = 2.4, CARD = 1.6, MARKS = 24, HEAR = 30;
 // How long after a spore pod bursts the pods round it burst, in seconds, and how many pods the glow follows a bunch
 // through.
 const POD_CHAIN = 0.15, BUNCH = 64;
+// How long slag shows white as lava quenches it to steel, in seconds.
+const QUENCH = 0.12;
 // What flies off the kinds of rock that look the same in every ground, by the sheet each is drawn from. A ground's
 // own rock sheds the colours in its row (js/world.js: BIOMES), where the dark it lies in, its motes and its colour
 // on the map are too.
@@ -132,6 +134,7 @@ export class Game {
     this.place = null; this.placeKey = null; this.motifAt = -9;      // the name on show, the place the drill is in, when a place last sounded
     this.called = new Set(); this.calledAt = {};                      // things called out since the game began, and when each kind last was
     this.tickIn = 0; this.ticks = 0;                                  // until a wreck's next tick, and how many there have been
+    this.quenched = new Map();                                        // slag just turned to steel: how long each cell still shows white
     this.fresh((Math.random() * 1e9) | 0, true);
   }
 
@@ -147,7 +150,7 @@ export class Game {
     const w = this.world;
     this.pending = { grit: 0, gems: [0, 0, 0, 0, 0] };
     this.parts.length = 0; this.rings.length = 0; this.effects.length = 0; this.popups.length = 0; this.hauls.length = 0; this.clouds.length = 0;
-    this.sparks.clear(); this.lavaVol.clear(); this.frostOpen.length = 0; w.lava.clear(); w.dug.clear();
+    this.sparks.clear(); this.lavaVol.clear(); this.quenched.clear(); this.frostOpen.length = 0; w.lava.clear(); w.dug.clear();
     this.drill = { x: HX, y: HY, px: HX, py: HY, vx: 0, vy: 0, ang: 0, mode: 'free', tx: 0, ty: 0, speed: 0, dig: -1, digT: 0, digDur: 1, stun: 0, squash: 0, run: 0, armed: true, cell: -1, home: true };
     this.bombs = this.val('bombs');
     this.cam = { x: HX * T, y: HY * T };
@@ -1036,12 +1039,12 @@ export class Game {
     const w = this.world, d = this.drill, x = i % N, y = Math.floor(i / N), k = w.k(i), b = w.b(i), row = rowOf(b), haz = hazOf(k, row);
     w.setK(i, K.EMPTY);
     if (row.freeze > 0) { w.dug.set(i, this.clock); this.frostOpen.push(i); }
-    const tough = k === K.SLATE ? 3 : k === K.VAULT ? 4 : k === K.DENSE || k === K.ORE_B || k === K.BASALT ? 2 : 1;
+    const tough = k === K.SLATE ? 3 : k === K.VAULT ? 4 : k === K.DENSE || k === K.ORE_B || k === K.BASALT || k === K.SLAG || k === K.STEEL ? 2 : 1;
     sfx.dig(tough);
     this.chips(x, y, this.debris(k, b), 9 + tough * 3, d.ang, 1);
     this.effect('dust', 'dust', (x + 0.5) * T, (y + 0.5) * T);
     if (tough >= 2 || k === K.ICE) this.effect('shatter', 'shatter', (x + 0.5) * T, (y + 0.5) * T);
-    if (k === K.ORE_A || k === K.ORE_B) this.popup(x, y, 'CRUSHED', '#9a94a8');
+    if (k === K.ORE_A || k === K.ORE_B || k === K.STEEL) this.popup(x, y, 'CRUSHED', '#9a94a8');
     this.shake = Math.max(this.shake, 1 + tough * 0.5);
     if (haz) this.trigger(i, haz, true);
     // A hazard beside the cut wakes, and may open its own cell: every cell opened goes to `changed` together.
@@ -1332,6 +1335,7 @@ export class Game {
     if (haz === 'lava') {
       w.setK(i, K.EMPTY); w.lava.set(i, 9); this.lavaVol.set(i, w.row(i).lavaVol);
       sfx.hiss(); this.effect('steam', 'smoke-puff', (x + 0.5) * T, (y + 0.5) * T);
+      this.quench(i);
       if (direct) { this.jolt(0.5); this.shake = 5; }
       return [i];
     }
@@ -1346,6 +1350,23 @@ export class Game {
       else { const s = this.sparks.get(i); if (!s || s.cool <= 0) this.sparks.set(i, { fuse: 0.55, cool: 0 }); }
     }
     return [];
+  }
+  // Lava has come into cell `i`: the slag beside it is quenched to steel, white for a moment. A sleeping pocket's
+  // rind is dull slag, worth little; woken, the lava makes steel of all the slag it touches, where it lay and
+  // wherever it pours. Nothing opens or closes, so the books of loose ground are as they were, and the ground is
+  // drawn again. Returns how many cells turned.
+  quench(i) {
+    const w = this.world;
+    let turned = 0;
+    for (const s of SIDE) {
+      const j = i + s;
+      if (w.k(j) !== K.SLAG) continue;
+      w.setK(j, K.STEEL); this.quenched.set(j, QUENCH); turned++;
+      const x = j % N, y = Math.floor(j / N);
+      if (this.onScreen(x, y)) this.sparkle((x + 0.5) * T, (y + 0.5) * T, 4, '#d8e8ff');
+    }
+    if (turned) { this.version++; if (this.onScreen(i % N, Math.floor(i / N))) { sfx.clink(); sfx.hiss(); } }
+    return turned;
   }
   zap(x, y) {
     const w = this.world, d = this.drill;
@@ -1408,7 +1429,9 @@ export class Game {
       }
       return this.under.has(i);
     };
-    // Lava: a pocket pours a stream as long as its volume down the open ground, then sets.
+    for (const [i, t] of this.quenched) { if (t > dt) this.quenched.set(i, t - dt); else this.quenched.delete(i); }
+    // Lava: a pocket pours a stream as long as its volume down the open ground, then sets. Slag beside a cell the
+    // lava comes into is quenched to steel (`quench`).
     this.lavaTick = (this.lavaTick ?? 0) + dt;
     const flow = this.lavaTick >= 0.26;
     if (flow) this.lavaTick = 0;
@@ -1421,6 +1444,7 @@ export class Game {
           if (w.hazAt(j) === 'lava') { opened.push(...this.trigger(j, 'lava', false)); continue; }
           if (vol > 1 && w.k(j) === K.EMPTY && !w.lava.has(j) && j !== here && w.s(j) && Math.hypot(x - C, y - C) > 3) {
             w.lava.set(j, 8); this.lavaVol.set(j, vol - 1); this.lavaVol.set(i, 1);
+            this.quench(j);
             break;
           }
         }
@@ -1572,7 +1596,7 @@ export class Game {
     // A glint now and then on ore in view.
     for (let n = 0; n < 2; n++) {
       const x = Math.floor((this.cam.x + (Math.random() - 0.5) * W) / T), y = Math.floor((this.cam.y + (Math.random() - 0.5) * H) / T), kk = w.peek(x, y);
-      if ((kk === K.ORE_A || kk === K.ORE_B || kk === K.RELIC || kk === K.CACHE || kk === K.WRECK) && Math.random() < (kk >= K.CACHE ? 1 : 0.5)) this.parts.push({ x: (x + 0.25 + Math.random() * 0.5) * T, y: (y + 0.25 + Math.random() * 0.5) * T, vx: 0, vy: 0, t: 0, life: 0.35, color: '#ffffff', size: 1, star: true });
+      if ((kk === K.ORE_A || kk === K.ORE_B || kk === K.STEEL || kk === K.RELIC || kk === K.CACHE || kk === K.WRECK) && Math.random() < (kk >= K.CACHE ? 1 : 0.5)) this.parts.push({ x: (x + 0.25 + Math.random() * 0.5) * T, y: (y + 0.25 + Math.random() * 0.5) * T, vx: 0, vy: 0, t: 0, life: 0.35, color: '#ffffff', size: 1, star: true });
     }
     setAmbience(here.kin, here.rich >= 2);
     this.chime -= dt;
@@ -1649,6 +1673,8 @@ export class Game {
   overlay(k, row) {
     if (k === K.DENSE || k === K.ORE_A || k === K.ORE_B) return [row.items, k === K.DENSE ? 'dense' : k === K.ORE_A ? 'oreA' : 'oreB'];
     if (k === K.HAZARD || k === K.HAZARD2) { const haz = hazOf(k, row); return haz ? [HAZARDS[haz].sheet, 'hazard'] : null; }
+    // Slag and the steel it is quenched to are the lava's, drawn from the lava's sheet whatever ground they lie in.
+    if (k === K.SLAG || k === K.STEEL) return [HAZARDS.lava.sheet, k === K.SLAG ? 'slag' : 'steel'];
     return k === K.RELIC ? [rowOf(row.kin).items, 'relic'] : k === K.CACHE ? ['finds', 'cache'] : k === K.WRECK ? ['finds', 'part'] : null;
   }
 
@@ -1677,8 +1703,10 @@ export class Game {
     }
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
       const k = w.peek(x, y);
-      if (k !== K.HAZARD && k !== K.HAZARD2 && k !== K.RELIC) continue;
+      if (k !== K.HAZARD && k !== K.HAZARD2 && k !== K.RELIC && k !== K.STEEL) continue;
       const i = y * N + x, row = w.row(i), m = w.mask(x, y), ux = x * T - ox - ((m & 4) ? 0 : 1), uy = y * T - oy - ((m & 16) ? 0 : 1);
+      // Steel glints now and then, each bar in its own time, and is white for a moment as it is quenched.
+      if (k === K.STEEL) { const items = HAZARDS.lava.sheet; draw(ctx, items, this.quenched.has(i) ? 'quench' : frameAt(items, 'steel', now + cellHash(x, y, 4) * 1140), ux, uy); continue; }
       if (k === K.RELIC) { const rs = rowOf(DIR_BIOME[w.relicAt.indexOf(i)] ?? row.kin).items; draw(ctx, rs, frameAt(rs, 'relic', now), ux, uy); continue; }
       // A hazard looks as its type does, whatever ground it lies in.
       const haz = hazOf(k, row);
@@ -2070,6 +2098,7 @@ export class Game {
     for (const i of w.lava.keys()) { if (lavas++ > 40) break; this.shine(i % N, Math.floor(i / N), 0.85, 3.5); }
     for (const e of this.effects) if (e.sheet === 'blast' || e.sheet === 'zap' || e.sheet === 'haul' || e.sheet === 'bank') this.shine(Math.floor(e.x / T), Math.floor(e.y / T), 1, 6);
     for (const [i, sp] of this.sparks) if (sp.fuse > 0) this.shine(i % N, Math.floor(i / N), 0.9, 3);
+    for (const i of this.quenched.keys()) this.shine(i % N, Math.floor(i / N), 0.8, 2.5);
     // One pixel of darkness per cell, drawn sixteen times the size and smoothed.
     const mcols = vx1 - vx0 + 1, mrows = vy1 - vy0 + 1;
     let map = this.dark;

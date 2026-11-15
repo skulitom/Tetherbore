@@ -1,7 +1,8 @@
 // A ground may have a second hazard (its row's `haz2`), whose cells are K.HAZARD2. It is laid from seeds of its own
 // and gives way to the first, so adding one to a row moves nothing else: every cell is what it was, but for soft
-// rock, dense rock and ore that became the second hazard. And what a hazard cell does, pays and looks like is its
-// type's, whichever of the two it is and whatever ground it lies in.
+// rock, dense rock and ore that became the second hazard, and, where that hazard is lava, soft and dense rock that
+// became the slag of its rind (content item 2: slag goes with lava wherever lava is laid). And what a hazard cell
+// does, pays and looks like is its type's, whichever of the two it is and whatever ground it lies in.
 //   node test/regress/s1-second-hazard.mjs
 import { makeGame, world, C, N } from '../harness.mjs';
 import { arena, rect, at, fixRandom } from './lib/lasso.mjs';
@@ -20,18 +21,20 @@ const rows = {
 };
 
 // The ground: 40,000 cells 700 out, laid with and without the second hazard.
-const plain = new Set([K.SOFT, K.DENSE, K.ORE_A, K.ORE_B]);
+// (Slag lies where plain rock would, so a second hazard takes its place as it takes plain rock's.)
+const plain = new Set([K.SOFT, K.DENSE, K.ORE_A, K.ORE_B, K.SLAG]);
 const compare = (one, two) => {
   const world = new World(); world.reset(3);
-  let first = 0, second = 0, host = 0, moved = 0, onFirst = 0;
+  let first = 0, second = 0, host = 0, moved = 0, onFirst = 0, slag = 0;
   for (let y = C - 100; y < C + 100; y++) for (let x = C + 600; x < C + 800; x++) {
     const a = world.kindAt(x, y, one.id), b = world.kindAt(x, y, two.id);
     if (plain.has(a)) host++;
     if (a === K.HAZARD) first++;
     if (b === K.HAZARD2) { second++; if (a === K.HAZARD) onFirst++; else if (!plain.has(a)) moved++; }
+    else if (b === K.SLAG && a !== b) { slag++; if (a !== K.SOFT && a !== K.DENSE) moved++; }
     else if (a !== b) moved++;
   }
-  return { first, second, share: second / host, moved, onFirst };
+  return { first, second, share: second / host, moved, onFirst, slag };
 };
 const spark = compare(rows.lavaOnly, rows.lavaSpark), pour = compare(rows.sporeOnly, rows.sporeLava), twice = compare(rows.sporeOnly, rows.sporeSpore);
 console.log(JSON.stringify({ spark, pour, twice }));
@@ -41,6 +44,7 @@ check(spark.onFirst === 0 && pour.onFirst === 0 && twice.onFirst === 0, 'a secon
 check(Math.abs(spark.share - 0.026) < 0.004, `charged crystals as a second hazard are ${(spark.share * 100).toFixed(2)}% of plain ground, not 2.6%`);
 check(Math.abs(twice.share - 0.044) < 0.006, `spore pods at twice the rate are ${(twice.share * 100).toFixed(2)}% of plain ground, not 4.4%`);
 check(pour.second > 100, `lava as a second hazard made ${pour.second} cells`);
+check(pour.slag > pour.second * 0.5 && spark.slag === 0 && twice.slag === 0, `lava as a second hazard has ${pour.slag} cells of slag round ${pour.second} of lava, and the others ${spark.slag + twice.slag}`);
 // Today's grounds have none: not one cell of K.HAZARD2 in them.
 {
   const world = new World(); world.reset(3);

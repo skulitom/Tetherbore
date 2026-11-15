@@ -41,8 +41,11 @@ export const K = {
   HAZARD2: kind(17, 'HAZARD2', 1, 3, 2, 0.24),          // a ground's second hazard (`haz2`)
   KEY: kind(18, 'KEY', 1, 4, 0, 1.0),
   FAULT: kind(19, 'FAULT', 1, 1, 0, 0.12),
-  SLAG: kind(20, 'SLAG', 1, 2, 0, 0.45),
-  STEEL: kind(21, 'STEEL', 1, 6, 2, 0.6),               // its gems are the south's
+  SLAG: kind(20, 'SLAG', 1, 2, 0, 0.45),                // the dull rind of a pocket of lava
+  // Slag that lava has quenched; its gems are the south's. A woken pocket makes about three cells of steel for
+  // every four of lava it had (counted in play), so at 4 gems waking a pocket pays half as much again in gems as
+  // hauling it asleep (2 a cell of lava), for the trouble of the flood; at the 2 first planned it paid less.
+  STEEL: kind(21, 'STEEL', 1, 6, 4, 0.6),
   CAP: kind(22, 'CAP', 1, 1, 1, 0.24),                  // its gems are the west's
   CAP_LIT: kind(23, 'CAP_LIT', 1, 1, 3, 0.24),          // its gems are the west's
   PRISM: kind(24, 'PRISM', 1, 0, 0, 0.6),
@@ -68,8 +71,13 @@ export const base = b => b > 4 ? b - 4 : b;
 // lassoed asleep, the sheet its sprite is on (never recoloured), and for the two that are scattered a cell at a
 // time, how many cells in one are hazards where the ground's `rate` is 1. Lava lies in pockets, where a layer of
 // noise is over the ground's own threshold `t`.
+// What goes with a hazard wherever it is laid, in any ground, as its first hazard or its second (a ground's row may
+// give a figure of its own in `haz`, and 0 is none of it):
+//   rind   lava lies in a rind of dull slag: plain rock is slag where the lava's layer of noise is under the
+//          pocket's threshold by less than this, and half of the plain rock among the lava is slag too. Slag is
+//          worth little; lava that wakes beside it turns it to steel (js/game.js: `quench`).
 export const HAZARDS = {
-  lava: { kin: B.EMBER, sheet: 'ember-items', share: 0 },
+  lava: { kin: B.EMBER, sheet: 'ember-items', share: 0, rind: 0.07 },
   spore: { kin: B.MIRE, sheet: 'mire-items', share: 0.022 },
   spark: { kin: B.LODE, sheet: 'lode-items', share: 0.026 },
 };
@@ -93,6 +101,7 @@ const KIN_ITEMS = ['lode-items', 'frost-items', 'ember-items', 'mire-items', 'lo
 //   gen                 the thresholds its standard ground is laid by: { dense, oreA, oreB, slate, cave, cavern }
 //                       (null: the home ground, which has rules of its own in `kindAt`)
 //   haz, haz2           its hazards, { type, rate, t } or null: K.HAZARD cells are the first, K.HAZARD2 the second
+//                       (and what goes with a hazard, where the ground's figure is not its type's: `HAZARDS`)
 //   lavaVol, freeze     how far a lava pocket of it pours; seconds until a cut closes with ice (0: never)
 //   extras              the names of what else is laid in it, each a rule of `TELLS`
 //   glass, pocket       for ground yet to come (docs/CONTENT-PLAN.md S1): nothing reads them yet
@@ -135,6 +144,8 @@ const laid = (haz, what) => {
   if (!type.share && typeof haz.t !== 'number') throw new Error(`${what}: ${haz.type} needs its threshold t`);
   return type.share ? [SCATTER, type.share * (haz.rate ?? 1)] : [POCKETS, haz.t];
 };
+// What goes with a hazard in a ground (`rind`): the ground's own figure, or its type's, or none.
+const withIt = (haz, what) => haz ? haz[what] ?? HAZARDS[haz.type][what] ?? 0 : 0;
 // Adds a row to the table (or takes the place of one: tests do). Whatever is left out is as the plainest ground has
 // it; what a ground must say for itself is asked for.
 export function biome(f) {
@@ -156,7 +167,8 @@ export function biome(f) {
     gloom: f.gloom, dark: f.dark ?? 1, mote: f.mote, map: f.map, debris: f.debris,
     gen: g, haz: f.haz ?? null, haz2: f.haz2 ?? null, lavaVol: f.lavaVol ?? 5, freeze: f.freeze ?? 0,
     glass: f.glass ?? false, extras: f.extras ?? [], pocket: f.pocket ?? null,
-    lay: g && { dense: g.dense, oreA: g.oreA, oreB: g.oreB, slate: g.slate, cave: g.cave, cavern: g.cavern, haz, hazT, haz2, haz2T, ...tells },
+    lay: g && { dense: g.dense, oreA: g.oreA, oreB: g.oreB, slate: g.slate, cave: g.cave, cavern: g.cavern, haz, hazT, haz2, haz2T,
+      rind: withIt(f.haz, 'rind'), rind2: withIt(f.haz2, 'rind'), ...tells },
   };
 }
 // The row of a ground's number: the home ground's for a number that has no row.
@@ -210,7 +222,7 @@ strain(17, 'firn', B.FROST, { rich: 0.95, freeze: 45, gen: { dense: 0.60, cave: 
 strain(18, 'serac', B.FROST, { rich: 1.05, freeze: 15, extras: ['lanes'], map: [234, 248, 255], debris: ['#eaf8ff', '#cfe8f8', '#6cb2e4'] });
 // South. Scoria: frothy, with bubbles everywhere and less lava. Forge: clinker, with more lava that pours further.
 strain(19, 'scoria', B.EMBER, { rich: 0.95, haz: { type: 'lava', rate: 1, t: 0.80 }, extras: ['bubbles'], map: [150, 88, 74], debris: ['#96584a', '#aa6c58', '#dc9c7c'] });
-strain(20, 'forge', B.EMBER, { rich: 1.25, haz: { type: 'lava', rate: 1, t: 0.735 }, lavaVol: 7, gen: { slate: 0.04 }, map: [102, 70, 68], debris: ['#664644', '#7e5a56', '#ff9a3a'] });
+strain(20, 'forge', B.EMBER, { rich: 1.25, haz: { type: 'lava', rate: 1, t: 0.735, rind: 0.12 }, lavaVol: 7, gen: { slate: 0.04 }, map: [102, 70, 68], debris: ['#664644', '#7e5a56', '#ff9a3a'] });
 // West. Tangle: great open caves with thin bridges between them. Sporefall: pods hang in bunches.
 strain(21, 'tangle', B.MIRE, { rich: 1, gen: { cavern: 0.60 }, map: [62, 90, 64], debris: ['#3e5a40', '#5a4a70', '#a8e070'] });
 strain(22, 'sporefall', B.MIRE, { rich: 1.2, haz: { type: 'spore', rate: 0.5 }, gen: { oreA: 0.63 }, extras: ['grapes'], map: [168, 136, 184], debris: ['#a888b8', '#b898c6', '#b4e878'] });
@@ -259,7 +271,7 @@ export const cellHash = hash;
 // Layers and hash seeds in use (added to the world's seed): 1-3 and 14-17 whose ground a cell is; 4 the world's
 // edge; 5-13 and 18 the ground itself; 21-24 finds; 31-32 wrecks; 55 and 300 + a strain's number, provinces (56 and
 // 57 are kept for crosses); 58-59 a second hazard; 64 grapes, 65 lanes, 66 rivers, 67 bubbles (strata are on 11,
-// stretched). docs/CONTENT-PLAN.md (S3) allots the rest: take a number from there, so that no two rules read the
+// stretched); 68 slag among lava. docs/CONTENT-PLAN.md (S3) allots the rest: take a number from there, so that no two rules read the
 // same layer.
 const kept = new Float64Array(128 * 7).fill(NaN);
 const noise = (x, y, s, k = s & 127) => {
@@ -475,6 +487,10 @@ export class World {
     if (h < 0.5 && noise(x / 3.5, y / 3.5, seed + 7, 7) > g.oreB) return K.ORE_B;
     if (h < 0.62 && noise(x / 3, y / 3, seed + 6, 6) > g.oreA) return K.ORE_A;
     if (g.lanes > 0 && lane(x, y, seed, g.lanes)) return K.ICE;
+    // Slag, only where plain rock would lie: a rind round each pocket of lava, where the lava's own layer is under
+    // the pocket's threshold by less than `rind`, and half of the plain rock within the pocket.
+    if (g.rind > 0) { const n = noise(x / 2.5, y / 2.5, seed + 8, 8); if (n > g.hazT - g.rind && (n <= g.hazT || hash(x, y, seed + 68) < 0.5)) return K.SLAG; }
+    if (g.rind2 > 0) { const n = noise(x / 2.5, y / 2.5, seed + 58, 58); if (n > g.haz2T - g.rind2 && (n <= g.haz2T || hash(x, y, seed + 68) < 0.5)) return K.SLAG; }
     if (noise(x / 4, y / 4, seed + 5, 5) > g.dense) return K.DENSE;
     return K.SOFT;
   }

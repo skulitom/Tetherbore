@@ -1,5 +1,5 @@
 // Photographs the game, so that ground and art can be judged by eye with no hand on a browser:
-//   node tools/shot.mjs <out.png> [--seed 7] [--at dx,dy] [--reach level] [--size 360x640] [--zoom n] [--frames n] [--lit] [--met]
+//   node tools/shot.mjs <out.png> [--seed 7] [--at dx,dy] [--reach level] [--size 360x640] [--zoom n] [--frames n] [--lit] [--met] [--wake]
 //
 //   --at dx,dy    where the drill stands, in cells from the core: east and south are counted up, so 300 cells north
 //                 is `--at 0,-300`. Away from the core it stands in a small room at the end of a tunnel carved from
@@ -16,6 +16,9 @@
 //   --met         every ground is taken as met before, so the name of the place the drill stands in comes up on
 //                 its plate, not across the screen as it does the first time. (Either shows for a second or two:
 //                 `--frames 30` catches it, and the names of what the view uncovered, called out in the first frame.)
+//   --wake        the hazard nearest the drill, within 12 cells, is woken as a cut beside it would wake it: lava
+//                 pours, a pod bursts, a crystal's fuse is lit. `--frames` is then how far that has gone when the
+//                 picture is taken (`--frames 5`: lava just woken; 400: poured; 700: set).
 //   --browser p   the Edge or Chrome to use, if the installed one is not to be.
 //
 // It serves this checkout on a free loopback port (static files, read only), opens `index.html?shot&...` in an
@@ -37,11 +40,11 @@ import { WORLD_R } from '../js/world.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
-const usage = 'node tools/shot.mjs <out.png> [--seed 7] [--at dx,dy] [--reach level] [--size 360x640] [--zoom n] [--frames n] [--lit] [--met] [--browser path]';
+const usage = 'node tools/shot.mjs <out.png> [--seed 7] [--at dx,dy] [--reach level] [--size 360x640] [--zoom n] [--frames n] [--lit] [--met] [--wake] [--browser path]';
 const wrong = why => { console.error(`${why}\n  ${usage}`); process.exit(2); };
 
 // ---------------------------------------------------------------- what was asked for
-const options = { seed: '7', at: '0,0', reach: '', size: '360x640', zoom: '1', frames: '180', lit: false, met: false, browser: '' };
+const options = { seed: '7', at: '0,0', reach: '', size: '360x640', zoom: '1', frames: '180', lit: false, met: false, wake: false, browser: '' };
 let out = null;
 for (let args = process.argv.slice(2), i = 0; i < args.length; i++) {
   const arg = args[i];
@@ -202,6 +205,7 @@ async function take() {
   if (level !== null) query.set('reach', `${level}`);
   if (options.lit) query.set('lit', '1');
   if (options.met) query.set('met', '1');
+  if (options.wake) query.set('wake', '1');
   await page('Page.navigate', { url: `${origin}/index.html?${query}` });
   await processes();
   // The page says when the view is staged; if its scripts failed it never will, and what it said instead is told.
@@ -220,7 +224,7 @@ async function take() {
   if (told()) console.error(`The page complained:\n  ${told()}`);
   const narrowed = facts.zoom < zoom ? ` (zoom ${+facts.zoom.toFixed(2)}, not ${zoom}: no canvas is made wider than ${Math.max(...facts.canvas)} pixels)` : '';
   console.log(`seed ${facts.seed}: the drill ${compass(facts.at)}, in ${facts.ground} (ground ${facts.biome}), reach ${facts.reach} (level ${facts.level}); ${facts.cells[0]} x ${facts.cells[1]} cells in view${narrowed}`
-    + `${facts.lit ? ', lit' : ''}, ${facts.loose} loose piece${facts.loose === 1 ? '' : 's'} known; ${frames} frame${frames === 1 ? '' : 's'}; ${png.readUInt32BE(16)} x ${png.readUInt32BE(20)} pixels`);
+    + `${facts.lit ? ', lit' : ''}, ${facts.loose} loose piece${facts.loose === 1 ? '' : 's'} known${options.wake ? `, ${facts.woke ?? 'no hazard near to be'} woken` : ''}; ${frames} frame${frames === 1 ? '' : 's'}; ${png.readUInt32BE(16)} x ${png.readUInt32BE(20)} pixels`);
   console.log(out);
 }
 

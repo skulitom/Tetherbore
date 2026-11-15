@@ -128,7 +128,7 @@ if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '
     }
     process.exit(0);
   }
-  const counts = count(+options.seeds), kinds = [K.EMPTY, K.SOFT, K.DENSE, K.ORE_A, K.ORE_B, K.SLATE, K.HAZARD, K.ICE];
+  const counts = count(+options.seeds), kinds = [K.EMPTY, K.SOFT, K.DENSE, K.ORE_A, K.ORE_B, K.SLATE, K.HAZARD, K.ICE, K.SLAG];
   const pct = (n, of) => of ? (n / of * 100).toFixed(1).padStart(5) : '    -';
   const sizes = (list, edges) => edges.map((to, n) => { const from = n ? edges[n - 1] + 1 : 1; return `${from === to ? to : `${from}-${to}`}: ${(share(list, from, to) * 100).toFixed(0)}%`; }).concat(`more: ${(share(list, edges[edges.length - 1] + 1) * 100).toFixed(0)}%`).join(', ');
   console.log(`seeds 1 to ${options.seeds}; a window of ${SIZE} x ${SIZE} cells in the middle of each province; shares are of all cells\n`);
@@ -144,7 +144,7 @@ if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '
     if (has('bubbles') || id === B.EMBER) says.push(`open groups by size, ${sizes(t.groups[K.EMPTY], [1, 2, 3, 6, 20])} (${each(t.groups[K.EMPTY])} a window)`);
     if (has('grapes') || id === B.MIRE) says.push(`bunches of pods by size, ${sizes(t.groups[K.HAZARD], [1, 2, 3, 4, 5, 6])} (${each(t.groups[K.HAZARD])} a window)`);
     if (has('strata') || id === B.LODE) says.push(`slate runs ${mean(t.runs[K.SLATE][0]).toFixed(1)} cells along a row and ${mean(t.runs[K.SLATE][1]).toFixed(1)} down a column`);
-    if (row.kin === B.EMBER) says.push(`pockets of lava by size, ${sizes(t.groups[K.HAZARD], [1, 2, 3, 6])} (${each(t.groups[K.HAZARD])} a window)`);
+    if (row.kin === B.EMBER) says.push(`pockets of lava by size, ${sizes(t.groups[K.HAZARD], [1, 2, 3, 6])} (${each(t.groups[K.HAZARD])} a window); ${(t.kind[K.SLAG] / t.kind[K.HAZARD]).toFixed(2)} cells of slag for each of lava`);
     for (const line of says) console.log(`             ${line}`);
   }
 }
