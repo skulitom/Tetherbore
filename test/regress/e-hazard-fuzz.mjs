@@ -2,6 +2,7 @@
 // rock cells within 45 of the start are turned into the local hazard at the given density. Checks every frame: the
 // stock tether faults, spans in a closed seam, the drill's own cell being rock, and how long the drill sat unable to
 // move while steered.
+// Fails on any frame with a fault. (Not for a start in the north: the frost has no hazard of its own.)
 //   node test/regress/e-hazard-fuzz.mjs [seed=1] [turns=500] [start x=0] [start y=170] [density=0.08] [reach=5]
 import { makeGame, tetherFaults, seamFaults, moreFaults, random, bandRel, rel, C, N, K } from './lib/terrain.mjs';
 const [seed = 1, turns = 500, sx = 0, sy = 170, density = 0.08, reach = 5] = process.argv.slice(2).map(Number);
@@ -40,3 +41,4 @@ for (let turn = 0; turn < turns; turn++) {
   }
 }
 console.log(JSON.stringify({ seed, start: [sx, sy], hazardsMade: made, frames, framesWithFaults: bad, kinds: Object.fromEntries(seen), mostLavaCells: lavaMost, longestStuckSeconds: +(worst / 60).toFixed(1), hauls: game.S.stats.hauls, at: rel([d.x, d.y]), bends: game.band.length }));
+process.exit(bad ? 1 : 0);

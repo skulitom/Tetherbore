@@ -262,7 +262,7 @@ export class World {
       }
       for (let q = 0; q < queues.length; q++) {
         if (heads[q] >= queues[q].length) continue;
-        let root = find(q);
+        const root = find(q);
         if (held[root]) continue;
         const c = queues[q][heads[q]++];
         left[root]--;

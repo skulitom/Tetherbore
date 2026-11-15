@@ -30,6 +30,14 @@ It is a static site: serve the folder with any web server and open `index.html`.
 python -m http.server 4791
 ```
 
+## Testing it
+
+```bash
+node test/all.mjs
+```
+
+The game runs with no browser under `test/harness.mjs`. `test/all.mjs` runs every script in `test/regress/` (each fails while the defect it was written for is there), `test/smoke.mjs`, which plays every direction unattended, and the tether fuzz `test/rope-fuzz.mjs`: about two minutes, one line a test. `test/frame-time.mjs` times a frame over the fuzz's flight.
+
 ## The art
 
 `art/tiles.mjs` and `art/sprites.mjs` hold the Pixelbolt sources: autotile terrains for every kind of ground, and hand-drawn recipes for the ore, the hazards, the drill, the core and the interface. The effects are Pixelbolt's shipped presets, and the text is Pixelbolt's pixel font.
