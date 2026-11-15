@@ -1,6 +1,8 @@
 // The hand-drawn recipes: what lies in the rock, the drill, the core, the interface.
 // Ore and hazard drawings are 12 x 12 in the middle of a 16 x 16 frame, so they sit inside a tile's rim.
 
+// A frame that only recolours another is drawn from the symbol again with its own palette: a frame copied with
+// `from` keeps the pixels of the first, colours and all.
 const frame = (name, symbol, extra = {}) => ({ name, duration: 300, ops: [{ op: 'stamp', symbol, x: 2, y: 2 }], ...extra });
 
 const RELIC = [
@@ -21,7 +23,7 @@ const RELIC = [
 ];
 const relic = (palette) => ([
   { name: 'relic', duration: 400, ops: [{ op: 'stamp', symbol: 'relic', x: 1, y: 1 }] },
-  { name: 'relic-glint', duration: 160, from: 'relic', palette: { ...palette, g: '#ffffff' } },
+  { name: 'relic-glint', duration: 160, palette: { ...palette, g: '#ffffff' }, ops: [{ op: 'stamp', symbol: 'relic', x: 1, y: 1 }] },
 ]);
 
 export const frost = {
@@ -80,7 +82,7 @@ export const frost = {
 export const ember = {
   version: 1, name: 'ember-items', width: 16, height: 16,
   palette: { k: '#160c12', d: '#2a1214', l: '#a86a58', o: '#ff8a2a', y: '#ffd84a', r: '#c8381e', w: '#fff6c8', m: '#7a1e14',
-    g: '#ffb060', G: '#f0602a', D: '#a82a1a' },
+    g: '#ffb060', G: '#f0602a', D: '#a82a1a', e: '#6a5a52', E: '#3e3230', h: '#8e7c70', i: '#d8e8ff', I: '#6e8cc8', j: '#3a4a7a', W: '#ffffff', z: '#ffffff00' },
   symbols: {
     dense: [
       '............',
@@ -138,12 +140,47 @@ export const ember = {
       '....kkkk....',
       '............',
     ],
+    // What lava leaves round itself: a pitted lump of clinker, dull beside everything else here.
+    slag: [
+      '............',
+      '............',
+      '...kkkkk....',
+      '..khheeekk..',
+      '.khheEeeeek.',
+      '.kheeeeeEek.',
+      '.keeEeeeeek.',
+      '.keeeeeEeEk.',
+      '..kEeeEeekk.',
+      '...kkkkkk...',
+      '............',
+      '............',
+    ],
+    // What slag becomes when lava touches it: a bar of blue steel, strapped twice. The z above it is clear but in
+    // the glint and the quench, where it is a sparkle.
+    steel: [
+      '..........z.',
+      '.........zzz',
+      '.kkkkkkkkkk.',
+      'kiiiiiiiiiik',
+      'kiWWiiiiiiik',
+      'kIIIjIIIjIIk',
+      'kIIIjIIIjIIk',
+      'kIIIjIIIjIIk',
+      'kjjjjjjjjjjk',
+      '.kkkkkkkkkk.',
+      '............',
+      '............',
+    ],
     relic: RELIC,
   },
   frames: [frame('dense', 'dense'), frame('oreA', 'oreA'), frame('oreB', 'oreB'),
-    frame('hazard', 'lava', { duration: 260 }), { name: 'hazard-b', from: 'hazard', duration: 260, palette: { y: '#ff8a2a', o: '#ffd84a' } },
-    ...relic({})],
-  animations: { hazard: { frames: ['hazard', 'hazard-b'] }, relic: { frames: ['relic', 'relic', 'relic', 'relic-glint'] } },
+    frame('hazard', 'lava', { duration: 260 }), frame('hazard-b', 'lava', { duration: 260, palette: { y: '#ff8a2a', o: '#ffd84a' } }),
+    ...relic({}),
+    frame('slag', 'slag'), frame('steel', 'steel', { duration: 500 }), frame('steel-glint', 'steel', { duration: 140, palette: { i: '#ffffff', I: '#d8e8ff', z: '#ffffff' } }),
+    // The flash as slag is quenched to steel: the bar with every colour white.
+    frame('quench', 'steel', { duration: 120, palette: { k: '#ffffff', i: '#ffffff', I: '#ffffff', j: '#ffffff', z: '#ffffff' } })],
+  animations: { hazard: { frames: ['hazard', 'hazard-b'] }, relic: { frames: ['relic', 'relic', 'relic', 'relic-glint'] },
+    steel: { frames: ['steel', 'steel', 'steel-glint'] } },
 };
 
 export const mire = {
@@ -210,7 +247,7 @@ export const mire = {
     relic: RELIC,
   },
   frames: [frame('dense', 'dense'), frame('oreA', 'oreA'), frame('oreB', 'oreB'),
-    frame('hazard', 'pod', { duration: 500 }), { name: 'hazard-b', from: 'hazard', duration: 220, palette: { u: '#ffffff', v: '#c880e8' } },
+    frame('hazard', 'pod', { duration: 500 }), frame('hazard-b', 'pod', { duration: 220, palette: { u: '#ffffff', v: '#c880e8' } }),
     ...relic({})],
   animations: { hazard: { frames: ['hazard', 'hazard-b'] }, relic: { frames: ['relic', 'relic', 'relic', 'relic-glint'] } },
 };
@@ -279,7 +316,7 @@ export const lode = {
     relic: RELIC,
   },
   frames: [frame('dense', 'dense'), frame('oreA', 'oreA'), frame('oreB', 'oreB'),
-    frame('hazard', 'spark', { duration: 700 }), { name: 'hazard-b', from: 'hazard', duration: 120, palette: { z: '#ffffff', Z: '#fff08a' } },
+    frame('hazard', 'spark', { duration: 700 }), frame('hazard-b', 'spark', { duration: 120, palette: { z: '#ffffff', Z: '#fff08a' } }),
     ...relic({})],
   animations: { hazard: { frames: ['hazard', 'hazard-b'] }, relic: { frames: ['relic', 'relic', 'relic', 'relic-glint'] } },
 };
@@ -685,10 +722,12 @@ export const cracks = {
   frames: [1, 2, 3, 4].map(n => ({ name: `crack-${n}`, ops: crackOps(n) })),
 };
 
-// Things found in the ground: a buried crate, and a part of an older machine.
+// Things found in the ground: a buried crate, a part of an older machine, the iron staple that holds a keystone
+// slab to the world, and a prism, which turns through the four gems' colours.
 export const finds = {
   version: 1, name: 'finds', width: 16, height: 16,
-  palette: { k: '#1c1420', y: '#ffd84a', Y: '#fff2a0', b: '#9a6638', o: '#5e3a22', S: '#8e98ac', s: '#e2e8f4', d: '#565e72', g: '#5cc4f0', G: '#c8f4ff' },
+  palette: { k: '#1c1420', y: '#ffd84a', Y: '#fff2a0', b: '#9a6638', o: '#5e3a22', S: '#8e98ac', s: '#e2e8f4', d: '#565e72', g: '#5cc4f0', G: '#c8f4ff',
+    i: '#8a94a8', I: '#eef4ff', r: '#b0603a', w: '#ffffff', m: '#bfe6ff', R: '#4fd0e8' },
   symbols: {
     cache: [
       '............',
@@ -718,11 +757,122 @@ export const finds = {
       '.kk.kddk.kk.',
       '....kkkk....',
     ],
+    key: [
+      '............',
+      '............',
+      '.kkkkkkkkkk.',
+      'kIIIIIIIIIIk',
+      'kiiiiiiiiiik',
+      'kiiriiiiidik',
+      'kidkkkkkkidk',
+      'kidk....kidk',
+      'kirk....kidk',
+      'kidk....krdk',
+      '.kk......kk.',
+      '............',
+    ],
+    prism: [
+      '.....kk.....',
+      '....kwmk....',
+      '...kwwmRk...',
+      '..kwwmmRRk..',
+      '..kwwmmRRk..',
+      '..kwwmmRRk..',
+      '..kwwmmRRk..',
+      '..kwwmmRRk..',
+      '..kwwmmRRk..',
+      '...kwmmRk...',
+      '....kmRk....',
+      '.....kk.....',
+    ],
   },
-  frames: [frame('cache', 'cache'), frame('part', 'part')],
+  frames: [frame('cache', 'cache'), frame('part', 'part'), frame('key', 'key'),
+    frame('prism', 'prism', { duration: 240 }),
+    frame('prism-b', 'prism', { duration: 240, palette: { m: '#ffb060', R: '#c8442a' } }),
+    frame('prism-c', 'prism', { duration: 240, palette: { m: '#b8f06a', R: '#d8b8ff' } })],
+  animations: { prism: { frames: ['prism', 'prism-b', 'prism-c'] } },
 };
 
-export const RECIPES = [finds, cracks, dish, frost, ember, mire, lode, drill, core, icons, upgrades, ui, logo, tough];
+// What the pockets hold, each lying in its pocket's own ground: amber in the hive's wax, with the stalk a nugget
+// hangs by. A stalk is a strand right across a block of wax, so its frames fill the whole cell.
+const STALK = [
+  '................',
+  '................',
+  '................',
+  '................',
+  '................',
+  'eeeeeeeeeeeeeeee',
+  'SSStSSStSSStSSSt',
+  'sstssstssstsssts',
+  'stssstssstssstss',
+  'ettsettsettsetts',
+  'eeeeeeeeeeeeeeee',
+  '................',
+  '................',
+  '................',
+  '................',
+  '................',
+];
+export const minerals = {
+  version: 1, name: 'minerals', width: 16, height: 16,
+  palette: { k: '#3a2208', a: '#ff9a1a', A: '#ffd070', B: '#a85a10', w: '#fff6d8', s: '#f4dc9a', S: '#fff4c8', t: '#d0a050', e: '#7a4a10',
+    o: '#2a6cc0', r: '#7fd0ff', c: '#e8fbff', W: '#ffffff', n: '#6e6880', h: '#d8d2e4', N: '#4a4458',
+    x: '#101018', T: '#2a2a36', u: '#46465c', y: '#8ce0ff' },
+  symbols: {
+    amber: [
+      '.....kk.....',
+      '....kAak....',
+      '....kAak....',
+      '...kAaaak...',
+      '...kAaaBk...',
+      '..kAAaaaBk..',
+      '.kAwAaaaaBk.',
+      '.kAAaaakaBk.',
+      '.kAaaaaaBBk.',
+      '.kaaaaaBBBk.',
+      '..kaBBBBBk..',
+      '...kkkkkk...',
+    ],
+    // A four-point star set in a knob of the pumice it lies in.
+    aerolite: [
+      '.....o......',
+      '....oro.....',
+      '...horoh....',
+      '..hnoconn...',
+      '.ooorcrooo..',
+      'orrccWccrro.',
+      '.ooorcrooo..',
+      '..nnoconN...',
+      '...NoroN....',
+      '....oro.....',
+      '.....o......',
+      '............',
+    ],
+    // A nodule of black glass, its upper left rim catching the light.
+    tektite: [
+      '............',
+      '....xxxx....',
+      '...xyyyTxx..',
+      '..xywTTTTTx.',
+      '.xyTTTTTTTx.',
+      '.xyTTuTTTTx.',
+      '.xTTTTTTTux.',
+      '..xTTTTuuux.',
+      '..xTTuuuxx..',
+      '...xxxxx....',
+      '............',
+      '............',
+    ],
+    stalk: STALK,
+    // The same strand turned upright, lit on its left as the level one is on its top.
+    upright: STALK.map((row, y) => [...row].map((_, x) => STALK[x][y]).join('')),
+  },
+  frames: [frame('amber', 'amber'), frame('aerolite', 'aerolite'), frame('tektite', 'tektite'),
+    { name: 'stalk-h', duration: 300, ops: [{ op: 'stamp', symbol: 'stalk', x: 0, y: 0 }] },
+    { name: 'stalk-v', duration: 300, ops: [{ op: 'stamp', symbol: 'upright', x: 0, y: 0 }] }],
+};
+
+export const RECIPES = [finds, cracks, dish, frost, ember, mire, lode, minerals, drill, core, icons, upgrades, ui, logo, tough];
 
 // The home-screen icon: the core on dark ground, with the drill out on its tether.
 const shift = (ops, dx, dy) => ops.map(op => ({ ...op, x: op.x + dx, y: op.y + dy }));
