@@ -906,20 +906,24 @@ export class Game {
   updateHazards(dt) {
     const w = this.world, d = this.drill, here = this.di, dcx = Math.floor(d.x), dcy = Math.floor(d.y);
     let moved = false;
-    // Where the tether lies, a few times a second: ground never closes over it.
-    this.underTick = (this.underTick ?? 0) + dt;
     // Ground never grows back across the tether: where it lies is worked out afresh, at the moment it is asked.
     let fresh = false;
     const lies = i => {
       if (!fresh) {
         fresh = true; this.under.clear();
         // Both as it is drawn and as it truly runs, corner to corner (taken a hair short of each corner, which
-        // belongs to four cells at once).
-        const L = this.lay(), P = this.band;
+        // belongs to four cells at once). The true line is taken a hair to either side of itself as well: a span
+        // that lies along a grid line has a cell on each side of it and one through a grid point has four, and
+        // were any of them to close the string would be left with rock on both sides.
+        const L = this.lay(), P = this.band, under = this.under;
+        const along = (x0, y0, x1, y1) => { for (const c of cellsAlong(x0, y0, x1, y1)) under.add(c); };
         for (let n = 1; n < L.length; n++) {
-          for (const c of cellsAlong(L[n - 1][0], L[n - 1][1], L[n][0], L[n][1])) this.under.add(c);
-          const ex = (P[n][0] - P[n - 1][0]) * 1e-4, ey = (P[n][1] - P[n - 1][1]) * 1e-4;
-          for (const c of cellsAlong(P[n - 1][0] + ex, P[n - 1][1] + ey, P[n][0] - ex, P[n][1] - ey)) this.under.add(c);
+          along(L[n - 1][0], L[n - 1][1], L[n][0], L[n][1]);
+          const sx = P[n][0] - P[n - 1][0], sy = P[n][1] - P[n - 1][1], len = Math.hypot(sx, sy) || 1, ex = sx * 1e-4, ey = sy * 1e-4;
+          for (const side of [0, 1e-3, -1e-3]) {
+            const ox = -sy / len * side, oy = sx / len * side;
+            along(P[n - 1][0] + ex + ox, P[n - 1][1] + ey + oy, P[n][0] - ex + ox, P[n][1] - ey + oy);
+          }
         }
       }
       return this.under.has(i);
