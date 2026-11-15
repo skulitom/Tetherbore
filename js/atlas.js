@@ -7,8 +7,8 @@ export async function loadAtlas(base = 'assets/') {
   const data = await (await fetch(`${base}atlas.json`)).json();
   await Promise.all(Object.entries(data).map(async ([name, sheet]) => {
     const image = new Image();
-    image.src = base + sheet.image;
-    await image.decode();
+    // Waits on the load event, not decode(): a page opened in a background tab never finishes a decode.
+    await new Promise((resolve, reject) => { image.onload = resolve; image.onerror = reject; image.src = base + sheet.image; });
     const animations = {};
     for (const [key, a] of Object.entries(sheet.animations)) {
       const frames = a.frames.map(f => sheet.frames[f]);
