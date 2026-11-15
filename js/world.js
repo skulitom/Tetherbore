@@ -14,9 +14,10 @@ export const GRIT = [0, 0, 0, 1, 2, 2, 4, 4, 10, 3, 0, 0, 1, 0, 0];
 export const GEMS = [0, 0, 0, 0, 0, 1, 5, 0, 0, 2, 0, 0, 0, 0, 0];
 export const DX = [1, 0, -1, 0], DY = [0, 1, 0, -1];
 // The cell next to a cell on each side, as steps of its number: east, south, west, north (as DX, DY). And how far
-// `freed` walks outlines: OUTLINE sides round the last flood left going, to see whether it is an island, and JOIN
-// sides from each flood before any flooding, to see which of them are one piece of ground.
-const STEP = [1, N, -1, -N], OUTLINE = 600, JOIN = 4000;
+// `freed` walks outlines: JOIN sides each while there is more than one to settle or one is known to be held, WALK
+// sides in all, OUTLINE sides for the one left when nothing says it is not the rest of the world. HOLLOW is how
+// many cells are followed from a cut that opened only on to a closed hollow.
+const STEP = [1, N, -1, -N], OUTLINE = 600, JOIN = 20000, WALK = 60000, HOLLOW = 4000;
 // Plain home ground runs out to HOME_R before any direction's ground begins; the flanks turn strange past DEEP_R;
 // what each direction hides lies RELIC_R out; the world ends at WORLD_R.
 export const HOME_R = 130, DEEP_R = 900, RELIC_R = 2000, WORLD_R = 2400;
@@ -57,7 +58,8 @@ export class World {
     this.lava = new Map();                 // seconds of lava left in an open cell
     this.dug = new Map();                  // when the drill opened a cell of the north (for the ice to close it)
     this.seed = 1;
-    this.made = 0;                         // pieces of the world made, for tests of how much work is done
+    this.made = 0;                         // pieces of the world made, and outline sides walked and cells followed by
+    this.sides = 0; this.followed = 0;     // `freed` and `pieceIn`: for tests of how much work is done
     this.sector = { sx: NaN, sy: NaN, seed: NaN, what: 1, fx: 0, fy: 0, size: 3 };      // the sector `findAt` last looked at
     this.relicAt = [0, 1, 2, 3].map(d => (C + DY[d] * RELIC_R) * N + C + DX[d] * RELIC_R);
   }
@@ -188,7 +190,8 @@ export class World {
   k(i) { return this.piece(((i >>> 20) << 8) | ((i >>> 6) & 255)).kind[(((i >>> 14) & 63) << 6) | (i & 63)]; }
   b(i) { return this.piece(((i >>> 20) << 8) | ((i >>> 6) & 255)).biome[(((i >>> 14) & 63) << 6) | (i & 63)]; }
   s(i) { return this.piece(((i >>> 20) << 8) | ((i >>> 6) & 255)).seen[(((i >>> 14) & 63) << 6) | (i & 63)]; }
-  setK(i, v) { const id = ((i >>> 20) << 8) | ((i >>> 6) & 255); this.piece(id).kind[(((i >>> 14) & 63) << 6) | (i & 63)] = v; this.touched.add(id); }
+  // (What was known of a cell's sides goes when the cell changes: `dull`.)
+  setK(i, v) { const id = ((i >>> 20) << 8) | ((i >>> 6) & 255), p = this.piece(id), at = (((i >>> 14) & 63) << 6) | (i & 63); p.kind[at] = v; if (p.dull) p.dull[at] = 0; this.touched.add(id); }
   setB(i, v) { const id = ((i >>> 20) << 8) | ((i >>> 6) & 255); this.piece(id).biome[(((i >>> 14) & 63) << 6) | (i & 63)] = v; this.touched.add(id); }
   // Show the ground within `radius` cells of a cell. Returns whether anything new was seen.
   see(cx, cy, radius) {
@@ -201,6 +204,8 @@ export class World {
   }
   // What a cell is, without making its piece of the world: -1 where nothing has been seen yet.
   peek(x, y) { const p = this.chunks[((y >> 6) << 8) | (x >> 6)]; return p && p.seen[((y & 63) << 6) | (x & 63)] ? p.kind[((y & 63) << 6) | (x & 63)] : -1; }
+  // What a cell is where the world has been made, -1 where it has not: asking never makes it.
+  laid(i) { const p = this.chunks[((i >>> 20) << 8) | ((i >>> 6) & 255)]; return p ? p.kind[(((i >>> 14) & 63) << 6) | (i & 63)] : -1; }
   at(x, y) { return this.k(y * N + x); }
   solid(x, y) { return this.k(y * N + x) !== K.EMPTY; }
   lavaAt(i) { return this.lava.get(i) ?? 0; }
@@ -237,110 +242,163 @@ export class World {
     }
     return false;
   }
+  // Is the ground a cell belongs to an island, asked for ground that nobody has cut: a rock standing free in a
+  // cavern, a wreck in its hollow. As `island`, from side `d` of cell `s`, but what it learns is kept with the
+  // world: every side of an outline that proved not to be an island's (or too long to tell) is marked dull, in
+  // each piece of the world, and a walk that comes to a dull side stops there. So no wall is walked twice, however
+  // often it is asked about, until a cell of it changes (`setK`).
+  isle(s, d, most) {
+    if (this.k(s) === K.EMPTY || this.k(s + STEP[d]) !== K.EMPTY) return false;
+    const first = s * 4 + d, path = [];
+    let found = false;
+    for (let n = 0, at = first, turns = 0; n < most; n++) {
+      const p = this.chunks[((at >>> 22) << 8) | ((at >>> 8) & 255)];
+      if (p.dull && p.dull[(((at >>> 16) & 63) << 6) | ((at >>> 2) & 63)] & (1 << (at & 3))) break;
+      path.push(at);
+      const next = this.along(at);
+      turns += (((next & 3) - (at & 3) + 1) & 3) - 1;
+      at = next;
+      if (this.k(at >> 2) === K.BEDROCK) break;
+      if (at === first) { found = turns === 4; break; }
+    }
+    this.sides += path.length;
+    if (!found) for (const at of path) {
+      const p = this.chunks[((at >>> 22) << 8) | ((at >>> 8) & 255)];
+      (p.dull ??= new Uint8Array(CH * CH))[(((at >>> 16) & 63) << 6) | ((at >>> 2) & 63)] |= 1 << (at & 3);
+    }
+    return found;
+  }
+  // Are these sides of ground all on one outline? Each is walked, a side in turn, until it comes to another's
+  // start: `most` sides each at the most. Ground along one outline is one piece of ground, so cells whose sides
+  // are on one outline are joined; if they are not found to be, nothing is known.
+  oneOutline(sides, most) {
+    const n = sides.length, starts = new Map(sides.map((side, q) => [side, q])), at = sides.slice(), parent = sides.map((side, q) => q);
+    const find = q => { while (parent[q] !== q) q = parent[q] = parent[parent[q]]; return q; };
+    let apart = n;
+    for (let round = 0; round < most && apart > 1; round++) for (let q = 0; q < n && apart > 1; q++) {
+      if (at[q] < 0) continue;
+      at[q] = this.along(at[q]);
+      this.sides++;
+      const o = starts.get(at[q]);
+      if (o === undefined) continue;
+      if (o === q) return false;                       // all the way round and none of the others on it
+      at[q] = -1;
+      if (find(o) !== find(q)) { parent[find(o)] = find(q); apart--; }
+    }
+    return apart === 1;
+  }
   // The ground that hangs on nothing once `cells` are open (or would, were they cut): one cell or a list of cells
   // opened together, which need not be open in the world yet. `open` is a set of further cells to take as open.
   // A list of pieces, each a list of cells.
   //
-  // Every piece of ground beside an opened cell is flooded at once, a cell each in turn. Floods that meet are one
-  // piece. One that runs out is cut off: an island, and it is returned. One that touches bedrock, or grows past
-  // `limit` cells of its own, is held. The last one still going, with nothing beside it known to be held, is the
-  // rest of the world and need not be finished, so the work is in proportion to what is cut off, however large,
-  // and next to nothing when nothing is. But it may be an island too (the only ground beside the cut, or the other
-  // half of a piece cut in two), so its outline is walked a little way first (`island`); if that closes it is
-  // followed to its end like any other.
+  // Ground that a cut has freed lies beside an opened cell, and it is an island: its outline, walked from the side
+  // that faces the opened cell, comes back to where it began having turned outward four times more than inward
+  // (`island`). So the outlines are walked, a side each in turn, from every side of ground that faces an opened
+  // cell, and nothing is flooded to find out what is loose: the work is in proportion to the outlines, whatever
+  // lies behind them, and the held ground beside a cut is never followed into the world. A walk that comes to the
+  // side another began from is on the same outline and stops there; an outline is closed when every walk on it has
+  // come to the next one's start. One that closes turned outward is an island, and only then is its ground
+  // followed, to list its cells: no more than `limit` of them, or it is held. One that closes turned inward is the
+  // wall of the open ground the cut was made from, one that touches bedrock is the world's own: both are held.
   //
-  // Before any flooding the floods' outlines are walked, a side each in turn, from the sides that face the opened
-  // cells. An outline that comes to another flood's side is the same ground, so the two are one from the start. That
-  // is known for the length of the wall between them, not the ground behind it: a cut that breaks through into a
-  // cave has the same ground on both sides of it, joined only round the cave, and two floods would each have to
-  // fill a great deal of the world before they met.
+  // Walks go on while there is more than one to settle, JOIN sides each and WALK in all. The last one left, with
+  // nothing yet known to be held, is most likely the rest of the world (every cut at the end of a tunnel leaves one
+  // such) and is given up after OUTLINE sides.
+  //
+  // One case the outline cannot settle: a cut that opens only on to a closed hollow inside a piece, with no way to
+  // the core (not one the drill can make: its tether is always a way out). The hollow's wall says nothing of what
+  // surrounds it, so that ground is followed a little way, HOLLOW cells, and is an island if it runs out.
   freed(cells, limit = 700, open = null) {
     const opened = typeof cells === 'number' ? [cells] : cells, gone = new Set(opened);
     if (open) for (const j of open) gone.add(j);
-    // Of each flood: the cells found, how many have been followed, the side its first cell turns to an opened cell.
-    // Of each piece (a flood, or several that met): whether it is held, its cells, and how many are yet to follow.
-    const owner = new Map(), parent = [], queues = [], heads = [], face = [], held = [], size = [], left = [];
-    const find = g => { while (parent[g] !== g) g = parent[g] = parent[parent[g]]; return g; };
+    // Where each walk began (a side: its cell times four plus which side), and where it is now.
+    const starts = new Map(), from = [];
     for (const i of opened) for (let s = 0; s < 4; s++) {
-      const start = i + STEP[s];
-      if (gone.has(start) || owner.has(start)) continue;
-      const kind = this.k(start);
-      if (kind === K.EMPTY) continue;
-      owner.set(start, parent.length); parent.push(parent.length); queues.push([start]); heads.push(0); face.push((s + 2) & 3);
-      held.push(kind === K.BEDROCK); size.push(1); left.push(1);
+      const c = i + STEP[s];
+      if (gone.has(c) || this.k(c) === K.EMPTY) continue;
+      const side = c * 4 + ((s + 2) & 3);
+      if (!starts.has(side)) { starts.set(side, from.length); from.push(side); }
     }
-    if (parent.length > 1) {
-      const sides = new Map(), at = queues.map((cells, q) => cells[0] * 4 + face[q]);
-      for (let q = 0; q < at.length; q++) sides.set(at[q], q);
-      for (let n = 0, apart = at.length; n < JOIN && apart > 1; n++) for (let q = 0; q < at.length && apart > 1; q++) {
-        if (at[q] < 0) continue;
-        at[q] = this.along(at[q], gone);
-        const o = sides.get(at[q]);
-        if (o === q) at[q] = -1;                                      // all the way round: nothing more to meet
-        else if (o !== undefined && find(o) !== find(q)) { const a = find(o), b = find(q); parent[a] = b; held[b] = held[b] || held[a]; size[b] += size[a]; left[b] += left[a]; apart--; }
+    const n = from.length;
+    if (!n) return [];
+    // Of each walk: how it has turned, whether it has crossed the line east from the core's middle an odd number
+    // of times (an outline that has is round the core), the walk whose start it came to, and whether it is over
+    // (1: came to a start, 2: touched bedrock).
+    const at = from.slice(), turns = new Int32Array(n), odd = new Uint8Array(n), next = new Int32Array(n).fill(-1), over = new Uint8Array(n);
+    const isles = [], hollows = [];
+    let going = n, held = false, walked = 0;
+    for (let q = 0; q < n; q++) if (this.k(from[q] >> 2) === K.BEDROCK) { over[q] = 2; going--; held = true; }
+    for (let round = 1; going > 0 && walked < WALK && round <= (going > 1 || held ? JOIN : OUTLINE); round++) for (let q = 0; q < n; q++) {
+      if (over[q]) continue;
+      const a = at[q], b = this.along(a, gone), c = b >> 2, f = b & 3;
+      // The side turns outward (+1), goes straight on (0) or turns inward (-1).
+      turns[q] += ((f - (a & 3) + 1) & 3) - 1;
+      at[q] = b; walked++;
+      if (this.k(c) === K.BEDROCK) { over[q] = 2; going--; held = true; continue; }
+      if (!(f & 1) && (c >>> 14) === C && (c & (N - 1)) + (f ? 0 : 1) > C) odd[q] ^= 1;
+      const o = starts.get(b);
+      if (o === undefined) continue;
+      over[q] = 1; next[q] = o; going--;
+      // Is the outline closed: has every walk on it come to the next one's start?
+      let sum = 0, core = 0, x = q;
+      do { sum += turns[x]; core ^= odd[x]; x = next[x]; } while (x !== q && over[x] === 1);
+      if (x !== q) continue;
+      if (sum === 4) isles.push(q);
+      else { held = true; if (!core) hollows.push(q); }
+    }
+    this.sides += walked;
+    // The ground of each island is followed, once: cells already followed are known by `seen`.
+    const seen = new Map(), pieces = [];
+    for (const q of isles) { const piece = this.follow(from[q] >> 2, limit, gone, seen); if (piece) pieces.push(piece); }
+    for (const q of hollows) { const piece = this.follow(from[q] >> 2, Math.min(limit, HOLLOW), gone, seen); if (piece) pieces.push(piece); }
+    return pieces;
+  }
+  // The whole piece of ground a cell belongs to, as a list of cells: null if it is more than `limit` cells, touches
+  // bedrock, or is ground that was followed before (`seen`, shared between calls, holds a mark for every cell
+  // followed: a map from each piece of the world to its marks, 1 for a cell taken as open, else which call
+  // followed it). `gone` is cells to take as open; `only`, if given, says which cells the piece may hold, and it is
+  // null if it comes to any other.
+  follow(start, limit, gone = null, seen = new Map(), only = null) {
+    const chunks = this.chunks, run = seen.run = (seen.run ?? 1) + 1;
+    if (run > 255) return this.follow(start, limit, gone, new Map(), only);
+    let id = -1, kind = null, marks = null;
+    // Turn to the piece of the world holding cell j; returns its place there.
+    const turn = j => {
+      const now = ((j >>> 20) << 8) | ((j >>> 6) & 255);
+      if (now !== id) {
+        id = now; kind = (chunks[id] ?? this.piece(id)).kind; marks = seen.get(id);
+        if (!marks) seen.set(id, marks = new Uint8Array(CH * CH));
+      }
+      return (((j >>> 14) & 63) << 6) | (j & 63);
+    };
+    if (gone && run === 2) for (const j of gone) { const p = turn(j); marks[p] = 1; }
+    const p0 = turn(start);
+    if (marks[p0] || kind[p0] === K.EMPTY) return null;
+    if (kind[p0] === K.BEDROCK || (only !== null && !only(start))) return null;
+    marks[p0] = run;
+    const cells = [start];
+    let whole = true;
+    for (let head = 0; head < cells.length && whole; head++) {
+      const c = cells[head];
+      for (let s = 0; s < 4; s++) {
+        const j = c + STEP[s], p = turn(j), mark = marks[p];
+        if (mark === run || mark === 1) continue;
+        const k = kind[p];
+        if (k === K.EMPTY) continue;
+        // Ground another call followed and gave up on, bedrock, too much, or not allowed: this is not a piece.
+        if (mark || k === K.BEDROCK || cells.length >= limit || (only !== null && !only(j))) { whole = false; break; }
+        marks[p] = run; cells.push(j);
       }
     }
-    for (let sure = -1; ;) {
-      let going = 0, last = -1, anyHeld = false;
-      for (let q = 0; q < parent.length; q++) {
-        if (parent[q] !== q) continue;
-        if (held[q]) anyHeld = true; else if (left[q] > 0) { going++; last = q; }
-      }
-      if (!going) break;
-      if (going === 1 && !anyHeld && sure !== last) {
-        if (!this.island(queues[last][0], face[last], OUTLINE, gone)) { held[last] = true; break; }
-        sure = last;
-      }
-      for (let q = 0; q < queues.length; q++) {
-        if (heads[q] >= queues[q].length) continue;
-        const root = find(q);
-        if (held[root]) continue;
-        const c = queues[q][heads[q]++];
-        left[root]--;
-        for (let s = 0; s < 4; s++) {
-          const j = c + STEP[s], o = owner.get(j);
-          if (o !== undefined) {
-            const other = find(o);
-            if (other !== root) { parent[other] = root; held[root] = held[root] || held[other]; size[root] += size[other]; left[root] += left[other]; }
-            continue;
-          }
-          if (gone.has(j)) continue;
-          const kind = this.k(j);
-          if (kind === K.EMPTY) continue;
-          if (kind === K.BEDROCK) { held[root] = true; continue; }
-          owner.set(j, q); queues[q].push(j); size[root]++; left[root]++;
-        }
-        if (size[root] > limit) held[root] = true;
-      }
-    }
-    // What ran out is cut off. What was held, or still going when the rest was settled, is not.
-    const pieces = new Map();
-    for (let q = 0; q < queues.length; q++) {
-      const root = find(q);
-      if (held[root] || left[root] > 0) continue;
-      if (!pieces.has(root)) pieces.set(root, []);
-      const into = pieces.get(root);
-      for (const c of queues[q]) into.push(c);
-    }
-    return [...pieces.values()];
+    this.followed += cells.length;
+    return whole ? cells : null;
   }
   // The whole piece of ground a cell belongs to, if it lies inside the box and is no more than `limit` cells; null if
-  // it runs out of the box, touches bedrock or is larger.
-  pieceIn(i, x0, y0, x1, y1, limit) {
-    if (this.k(i) === K.EMPTY) return null;
-    const seen = new Set([i]), cells = [i];
-    for (let head = 0; head < cells.length; head++) {
-      const c = cells[head];
-      for (const j of [c + 1, c - 1, c + N, c - N]) {
-        if (seen.has(j)) continue;
-        const kind = this.k(j);
-        if (kind === K.EMPTY) continue;
-        const x = j % N, y = Math.floor(j / N);
-        if (kind === K.BEDROCK || x < x0 || x > x1 || y < y0 || y > y1 || cells.length >= limit) return null;
-        seen.add(j); cells.push(j);
-      }
-    }
-    return cells;
+  // it runs out of the box, touches bedrock or is larger. `only`, if given, says which cells it may hold.
+  pieceIn(i, x0, y0, x1, y1, limit, only = null) {
+    const boxed = x0 > -Infinity || y0 > -Infinity || x1 < Infinity || y1 < Infinity;
+    const inside = boxed ? j => { const x = j % N, y = Math.floor(j / N); return x >= x0 && x <= x1 && y >= y0 && y <= y1 && (only === null || only(j)); } : only;
+    return this.follow(i, limit, null, new Map(), inside);
   }
 
   // The blob mask of a cell among its solid neighbours (N=1, NE=2, E=4, SE=8, S=16, SW=32, W=64, NW=128), a corner
