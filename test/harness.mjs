@@ -62,23 +62,32 @@ export function random(seed) {
 //   the same corner twice running, and a bend the string runs out to and straight back from: both have a turn of
 //   exactly nothing, so the turn test alone says they are sound;
 //   a bend whose turn has no ground inside it (the string is hooked on a corner it does not go round).
-// Bends are the rock's own corners, so spans are checked a little short of each end and by how deep they go.
+// Bends are the rock's own corners, so a span is checked a little short of each end. Whether it passes through
+// rock is asked exactly, of every cell it crosses, however long it is: a cell that lies on both of two lines a
+// ten-thousandth of a cell to either side of the span is one the span goes through, and it must be open. (A span
+// was once looked at only at points along it, 4,000 at the most, which on a span of 1,500 cells stepped over rock
+// that it cut a fifth of a cell deep.) The seam is looked for at points no more than a fifth of a cell apart.
 export function tetherFaults(game) {
   const w = game.world, P = game.band, faults = [], rel = p => `(${(p[0] - C - 0.5).toFixed(2)},${(p[1] - C - 0.5).toFixed(2)})`;
   const rock = (x, y) => w.k(Math.floor(y) * N + Math.floor(x)) !== K.EMPTY;
   for (let n = 0; n + 1 < P.length; n++) {
-    const a = P[n], b = P[n + 1], len = Math.hypot(b[0] - a[0], b[1] - a[1]), steps = Math.min(4000, Math.ceil(len / 0.05));
+    const a = P[n], b = P[n + 1], len = Math.hypot(b[0] - a[0], b[1] - a[1]), steps = Math.ceil(len / (len > 200 ? 0.2 : 0.05));
     const nx = len ? -(b[1] - a[1]) / len * 1e-3 : 0, ny = len ? (b[0] - a[0]) / len * 1e-3 : 0;
-    let through = false, seam = false;
-    for (let k = 1; k < steps && !(through && seam); k++) {
+    for (let k = 1; k < steps; k++) {
       const x = a[0] + (b[0] - a[0]) * k / steps, y = a[1] + (b[1] - a[1]) * k / steps;
       // Rock a hair to both sides of the line at once, away from the grid's own points where four cells meet.
-      if (!seam && Math.hypot(x - Math.round(x), y - Math.round(y)) >= 0.1 && rock(x + nx, y + ny) && rock(x - nx, y - ny)) {
-        seam = true; faults.push(`span ${n} ${rel(a)}-${rel(b)} runs in a seam with rock on both sides at ${rel([x, y])}`);
+      if (Math.hypot(x - Math.round(x), y - Math.round(y)) >= 0.1 && rock(x + nx, y + ny) && rock(x - nx, y - ny)) {
+        faults.push(`span ${n} ${rel(a)}-${rel(b)} runs in a seam with rock on both sides at ${rel([x, y])}`);
+        break;
       }
-      if (through || !rock(x, y)) continue;
-      const fx = x - Math.floor(x), fy = y - Math.floor(y);
-      if (Math.min(fx, 1 - fx, fy, 1 - fy) > 0.04) { through = true; faults.push(`span ${n} ${rel(a)}-${rel(b)} passes through rock at ${rel([x, y])}`); }
+    }
+    if (len < 0.01) continue;
+    const ux = (b[0] - a[0]) / len, uy = (b[1] - a[1]) / len, e = 1e-3, o = 1e-4, most = Math.ceil(len * 2) + 64;
+    const one = new Set(cellsAlong(a[0] + ux * e - uy * o, a[1] + uy * e + ux * o, b[0] - ux * e - uy * o, b[1] - uy * e + ux * o, most));
+    for (const c of cellsAlong(a[0] + ux * e + uy * o, a[1] + uy * e - ux * o, b[0] - ux * e + uy * o, b[1] - uy * e - ux * o, most)) {
+      if (!one.has(c) || w.k(c) === K.EMPTY) continue;
+      faults.push(`span ${n} ${rel(a)}-${rel(b)} passes through rock at ${rel([(c % N) + 0.5, Math.floor(c / N) + 0.5])}`);
+      break;
     }
   }
   for (let n = 1; n + 1 < P.length; n++) {
