@@ -327,8 +327,8 @@ export const cross = (host, donor) => {
   });
 };
 // The pairs, host by host, and each one's verdict by eye beside its host (tools/compare.py, and in the game under
-// its dark): all twelve read apart, so none is switched off. So far the north's and the south's are built.
-export const PAIRS = KINS.slice(0, 2).flatMap(host => KINS.filter(donor => donor !== host).map(donor => [host, donor]));
+// its dark): all twelve read apart, so none is switched off. So far all but the east's are built.
+export const PAIRS = KINS.slice(0, 3).flatMap(host => KINS.filter(donor => donor !== host).map(donor => [host, donor]));
 export const CROSSES = PAIRS.map(([host, donor]) => cross(host, donor));
 export const CROSS_LOOKS = Object.fromEntries(PAIRS.map(([host, donor]) => { const { map, debris } = crossLook(host, donor); return [`x-${host}-${donor}`, { map, debris }]; }));
 
