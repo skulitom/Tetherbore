@@ -158,9 +158,7 @@ export class Game {
     for (let dir = 0; dir < 4; dir++) {
       const i = (d.y + DY[dir]) * N + d.x + DX[dir], k = w.kind[i];
       if (k === K.EMPTY || HARD[k] >= 99 || this.tetherTo(i) > L) continue;
-      w.kind[i] = K.EMPTY; w.dist[i] = 1;
-      const found = w.islands();
-      w.kind[i] = k; w.dist[i] = -1;
+      const found = w.wouldFree(i);
       if (found.length) this.preview.push({ dir, i, cells: found.flat() });
     }
   }

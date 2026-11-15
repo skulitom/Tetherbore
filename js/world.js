@@ -168,6 +168,34 @@ export class World {
     return found;
   }
 
+  // The ground that would come free if solid cell `i` were cut, found by looking only round it: each neighbouring
+  // piece is followed until it proves to hang on the bedrock or to be larger than `limit` cells. Much cheaper than
+  // `islands`, and used only to light up a cut before it is made.
+  wouldFree(i, limit = 700) {
+    const { kind } = this;
+    const stamp = this.stamp ??= new Int32Array(SIZE), mark = this.stampAt = (this.stampAt ?? 0) + 1;
+    const freed = [];
+    stamp[i] = mark;
+    for (const start of [i + 1, i - 1, i + N, i - N]) {
+      if (!kind[start] || stamp[start] === mark || stamp[start] === -mark) continue;
+      const cells = [start];
+      let held = false;
+      stamp[start] = mark;
+      for (let head = 0; head < cells.length && !held; head++) {
+        const c = cells[head];
+        for (const j of [c + 1, c - 1, c + N, c - N]) {
+          if (j < 0 || j >= SIZE || !kind[j] || stamp[j] === mark) continue;
+          if (stamp[j] === -mark || kind[j] === K.BEDROCK || cells.length >= limit) { held = true; break; }
+          stamp[j] = mark; cells.push(j);
+        }
+      }
+      // Held ground is stamped as such, so the next neighbour's piece stops as soon as it meets it.
+      if (held) { for (const c of cells) stamp[c] = -mark; continue; }
+      freed.push(cells);
+    }
+    return freed;
+  }
+
   // The blob mask of a cell among its solid neighbours (N=1, NE=2, E=4, SE=8, S=16, SW=32, W=64, NW=128), a corner
   // counting only between two solid sides, as Pixelbolt's blob tiles are named.
   mask(x, y) {
