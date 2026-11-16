@@ -52,17 +52,14 @@ const stand = (game, x, y) => { const d = game.drill; d.x = d.px = x + 0.5; d.y 
   stand(game, level.mx - 3 * level.side[0], level.my + 3);
   game.cam.x = (level.mx + 0.5) * 16; game.cam.y = (level.my + 0.5) * 16;
   w.see(level.mx, level.my, 6); game.version++;
-  const paints = [];
+  // (The ground's own picture is painted once into pieces of its own, and a piece is painted again only when what
+  // it shows has changed: what was drawn there is counted by watching the calls on new pieces as they are made.)
+  const watch = ctx => { ctx.drawImage = (image, sx, sy) => { if (image === minerals.image) for (const [name, r] of Object.entries(minerals.frames)) if (r[0] === sx && r[1] === sy && name in drawn) drawn[name]++; }; };
   const made = globalThis.document.createElement;
-  globalThis.document.createElement = () => { const c = made(); const get = c.getContext; c.getContext = (...a) => { const ctx = get(...a); paints.push(ctx); return ctx; }; return c; };
+  globalThis.document.createElement = () => { const c = made(); const get = c.getContext; c.getContext = (...a) => { const ctx = get(...a); watch(ctx); return ctx; }; return c; };
   game.chunks.clear();
   game.render();
   globalThis.document.createElement = made;
-  // (The ground's own picture is painted once into pieces of its own: what was drawn there is counted by drawing
-  // those pieces again with the calls watched.)
-  const watch = ctx => { ctx.drawImage = (image, sx, sy) => { if (image === minerals.image) for (const [name, r] of Object.entries(minerals.frames)) if (r[0] === sx && r[1] === sy && name in drawn) drawn[name]++; }; };
-  for (const ctx of paints) watch(ctx);
-  game.version++; game.render();
   check(drawn.amber >= 9 && drawn['stalk-h'] >= 2, `with a nugget in view, ${drawn.amber} cells of amber and ${drawn['stalk-h']} of level stalk were painted`);
 }
 

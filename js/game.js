@@ -353,6 +353,57 @@ function jostle(bits, n, size, rad) {
   }
 }
 
+// A piece of the ground is drawn first into a Sketch, a list of the calls drawing it takes, and only drawn into its
+// canvas when that list is not the one the canvas was last drawn from (`Game.chunk`). Any change to the ground, a
+// cut or a cell newly seen, tells every piece in view to draw itself again, and most of them draw just what they
+// already hold: four in five, over a flight of cuts, where a change drew eight pieces again and one or two had
+// changed. A canvas drawn again costs the browser far more the next time it is laid on the screen, as it is sent to
+// the graphics card again: in Edge a frame in which the ground changed took 2 ms to draw, and 1 ms once only the
+// pieces that changed were drawn again. The same calls in the same order make the same pixels, so nothing that
+// changes the ground needs to say which pieces it changed.
+// The list is numbers alone: a sheet's image or a colour is written as its place in THINGS, which only grows, so a
+// number stands for the same thing for as long as the page is open. A Sketch takes only the calls `Game.paint`
+// makes (and `draw` in js/atlas.js makes for it): any other is an error, not a call left out of the list, so a
+// change to the drawing of the ground cannot leave a piece showing what it showed before.
+const THINGS = [], THING = new Map();
+const thing = x => { let n = THING.get(x); if (n === undefined) { n = THINGS.length; THINGS.push(x); THING.set(x, n); } return n; };
+const ALPHA = 0, FILL = 1, RECT = 2, IMAGE = 3;
+class Sketch {
+  constructor() { this.ops = new Float64Array(2048); this.n = 0; Object.preventExtensions(this); }
+  set globalAlpha(alpha) { const o = this.put(2); this.ops[o] = ALPHA; this.ops[o + 1] = alpha; }
+  set fillStyle(style) { const o = this.put(2); this.ops[o] = FILL; this.ops[o + 1] = thing(style); }
+  fillRect(x, y, w, h) { const o = this.put(5), a = this.ops; a[o] = RECT; a[o + 1] = x; a[o + 2] = y; a[o + 3] = w; a[o + 4] = h; }
+  drawImage(image, sx, sy, sw, sh, dx, dy, dw, dh) {
+    if (arguments.length !== 9) throw new Error('a piece of ground draws a part of an image to a place and size: nine arguments');
+    const o = this.put(10), a = this.ops;
+    a[o] = IMAGE; a[o + 1] = thing(image); a[o + 2] = sx; a[o + 3] = sy; a[o + 4] = sw; a[o + 5] = sh; a[o + 6] = dx; a[o + 7] = dy; a[o + 8] = dw; a[o + 9] = dh;
+  }
+  // Room for k more numbers at the end of the list: where they begin.
+  put(k) {
+    const o = this.n;
+    if (o + k > this.ops.length) { const more = new Float64Array(2 * (o + k)); more.set(this.ops); this.ops = more; }
+    this.n = o + k;
+    return o;
+  }
+  same(held) {
+    const a = this.ops, n = this.n;
+    if (!held || held.length !== n) return false;
+    for (let i = 0; i < n; i++) if (a[i] !== held[i]) return false;
+    return true;
+  }
+}
+// The calls of a list, made on a canvas in the order they were taken down.
+function replay(ops, ctx) {
+  for (let i = 0; i < ops.length;) {
+    const op = ops[i];
+    if (op === ALPHA) { ctx.globalAlpha = ops[i + 1]; i += 2; }
+    else if (op === FILL) { ctx.fillStyle = THINGS[ops[i + 1]]; i += 2; }
+    else if (op === RECT) { ctx.fillRect(ops[i + 1], ops[i + 2], ops[i + 3], ops[i + 4]); i += 5; }
+    else { ctx.drawImage(THINGS[ops[i + 1]], ops[i + 2], ops[i + 3], ops[i + 4], ops[i + 5], ops[i + 6], ops[i + 7], ops[i + 8], ops[i + 9]); i += 10; }
+  }
+}
+const sketch = new Sketch();
+
 export class Game {
   // `over` is a second canvas laid on the first at the screen's full resolution, for the tether: without one (in
   // tests) the tether is drawn in the game's own pixels.
@@ -2920,13 +2971,19 @@ export class Game {
       if (this.chunks.size > 180) for (const [k, old] of this.chunks) if (Math.abs(old.cx - cx) > 9 || Math.abs(old.cy - cy) > 12) this.chunks.delete(k);
       const canvas = document.createElement('canvas');
       canvas.width = canvas.height = 128;
-      c = { canvas, ctx: canvas.getContext('2d', { alpha: false }), v: -1, cx, cy };
+      c = { canvas, ctx: canvas.getContext('2d', { alpha: false }), v: -1, cx, cy, ops: null };
       this.chunks.set(key, c);
     }
-    if (c.v !== this.version) { c.v = this.version; this.paint(c.ctx, cx * 8, cy * 8); }
+    // A piece is drawn again only if its drawing has changed (`Sketch`).
+    if (c.v !== this.version) {
+      c.v = this.version;
+      sketch.n = 0; this.paint(sketch, cx * 8, cy * 8);
+      if (!sketch.same(c.ops)) { c.ops = sketch.ops.slice(0, sketch.n); replay(c.ops, c.ctx); }
+    }
     return c.canvas;
   }
-  // Everything in a piece of ground that stays put: floors, rock, ore and armour.
+  // Everything in a piece of ground that stays put: floors, rock, ore and armour. It is drawn into a Sketch, which
+  // takes only the calls made here: a new kind of call wants a place in the Sketch first.
   paint(ctx, x0, y0) {
     const w = this.world;
     ctx.globalAlpha = 1; ctx.fillStyle = '#07060b'; ctx.fillRect(0, 0, 128, 128);
