@@ -299,6 +299,9 @@ const compact = n => n < 1000 ? `${Math.floor(n)}` : n < 10000 ? `${(Math.floor(
 // none was ever closed: a long sitting held thousands of them.) Should it be lost, or fail to open, the next asking
 // opens it again.
 let opened = null;
+// Where a save is written a second time, with its number (`Game.save`), and the number last saved there.
+const LATEST = `${SAVE_KEY}-latest`;
+const latestRev = () => { try { return JSON.parse(localStorage.getItem(LATEST))?.rev ?? 0; } catch { return 0; } };
 const store = () => opened ??= new Promise((resolve, reject) => {
   const open = indexedDB.open('tetherbore', 1);
   open.onupgradeneeded = () => open.result.createObjectStore('pieces');
@@ -401,8 +404,23 @@ export class Game {
   get atCore() { return this.far < 1.7; }
 
   // What was bought and banked goes in local storage; the ground, a piece at a time, in the browser's database.
+  //
+  // A save is numbered (`rev`), one more each time, and written twice: under the game's key and under LATEST, which
+  // no older copy of the game knows of. A game open in another tab since long ago holds what the game was then:
+  // were it to save, it would write that over everything played since. (One did: a game far on, with its ground
+  // mined out for hundreds of cells round, was left with the grit and the rig of its first hour.) So before a game
+  // saves it looks at the number last saved, and if that is past its own it does not save: it loads what was saved
+  // (`adopt`). And a game that loads takes the later of the two copies, so that what an older copy of the game
+  // wrote over the first key is passed by.
   save() {
-    try { localStorage.setItem(SAVE_KEY, JSON.stringify({ v: 3, ...this.S })); } catch { /* the game goes on without saving */ }
+    if (this.loading) return;
+    if (this.rev !== undefined) {
+      let kept = null;
+      try { kept = JSON.parse(localStorage.getItem(LATEST)); } catch { kept = null; }
+      if (kept && kept.v === 3 && (kept.rev ?? 0) > this.rev) { this.adopt(); return; }
+    }
+    this.rev = (this.rev ?? latestRev()) + 1;
+    try { const text = JSON.stringify({ v: 3, rev: this.rev, ...this.S }); localStorage.setItem(SAVE_KEY, text); localStorage.setItem(LATEST, text); } catch { /* the game goes on without saving */ }
     // (The pieces are taken now, as this world's: by the time the database answers, the game may be in another.)
     const w = this.world, seed = this.S.seed, kept = [...w.touched].map(id => [id, w.chunks[id]]).filter(([, p]) => p);
     if (!kept.length) return;
@@ -412,13 +430,28 @@ export class Game {
       for (const [id, p] of kept) pieces.put({ kind: p.kind, biome: p.biome, seen: p.seen, seed }, id);
     }).catch(() => {});
   }
+  // The game saved elsewhere since this one last looked is loaded in place of this one, and the game says so.
+  adopt() {
+    if (this.loading) return;
+    this.loading = true;
+    this.restore().then(ok => { this.loading = false; if (ok) this.notice = { title: 'GAME LOADED', sub: 'IT WAS PLAYED ON IN ANOTHER TAB', colour: '#8ce060', t: 0, life: 5 }; });
+  }
   async restore() {
     let raw = null;
     try {
       raw = localStorage.getItem(SAVE_KEY);
-      const data = JSON.parse(raw);
-      if (!data || data.v !== 3) return false;
-      const { v, ...S } = data;
+      let data = JSON.parse(raw);
+      // (The later copy of the two. Where the first key's has a number, the one with the larger; where it has none
+      // (an older copy of the game wrote it, or a hand did), LATEST's only if that is the same world played for
+      // longer: then what is under the first key is an old state written over a newer.)
+      let latest = null;
+      try { latest = JSON.parse(localStorage.getItem(LATEST)); } catch { latest = null; }
+      const sound = d => !!d && d.v === 3;
+      if (sound(latest) && (!sound(data) || (data.rev !== undefined ? (latest.rev ?? 0) > data.rev : data.seed === latest.seed && (data.stats?.time ?? 0) < (latest.stats?.time ?? 0)))) data = latest;
+      if (!data || data.v !== 3) { this.rev = 0; return false; }
+      const { v, rev, ...S } = data;
+      // (A copy with no number, taken for the later one, is saved next as later than the numbered copy it passed.)
+      this.rev = rev ?? latest?.rev ?? 0;
       // What was bought and banked does not wait on the database: where that cannot be opened or read (a private
       // window), the world is made again from its seed and only the cuts are lost.
       let rows = [];
