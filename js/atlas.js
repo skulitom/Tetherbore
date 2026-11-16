@@ -1,7 +1,7 @@
 // Loads the sprite sheets Pixelbolt built (assets/atlas.json and its PNGs) and draws frames, animations and text.
 
 export const sheets = {};
-const tinted = new Map();
+const tints = new Map();
 
 export async function loadAtlas(base = 'assets/') {
   const data = await (await fetch(`${base}atlas.json`)).json();
@@ -53,10 +53,14 @@ export function slice9(ctx, sheet, frame, x, y, w, h, m = 5) {
   for (const [sy, sh, dy, dh] of ys) for (const [sx, sw, dx, dw] of xs) if (dw > 0 && dh > 0) ctx.drawImage(s.image, sx, sy, sw, sh, dx, dy, dw, dh);
 }
 
-function fontIn(color) {
-  let canvas = tinted.get(color);
+// A sheet in one colour, every pixel of it that has any (its alpha kept): made once for each sheet and colour, and
+// kept by sheet and then by colour, so that asking for one made already makes nothing (motes ask every frame).
+export function tinted(name, color) {
+  let own = tints.get(name);
+  if (!own) tints.set(name, own = new Map());
+  let canvas = own.get(color);
   if (!canvas) {
-    const { image } = sheets.font;
+    const { image } = sheets[name];
     canvas = document.createElement('canvas');
     canvas.width = image.width; canvas.height = image.height;
     const c = canvas.getContext('2d');
@@ -64,10 +68,11 @@ function fontIn(color) {
     c.globalCompositeOperation = 'source-in';
     c.fillStyle = color;
     c.fillRect(0, 0, canvas.width, canvas.height);
-    tinted.set(color, canvas);
+    own.set(color, canvas);
   }
   return canvas;
 }
+const fontIn = color => tinted('font', color);
 export function textWidth(text, scale = 1) {
   const { glyphs } = sheets.font;
   let w = 0;
