@@ -19,11 +19,14 @@
 // `node tools/sounds.mjs` renders every sound in a browser and measures it; test/regress/sound-layers.mjs holds the
 // rules above with no browser.
 
-let ctx = null, master = null, room = null, space = null, keys = null, noiseBuffer = null, muted = false, music = true, aside = false;
+let ctx = null, master = null, sounds = null, room = null, space = null, keys = null, noiseBuffer = null, muted = false, music = true, aside = false;
 try { muted = localStorage.getItem('tetherbore-mute') === '1'; music = localStorage.getItem('tetherbore-music') !== '0'; } catch { /* private mode */ }
 
 const LEVEL = 0.4;                       // the master gain when not muted
-// Everything goes: layer -> master (the mute switch) -> a gentle compressor -> a soft ceiling -> the speaker. The
+const SOUNDS = 0.6;                      // what the sounds and the bed are laid on at, against the music
+// Everything goes: layer -> sounds -> master (the mute switch) -> a gentle compressor -> a soft ceiling -> the
+// speaker. Every sound and the bed go through `sounds`, which lays them on at SOUNDS, and the music straight into the
+// master, so the music is heard beside them and not under them. The
 // ceiling is a curve that is a straight line up to half of full level and bends to stop short of it, so however
 // many layers pile up nothing is clipped. Two more ways in, `room` and `space`, also feed a short echo of a small
 // stone room: a little of it for blows (room), more for notes that should hang in the air (space).
@@ -34,6 +37,9 @@ export function unlock() {
   const c = new AC(), rate = c.sampleRate;
   master = c.createGain();
   master.gain.value = muted ? 0 : LEVEL;
+  sounds = c.createGain();
+  sounds.gain.value = SOUNDS;
+  sounds.connect(master);
   const squash = c.createDynamicsCompressor(), curve = new Float32Array(1025);
   try { squash.threshold.value = -16; squash.knee.value = 10; squash.ratio.value = 3.5; squash.attack.value = 0.004; squash.release.value = 0.16; } catch { /* the browser's own settings */ }
   for (let i = 0; i < curve.length; i++) {
@@ -47,7 +53,7 @@ export function unlock() {
   const data = noiseBuffer.getChannelData(0);
   let s = 12345;
   for (let i = 0; i < data.length; i++) { s = (s * 1664525 + 1013904223) >>> 0; data[i] = s / 2147483648 - 1; }
-  room = space = master;
+  room = space = sounds;
   try {
     // The echo: under half a second of noise that dies away and grows duller as it dies, after a hundredth of a
     // second of nothing (so it stands behind the sound, not on it). It is short because the browser works on it
@@ -63,10 +69,10 @@ export function unlock() {
     verb.buffer = echo;
     wet.gain.value = 0.6; some.gain.value = 0.3;
     room = c.createGain(); space = c.createGain();
-    room.connect(master); room.connect(some); some.connect(verb);
-    space.connect(master); space.connect(verb);
-    verb.connect(wet); wet.connect(master);
-  } catch { room = space = master; }
+    room.connect(sounds); room.connect(some); some.connect(verb);
+    space.connect(sounds); space.connect(verb);
+    verb.connect(wet); wet.connect(sounds);
+  } catch { room = space = sounds; }
   // The voice of every note that is a reward: a music box, a clear first harmonic with a little of the next few.
   try { keys = c.createPeriodicWave(new Float32Array([0, 0, 0, 0, 0, 0, 0]), new Float32Array([0, 1, 0.45, 0.18, 0.1, 0, 0.04])); } catch { keys = null; }
   // (And the waves the music's instruments are made of, which the cues of a place ring in too.)
@@ -139,7 +145,7 @@ const sweep = (param, from, to, t, end) => {
 // A note: `freq` falling or rising to `to` over its length. `lp` puts a lowpass on it (closing to `lpTo`), which
 // takes the edge off a sawtooth. `kick` is a pitch it starts at and drops from in a hundredth of a second: the
 // knock at the front of a blow, for no node more.
-function tone(freq, length, { type = 'triangle', gain = 0.2, to = freq, delay = 0, attack = 0.004, out = master, lp = 0, lpTo = lp, kick = 0 } = {}) {
+function tone(freq, length, { type = 'triangle', gain = 0.2, to = freq, delay = 0, attack = 0.004, out = sounds, lp = 0, lpTo = lp, kick = 0 } = {}) {
   if (!(freq > 0 && to > 0 && length > 0 && kick >= 0)) return;
   const t = ctx.currentTime + delay, end = t + length, o = ctx.createOscillator(), g = ctx.createGain();
   voice(o, type);
@@ -151,7 +157,7 @@ function tone(freq, length, { type = 'triangle', gain = 0.2, to = freq, delay = 
   play(o, g, t, end, out);
 }
 // A burst of noise through a filter that may move.
-function noise(length, { gain = 0.2, freq = 1200, to = freq, q = 1, delay = 0, type = 'bandpass', attack = 0.002, out = master } = {}) {
+function noise(length, { gain = 0.2, freq = 1200, to = freq, q = 1, delay = 0, type = 'bandpass', attack = 0.002, out = sounds } = {}) {
   const t = ctx.currentTime + delay, end = t + length, src = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain();
   src.buffer = noiseBuffer; src.loop = true;
   f.type = type; f.Q.value = q;
@@ -181,7 +187,7 @@ function line(freqs, gap, { type = 'keys', gain = 0.13, ring = 0.4, delay = 0, o
 }
 // Bits of noise on one source: `first` is a crack at the start (0 for none), then `count` grains scattered over
 // `span` seconds, each smaller than the one before. Rubble falling, an arc spitting.
-function grains(count, span, { gain = 0.1, first = 0, freq = 2600, q = 0.8, type = 'highpass', delay = 0, out = master } = {}) {
+function grains(count, span, { gain = 0.1, first = 0, freq = 2600, q = 0.8, type = 'highpass', delay = 0, out = sounds } = {}) {
   const t = ctx.currentTime + delay, src = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain();
   src.buffer = noiseBuffer; src.loop = true;
   f.type = type; f.Q.value = q; f.frequency.value = freq;
@@ -340,7 +346,7 @@ const make = {
   },
   deny() { tone(196, 0.09, { gain: 0.085, to: 158 }); tone(150, 0.13, { gain: 0.085, to: 118, delay: 0.1 }); },
   tap() { tone(620, 0.05, { type: 'sine', gain: 0.11, to: 900, attack: 0.002 }); },
-  low() { line([440, 330], 0.11, { type: 'triangle', gain: 0.1, ring: 0.14, out: master }); },
+  low() { line([440, 330], 0.11, { type: 'triangle', gain: 0.1, ring: 0.14, out: sounds }); },
   // An arc: it spits, falls in pitch, and thumps.
   zap() {
     grains(4, 0.16, { first: 0.15, gain: 0.1, freq: 3000 });
@@ -565,7 +571,7 @@ export function setAmbience(ground, deep, far) {
     filter.type = 'lowpass'; filter.Q.value = 0.6;
     out.gain.value = 0;
     drone.type = 'sine'; dg.gain.value = 0.5;
-    src.connect(filter); filter.connect(out); drone.connect(dg); dg.connect(out); out.connect(master);
+    src.connect(filter); filter.connect(out); drone.connect(dg); dg.connect(out); out.connect(sounds);
     src.start(); drone.start();
     bed = { filter, out, drone };
     const [hz, low] = (playing ?? wanted).air;

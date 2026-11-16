@@ -118,7 +118,13 @@ if (timers.size) fails.push('a timer runs before the first touch');
 
 // ---------------------------------------------------------------- the first touch
 audio.unlock();
-const fixed = made.slice(), master = fixed.find(node => node.kind === 'gain'), ways = new Set(fixed.filter(node => node.kind === 'gain' && node.outs.includes(master)).concat(master));
+const fixed = made.slice(), master = fixed.find(node => node.kind === 'gain'), ways = new Set([master]);
+// (The ways in are the gains that lead to the master through gains alone: the sounds' own level, the room, the space.)
+for (let more = true; more;) { more = false; for (const node of fixed) if (node.kind === 'gain' && !ways.has(node) && node.outs.some(o => ways.has(o))) { ways.add(node); more = true; } }
+// The sounds and the bed are laid on at a share of the master's level, through a gain of their own; the music goes
+// straight into the master, so it is not quietened with them.
+const sounds = fixed.find(node => node.kind === 'gain' && node !== master && node.outs.length === 1 && node.outs[0] === master);
+if (!sounds || !(sounds.gain.value > 0.5 && sounds.gain.value < 0.7)) fails.push(`the sounds are not laid on through a gain of about 0.6 of their own (${sounds?.gain.value})`);
 // (The last thing made before the music is an oscillator that is never started: it is there to have its waveform drawn up.)
 const band = fixed.slice(fixed.findIndex(node => node.kind === 'oscillator' && node.started === undefined) + 1);
 audio.unlock();
@@ -129,6 +135,7 @@ if (fixed.filter(node => node.kind === 'compressor').length !== 1 || fixed.filte
 const music = band.filter(node => node.kind === 'oscillator' || node.kind === 'noise');
 if (music.length !== 11 || music.filter(node => node.kind === 'oscillator').length !== 10 || timers.size !== 1) fails.push(`the music is ${music.length} sources and ${timers.size} timers at the first touch (11, ten of them oscillators, and 1 are meant)`);
 const musicNodes = band.length;
+if (!band.some(node => node.outs.includes(master)) || band.some(node => node.outs.includes(sounds))) fails.push('the music does not go straight into the master, beside the sounds');
 if (musicNodes !== 26) fails.push(`the music is ${musicNodes} nodes (26 are meant)`);
 
 // ---------------------------------------------------------------- each sound, layer by layer

@@ -45,6 +45,7 @@ const QUIET = 1.2;                              // the least time between two so
 const POOL = 160, FLIES = 10;                   // the most particles and fireflies there ever are
 const PIECES = 64;                              // the most pieces of 8 x 8 cells it knows at once
 const VENTS = 12;                               // the most vents in view it keeps going
+const FOG = 0.4, EDGE = 0.5, RIME = 0.55;       // how strongly the layers over the screen are laid on (see `screen`)
 const BUILDS = 4;                               // the most pieces it looks at afresh in a frame
 const GRAVITY = 300;                            // pixels a second, a second, for what falls
 const SHIVER = 0.35, LOOSE = 0.3;               // how long an icicle shivers before it falls; the least time between two falling
@@ -977,6 +978,8 @@ export class Feel {
   // The layers over the whole screen: a fog drifting slowly over the view (and away from it as the view moves,
   // at half the pace), an edge of the ground's own colour, and frost at the corners, which is pixels of its own
   // drawn as they are.
+  // (Each ground's figures say how its layers stand to one another; the whole of them is laid on at FOG, EDGE and
+  // RIME of that, so that the air of a place is felt and never stands between the eye and the rock.)
   screen(game, ctx) {
     const W = game.W, H = game.H - 44;
     for (const l of this.layers) {
@@ -987,11 +990,11 @@ export class Feel {
       if (l.fog) {
         const a = (spec.alpha + (this.F?.gust?.haze ?? 0) * this.haze) * l.alpha;
         const sx = 512, sy = 256, fx = ((game.cam.x * 0.5 + this.time * spec.speed * 40) % sx + sx) % sx, fy = ((game.cam.y * 0.5) % sy + sy) % sy;
-        ctx.globalAlpha = Math.min(0.5, a);
+        ctx.globalAlpha = Math.min(0.2, a * FOG);
         for (let y = -fy; y < H; y += sy) for (let x = -fx; x < W; x += sx) ctx.drawImage(art, Math.round(x), Math.round(y), sx, sy);
       } else {
         // (Heat from below adds its light; any other edge lays its colour over the view.)
-        ctx.globalAlpha = spec.alpha * l.alpha * (spec.pulse ? 0.8 + 0.2 * Math.sin(this.time * Math.PI) : 1);
+        ctx.globalAlpha = EDGE * spec.alpha * l.alpha * (spec.pulse ? 0.8 + 0.2 * Math.sin(this.time * Math.PI) : 1);
         if (spec.below) ctx.globalCompositeOperation = 'lighter';
         ctx.drawImage(art, 0, 0, W, H);
         ctx.globalCompositeOperation = 'source-over';
@@ -1003,7 +1006,7 @@ export class Feel {
     const stage = Math.ceil(this.rime * 6);
     if (stage > 0 && this.rimeInk) {
       const art = this.frost(this.rimeInk, stage), s = art.width;
-      ctx.globalAlpha = 0.85;
+      ctx.globalAlpha = RIME;
       ctx.drawImage(art, 0, 0, s / 2, s / 2, 0, 0, s / 2, s / 2);
       ctx.drawImage(art, s / 2, 0, s / 2, s / 2, W - s / 2, 0, s / 2, s / 2);
       ctx.drawImage(art, 0, s / 2, s / 2, s / 2, 0, H - s / 2, s / 2, s / 2);
