@@ -585,6 +585,8 @@ export class Game {
         if (own) w.chunks[id] = { kind: p.kind, biome: p.biome, seen: p.seen }; else gone.push(id);
       }
       if (strange >= judged * 0.2 && strange > 0) for (const id of unsure) { w.chunks[id] = undefined; gone.push(id); }
+      // (The pieces are put in by hand, not through the world: what it counts of changes to the ground goes up here.)
+      w.stirred++;
       this.thrownOut = gone.length;
       if (gone.length || meta?.seed !== S.seed) {
         const seed = S.seed;
@@ -3353,8 +3355,10 @@ export class Game {
     this.drawMap(W - 52, 6);
     // The shop's button, over the bar, when the drill is home.
     const by = H - 88;
-    const afford = ROWS.some(u => this.canBuy(u));
     if (this.atCore && !this.shop && !this.lab && d.mode === 'free') {
+      // (Whether anything can be bought is asked only here, where the button shows it: out in the ground it would
+      // count what is left of the reach again after every cut, for nothing.)
+      const afford = ROWS.some(u => this.canBuy(u));
       const w = 84, x = Math.round(W / 2 - w / 2), up = afford && ((now / 300) | 0) % 2;
       slice9(ctx, 'ui', afford ? (up ? 'button-down' : 'button') : 'panel', x, by + 6, w, 24);
       text(ctx, 'UPGRADES', x + w / 2, by + 13, afford ? '#ffffff' : '#9a94a8', 0.5);
@@ -3405,9 +3409,13 @@ export class Game {
       }
     }
     let map = M.mapCanvas;
-    if (!map || map.width !== size) { map = M.mapCanvas = document.createElement('canvas'); map.width = map.height = size; M.mapData = map.getContext('2d', { willReadFrequently: true }).createImageData(size, size); M.mapAt = -1; }
-    const view = `${this.version}:${R}:${per}:${lens}:${mx0},${my0}`;
-    if (this.time - M.mapAt > 0.5 || M.mapFor !== view) {
+    if (!map || map.width !== size) { map = M.mapCanvas = document.createElement('canvas'); map.width = map.height = size; M.mapData = map.getContext('2d', { willReadFrequently: true }).createImageData(size, size); M.mapAt = -1; M.mapFor = null; }
+    // The picture is drawn again when what it shows may have changed. The chart knows that from the ground's own
+    // count of its changes (`World.stirred`), and stands as it is while nothing moves, however long it is open. The
+    // map in the corner does not ask that count, which in flight moves nearly every frame, more often than is worth
+    // drawing again: it is drawn again every half second as well, which catches what the version does not.
+    const view = `${this.version}${big ? `+${w.stirred}` : ''}:${R}:${per}:${lens}:${mx0},${my0}`;
+    if (M.mapFor !== view || (!big && this.time - M.mapAt > 0.5)) {
       M.mapAt = this.time; M.mapFor = view;
       const px = M.mapData.data;
       for (let v = 0; v < size; v++) for (let u = 0; u < size; u++) {

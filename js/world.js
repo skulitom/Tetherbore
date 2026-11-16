@@ -710,6 +710,11 @@ export class World {
   constructor() {
     this.chunks = new Array(CW * CW);      // each { kind, biome, seen }, made when first looked at
     this.touched = new Set();              // pieces changed since the last save
+    // How many times the ground as it is known (what the pieces hold, seen or not) has changed: it goes up beside
+    // every `touched.add` and on `reset`, and wherever a piece is written to it must go up too, or the chart (which
+    // is drawn again only when this or the game's own version moves) goes on showing the ground as it was. (A piece
+    // made is no change: it holds what the seed lays, as was answered before it was made, and none of it is seen.)
+    this.stirred = 0;
     this.kept = null;                      // since `mark`: each piece changed or made, as it was then (`back` puts them back)
     this.lava = new Map();                 // seconds of lava left in an open cell
     this.dug = new Map();                  // when the drill opened a cell of the north (for the ice to close it)
@@ -1096,7 +1101,7 @@ export class World {
   reset(seed) {
     this.seed = seed;
     this.chunks = new Array(CW * CW);
-    this.touched.clear(); this.lava.clear(); this.dug.clear(); this.kept = null;
+    this.touched.clear(); this.lava.clear(); this.dug.clear(); this.kept = null; this.stirred++;
     this.made = 0;
     this.spotted.length = 0;
     this.provincesFor = NaN; this.slabsFor = NaN; this.firstFor = NaN; this.slabLast.seed = NaN; this.zonesFor = NaN; this.zoneLast.seed = NaN;
@@ -1304,7 +1309,7 @@ export class World {
   back() {
     if (this.kept === null) return 0;
     const n = this.kept.size;
-    for (const [id, was] of this.kept) { const p = this.chunks[id]; if (!p) continue; p.kind.set(was.kind); p.biome.set(was.biome); p.seen.set(was.seen); this.touched.add(id); }
+    for (const [id, was] of this.kept) { const p = this.chunks[id]; if (!p) continue; p.kind.set(was.kind); p.biome.set(was.biome); p.seen.set(was.seen); this.touched.add(id); this.stirred++; }
     // (What was known of walls was known of the ground as it was a moment ago.)
     this.chunks.forEach(p => { p.dull = undefined; });
     this.lava.clear(); this.dug.clear(); this.spotted.length = 0;
@@ -1314,14 +1319,14 @@ export class World {
   // Cells that are known without being looked at (ground just hauled away is plainly gone): seen, and nothing
   // called out.
   show(cells) {
-    for (const i of cells) { const id = ((i >>> 20) << 8) | ((i >>> 6) & 255), p = this.piece(id), at = (((i >>> 14) & 63) << 6) | (i & 63); if (!p.seen[at]) { this.keep(id, p); p.seen[at] = 1; this.touched.add(id); } }
+    for (const i of cells) { const id = ((i >>> 20) << 8) | ((i >>> 6) & 255), p = this.piece(id), at = (((i >>> 14) & 63) << 6) | (i & 63); if (!p.seen[at]) { this.keep(id, p); p.seen[at] = 1; this.touched.add(id); this.stirred++; } }
   }
   k(i) { return this.piece(((i >>> 20) << 8) | ((i >>> 6) & 255)).kind[(((i >>> 14) & 63) << 6) | (i & 63)]; }
   b(i) { return this.piece(((i >>> 20) << 8) | ((i >>> 6) & 255)).biome[(((i >>> 14) & 63) << 6) | (i & 63)]; }
   s(i) { return this.piece(((i >>> 20) << 8) | ((i >>> 6) & 255)).seen[(((i >>> 14) & 63) << 6) | (i & 63)]; }
   // (What was known of a cell's sides goes when the cell changes: `dull`.)
-  setK(i, v) { const id = ((i >>> 20) << 8) | ((i >>> 6) & 255), p = this.piece(id), at = (((i >>> 14) & 63) << 6) | (i & 63); this.keep(id, p); p.kind[at] = v; if (p.dull) p.dull[at] = 0; this.touched.add(id); }
-  setB(i, v) { const id = ((i >>> 20) << 8) | ((i >>> 6) & 255), p = this.piece(id); this.keep(id, p); p.biome[(((i >>> 14) & 63) << 6) | (i & 63)] = v; this.touched.add(id); }
+  setK(i, v) { const id = ((i >>> 20) << 8) | ((i >>> 6) & 255), p = this.piece(id), at = (((i >>> 14) & 63) << 6) | (i & 63); this.keep(id, p); p.kind[at] = v; if (p.dull) p.dull[at] = 0; this.touched.add(id); this.stirred++; }
+  setB(i, v) { const id = ((i >>> 20) << 8) | ((i >>> 6) & 255), p = this.piece(id); this.keep(id, p); p.biome[(((i >>> 14) & 63) << 6) | (i & 63)] = v; this.touched.add(id); this.stirred++; }
   // Show the ground within `radius` cells of a cell. Returns whether anything new was seen. A cell seen for the
   // first time that is worth calling out (a cache, a wreck, a relic, a keystone, a prism, a pocket's mineral, the
   // shell of a geode) goes on `spotted` as [what, cell, middle]: what it is ('cache', 'wreck', 'relic', 'key',
@@ -1332,7 +1337,7 @@ export class World {
     for (let y = cy - radius; y <= cy + radius; y++) for (let x = cx - radius; x <= cx + radius; x++) {
       const id = ((y >> 6) << 8) | (x >> 6), p = this.piece(id), at = ((y & 63) << 6) | (x & 63);
       if (p.seen[at]) continue;
-      this.keep(id, p); p.seen[at] = 1; this.touched.add(id); fresh = true;
+      this.keep(id, p); p.seen[at] = 1; this.touched.add(id); this.stirred++; fresh = true;
       const k = p.kind[at], P = (BIOMES[p.biome[at]] ?? BIOMES[0]).pocket;
       if (NOTABLE[k] !== undefined || (P !== null && k === (P.kind ?? K.MINERAL))) this.notice(x, y, k, P);
     }
