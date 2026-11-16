@@ -1,6 +1,7 @@
 // The keystone in play (docs/CONTENT-PLAN.md, content item 5; the ground that lays it is held by c5-slab-laid and
 // test/slab-moat.mjs):
-//   - a key is iron: it takes as long to cut as slate (four times soft rock), rings and shatters as slate does, and
+//   - a key is iron: it takes three times as long to cut as slate (METAL; as long as slate once the diamond tip is
+//     fitted, js/shop.js: WORKS), rings and shatters as slate does, and
 //     is drawn as a staple from the finds sheet over its block of rock, shedding iron and rust, in whatever ground;
 //   - keys that have been seen glint in the dark, 0.4 bright: the twelve nearest the drill and no more, and never
 //     one that has not been seen;
@@ -18,7 +19,7 @@ const atlas = await import('../../js/atlas.js');
 fixRandom(5);
 const fails = [], check = (ok, what) => { if (!ok) fails.push(what); };
 
-// ---- 1. Cut: as long as slate, and it shatters.
+// ---- 1. Cut: three times as long as slate (iron, and no diamond tip), and it shatters.
 {
   const game = await makeGame(7, { drill: 1 }), w = game.world, d = game.drill;
   arena(game, 14);
@@ -32,7 +33,7 @@ const fails = [], check = (ok, what) => { if (!ok) fails.push(what); };
     last = d.dig;
   } });
   const soft = took[at(4, 0)], key = took[at(5, 0)], slate = took[at(7, 0)];
-  check(key > 0 && key === slate && Math.abs(key / soft - 1.0 / 0.24) < 1e-9, `cutting takes: soft ${soft}, key ${key}, slate ${slate}`);
+  check(key > 0 && Math.abs(key - 3 * slate) < 1e-9 && Math.abs(slate / soft - 1.0 / 0.24) < 1e-9, `cutting takes: soft ${soft}, key ${key}, slate ${slate}`);
   check(shattered[at(5, 0)] === true && shattered[at(7, 0)] === true && shattered[at(4, 0)] === false, `what shattered: ${JSON.stringify(shattered)}`);
 }
 
@@ -121,5 +122,5 @@ const fails = [], check = (ok, what) => { if (!ok) fails.push(what); };
   }
 }
 
-console.log(fails.length ? `DEFECT: ${fails.join('\n        ')}` : 'ok: a key cuts as slate does and is drawn as iron, the nearest twelve seen glint, the first slab is a ring on the map while a key of it is left, and a slab\'s keys are named once');
+console.log(fails.length ? `DEFECT: ${fails.join('\n        ')}` : 'ok: a key cuts three times as slowly as slate and is drawn as iron, the nearest twelve seen glint, the first slab is a ring on the map while a key of it is left, and a slab\'s keys are named once');
 process.exit(fails.length ? 1 : 0);

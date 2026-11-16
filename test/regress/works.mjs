@@ -11,7 +11,7 @@ const rest = (game, seconds) => { for (let f = 0; f < seconds * 60; f++) game.up
 const row = id => WORKS.find(u => u.id === id);
 const fitted = async (id, level = 1) => { const game = await makeGame(7, { drill: 4 }, { hull: true }); game.S.lv[id] = level; return game; };
 
-check(WORKS.map(u => u.id).join() === 'mender,lavaskin,sporedrive,arccoil' && WORKS.map(u => u.kin).join() === [B.FROST, B.EMBER, B.MIRE, B.LODE].join(), `the second tab's rows are ${WORKS.map(u => `${u.id} (${u.kin})`)}`);
+check(WORKS.map(u => u.id).join() === 'mender,lavaskin,sporedrive,arccoil,diamond' && WORKS.map(u => u.kin).join() === [B.FROST, B.EMBER, B.MIRE, B.LODE, B.FROST].join(), `the second tab's rows are ${WORKS.map(u => `${u.id} (${u.kin})`)}`);
 check(WORKS.every(u => u.grit.length === u.values.length - 1 && u.spec.length === u.grit.length && u.grit.every(g => g > 0) && u.spec.every(n => n > 0)), 'a row of the second tab has a level with no price in grit or in specimens');
 
 // ---- buying: refused without the specimens, and says where; spent when bought
@@ -406,5 +406,5 @@ for (const coil of [0, 1]) {
   game.openLab(true, 'stats'); game.render(); game.openLab(false);
 }
 
-console.log(fails.length ? `DEFECT:\n  ${fails.join('\n  ')}` : 'no defect: the second tab sells four things for specimens, each turns a hazard, and the stats say what the drill is');
+console.log(fails.length ? `DEFECT:\n  ${fails.join('\n  ')}` : 'no defect: the second tab sells five things for specimens, four of which turn a hazard, and the stats say what the drill is');
 process.exit(fails.length ? 1 : 0);

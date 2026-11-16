@@ -156,9 +156,10 @@ check(await open('', 'example.org') === undefined, 'away from localhost an ordin
   const glow = t.shot.facts().key.glow, into = (C + f.key.into[1]) * N + C + f.key.into[0];
   check(d.dig === into && w.k(into) === K.KEY, `half a second on the drill is cutting ${d.dig}, not the key at ${into}`);
   check(glow >= 140 && game.preview[0].cells.includes(mid), `the glow of the cut in hand holds ${glow} cells`);
-  t.advance(1500);
+  // (A key is iron: with no diamond tip it takes three times as long as slate, three seconds with the first bit.)
+  t.advance(3500);
   const piece = game.pieceOf.get(mid);
-  check(w.k(into) === K.EMPTY && piece && piece.length === glow, `two seconds on the key is ${w.k(into) === K.EMPTY ? 'cut' : 'standing'} and ${piece ? piece.length : 'none'} of the slab's cells hang loose (the glow held ${glow})`);
+  check(w.k(into) === K.EMPTY && piece && piece.length === glow, `four seconds on the key is ${w.k(into) === K.EMPTY ? 'cut' : 'standing'} and ${piece ? piece.length : 'none'} of the slab's cells hang loose (the glow held ${glow})`);
   check(Math.hypot(d.x - x0, d.y - y0) < 1.6 && game.input.auto === null, `with the key cut the drill has gone on ${Math.hypot(d.x - x0, d.y - y0).toFixed(1)} cells`);
   check(!tetherFaults(game).length, `the tether beside the loose slab: ${tetherFaults(game).join('; ')}`);
   // Steering is whoever's it was.

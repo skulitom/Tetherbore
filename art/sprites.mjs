@@ -369,13 +369,15 @@ const PLATES = [1, 2, 3, 4].map(level => {
   return g.map(row => row.join(''));
 });
 // What is fitted to the drill shows on it: the mender's green lamp, the lava skin's red-hot keel, the spore drive's
-// two green vents at the tail, the arc coil's yellow winding between body and bit.
+// two green vents at the tail, the arc coil's yellow winding between body and bit, the diamond tip's glint at the
+// point of the bit.
 const fit = cells => { const g = blank(); for (const [x, y, c] of cells) g[y][x] = c; return g.map(row => row.join('')); };
 const FITS = {
   mender: fit([[7, 8, 'M'], [8, 8, 'm'], [7, 9, 'm'], [8, 9, 'm']]),
   lavaskin: fit([3, 4, 5, 6, 7, 8, 9].flatMap(x => [[x, 11, 'r'], [x, 10, x % 2 ? 'r' : 'o']])),
   sporedrive: fit([[1, 5, 'k'], [1, 6, 'g'], [2, 6, 'g'], [1, 7, 'k'], [1, 8, 'k'], [1, 9, 'g'], [2, 9, 'g'], [1, 10, 'k'], [0, 6, 'k'], [0, 9, 'k']]),
   arccoil: fit([[10, 5, 'y'], [10, 7, 'y'], [10, 8, 'y'], [10, 10, 'y']]),
+  diamond: fit([[14, 7, 'w'], [14, 8, 'c'], [13, 7, 'w'], [13, 8, 'w']]),
 };
 export const drill = {
   version: 1, name: 'drill', width: 16, height: 16,

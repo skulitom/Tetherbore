@@ -117,12 +117,16 @@ export const labNext = n => 2 ** labLevel(n);
 //   LAVA SKIN   lava neither knocks the hull nor stops the drill: it flies through it
 //   SPORE DRIVE a spore pod's burst does not knock: it drives the drill half as fast again for BOOST seconds
 //   ARC COIL    a crystal's arc does not knock: it mends a pip
+//   DIAMOND TIP metal (steel, and the iron of keystones) cuts as fast as its kind says (js/world.js: DIG_TIME);
+//               without it, METAL times as slow (js/game.js). Paid in the north's specimens, as starglass is its
+//               mineral: a clear crystal hard enough to cut iron.
 const works = (beside, share, spec) => ({ beside, grit: beside.map(at => priced(at, share)), gems: beside.map(() => 0), spec });
 export const WORKS = [
   { id: 'mender', name: 'MENDER', what: 'HULL MENDS FASTER', values: [20, 14, 9, 5], kin: B.FROST, gem: B.FROST, ...works([5, 6, 7], 0.4, [8, 16, 30]), show: v => `${v}S` },
   { id: 'lavaskin', name: 'LAVA SKIN', what: 'SWIMS IN LAVA', values: [0, 1], kin: B.EMBER, gem: B.EMBER, ...works([5.5], 0.4, [12]), show: v => v ? 'ON' : 'OFF' },
   { id: 'sporedrive', name: 'SPORE DRIVE', what: 'SPORES SPEED IT UP', values: [0, 1], kin: B.MIRE, gem: B.MIRE, ...works([5.5], 0.4, [12]), show: v => v ? 'ON' : 'OFF' },
   { id: 'arccoil', name: 'ARC COIL', what: 'ARCS MEND THE HULL', values: [0, 1], kin: B.LODE, gem: B.LODE, ...works([5.5], 0.4, [12]), show: v => v ? 'ON' : 'OFF' },
+  { id: 'diamond', name: 'DIAMOND TIP', what: 'CUTS METAL FAST', values: [0, 1], kin: B.FROST, gem: B.FROST, ...works([4.5], 0.4, [10]), show: v => v ? 'ON' : 'OFF' },
 ];
 // The shop's third tab, MAP: what the map in the corner shows.
 //   RANGE    how many cells of ground a pixel of the map is, so how far it shows: 69 cells across at first

@@ -72,6 +72,9 @@ export const BOOST = { time: 3, by: 1.5 };
 // last pip is gone lies dead for DEATH seconds, the screen going dark, and then the game is back at the last
 // docking (`revert`).
 const SHIELD = 3;
+// Metal is hard: steel and the iron of keystones take METAL times as long to cut as their kind says, until the
+// drill is fitted with the diamond tip (js/shop.js: WORKS).
+export const METAL = 3, METALS = [K.STEEL, K.KEY];
 // How far from a crystal its arc knocks the drill, in cells either way (it was 3.5: most of the screen's width).
 const ARC = 2.5;
 export const DEATH = 1.2;
@@ -910,6 +913,9 @@ export class Game {
   }
   // The tether lets the drill go this far from the core and no further, whatever road it takes.
   within(x, y) { return Math.hypot(x - HX, y - HY) <= this.val('tether') + 0.3; }
+  // How long a cell of kind `k` in ground `row` takes to cut with the bit the drill has: metal METAL times as long
+  // without the diamond tip.
+  cutTime(k, row) { return digTime(k, row) * (METALS.includes(k) && !this.S.lv.diamond ? METAL : 1) / SPEED[this.S.lv.drill]; }
 
   // ------------------------------------------------------------ flying and cutting
   free(x, y) {
@@ -1055,7 +1061,7 @@ export class Game {
           d.dig = -1;
         } else if (!this.within((i % N) + 0.5, Math.floor(i / N) + 0.5)) { if (this.edge <= 0) this.refuse(); d.dig = -1; }
         else {
-          if (d.dig !== i) { d.dig = i; d.digT = 0; d.digDur = digTime(k, w.row(i)) / SPEED[this.S.lv.drill]; d.digX = ix; d.digY = iy; this.foresee(i, this.alsoOpens(i)); }
+          if (d.dig !== i) { d.dig = i; d.digT = 0; d.digDur = this.cutTime(k, w.row(i)); d.digX = ix; d.digY = iy; this.foresee(i, this.alsoOpens(i)); }
           const before = d.digT;
           d.digT += dt;
           if (((d.digT * 30) | 0) !== ((before * 30) | 0) && d.digDur > 0.15) { sfx.grind(); if (d.digDur > 0.4) this.shake = Math.max(this.shake, 1.2); }
