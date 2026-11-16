@@ -25,6 +25,8 @@ const at = e => { const r = canvas.getBoundingClientRect(); return [(e.clientX -
 canvas.addEventListener('pointerdown', e => { e.preventDefault(); canvas.setPointerCapture?.(e.pointerId); game.pointerDown(e.pointerId, ...at(e)); });
 canvas.addEventListener('pointermove', e => { e.preventDefault(); game.pointerMove(e.pointerId, ...at(e)); });
 for (const type of ['pointerup', 'pointercancel']) canvas.addEventListener(type, e => { e.preventDefault(); game.pointerUp(e.pointerId); });
+// A wheel turned over the chart zooms it.
+canvas.addEventListener('wheel', e => { if (game.wheel(...at(e), e.deltaY)) e.preventDefault(); }, { passive: false });
 canvas.addEventListener('contextmenu', e => e.preventDefault());
 window.addEventListener('keydown', e => { if (!e.repeat && !e.metaKey && !e.ctrlKey && game.key(e.code, true)) e.preventDefault(); else if (e.repeat && /^Arrow|Space/.test(e.code)) e.preventDefault(); });
 window.addEventListener('keyup', e => { game.key(e.code, false); });

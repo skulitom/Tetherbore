@@ -263,6 +263,8 @@ export class Game {
     this.drifts = new Map();                                          // the drifts whose boulders are in the books, by their keys
     this.crushedAt = -9;                                              // when ore cut into last said CRUSHED
     this.dents = 0; this.shield = 0; this.tow = null;                 // knocks the hull has taken, how long nothing more knocks it, how long the wreck has lain dead
+    this.chart = { zoom: 1, x: HX, y: HY };                           // the chart's view: how far it is zoomed in, and the cell at its middle
+    this.chartRect = null; this.chartBase = 1; this.chartTouch = new Map();   // where the chart is on the screen this frame, its cells to a pixel unzoomed, the fingers on it
     this.shopTab = 'rig'; this.labTab = 'stats'; this.boost = 0; this.mendIn = 0;   // the tab each panel is open at; a spore's drive, in seconds left; until the mender's next pip
     this.docked = null;                                               // what was banked and bought at the last docking, to go back to (`dockMark`)
     this.knocked = 0; this.mended = 0; this.notice = null;            // a pip just lost and the hull just mended (seconds left to show it), and the word across the screen
@@ -363,14 +365,20 @@ export class Game {
   // faster the further it is dragged. The origin trails the thumb, so a change of mind is a short stroke.
   pointerDown(id, x, y) {
     unlock();
-    if (this.input.id !== null) return;
     const hit = this.buttons.find(b => x >= b.x && y >= b.y && x < b.x + b.w && y < b.y + b.h);
+    // A finger on the chart (not on one of its buttons) takes hold of it: any number of fingers, for a pinch.
+    if (this.lab && this.labTab === 'chart' && this.chartRect && (!hit || hit.swallow)) {
+      const [rx, ry, rw, rh] = this.chartRect;
+      if (x >= rx && y >= ry && x < rx + rw && y < ry + rh) { this.chartTouch.set(id, [x, y]); return; }
+    }
+    if (this.input.id !== null) return;
     if (hit) { hit.act(); return; }
     if (this.shop || this.lab) { this.shop = this.lab = false; sfx.tap(); return; }
     Object.assign(this.input, { id, ax: x, ay: y, px: x, py: y, m: 0 });
     this.drill.armed = true;
   }
   pointerMove(id, x, y) {
+    if (this.chartTouch.has(id)) { if (this.lab && this.chartRect) this.chartMove(id, x, y); return; }
     const inp = this.input;
     if (inp.id !== id) return;
     inp.px = x; inp.py = y;
@@ -379,7 +387,7 @@ export class Game {
     inp.vx = dx / far; inp.vy = dy / far; inp.m = Math.min(1, (far - 3) / 12);
     if (far > 24) { inp.ax = x - inp.vx * 24; inp.ay = y - inp.vy * 24; }
   }
-  pointerUp(id) { if (this.input.id === id) { this.input.id = null; this.input.m = 0; } }
+  pointerUp(id) { this.chartTouch.delete(id); if (this.input.id === id) { this.input.id = null; this.input.m = 0; } }
   key(code, down) {
     const dir = { ArrowRight: 0, KeyD: 0, ArrowDown: 1, KeyS: 1, ArrowLeft: 2, KeyA: 2, ArrowUp: 3, KeyW: 3 }[code];
     if (dir !== undefined) {
@@ -1308,10 +1316,11 @@ export class Game {
       sfx.gem(labLevel(n)); this.labSel = key; this.labFlash = 3;
     } else if (say) this.popup(x, y + 0.7, `SAMPLE ${n}/${labNext(n)}`, '#6fa894');
   }
-  // The lab's notes are opened and shut by a tap on the top bar. They open at the thing last learnt about.
-  openLab(open) {
-    this.lab = open; this.shop = false;
-    if (open) { this.labSel ??= (LAB.find(e => this.S.lab[e.key]) ?? LAB[0]).key; this.labPage = -1; if (this.labFlash > 0) this.labTab = 'lab'; }
+  // The panel is opened and shut by a tap on the bar: at the tab it was left at, or at the lab's notes just after
+  // something was analysed (at the thing last learnt about); a tap on the map names the chart's tab itself.
+  openLab(open, tab) {
+    this.lab = open; this.shop = false; this.chartTouch.clear();
+    if (open) { this.labSel ??= (LAB.find(e => this.S.lab[e.key]) ?? LAB[0]).key; this.labPage = -1; this.labTab = tab ?? (this.labFlash > 0 ? 'lab' : this.labTab); }
     sfx.tap();
   }
 
@@ -2880,7 +2889,7 @@ export class Game {
   // reach about the core, in a square that many pixels across.
   drawMap(x, y, big = null) {
     const { ctx } = this, w = this.world, d = this.drill, R = this.val('tether'), lens = this.val('maplens');
-    const size = big ? big.size : 46, per = big ? big.per : this.val('maprange'), mx0 = big ? HX : Math.floor(d.x) + 0.5, my0 = big ? HY : Math.floor(d.y) + 0.5;
+    const size = big ? big.size : 46, per = big ? big.per : this.val('maprange'), mx0 = big ? big.cx ?? HX : Math.floor(d.x) + 0.5, my0 = big ? big.cy ?? HY : Math.floor(d.y) + 0.5;
     const M = big ? (this.chartMap ??= {}) : this;
     if (!big) {
       slice9(ctx, 'ui', 'panel', x - 3, y - 3, size + 6, size + 6);
@@ -2888,7 +2897,7 @@ export class Game {
       // With the chart bought, a tap on the map opens it.
       if (this.val('chart') && !this.lab && !this.shop) {
         ctx.fillStyle = '#ffe14a'; ctx.fillRect(x - 2, y - 2, size + 4, 1); ctx.fillRect(x - 2, y + size + 1, size + 4, 1);
-        this.button(x - 3, y - 3, size + 6, size + 6, () => { this.labTab = 'chart'; this.openLab(true); });
+        this.button(x - 3, y - 3, size + 6, size + 6, () => this.openLab(true, 'chart'));
       }
     }
     let map = M.mapCanvas;
@@ -3020,6 +3029,44 @@ export class Game {
     ctx.fillStyle = '#0c0a12'; ctx.fillRect(x + 11, y + 2, w - 11, 6);
     ctx.fillStyle = flash ? '#ffffff' : color; ctx.fillRect(x + 12, y + 3, Math.round((w - 13) * Math.max(0, Math.min(1, fill))), 4);
   }
+  // The chart's view, kept within bounds: zoomed from 1 (the whole reach) to where a cell is four pixels, its middle
+  // never so far from the core that the view leaves the square the whole reach is drawn in.
+  chartMost() { return Math.max(1, this.chartBase / 0.25); }
+  chartView() {
+    const c = this.chart, size = this.chartRect ? this.chartRect[2] : 1;
+    c.zoom = Math.max(1, Math.min(this.chartMost(), c.zoom));
+    const room = Math.max(0, size * this.chartBase / 2 * (1 - 1 / c.zoom));
+    c.x = Math.max(HX - room, Math.min(HX + room, c.x)); c.y = Math.max(HY - room, Math.min(HY + room, c.y));
+    return c;
+  }
+  // Zoom the chart `by` times about the point (sx, sy) of the screen, which stays over the same ground.
+  chartZoom(by, sx, sy) {
+    if (!this.chartRect) return;
+    const c = this.chartView(), [rx, ry, size] = this.chartRect, ox = sx - rx - size / 2, oy = sy - ry - size / 2, per = this.chartBase / c.zoom;
+    const wx = c.x + ox * per, wy = c.y + oy * per;
+    c.zoom = Math.max(1, Math.min(this.chartMost(), c.zoom * by));
+    c.x = wx - ox * this.chartBase / c.zoom; c.y = wy - oy * this.chartBase / c.zoom;
+    this.chartView();
+  }
+  // A wheel turned over the chart zooms it about the pointer. Returns whether the chart took it.
+  wheel(x, y, delta) {
+    const r = this.lab && this.labTab === 'chart' ? this.chartRect : null;
+    if (!r || x < r[0] || y < r[1] || x >= r[0] + r[2] || y >= r[1] + r[3]) return false;
+    this.chartZoom(delta < 0 ? 1.2 : 1 / 1.2, x, y);
+    return true;
+  }
+  // A finger moved on the chart: one drags it, two pinch it (and drag it by the point between them).
+  chartMove(id, x, y) {
+    const T2 = this.chartTouch, was = T2.get(id), c = this.chartView();
+    if (T2.size >= 2) {
+      const [oid, other] = [...T2].find(([key]) => key !== id), before = Math.hypot(was[0] - other[0], was[1] - other[1]), after = Math.hypot(x - other[0], y - other[1]);
+      const mid = [(x + other[0]) / 2, (y + other[1]) / 2], midWas = [(was[0] + other[0]) / 2, (was[1] + other[1]) / 2], per = this.chartBase / c.zoom;
+      c.x -= (mid[0] - midWas[0]) * per; c.y -= (mid[1] - midWas[1]) * per;
+      if (before > 4 && after > 4) this.chartZoom(after / before, mid[0], mid[1]);
+    } else { const per = this.chartBase / c.zoom; c.x -= (x - was[0]) * per; c.y -= (y - was[1]) * per; }
+    T2.set(id, [x, y]);
+    this.chartView();
+  }
   // The chart can be read once it is bought, wherever the drill is.
   get charted() { return this.val('chart') > 0; }
   // The tabs of the panel the top bar opens (STATS: what the drill is now; ANALYSIS: the lab's notes; CHART: the
@@ -3099,10 +3146,27 @@ export class Game {
     const rise = 1 - this.labRise, ph = this.labTab === 'menu' ? HEAD + 56 : this.labTab === 'chart' ? HEAD + chart + 10 : this.labTab === 'stats' ? HEAD + this.stats().length * 11 + 8 : HEAD + rows * RH + NOTE + (paged ? 14 : 0) + 4, py = Math.max(2, Math.round((H - 44 - ph) / 2)) + Math.round(rise * rise * 60);
     slice9(ctx, 'ui', 'panel', px, py, pw, ph);
     this.button(px, py, pw, ph, () => {});
+    this.buttons.at(-1).swallow = true;
+    this.chartRect = null;
     this.panelTabs(px, py, pw, HEAD);
     if (this.labTab === 'stats') { this.drawStats(px, py + HEAD, pw); return; }
     if (this.labTab === 'menu') { this.drawMenu(px, py + HEAD, pw); return; }
-    if (this.labTab === 'chart') { this.drawMap(Math.round(px + (pw - chart) / 2), py + HEAD + 3, { size: chart, per: Math.max(0.3, this.val('tether') * 2.25 / chart) }); return; }
+    if (this.labTab === 'chart') {
+      // The chart is dragged to look about it and pinched (or wheeled, or stepped by its two buttons) to look closer:
+      // from the whole reach down to four pixels a cell, never past the edge of the whole reach's own view.
+      const cx0 = Math.round(px + (pw - chart) / 2), cy0 = py + HEAD + 3;
+      this.chartRect = [cx0, cy0, chart, chart]; this.chartBase = Math.max(0.3, this.val('tether') * 2.25 / chart);
+      const view = this.chartView();
+      this.drawMap(cx0, cy0, { size: chart, per: this.chartBase / view.zoom, cx: view.x, cy: view.y });
+      [['+', 1.5], ['-', 1 / 1.5]].forEach(([sign, by], n) => {
+        const bx = cx0 + chart - 16, by0 = cy0 + chart - 32 + n * 16, can = by > 1 ? view.zoom < this.chartMost() - 1e-9 : view.zoom > 1 + 1e-9;
+        slice9(ctx, 'ui', can ? 'button' : 'button-off', bx, by0, 14, 14);
+        text(ctx, sign, bx + 7, by0 + 2, can ? '#ffffff' : '#6a6478', 0.5);
+        this.buttons.unshift({ x: bx - 1, y: by0 - 1, w: 16, h: 16, act: () => { this.chartZoom(by, cx0 + chart / 2, cy0 + chart / 2); sfx.tap(); } });
+      });
+      if (view.zoom > 1.01) text(ctx, `x${view.zoom.toFixed(1)}`, cx0 + 3, cy0 + chart - 12, '#f4ecd8');
+      return;
+    }
     LAB.slice(this.labPage * rows, this.labPage * rows + rows).forEach((e, r) => {
       const y = py + HEAD + r * RH, n = S.lab[e.key] ?? 0, on = e === sel;
       if (on) { ctx.fillStyle = '#3a3260'; ctx.fillRect(px + 4, y, pw - 8, RH - 1); }

@@ -181,6 +181,49 @@ for (const coil of [0, 1]) {
   game.pointerDown(1, x + mw / 2, y + mh / 2); game.pointerUp(1); game.render();
   check(game.lab && game.labTab === 'chart' && game.chartMap?.mapFor?.endsWith(`:${C + 0.5},${C + 0.5}`), `a tap on the map at the core left the panel ${game.lab ? 'open' : 'shut'} at '${game.labTab}'`);
   game.openLab(false);
+  // The chart is zoomed and dragged. A wheel over it zooms about the pointer; a finger drags it; two pinch it; its
+  // two buttons step it; and it never leaves the square the whole reach is drawn in, nor zooms out past it.
+  {
+    game.labTab = 'chart'; game.openLab(true); game.render();
+    const [rx, ry, size] = game.chartRect, mid = [rx + size / 2, ry + size / 2], c = game.chart, base = game.chartBase;
+    check(c.zoom === 1 && c.x === C + 0.5 && c.y === C + 0.5 && base > 1, `the chart opens at zoom ${c.zoom} about ${c.x - C},${c.y - C}, ${base.toFixed(2)} cells to a pixel`);
+    // Zoomed about a point a quarter of the way across: the ground under the pointer stays under it.
+    const at = [rx + size / 4, ry + size / 2], under = () => [c.x + (at[0] - mid[0]) * base / c.zoom, c.y + (at[1] - mid[1]) * base / c.zoom], before = under();
+    check(game.wheel(at[0], at[1], -100) === true && Math.abs(c.zoom - 1.2) < 1e-9, `a wheel turned over the chart left it at zoom ${c.zoom}`);
+    game.wheel(at[0], at[1], -100); game.wheel(at[0], at[1], -100); game.render();
+    check(Math.abs(under()[0] - before[0]) < 1e-6 && Math.abs(under()[1] - before[1]) < 1e-6 && c.x < C, `zoomed to ${c.zoom.toFixed(2)} about a point west of the middle, that point lies over ${under().map(v => (v - C).toFixed(1))}, where it lay over ${before.map(v => (v - C).toFixed(1))}`);
+    check(game.wheel(2, 2, -100) === false, 'a wheel turned off the chart zoomed it');
+    // A finger drags it: ten pixels right is ten pixels' worth of ground to the left; the panel stays open.
+    const x0 = c.x, per = base / c.zoom;
+    game.pointerDown(1, mid[0], mid[1]); game.pointerMove(1, mid[0] + 10, mid[1]); game.render();
+    check(game.lab && Math.abs(c.x - (x0 - 10 * per)) < 1e-6 && game.input.id === null, `dragged ten pixels right the chart's middle moved ${(c.x - x0).toFixed(2)} cells, where ten pixels are ${(10 * per).toFixed(2)}`);
+    // A second finger pinches: twice as far apart is twice as close.
+    const z0 = c.zoom;
+    game.pointerDown(2, mid[0] - 10, mid[1]); game.pointerMove(2, mid[0] - 30, mid[1]); game.render();
+    check(Math.abs(c.zoom / z0 - 2) < 1e-6, `two fingers drawn from 20 to 40 pixels apart took the zoom from ${z0.toFixed(2)} to ${c.zoom.toFixed(2)}`);
+    game.pointerUp(1); game.pointerUp(2);
+    check(game.chartTouch.size === 0 && game.lab, 'fingers lifted, the chart is still held or the panel shut');
+    // Dragged far, it stops at the edge of the whole reach's view; zoomed out as far as it goes, it is whole again.
+    game.pointerDown(1, mid[0], mid[1]); game.pointerMove(1, mid[0] + 5000, mid[1] + 5000); game.pointerUp(1); game.render();
+    const room = size * base / 2 * (1 - 1 / c.zoom);
+    check(Math.abs(c.x - (C + 0.5 - room)) < 1e-6 && Math.abs(c.y - (C + 0.5 - room)) < 1e-6, `dragged far, the chart's middle is ${(C + 0.5 - c.x).toFixed(1)} cells from the core's, where its view allows ${room.toFixed(1)}`);
+    const steps = game.buttons.filter(b => b.w === 16 && b.h === 16).sort((a, b) => a.y - b.y);
+    check(steps.length === 2, `the chart has ${steps.length} buttons to step its zoom`);
+    for (let n = 0; n < 20; n++) steps[1]?.act();
+    game.render();
+    check(c.zoom === 1 && c.x === C + 0.5 && c.y === C + 0.5, `stepped out as far as it goes the chart is at zoom ${c.zoom} about ${c.x - C},${c.y - C}`);
+    for (let n = 0; n < 40; n++) steps[0]?.act();
+    game.render();
+    check(Math.abs(base / c.zoom - 0.25) < 1e-6, `stepped in as far as it goes a cell is ${(c.zoom / base).toFixed(2)} pixels`);
+    // A tap beside the chart, in the panel's header, is not a drag; and a tap outside the panel still shuts it.
+    game.openLab(false); game.openLab(true); game.render();
+  }
+  game.openLab(false);
+  // A tap on the map opens the chart even just after an analysis, when the bar would open the lab's notes.
+  game.labFlash = 3; game.labTab = 'stats'; game.render();
+  game.pointerDown(1, x + mw / 2, y + mh / 2); game.pointerUp(1); game.render();
+  check(game.lab && game.labTab === 'chart', `a tap on the map just after an analysis left the panel at '${game.labTab}'`);
+  game.openLab(false); game.labFlash = 0;
   // And away from the core: the chart is read wherever the drill is.
   game.drill.x = C + 60.5; game.drill.y = C + 0.5; game.render();
   check(game.charted && !game.atCore, 'sixty cells out the chart cannot be read');
