@@ -35,7 +35,7 @@ export function unlock() {
   master = c.createGain();
   master.gain.value = muted ? 0 : LEVEL;
   const squash = c.createDynamicsCompressor(), curve = new Float32Array(1025);
-  squash.threshold.value = -16; squash.knee.value = 10; squash.ratio.value = 3.5; squash.attack.value = 0.004; squash.release.value = 0.16;
+  try { squash.threshold.value = -16; squash.knee.value = 10; squash.ratio.value = 3.5; squash.attack.value = 0.004; squash.release.value = 0.16; } catch { /* the browser's own settings */ }
   for (let i = 0; i < curve.length; i++) {
     const x = i / 512 - 1, a = Math.abs(x);
     curve[i] = a <= 0.5 ? x : Math.sign(x) * (0.5 + 0.42 * Math.tanh((a - 0.5) / 0.42));
@@ -74,7 +74,7 @@ export function unlock() {
   c.createOscillator().type = 'triangle';
   seed = (seed ^ Date.now()) >>> 0;      // no two sittings wander the same way
   ctx = c;
-  tune();
+  try { tune(); } catch { /* no music */ }
 }
 export const isMuted = () => muted;
 export function setMuted(value) {
