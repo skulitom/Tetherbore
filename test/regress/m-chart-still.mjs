@@ -1,4 +1,4 @@
-// The chart's picture is drawn again when the ground it shows changes, and not otherwise (js/game.js: drawMap). It
+// The chart's picture is drawn again when the ground it shows changes, and not otherwise (js/drawing.js: drawMap). It
 // was drawn again every half second whatever happened, a few milliseconds each time at a long reach, the whole
 // while the chart was open over still ground. Now it asks the world how often its ground has changed
 // (`World.stirred`), and a change the game's version does not count must still reach it: a cell set by hand, a cell

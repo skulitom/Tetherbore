@@ -1,5 +1,5 @@
 // A piece of ground shows what painting it shows. A piece is drawn into its canvas only when its drawing has
-// changed (`Sketch` in js/game.js): any change to the ground tells every piece in view to draw itself again, and
+// changed (`Sketch` in js/drawing.js): any change to the ground tells every piece in view to draw itself again, and
 // most draw just what they hold. Over a flight that cuts and uncovers ground, with the view drawn every frame, each
 // piece is painted as it used to be, whenever it was told to, straight into a list of calls; and the calls its
 // canvas was last given must be the same, in the same order. A canvas's pixels are those of the last drawing it

@@ -37,7 +37,7 @@ Progress is saved on the device: what you own in local storage, the ground in th
 
 ## How it is built
 
-The world is about 4,800 cells across, far too large to hold whole. `js/world.js` makes it a 64 x 64 piece at a time, from the seed alone, the first time anything looks there, and only pieces that have been seen or changed are kept and saved. `js/game.js` is the game: flight, the tether, hauling, hazards, drawing; `js/shop.js` is what everything costs and the rows of the shop.
+The world is about 4,800 cells across, far too large to hold whole. `js/world.js` makes it a 64 x 64 piece at a time, from the seed alone, the first time anything looks there, and only pieces that have been seen or changed are kept and saved. `js/game.js` is the game: flight, the tether, hauling, hazards; `js/drawing.js` draws it: the scene, the top bar, the map and the panels, as methods of the game kept apart from its rules; `js/shop.js` is what everything costs and the rows of the shop.
 
 What a cell can be and whose ground it lies in are two tables in `js/world.js`: `K`, the kinds, and `BIOMES`, a row for each ground. The numbers are what a saved game stores, so they never move. Everything that differs from one ground to another (its sheets, its dark and its motes, what a haul of it pays, the thresholds it is laid by, its hazards, whether a cut in it freezes over) is in its row, and the game reads the row wherever it needs to know; a hazard does, pays and looks as its type does (lava, spore, spark), whatever ground it lies in. A new ground is a new row.
 

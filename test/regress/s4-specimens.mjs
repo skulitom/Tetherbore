@@ -1,5 +1,5 @@
-// Specimens (docs/CONTENT-PLAN.md S4; js/game.js: haul, S.spec, specLine, bannerSays, specNeed): one count for each
-// direction, fed only by hauled cells of a pocket's mineral. Checked:
+// Specimens (docs/CONTENT-PLAN.md S4; js/game.js: haul, S.spec, specLine; js/drawing.js: bannerSays, specNeed): one
+// count for each direction, fed only by hauled cells of a pocket's mineral. Checked:
 //   - a new game has the counts, and a game saved before there were any is given them on restore;
 //   - a haul banks what `payOf` said: the row's specimens a cell, to the direction the pocket lies in (the pocket's
 //     record says which; the row's own direction where the world has no record), kept to the fraction;

@@ -1,4 +1,4 @@
-// Pockets on the map (docs/CONTENT-PLAN.md S3, "The map"; js/game.js: pocketPips, drawMap): a pocket within the
+// Pockets on the map (docs/CONTENT-PLAN.md S3, "The map"; js/drawing.js: pocketPips, drawMap): a pocket within the
 // tether's reach that the drill has not been into is a pip in the pocket's own colour. Checked:
 //   - a new game on the sixth reach has the four heralds marked, and nothing beyond the reach;
 //   - the map draws each pip two pixels square in the pocket's colour, on a dark square of four, where the pocket

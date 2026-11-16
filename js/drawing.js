@@ -1,0 +1,1437 @@
+// Tetherbore: how the game is drawn. The scene (the ground, the drill, the ropes, the dark and the light) and the
+// panels over it (the top bar, the map, the chart, the shop and the lab) are methods of the game written here apart
+// from its rules: js/game.js copies them onto the game as they are, so `this` in them is the game. Nothing here is a
+// rule of play: what these methods keep on the game is what was drawn and where (the pieces of ground, the chart's
+// picture and view, what can be tapped this frame).
+import { N, C, K, B, DX, DY, BIOMES, HAZARDS, ZONE, FIND, rowOf, hazOf, cellHash, RELIC_R, HOME_R } from './world.js';
+import { sheets, draw, drawScaled, frameAt, duration, slice9, text, textWidth } from './atlas.js';
+import { sfx, isMuted, setMuted, isMusic, setMusic } from './audio.js';
+import { WORKS, MAPS, TABS, LAB, LAB_OF, labLevel, labNext, ROWS } from './shop.js';
+// (The middle of the core and two figures of the rules are the game's, read from js/game.js, which imports this
+// module in turn. The two may import each other because these names are read only inside the methods, which run
+// once both modules have: js/game.js is the module a page, a test or a tool loads, and this one runs before it,
+// reading nothing of it as it runs. Loaded first on its own, this module would have js/game.js run first, and
+// that copies the methods from here before there are any: so nothing loads it but js/game.js.)
+import { HX, HY, BOOST, DEATH } from './game.js';
+
+export const T = 16;                            // pixels in a cell
+export const DIR_BIOME = [B.LODE, B.EMBER, B.MIRE, B.FROST];
+export const GEM_ICON = [null, 'frost', 'ember', 'mire', 'lode'];
+export const GEM_COLOR = [null, '#bfe6ff', '#ffb060', '#b8f06a', '#d8b8ff'];
+// Text broken into lines no wider than `wide` pixels, at the spaces.
+const wrap = (words, wide) => {
+  const lines = [];
+  for (const word of words.split(' ')) {
+    const last = lines[lines.length - 1];
+    if (last !== undefined && textWidth(`${last} ${word}`) <= wide) lines[lines.length - 1] = `${last} ${word}`; else lines.push(word);
+  }
+  return lines;
+};
+// What the lens shows a kind of ground as, and from which level of it: [level, red, green, blue].
+const LENS = [];
+for (const [level, colour, kinds] of [[1, [214, 178, 64], [K.ORE_A]], [1, [255, 232, 96], [K.ORE_B]], [2, [176, 184, 204], [K.SLATE, K.VAULT, K.KEY, K.STEEL, K.SLAG]], [2, [255, 84, 64], [K.HAZARD, K.HAZARD2]],
+  [3, [120, 240, 190], [K.MINERAL, K.NODE, K.CACHE, K.PRISM, K.FOSSIL, K.CAP, K.CAP_LIT, K.TWIN]]]) for (const k of kinds) LENS[k] = [level, ...colour];
+// Which finds the finder marks at each level of it, and how far from the drill it marks them, in cells. (It marked
+// every find within the tether's reach, and listed no more than two hundred, from the north down: on the chart of
+// a long reach that was a solid band of dots across the north and none anywhere else.)
+const FOUND = { cache: 1, geode: 2, prism: 3 };
+const FINDER = [0, 120, 200, 320];
+// Where each direction's gems are found, for a price that cannot be met yet.
+export const GEM_WHERE = [null, 'NORTH', 'SOUTH', 'WEST', 'EAST'];
+// What is called out the first time it is seen (`World.see` says what it is): the name that comes up, and the
+// colour of that name, of the ring round the thing and of its dot on the map. A relic's colour is its direction's
+// gem's, and a pocket's mineral has its own name and its pocket's colour. Names only: nothing here says what a
+// thing is for.
+export const SPOT = {
+  cache: ['CACHE', '#ffe14a'], geode: ['GEODE', '#f4ecd8'], wreck: ['WRECK', '#ff9a3a'], key: ['KEYSTONE', '#a4acbc'], prism: ['PRISM', '#ffffff'],
+  relic: ['RELIC', '#ffffff'], mineral: ['MINERAL', '#ffffff'],
+};
+// A place's name is written in the colour it has on the map, as bright as that colour goes.
+export const bright = ([r, g, b]) => { const k = 255 / Math.max(1, r, g, b); return `rgb(${Math.round(r * k)},${Math.round(g * k)},${Math.round(b * k)})`; };
+// How many pockets the map marks at once.
+const PIPS = 24;
+// What flies off the kinds of rock that look the same in every ground, by the sheet each is drawn from. A ground's
+// own rock sheds the colours in its row (js/world.js: BIOMES), where the dark it lies in, its motes and its colour
+// on the map are too.
+export const DEBRIS = {
+  slate: ['#6a7080', '#a4acbc', '#454a5a'], vault: ['#463a68', '#8a78c0', '#c8a8ff'], ice: ['#6fb0e0', '#d8f4ff', '#ffffff'],
+  basalt: ['#463e4c', '#7a6a78', '#8a3424'], bedrock: ['#1e1e26', '#34343e'],
+};
+// And off what is found in the ground, whatever ground it lies in: a keystone's iron and rust, a prism's glass.
+const CHIPS = [];
+CHIPS[K.KEY] = ['#8a94a8', '#eef4ff', '#b0603a']; CHIPS[K.PRISM] = ['#ffffff', '#bfe6ff', '#d8b8ff'];
+// How many keystones in view glint in the dark at once (the nearest the drill), how bright, and how far.
+const KEY_GLINTS = 12, KEY_GLINT = 0.4, KEY_GLOW = 2;
+// How the tether looks at each level of reach: rope, braid, cable, then lines of light.
+const TETHERS = [
+  { a: '#e8dcc0', b: '#e8dcc0', dash: 1 }, { a: '#e8dcc0', b: '#b89a6c', dash: 0.5 }, { a: '#f0d890', b: '#b0803a', dash: 0.5 },
+  { a: '#f0b060', b: '#c8442a', dash: 0.5 }, { a: '#d8e0ec', b: '#8a94a8', dash: 0.5 }, { a: '#eef4ff', b: '#6e7c98', dash: 0.25, thick: true },
+  { a: '#ffe89a', b: '#c89020', dash: 0.25, thick: true }, { a: '#fff4c0', b: '#e8a020', dash: 0.5, thick: true },
+  { a: '#a8fff0', b: '#30c8c0', dash: 0.5, thick: true }, { a: '#ffc8f4', b: '#b050d0', dash: 0.5, thick: true }, { a: '#ffffff', b: '#5cc4f0', dash: 0.5, thick: true },
+];
+const ROUND = 3.5, BRAID = 4;                    // on the fine canvas: how wide a rope rounds a corner, and the length of one turn of its braid, in the game's pixels
+const LIGHT_STEP = [[1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, -1, 1], [1, 1, 1.41], [-1, 1, 1.41], [1, -1, 1.41], [-1, -1, 1.41]];
+// How far light goes to each of those neighbours, in a flat array: the flood of light reads it eight times for
+// every cell it lights, many times a frame, and taking each step apart as an array cost most of the flood's time.
+// The steps themselves, as offsets in the light's window, are kept on the window (lightMap.step), which alone
+// knows how many cells it is across.
+const LIGHT_FAR = Float64Array.from(LIGHT_STEP, s => s[2]);
+export const compact = n => n < 1000 ? `${Math.floor(n)}` : n < 10000 ? `${(Math.floor(n / 100) / 10).toFixed(1)}K` : n < 1e6 ? `${Math.floor(n / 1000)}K`
+  : n < 1e9 ? `${(Math.floor(n / 1e5) / 10).toFixed(1)}M` : `${(Math.floor(n / 1e8) / 10).toFixed(1)}B`;
+
+// A piece of the ground is drawn first into a Sketch, a list of the calls drawing it takes, and only drawn into its
+// canvas when that list is not the one the canvas was last drawn from (`Game.chunk`). Any change to the ground, a
+// cut or a cell newly seen, tells every piece in view to draw itself again, and most of them draw just what they
+// already hold: four in five, over a flight of cuts, where a change drew eight pieces again and one or two had
+// changed. A canvas drawn again costs the browser far more the next time it is laid on the screen, as it is sent to
+// the graphics card again: in Edge a frame in which the ground changed took 2 ms to draw, and 1 ms once only the
+// pieces that changed were drawn again. The same calls in the same order make the same pixels, so nothing that
+// changes the ground needs to say which pieces it changed.
+// The list is numbers alone: a sheet's image or a colour is written as its place in THINGS, which only grows, so a
+// number stands for the same thing for as long as the page is open. A Sketch takes only the calls `Game.paint`
+// makes (and `draw` in js/atlas.js makes for it): any other is an error, not a call left out of the list, so a
+// change to the drawing of the ground cannot leave a piece showing what it showed before.
+const THINGS = [], THING = new Map();
+const thing = x => { let n = THING.get(x); if (n === undefined) { n = THINGS.length; THINGS.push(x); THING.set(x, n); } return n; };
+const ALPHA = 0, FILL = 1, RECT = 2, IMAGE = 3;
+class Sketch {
+  constructor() { this.ops = new Float64Array(2048); this.n = 0; Object.preventExtensions(this); }
+  set globalAlpha(alpha) { const o = this.put(2); this.ops[o] = ALPHA; this.ops[o + 1] = alpha; }
+  set fillStyle(style) { const o = this.put(2); this.ops[o] = FILL; this.ops[o + 1] = thing(style); }
+  fillRect(x, y, w, h) { const o = this.put(5), a = this.ops; a[o] = RECT; a[o + 1] = x; a[o + 2] = y; a[o + 3] = w; a[o + 4] = h; }
+  drawImage(image, sx, sy, sw, sh, dx, dy, dw, dh) {
+    if (arguments.length !== 9) throw new Error('a piece of ground draws a part of an image to a place and size: nine arguments');
+    const o = this.put(10), a = this.ops;
+    a[o] = IMAGE; a[o + 1] = thing(image); a[o + 2] = sx; a[o + 3] = sy; a[o + 4] = sw; a[o + 5] = sh; a[o + 6] = dx; a[o + 7] = dy; a[o + 8] = dw; a[o + 9] = dh;
+  }
+  // Room for k more numbers at the end of the list: where they begin.
+  put(k) {
+    const o = this.n;
+    if (o + k > this.ops.length) { const more = new Float64Array(2 * (o + k)); more.set(this.ops); this.ops = more; }
+    this.n = o + k;
+    return o;
+  }
+  same(held) {
+    const a = this.ops, n = this.n;
+    if (!held || held.length !== n) return false;
+    for (let i = 0; i < n; i++) if (a[i] !== held[i]) return false;
+    return true;
+  }
+}
+// The calls of a list, made on a canvas in the order they were taken down.
+function replay(ops, ctx) {
+  for (let i = 0; i < ops.length;) {
+    const op = ops[i];
+    if (op === ALPHA) { ctx.globalAlpha = ops[i + 1]; i += 2; }
+    else if (op === FILL) { ctx.fillStyle = THINGS[ops[i + 1]]; i += 2; }
+    else if (op === RECT) { ctx.fillRect(ops[i + 1], ops[i + 2], ops[i + 3], ops[i + 4]); i += 5; }
+    else { ctx.drawImage(THINGS[ops[i + 1]], ops[i + 2], ops[i + 3], ops[i + 4], ops[i + 5], ops[i + 6], ops[i + 7], ops[i + 8], ops[i + 9]); i += 10; }
+  }
+}
+const sketch = new Sketch();
+
+export class Drawing {
+  rockSheet(k, b) {
+    return k === K.BEDROCK ? 'bedrock' : k === K.SLATE ? 'slate' : k === K.VAULT || k === K.RELIC ? 'vault' : k === K.ICE ? 'ice' : k === K.BASALT ? 'basalt' : rowOf(b).sheet;
+  }
+  // The colours of the chips that fly off a cell of kind `k` in ground `b`.
+  debris(k, b) {
+    const row = rowOf(b), P = row.pocket;
+    return P !== null && P.chips && k === (P.kind ?? K.MINERAL) ? P.chips : CHIPS[k] ?? DEBRIS[this.rockSheet(k, b)] ?? row.debris;
+  }
+  rockRect(x, y, k, b) {
+    const sheet = this.rockSheet(k, b), rects = sheets[sheet].tiles[this.world.mask(x, y)];
+    return [sheet, rects[(cellHash(x, y, 3) * rects.length) | 0]];
+  }
+  // What is drawn over a cell's rock, as [sheet, frame], or null for nothing: dense rock and ore from its ground's
+  // own sheet (`row`), a hazard from its type's, a relic from its direction's, a find from the finds'. A cross's
+  // rich ore is its donor's, and is drawn as the donor's (`itemsB`), so that what it looks like is what it pays.
+  // A pocket's mineral is its own frame of the 'minerals' sheet, and its special cell (a hive's stalk) one of two:
+  // the one that runs level or the one that stands upright, as the cell `i` lies between what it joins (asked of
+  // the cells beside it; upright where `i` is not given).
+  overlay(k, row, i) {
+    const P = row.pocket;
+    // (A grotto's cap before it is lit.)
+    if (k === K.CAP) return sheets.minerals?.frames.cap ? ['minerals', 'cap'] : null;
+    if (P !== null && (k === K.NODE || k === (P.kind ?? K.MINERAL))) {
+      if (k === (P.kind ?? K.MINERAL)) return this.mineralOf(row) ? ['minerals', P.mineral] : null;
+      const w = this.world, joins = j => { const q = w.k(j); return q === K.NODE || q === (P.kind ?? K.MINERAL); };
+      const frame = `${P.node}-${i !== undefined && !joins(i - N) && !joins(i + N) && (joins(i - 1) || joins(i + 1)) ? 'h' : 'v'}`;
+      return sheets.minerals?.frames[frame] ? ['minerals', frame] : null;
+    }
+    if (k === K.ORE_B) return [row.itemsB, 'oreB'];
+    if (k === K.DENSE || k === K.ORE_A) return [row.items, k === K.DENSE ? 'dense' : 'oreA'];
+    if (k === K.HAZARD || k === K.HAZARD2) { const haz = hazOf(k, row); return haz ? [HAZARDS[haz].sheet, 'hazard'] : null; }
+    // Slag and the steel it is quenched to are the lava's, drawn from the lava's sheet whatever ground they lie in.
+    if (k === K.SLAG || k === K.STEEL) return [HAZARDS.lava.sheet, k === K.SLAG ? 'slag' : 'steel'];
+    // A keystone is an iron staple across its block of rock; a prism turns through the gems' colours (`render`).
+    return k === K.RELIC ? [rowOf(row.kin).items, 'relic'] : k === K.CACHE ? ['finds', 'cache'] : k === K.WRECK ? ['finds', 'part']
+      : k === K.KEY ? ['finds', 'key'] : k === K.PRISM ? ['finds', 'prism'] : null;
+  }
+
+  render() {
+    const { ctx, W, H, world: w } = this, d = this.drill, now = this.time * 1000;
+    const sx = this.shake ? (cellHash((now / 16) | 0, 1, 5) - 0.5) * this.shake : 0, sy = this.shake ? (cellHash((now / 16) | 0, 2, 5) - 0.5) * this.shake : 0;
+    // (The drill is kept in the middle of the screen above the bar, not of the whole screen.)
+    const ox = Math.round(this.cam.x - W / 2 + sx), oy = Math.round(this.cam.y - (H - 44) / 2 + sy);
+    ctx.fillStyle = '#07060b';
+    ctx.fillRect(0, 0, W, H);
+    this.ropes.length = 0; this.drillDrawn = null;
+    // The ground is painted once into 8 x 8 cell pieces and redrawn only when it changes; a frame lays those
+    // down, then draws what moves over them.
+    const x0 = Math.floor(ox / T), y0 = Math.floor(oy / T), x1 = Math.floor((ox + W) / T), y1 = Math.floor((oy + H) / T);
+    for (let cy = y0 >> 3; cy <= y1 >> 3; cy++) for (let cx = x0 >> 3; cx <= x1 >> 3; cx++) ctx.drawImage(this.chunk(cx, cy), cx * 128 - ox, cy * 128 - oy);
+    for (const i of w.lava.keys()) {
+      const x = i % N, y = Math.floor(i / N);
+      if (x >= x0 && x <= x1 && y >= y0 && y <= y1 && w.s(i)) draw(ctx, 'lava', frameAt('lava', `lava-${w.lavaMask(x, y)}`, now + cellHash(x, y, 2) * 300), x * T - ox, y * T - oy);
+    }
+    for (const i of this.frostOpen) {
+      // Ice about to close over a cut: a rim of it creeps in first.
+      const age = this.clock - (w.dug.get(i) ?? this.clock), rim = w.row(i).freeze - 8;
+      if (age <= rim || this.under.has(i)) continue;
+      ctx.globalAlpha = Math.min(0.8, (age - rim) / 8);
+      draw(ctx, 'ice', sheets.ice.tiles[0][0], (i % N) * T - ox, Math.floor(i / N) * T - oy);
+      ctx.globalAlpha = 1;
+    }
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+      const k = w.peek(x, y);
+      if (k !== K.HAZARD && k !== K.HAZARD2 && k !== K.RELIC && k !== K.STEEL && k !== K.PRISM) continue;
+      const i = y * N + x, row = w.row(i), m = w.mask(x, y), ux = x * T - ox - ((m & 4) ? 0 : 1), uy = y * T - oy - ((m & 16) ? 0 : 1);
+      // A prism turns through the gems' colours, each in its own time.
+      if (k === K.PRISM) { draw(ctx, 'finds', frameAt('finds', 'prism', now + cellHash(x, y, 4) * 720), ux, uy); continue; }
+      // Steel glints now and then, each bar in its own time, and is white for a moment as it is quenched.
+      if (k === K.STEEL) { const items = HAZARDS.lava.sheet; draw(ctx, items, this.quenched.has(i) ? 'quench' : frameAt(items, 'steel', now + cellHash(x, y, 4) * 1140), ux, uy); continue; }
+      if (k === K.RELIC) { const rs = rowOf(DIR_BIOME[w.relicAt.indexOf(i)] ?? row.kin).items; draw(ctx, rs, frameAt(rs, 'relic', now), ux, uy); continue; }
+      // A hazard looks as its type does, whatever ground it lies in.
+      const haz = hazOf(k, row);
+      if (!haz) continue;
+      const items = HAZARDS[haz].sheet, s = this.sparks.get(i);
+      draw(ctx, items, s && s.fuse > 0 ? (((now / 60) | 0) % 2 ? 'hazard-b' : 'hazard') : frameAt(items, 'hazard', now + cellHash(x, y, 4) * 900), ux, uy);
+    }
+    // The block being cut cracks further the nearer it is to giving way, and what it would free glows.
+    if (d.dig >= 0) {
+      const stage = Math.min(4, Math.floor(d.digT / d.digDur * 5));
+      if (stage > 0) draw(ctx, 'cracks', `crack-${stage}`, (d.dig % N) * T - ox, Math.floor(d.dig / N) * T - oy);
+      for (const p of this.preview) {
+        ctx.fillStyle = '#ffffff'; ctx.globalAlpha = 0.16 + 0.12 * Math.sin(now / 110);
+        for (const i of p.cells) ctx.fillRect((i % N) * T - ox, Math.floor(i / N) * T - oy, T, T);
+        ctx.globalAlpha = 1;
+      }
+    }
+    // The core, as the winch upgrades have built it, with the scanner's dish on its shoulder.
+    const coreX = (C - 1) * T - ox, coreY = (C - 1) * T - oy;
+    if (coreX > -80 && coreY > -80 && coreX < W + 40 && coreY < H + 40) {
+      const hull = Math.min(5, this.S.lv.winch);
+      draw(ctx, 'core', this.coreFlash > 0 ? `core-flash-${hull}` : this.S.won ? `core-c-${hull}` : frameAt('core', `idle-${hull}`, now), coreX, coreY);
+      draw(ctx, 'dish', frameAt('dish', `dish-${Math.min(4, this.S.lv.scanner)}`, now), coreX + 34, coreY - 6);
+      [[39, 20], [20, 39], [1, 20], [20, 1]].forEach(([u, v], dir) => {
+        if (this.S.relics[dir]) drawScaled(ctx, BIOMES[DIR_BIOME[dir]].items, 'relic', coreX + u, coreY + v, 8, 8);
+      });
+    }
+    this.drawTether(ox, oy);
+    // Lassoed pieces: blocks tremble, crack and break into bits of ground, held in a loop of the tether, and the
+    // hatch they are bound for.
+    for (const h of this.hauls) {
+      const flash = h.t < h.lift && ((h.t * 24) | 0) % 2 === 0, hx = Math.round(HX * T - ox), hy = Math.round(HY * T - oy), hull = [];
+      if (h.hole > 0.5) {
+        const R = h.hole;
+        for (const [rad, color] of [[R + 1.5, '#f4ecd8'], [R + 0.5, '#3a3046'], [R - 0.5, '#07060a']]) {
+          ctx.fillStyle = color;
+          for (let y = -Math.ceil(rad); y <= Math.ceil(rad); y++) { const half = Math.sqrt(rad * rad - y * y); if (half > 0) ctx.fillRect(Math.round(hx - half), hy + y, Math.round(half * 2), 1); }
+        }
+      }
+      for (const s of h.sprites) {
+        const before = h.t - s.go;
+        if (before >= 0) continue;
+        const shake = Math.max(0, 1 + before / 0.3) * 1.4;
+        const px = s.x * T - ox + Math.sin(h.t * 83 + s.x * 3.1) * shake, py = s.y * T - oy - Math.min(1, h.t / h.lift) * 3 + Math.cos(h.t * 71 + s.y * 2.3) * shake;
+        hull.push([px, py], [px + T, py], [px, py + T], [px + T, py + T]);
+        if (px < -T || py < -T || px > W || py > H) continue;
+        draw(ctx, s.tile[0], s.tile[1], px, py);
+        if (s.item) ctx.drawImage(s.item[0], s.item[1][0], s.item[1][1], T, T, Math.round(px), Math.round(py), T, T);
+        if (before > -0.24) draw(ctx, 'cracks', `crack-${Math.min(4, 1 + (((before + 0.24) / 0.06) | 0))}`, px, py);
+        if (flash) { ctx.globalAlpha = 0.6; ctx.fillStyle = '#ffffff'; ctx.fillRect(Math.round(px) + 2, Math.round(py) + 2, 12, 12); ctx.globalAlpha = 1; }
+      }
+      const size = h.size, half = size / 2;
+      for (const b of h.bits) {
+        if (b.st === 2) continue;
+        let x = b.x - ox, y = b.y - oy, sz = size;
+        if (b.st === 1) {
+          // Dropping down the hatch: away from the eye, into the dark.
+          const u = Math.min(1, b.ft / 0.16);
+          x += (hx - x) * u * 0.7; y += (hy - y) * u * 0.7; sz = Math.max(1, Math.round(size * (1 - u * 0.7))); ctx.globalAlpha = 1 - u * 0.8;
+        } else hull.push([x - half, y - half], [x + half, y - half], [x - half, y + half], [x + half, y + half]);
+        if (x > -size && y > -size && x < W + size && y < H + size) {
+          const r = b.s.tile[1], px = Math.round(x - sz / 2), py = Math.round(y - sz / 2);
+          ctx.drawImage(sheets[b.s.tile[0]].image, r[0] + b.sx, r[1] + b.sy, size, size, px, py, sz, sz);
+          if (b.s.item) ctx.drawImage(b.s.item[0], b.s.item[1][0] + b.sx, b.s.item[1][1] + b.sy, size, size, px, py, sz, sz);
+          // The break shows white for a moment.
+          if (h.t - b.born < 0.07) { ctx.globalAlpha = 0.7; ctx.fillStyle = '#ffffff'; ctx.fillRect(px, py, sz, sz); }
+        }
+        ctx.globalAlpha = 1;
+      }
+      // The haul's own rope: a loop round the lot, and a line from it along the way home.
+      if (hull.length && h.doneAt === undefined) {
+        const turn = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]), ring = [];
+        // A big heap has a thousand corners and an outline of a score of them, and sorting them all was the dearest
+        // part of drawing a busy frame. The corners furthest out to the right, down, left and up and along the four
+        // diagonals between make an octagon inside the outline, and a corner inside that cannot be on the outline,
+        // so those are thrown out before the sort. Only a corner inside by more than rounding could account for
+        // goes: one on the octagon's edge, or a hair either side of it, is left to the outline to keep or pass over.
+        // (r is the corner furthest right, dr the one furthest down and right, and so on round.)
+        let r = hull[0], dr = r, d = r, dl = r, l = r, ul = r, u = r, ur = r;
+        for (const p of hull) {
+          const x = p[0], y = p[1];
+          if (x > r[0]) r = p; if (x < l[0]) l = p; if (y > d[1]) d = p; if (y < u[1]) u = p;
+          if (x + y > dr[0] + dr[1]) dr = p; if (x + y < ul[0] + ul[1]) ul = p; if (y - x > dl[1] - dl[0]) dl = p; if (y - x < ur[1] - ur[0]) ur = p;
+        }
+        // (In turn round the compass, with any corner that repeats the one before it left out: an edge of no length
+        // would have every corner on it.)
+        const oct = [r, dr, d, dl, l, ul, u, ur].filter((p, i, all) => p[0] !== all[(i + 7) % 8][0] || p[1] !== all[(i + 7) % 8][1]), n = oct.length;
+        let kept = hull;
+        if (n > 2) {
+          kept = [];
+          for (const p of hull) { let i = 0; while (i < n && turn(oct[i], oct[(i + 1) % n], p) > 1e-3) i++; if (i < n) kept.push(p); }
+        }
+        kept.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+        for (const pass of [0, 1]) {
+          const start = ring.length;
+          for (let k = 0; k < kept.length; k++) {
+            const p = kept[pass ? kept.length - 1 - k : k];
+            while (ring.length >= start + 2 && turn(ring[ring.length - 2], ring[ring.length - 1], p) <= 0) ring.pop();
+            ring.push(p);
+          }
+          ring.pop();
+        }
+        if (ring.length > 2) {
+          let mx = 0, my = 0;
+          for (const p of ring) { mx += p[0] / ring.length; my += p[1] / ring.length; }
+          const own = TETHERS[this.S.lv.tether], dark = { a: '#16121c', b: '#16121c', dash: 1 };
+          const line = [this.along(h, h.S)];
+          for (let k = 1; k < h.route.length; k++) if (h.cum[k] > h.S) line.push(h.route[k]);
+          if (this.over) this.ropes.push({ pts: line.map(([x, y]) => [x - ox, y - oy]).reverse(), style: own });
+          else for (const pass of [1, 0]) for (let i = 0; i + 1 < line.length; i++) {
+            const a = line[i], b = line[i + 1];
+            if (Math.max(a[0], b[0]) - ox < -2 || Math.max(a[1], b[1]) - oy < -2 || Math.min(a[0], b[0]) - ox > W + 2 || Math.min(a[1], b[1]) - oy > H + 2) continue;
+            this.drawSpan(a[0] - ox, a[1] - oy, b[0] - ox, b[1] - oy, pass ? dark : own, pass);
+          }
+          // The loop lies like rope, not like a line drawn from bit to bit: it is the heap's outline as a distance
+          // from its middle in each direction, eased round the loop and over time, and drawn as one smooth curve.
+          // Slack at first, drawn tight as the blocks break up.
+          const M = 28, slack = 2.5 + 3 * Math.max(0, 1 - h.t / h.gathered), want = new Float32Array(M), loop = h.loop ??= new Float32Array(M);
+          const ease = h.loopAt === undefined ? 1 : Math.max(0, Math.min(1, (this.time - h.loopAt) * 16));
+          h.loopAt = this.time;
+          for (let i = 0; i < M; i++) {
+            const ux = Math.cos(i / M * 6.2832), uy = Math.sin(i / M * 6.2832);
+            let far = Infinity;
+            for (let k = 0; k < ring.length; k++) {
+              const a = ring[k], b = ring[(k + 1) % ring.length], ex = b[0] - a[0], ey = b[1] - a[1], den = ux * ey - uy * ex;
+              if (Math.abs(den) < 1e-6) continue;
+              const t = ((a[0] - mx) * ey - (a[1] - my) * ex) / den, v = ((a[0] - mx) * uy - (a[1] - my) * ux) / den;
+              if (t > 0 && v >= -0.001 && v <= 1.001 && t < far) far = t;
+            }
+            want[i] = (far === Infinity ? 4 : far) + slack;
+          }
+          const round = [];
+          for (let i = 0; i < M; i++) {
+            loop[i] += (want[(i + M - 1) % M] * 0.25 + want[i] * 0.5 + want[(i + 1) % M] * 0.25 - loop[i]) * ease;
+            round.push([mx + Math.cos(i / M * 6.2832) * loop[i], my + Math.sin(i / M * 6.2832) * loop[i]]);
+          }
+          if (Math.max(mx, my) > -80 && mx < W + 80 && my < H + 80) {
+            if (this.over) this.ropes.push({ pts: round, style: own, loop: true });
+            else for (const pass of [1, 0]) this.rope(round, true, pass ? dark : own, pass);
+          }
+        }
+      }
+    }
+    // Spore clouds.
+    for (const c of this.clouds) {
+      ctx.globalAlpha = Math.min(1, (c.life - c.t) * 2) * 0.85;
+      const f = frameAt('spore', 'area', (c.t * 1000) % (duration('spore', 'area') * 0.8));
+      if (f) draw(ctx, 'spore', f, (c.x + 0.5) * T - ox - f[2] / 2, (c.y + 0.5) * T - oy - f[3] / 2);
+      ctx.globalAlpha = 1;
+    }
+    // The drill: turned to its heading, biting into what it cuts, stretched by speed and squashed by a knock.
+    const speed = Math.hypot(d.vx, d.vy), bite = d.dig >= 0 ? 2 + Math.min(1, d.digT / d.digDur) * 4 + Math.sin(d.digT * 70) : 0;
+    const dx = d.x * T - ox + Math.cos(d.ang) * bite, dy = d.y * T - oy + Math.sin(d.ang) * bite;
+    const along = d.squash > 0 ? 0.82 : 1 + Math.min(0.3, speed / 90), across = d.squash > 0 ? 1.18 : 1 - Math.min(0.14, speed / 200);
+    // Where there is the fine canvas (the tether's), the drill is drawn on it, at the screen's own resolution: it
+    // stands exactly where it is, not on the nearest pixel of the game's, and turned to any heading each of its
+    // pixels is still a clean square (`drawRopes`). With a panel up, and where there is no such canvas, it is drawn
+    // here with the ground.
+    const wake = speed > 14 ? [3, 2, 1].map(g => [0.34 - g * 0.09, dx - d.vx / speed * g * 7, dy - d.vy / speed * g * 7]) : [];
+    this.drillDrawn = [dx, dy, d.ang, this.S.lv.drill, this.S.lv.momentum, d.mode !== 'dead' && (d.dig >= 0 || speed > 1) ? now : -1, along, across];
+    // A wreck is dark; a drill that has just been knocked blinks for as long as nothing can knock it again.
+    const alpha = d.mode === 'dead' ? 0.5 : this.shield > 0 && ((now / 70) | 0) % 2 === 0 ? 0.35 : 1, hurt = this.hurt > 0 && ((now / 50) | 0) % 2 === 1;
+    this.drillFine = this.over && this.shopRise <= 0.02 && this.labRise <= 0.02 ? { wake, alpha, hurt } : null;
+    if (!this.drillFine) {
+      // Speed leaves a wake: fading copies of the drill back along the way it came.
+      for (const [a, wx, wy] of wake) { ctx.globalAlpha = a; this.drawDrill(wx, wy, d.ang, this.S.lv.drill, this.S.lv.momentum, -1, along, across); }
+      ctx.globalAlpha = alpha;
+      this.drawDrill(...this.drillDrawn);
+      ctx.globalAlpha = 1;
+      if (hurt) { ctx.globalAlpha = 0.5; ctx.fillStyle = '#ff5a4a'; ctx.fillRect(Math.round(dx) - 5, Math.round(dy) - 5, 10, 10); ctx.globalAlpha = 1; }
+    }
+    for (const e of this.effects) {
+      const f = frameAt(e.sheet, e.animation, e.t);
+      if (f) draw(ctx, e.sheet, f, e.x - ox - f[2] / 2, e.y - oy - f[3] / 2);
+    }
+    for (const p of this.parts) {
+      const px = Math.round(p.x - ox), py = Math.round(p.y - oy), fade = 1 - p.t / p.life;
+      if (px < 0 || py < 0 || px >= W || py >= H) continue;
+      ctx.globalAlpha = Math.min(1, fade * 2); ctx.fillStyle = p.color;
+      if (p.star) { const arm = fade > 0.5 ? 2 : 1; ctx.fillRect(px - arm, py, arm * 2 + 1, 1); ctx.fillRect(px, py - arm, 1, arm * 2 + 1); }
+      else ctx.fillRect(px, py, p.size, p.size);
+    }
+    for (const m of this.motes) {
+      if (w.peek(Math.floor(m.x / T), Math.floor(m.y / T)) !== K.EMPTY) continue;
+      ctx.globalAlpha = Math.max(0, Math.min(1, m.t, m.life - m.t)) * (0.35 + 0.3 * Math.sin(this.time * 3 + m.seed)); ctx.fillStyle = m.mote[0];
+      ctx.fillRect(Math.round(m.x - ox), Math.round(m.y - oy), 1, 1);
+    }
+    ctx.globalAlpha = 1;
+    { const t0 = performance.now(); this.light(ox, oy); this.timed('light', t0); }
+    // Ground lying loose: cut off from the world, waiting for the tether to be drawn round it. It shows through the
+    // dark, with a dotted edge that crawls round it.
+    if (this.pieceOf.size) {
+      // (The cells in view are asked whether they are loose: however much ground lies loose elsewhere.)
+      const set = this.pieceOf, crawl = (now / 90) | 0;
+      for (let cy = Math.floor(oy / T); cy <= Math.floor((oy + H) / T); cy++) for (let cx = Math.floor(ox / T); cx <= Math.floor((ox + W) / T); cx++) {
+        const i = cy * N + cx;
+        if (!set.has(i)) continue;
+        const px = cx * T - ox, py = cy * T - oy;
+        ctx.fillStyle = '#84dcff'; ctx.globalAlpha = 0.16 + 0.08 * Math.sin(now / 260);
+        ctx.fillRect(px, py, T, T);
+        ctx.globalAlpha = 0.95;
+        for (let n = 0; n < T; n++) {
+          if ((n + crawl) & 3) continue;
+          if (!set.has(i - N)) ctx.fillRect(px + n, py, 1, 1);
+          if (!set.has(i + N)) ctx.fillRect(px + T - 1 - n, py + T - 1, 1, 1);
+          if (!set.has(i - 1)) ctx.fillRect(px, py + T - 1 - n, 1, 1);
+          if (!set.has(i + 1)) ctx.fillRect(px + T - 1, py + n, 1, 1);
+        }
+      }
+      ctx.globalAlpha = 1;
+    }
+    for (const r of this.rings) {
+      // A ring of whole pixels spreading from a point.
+      const u = r.t / 0.5, rad = r.reach * (1 - (1 - u) * (1 - u)), n = Math.max(12, (rad * 1.6) | 0);
+      ctx.globalAlpha = (1 - u) * 0.9; ctx.fillStyle = r.color;
+      for (let a = 0; a < n; a++) ctx.fillRect(Math.round(r.x - ox + Math.cos(a / n * 6.283) * rad), Math.round(r.y - oy + Math.sin(a / n * 6.283) * rad), 1, 1);
+    }
+    ctx.globalAlpha = 1;
+    if (this.flash > 0) { ctx.globalAlpha = Math.min(0.45, this.flash * 1.4); ctx.fillStyle = '#fff6c8'; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1; }
+    for (const p of this.popups) {
+      const py = p.y - oy - p.t * 18, px = p.x - ox;
+      ctx.globalAlpha = Math.min(1, (0.9 - p.t) * 4);
+      if (typeof p.icon === 'string') draw(ctx, 'icons', p.icon, px - textWidth(p.label) / 2 - 11, py - 1);
+      else if (p.icon) this.drawMineral(ctx, p.icon[1], px - textWidth(p.label) / 2 - 13, py - 3);
+      text(ctx, p.label, px, py, p.color, 0.5);
+      ctx.globalAlpha = 1;
+    }
+    { const t0 = performance.now(); this.drawHud(ox, oy); this.timed('hud', t0); }
+    if (this.over) { const t0 = performance.now(); this.drawRopes(ox, oy); this.timed('ropes', t0); }
+  }
+
+  // The drill as its upgrades have made it (the bit's metal, whatever the ram has bolted on), drawn about its
+  // middle at any heading, `along` and `across` times its size.
+  drawDrill(x, y, ang, bit, ram, now, along = 1, across = 1, ctx = this.ctx, plates = this.S.lv.hull, fitted = null) {
+    // (The levels of the late game have no pictures of their own yet: bit, ram and plates are drawn as at the last that has.)
+    bit = Math.min(bit, 4); ram = Math.min(ram, 4); plates = Math.min(plates, 4);
+    const body = now >= 0 ? frameAt('drill', `right-${bit}`, now) : `right-a-${bit}`, s = sheets.drill;
+    ctx.save();
+    // (On the game's own canvas it stands on a whole pixel; on a finer one, exactly where it is.)
+    if (ctx === this.ctx) ctx.translate(Math.round(x), Math.round(y)); else ctx.translate(x, y);
+    ctx.rotate(ang);
+    ctx.scale(along, across);
+    const fits = WORKS.filter(u => this.S.lv[u.id] > 0 || u.id === fitted).map(u => `fit-${u.id}`);
+    for (const frame of [...(ram > 0 ? [`ram-right-${ram}`] : []), body, ...(plates > 0 ? [`plate-right-${plates}`] : []), ...fits]) {
+      const r = typeof frame === 'string' ? s.frames[frame] : frame;
+      ctx.drawImage(s.image, r[0], r[1], r[2], r[3], -8, -8, 16, 16);
+    }
+    ctx.restore();
+  }
+  // The tether and the loops round hauls, drawn on the canvas laid over the game at the screen's own resolution: smooth
+  // lines whatever way they lie, rounded where they turn a corner, then shaded by the same darkness as the ground and
+  // cut away where the interface is. Lengths here are in the game's pixels; the canvas is `scale` times finer.
+  drawRopes(ox, oy) {
+    const o = this.overCtx, k = this.scale, { W, H } = this;
+    o.setTransform(1, 0, 0, 1, 0, 0);
+    if (this.ropeDirty) { const [x0, y0, x1, y1] = this.ropeDirty; o.clearRect(x0 * k, y0 * k, (x1 - x0) * k, (y1 - y0) * k); }
+    this.ropeDirty = null;
+    const fine = this.drillFine && this.drillDrawn ? this.drillFine : null;
+    if ((!this.ropes.length && !fine) || this.shopRise > 0.02 || this.labRise > 0.02) return;
+    o.setTransform(k, 0, 0, k, 0, 0);
+    o.lineJoin = 'round';
+    let bx0 = Infinity, by0 = Infinity, bx1 = -Infinity, by1 = -Infinity;
+    for (const r of this.ropes) {
+      const pts = r.pts;
+      if (pts.length < 2) continue;
+      const wide = r.style.thick ? 2 : 1.4, braid = r.style.b !== r.style.a;
+      // A rope that is no loop is traced only where it crosses the view (`ropeRuns`). Far out nearly all of the
+      // tether lies off the screen, and so does nearly all of the rope of every haul on its way home: traced whole,
+      // three times each, a dozen hauls a thousand cells out were a dozen ropes twenty thousand pixels long in every
+      // frame, and a phone stood still drawing them.
+      const runs = r.loop ? null : this.ropeRuns(pts, braid);
+      if (runs !== null && !runs.length) continue;
+      const trace = (dy, only = null) => {
+        o.beginPath();
+        if (r.loop) {
+          // A closed curve through the middles of its sides.
+          const n = pts.length, mid = i => [(pts[i % n][0] + pts[(i + 1) % n][0]) / 2, (pts[i % n][1] + pts[(i + 1) % n][1]) / 2 + dy];
+          o.moveTo(...mid(0));
+          for (let i = 1; i <= n; i++) o.quadraticCurveTo(pts[i % n][0], pts[i % n][1] + dy, ...mid(i));
+          o.closePath();
+          return;
+        }
+        for (const [from, to] of only ? [only] : runs) {
+          o.moveTo(pts[from][0], pts[from][1] + dy);
+          for (let i = from + 1; i <= to; i++) {
+            const [x, y] = pts[i], [px, py] = pts[i - 1];
+            if (r.wob && Math.hypot(x - px, y - py) < 600) {
+              // A plucked string: each span bows across itself.
+              const len = Math.hypot(x - px, y - py) || 1;
+              o.quadraticCurveTo((px + x) / 2 - (y - py) / len * r.wob * 2, (py + y) / 2 + (x - px) / len * r.wob * 2 + dy, x, y + dy);
+            } else if (i < to) {
+              // Round the corner, as wide as the shorter span beside it allows.
+              const nx = pts[i + 1][0], ny = pts[i + 1][1];
+              o.arcTo(x, y + dy, nx, ny + dy, Math.min(ROUND, Math.hypot(x - px, y - py) / 2, Math.hypot(nx - x, ny - y) / 2));
+            } else o.lineTo(x, y + dy);
+          }
+        }
+      };
+      o.setLineDash([]); o.lineCap = 'round';
+      o.strokeStyle = 'rgba(10, 8, 16, 0.7)'; o.lineWidth = wide + 1.2; trace(0.8); o.stroke();
+      o.strokeStyle = r.style.a; o.lineWidth = wide; trace(0); o.stroke();
+      if (braid) {
+        // The second strand of the braid, in short lengths along it: each part of the rope begins its lengths where
+        // the whole rope would have them, so the braid stays put on the ground whatever part of it is in view.
+        o.lineCap = 'butt'; o.setLineDash([BRAID * r.style.dash, BRAID * (1 - r.style.dash)]);
+        o.strokeStyle = r.style.b; o.lineWidth = wide * 0.62;
+        if (r.loop) { trace(0); o.stroke(); }
+        else for (const run of runs) { o.lineDashOffset = run[2] % BRAID; trace(0, run); o.stroke(); }
+        o.lineDashOffset = 0; o.setLineDash([]);
+      }
+      if (r.loop) for (const [x, y] of pts) { bx0 = Math.min(bx0, x); by0 = Math.min(by0, y); bx1 = Math.max(bx1, x); by1 = Math.max(by1, y); }
+      else for (const [from, to] of runs) for (let i = from; i <= to; i++) { const [x, y] = pts[i]; bx0 = Math.min(bx0, x); by0 = Math.min(by0, y); bx1 = Math.max(bx1, x); by1 = Math.max(by1, y); }
+    }
+    // (The drill and its wake are drawn here too: their place is cleared with the ropes'.)
+    if (fine) for (const [x, y] of [[this.drillDrawn[0], this.drillDrawn[1]], ...fine.wake.map(([, wx, wy]) => [wx, wy])]) { bx0 = Math.min(bx0, x - 8); by0 = Math.min(by0, y - 8); bx1 = Math.max(bx1, x + 8); by1 = Math.max(by1, y + 8); }
+    if (bx0 > bx1) return;
+    bx0 = Math.max(0, Math.floor(bx0 - 12)); by0 = Math.max(0, Math.floor(by0 - 12)); bx1 = Math.min(W, Math.ceil(bx1 + 12)); by1 = Math.min(H, Math.ceil(by1 + 12));
+    this.ropeDirty = [bx0, by0, bx1, by1];
+    // In the dark it is as dim as the ground it lies on.
+    if (this.dark && this.darkAt) {
+      o.globalCompositeOperation = 'source-atop'; o.imageSmoothingEnabled = true; o.globalAlpha = 0.85;
+      o.drawImage(this.dark, ...this.darkAt);
+      o.globalCompositeOperation = 'source-over'; o.globalAlpha = 1;
+    }
+    // The tether lies under the drill: it is cut away in the drill's own shape, so that at the core, where its end
+    // is made fast under the drill, and wherever the drill flies back over it, the drill is whole on top.
+    if (this.drillDrawn) {
+      o.globalCompositeOperation = 'destination-out'; o.imageSmoothingEnabled = false;
+      this.drawDrill(...this.drillDrawn, o);
+      o.globalCompositeOperation = 'source-over';
+    }
+    // The drill itself, with its wake behind it, each pixel of it as many of the screen's as the game is scaled by.
+    if (fine) {
+      const [dx, dy, ang, bit, ram, , along, across] = this.drillDrawn;
+      o.imageSmoothingEnabled = false;
+      for (const [a, wx, wy] of fine.wake) { o.globalAlpha = a; this.drawDrill(wx, wy, ang, bit, ram, -1, along, across, o); }
+      o.globalAlpha = fine.alpha;
+      this.drawDrill(...this.drillDrawn, o);
+      o.globalAlpha = 1;
+      if (fine.hurt) { o.globalAlpha = 0.5; o.fillStyle = '#ff5a4a'; o.fillRect(dx - 5, dy - 5, 10, 10); o.globalAlpha = 1; }
+    }
+    // Never over the interface: the bar at the foot, the map, the buttons, and the small panels that come and go under the
+    // top bar (a place's plate, the count of specimens), which the frame's own drawing of the interface listed.
+    o.clearRect(0, H - 44, W, 44);
+    if (this.mapRect) o.clearRect(...this.mapRect);
+    for (const b of this.buttons) o.clearRect(b.x, b.y, b.w, b.h);
+    for (const p of this.panels) o.clearRect(...p);
+  }
+  // The parts of a rope that cross the view, each [its first point, its last, how far along the whole rope it
+  // begins]. A part is the spans that come within a few pixels of the screen, and one span more at each end so that
+  // the corners beside the view are rounded as they are in the whole rope; parts that meet are one. The distance
+  // (asked for a braided rope: it is where the braid's short lengths begin) is measured along the rope as it is
+  // drawn, round every corner's arc and not through its point, so a part traced alone lies on the pixels the whole
+  // rope would have drawn there. Nothing here is in proportion to the rope's length but a little arithmetic.
+  ropeRuns(pts, braid = false) {
+    const { W, H } = this, n = pts.length, m = 12, runs = [];
+    for (let i = 1; i < n; i++) {
+      const a = pts[i - 1], b = pts[i];
+      if (Math.max(a[0], b[0]) < -m || Math.min(a[0], b[0]) > W + m || Math.max(a[1], b[1]) < -m || Math.min(a[1], b[1]) > H + m) continue;
+      const from = Math.max(0, i - 2), to = Math.min(n - 1, i + 1), last = runs[runs.length - 1];
+      if (last && from <= last[1]) last[1] = to; else runs.push([from, to, 0]);
+    }
+    const far = runs.length ? runs[runs.length - 1][0] : 0;
+    if (!braid || far === 0) return runs;
+    // Along the rope from its first point: straight to where each corner's arc begins, round the arc, and on from
+    // where it ends. A part that begins at a corner begins at the corner's own point, short of the arc's end by
+    // the length of its tangent.
+    let cx = pts[0][0], cy = pts[0][1], len = 0, next = runs[0][0] === 0 ? 1 : 0;
+    for (let i = 1; i <= far; i++) {
+      const [x, y] = pts[i], [px, py] = pts[i - 1], [nx, ny] = pts[i + 1];
+      const r = Math.min(ROUND, Math.hypot(x - px, y - py) / 2, Math.hypot(nx - x, ny - y) / 2);
+      const ax = cx - x, ay = cy - y, al = Math.hypot(ax, ay), bx = nx - x, by = ny - y, bl = Math.hypot(bx, by);
+      let t = 0, arc = 0;
+      if (r > 0 && al > 0 && bl > 0) {
+        const cos = Math.max(-1, Math.min(1, (ax * bx + ay * by) / (al * bl)));
+        if (1 - cos > 1e-9) { t = r * Math.sqrt((1 + cos) / (1 - cos)); arc = r * (Math.PI - Math.acos(cos)); }
+      }
+      len += Math.abs(al - t) + arc;
+      cx = x + (bl ? bx / bl * t : 0); cy = y + (bl ? by / bl * t : 0);
+      while (next < runs.length && runs[next][0] === i) runs[next++][2] = len - t;
+    }
+    return runs;
+  }
+  // A rope through `pts` (a closed loop if `closed`), as one clean line of pixels: a smooth curve through the points,
+  // with no doubled corners.
+  rope(pts, closed, style, off = 0) {
+    const { ctx } = this, n = pts.length, px = [];
+    const at = i => closed ? pts[(i + n) % n] : pts[Math.max(0, Math.min(n - 1, i))];
+    for (let i = 0; i < (closed ? n : n - 1); i++) {
+      const a = at(i - 1), b = at(i), c = at(i + 1), e = at(i + 2), steps = Math.max(2, Math.ceil(Math.hypot(c[0] - b[0], c[1] - b[1]) * 2));
+      for (let k = 0; k < steps; k++) {
+        const t = k / steps, t2 = t * t, t3 = t2 * t;
+        const X = Math.round(0.5 * (2 * b[0] + (c[0] - a[0]) * t + (2 * a[0] - 5 * b[0] + 4 * c[0] - e[0]) * t2 + (3 * b[0] - a[0] - 3 * c[0] + e[0]) * t3));
+        const Y = Math.round(0.5 * (2 * b[1] + (c[1] - a[1]) * t + (2 * a[1] - 5 * b[1] + 4 * c[1] - e[1]) * t2 + (3 * b[1] - a[1] - 3 * c[1] + e[1]) * t3)) + off;
+        const last = px.length - 2;
+        if (last >= 0 && px[last] === X && px[last + 1] === Y) continue;
+        // A pixel that only joins two that already touch at a corner is taken out.
+        if (last >= 2 && Math.abs(X - px[last - 2]) === 1 && Math.abs(Y - px[last - 1]) === 1) { px[last] = X; px[last + 1] = Y; continue; }
+        px.push(X, Y);
+      }
+    }
+    ctx.fillStyle = style.a;
+    for (let k = 0; k < px.length; k += 2) ctx.fillRect(px[k], px[k + 1], 1, 1);
+    if (style.b !== style.a) { ctx.fillStyle = style.b; for (let k = 0; k < px.length; k += 2) if (((k >> 1) & 3) < style.dash * 4) ctx.fillRect(px[k], px[k + 1], 1, 1); }
+  }
+  // A span of tether in the style of a level of reach.
+  drawSpan(x0, y0, x1, y1, style, off = 0) {
+    const { ctx } = this;
+    ctx.fillStyle = style.a; this.line(x0, y0 + off, x1, y1 + off);
+    if (style.b !== style.a) { ctx.fillStyle = style.b; this.line(x0, y0 + off, x1, y1 + off, style.dash); }
+  }
+  chunk(cx, cy) {
+    const key = cy * 4096 + cx;
+    let c = this.chunks.get(key);
+    if (!c) {
+      // Far-off pieces are dropped, so a long journey does not hold every piece it passed.
+      if (this.chunks.size > 180) for (const [k, old] of this.chunks) if (Math.abs(old.cx - cx) > 9 || Math.abs(old.cy - cy) > 12) this.chunks.delete(k);
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = 128;
+      c = { canvas, ctx: canvas.getContext('2d', { alpha: false }), v: -1, cx, cy, ops: null };
+      this.chunks.set(key, c);
+    }
+    // A piece is drawn again only if its drawing has changed (`Sketch`).
+    if (c.v !== this.version) {
+      c.v = this.version;
+      sketch.n = 0; this.paint(sketch, cx * 8, cy * 8);
+      if (!sketch.same(c.ops)) { c.ops = sketch.ops.slice(0, sketch.n); replay(c.ops, c.ctx); }
+    }
+    return c.canvas;
+  }
+  // Everything in a piece of ground that stays put: floors, rock, ore and armour. It is drawn into a Sketch, which
+  // takes only the calls made here: a new kind of call wants a place in the Sketch first.
+  paint(ctx, x0, y0) {
+    const w = this.world;
+    ctx.globalAlpha = 1; ctx.fillStyle = '#07060b'; ctx.fillRect(0, 0, 128, 128);
+    for (let y = y0; y < y0 + 8; y++) for (let x = x0; x < x0 + 8; x++) {
+      const i = y * N + x, k = w.k(i), b = w.b(i), row = rowOf(b), px = (x - x0) * T, py = (y - y0) * T;
+      const floorSheet = row.floor, floors = sheets[floorSheet].tiles[255], floor = floors[(cellHash(x, y, 1) * floors.length) | 0];
+      if (!w.s(i)) {
+        // Ground the scanner has not reached: only whose it is shows, dimly.
+        if (k !== K.BEDROCK) { ctx.globalAlpha = 0.42; draw(ctx, floorSheet, floor, px, py); ctx.globalAlpha = 1; }
+        continue;
+      }
+      const m = k === K.EMPTY ? 255 : w.mask(x, y);
+      if (m !== 255 || k === K.EMPTY) draw(ctx, floorSheet, floor, px, py);
+      if (k === K.EMPTY) continue;
+      const sheet = this.rockSheet(k, b), rects = sheets[sheet].tiles[m];
+      draw(ctx, sheet, rects[(cellHash(x, y, 3) * rects.length) | 0], px, py);
+      const ux = px - ((m & 4) ? 0 : 1), uy = py - ((m & 16) ? 0 : 1);
+      if (k === K.SLATE || k === K.VAULT) draw(ctx, 'tough', k === K.SLATE ? 'slate' : 'vault', ux, uy);
+      const over = this.overlay(k, row, i);
+      if (over && over[1] !== 'hazard' && over[1] !== 'relic' && over[1] !== 'prism') draw(ctx, over[0], over[1], ux, uy);
+      // A glaze's panes: a line of light along the top and left of each, a line of dark along its foot and right,
+      // wherever the ice beside is of another pane.
+      if (row.pocket?.twist === 'pane') {
+        const Z = w.pocketOf(x, y);
+        if (Z !== null && Z.row === b) {
+          const own = w.paneKey(Z, x, y), other = (u, v) => w.k(i + v * N + u) !== K.EMPTY && w.b(i + v * N + u) === b && w.paneKey(Z, x + u, y + v) !== own;
+          ctx.fillStyle = 'rgba(200, 244, 255, 0.5)';
+          if (other(-1, 0)) ctx.fillRect(px, py, 1, T);
+          if (other(0, -1)) ctx.fillRect(px, py, T, 1);
+          ctx.fillStyle = 'rgba(6, 16, 38, 0.6)';
+          if (other(1, 0)) ctx.fillRect(px + T - 1, py, 1, T);
+          if (other(0, 1)) ctx.fillRect(px, py + T - 1, T, 1);
+        }
+      }
+    }
+  }
+
+  // Light spreads from a cell through open ground, losing a little with every cell, and soaks a short way into
+  // the rock it meets: so it takes the shape of the tunnels and lights the faces of their walls. It is worked out
+  // in a window of cells round the view; `want` holds the brightest light to reach each cell this frame.
+  shine(cx, cy, power, reach) {
+    const L = this.lightMap, { want, solid: sol, cols, rows, queue, step } = L, x = cx - L.x0, y = cy - L.y0;
+    if (x < 1 || y < 1 || x >= cols - 1 || y >= rows - 1 || want[y * cols + x] >= power) return;
+    const qlen = queue.length, fade = power / reach;
+    let head = 0, tail = 0;
+    want[y * cols + x] = power; queue[tail++] = y * cols + x;
+    while (head < tail) {
+      const at = queue[head++], here = want[at], qx = at % cols, qy = (at / cols) | 0;
+      if (qx < 1 || qy < 1 || qx >= cols - 1 || qy >= rows - 1) continue;
+      const solid = sol[at];
+      for (let s = 0; s < 8; s++) {
+        const j = at + step[s];
+        // Rock drinks light fast: a face is lit, the cell behind it barely.
+        const next = here - fade * LIGHT_FAR[s] * (solid || sol[j] ? 2.6 : 1);
+        if (next > want[j] + 0.01 && tail < qlen) { want[j] = next; queue[tail++] = j; }
+      }
+    }
+  }
+  // The dark, in the colour of the ground the drill is in, thinned wherever light reaches. It is worked out a cell
+  // at a time and drawn smoothed, and each cell's light eases toward what it should be, so light trails the drill.
+  light(ox, oy) {
+    const { ctx, W, H } = this, d = this.drill, w = this.world, pad = 10;
+    // The window is as many cells across and down whatever part of a cell the view begins on: were it a cell wider
+    // on some frames than on others (as the view scrolls, wherever the screen is not a whole number of cells
+    // across), the light would be made again from black each time, and the whole screen would flicker.
+    const vx0 = Math.floor(ox / T) - 1, vy0 = Math.floor(oy / T) - 1, vx1 = vx0 + Math.ceil(W / T) + 2, vy1 = vy0 + Math.ceil(H / T) + 2;
+    const x0 = vx0 - pad, y0 = vy0 - pad, cols = vx1 - vx0 + 1 + pad * 2, rows = vy1 - vy0 + 1 + pad * 2;
+    let L = this.lightMap;
+    if (!L || L.cols !== cols || L.rows !== rows) L = this.lightMap = { x0, y0, cols, rows, want: new Float32Array(cols * rows), lit: new Float32Array(cols * rows), next: new Float32Array(cols * rows), solid: new Uint8Array(cols * rows), queue: new Int32Array(4096), step: Int32Array.from(LIGHT_STEP, ([u, v]) => v * cols + u) };
+    // The window follows the view: what was lit keeps its place in the world.
+    if (L.x0 !== x0 || L.y0 !== y0) {
+      const sx = x0 - L.x0, sy = y0 - L.y0;
+      L.next.fill(0);
+      for (let y = Math.max(0, -sy); y < Math.min(rows, rows - sy); y++) for (let x = Math.max(0, -sx); x < Math.min(cols, cols - sx); x++) L.next[y * cols + x] = L.lit[(y + sy) * cols + x + sx];
+      [L.lit, L.next] = [L.next, L.lit]; L.x0 = x0; L.y0 = y0;
+    }
+    L.want.fill(0);
+    const keys = L.keys ??= [];
+    keys.length = 0;
+    for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) {
+      const k = w.peek(x0 + x, y0 + y);
+      L.solid[y * cols + x] = k === K.EMPTY ? 0 : 1;
+      if (k === K.KEY) keys.push((y0 + y) * N + x0 + x);
+    }
+    // The drill's lamp is steady, and it stands where the drill is, not in the middle of the drill's cell: it is
+    // lit from each open cell about the drill, less by the way from the drill to that cell's middle. Its power is
+    // a little over 1 (light is capped at 1), so the four cells the drill is among are all fully lit and the
+    // light under the drill is the same wherever in a cell it is. (Lit from its cell's middle alone, brighter
+    // while the bit cut and with a waver, the light pulsed as the drill crossed each cell and at every cut.)
+    const LAMP = this.val('lamp'), dcx = Math.floor(d.x), dcy = Math.floor(d.y);
+    for (const [u, v] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
+      const cx = Math.floor(d.x - 0.5) + u, cy = Math.floor(d.y - 0.5) + v, lx = cx - x0, ly = cy - y0;
+      if ((cx !== dcx || cy !== dcy) && (lx < 0 || ly < 0 || lx >= cols || ly >= rows || L.solid[ly * cols + lx])) continue;
+      const power = 1.1 - Math.hypot(d.x - cx - 0.5, d.y - cy - 0.5) / LAMP;
+      this.shine(cx, cy, power, LAMP * power);
+    }
+    this.shine(C, C, 1 + this.coreFlash * 1.5 + Math.sin(this.time * 2) * 0.04, 8 + this.coreFlash * 10);
+    let lavas = 0;
+    for (const i of w.lava.keys()) { if (lavas++ > 40) break; this.shine(i % N, Math.floor(i / N), 0.85, 3.5); }
+    for (const e of this.effects) if (e.sheet === 'zap' || e.sheet === 'haul' || e.sheet === 'bank') this.shine(Math.floor(e.x / T), Math.floor(e.y / T), 1, 6);
+    for (const [i, sp] of this.sparks) if (sp.fuse > 0) this.shine(i % N, Math.floor(i / N), 0.9, 3);
+    for (const i of this.quenched.keys()) this.shine(i % N, Math.floor(i / N), 0.8, 2.5);
+    // Keystones that have been seen glint, so that they read from across the screen: the nearest dozen.
+    if (keys.length > KEY_GLINTS) {
+      const far = i => ((i % N) + 0.5 - d.x) ** 2 + (Math.floor(i / N) + 0.5 - d.y) ** 2;
+      keys.sort((a, b) => far(a) - far(b)); keys.length = KEY_GLINTS;
+    }
+    this.glints = keys.length;
+    for (const i of keys) this.shine(i % N, Math.floor(i / N), KEY_GLINT, KEY_GLOW);
+    // One pixel of darkness per cell, drawn sixteen times the size and smoothed.
+    const mcols = vx1 - vx0 + 1, mrows = vy1 - vy0 + 1;
+    let map = this.dark;
+    if (!map || map.width !== mcols || map.height !== mrows) { map = this.dark = document.createElement('canvas'); map.width = mcols; map.height = mrows; this.darkData = null; }
+    // (The dark's own little canvas is kept in memory, not on the graphics card: pixels are written to it every
+    // frame, and writing pixels to a canvas the card holds stalled a frame for 50 to 90 ms every so often on a
+    // desktop, several times that on a phone. `willReadFrequently` is how a canvas is asked to stay in memory.)
+    const mc = map.getContext('2d', { willReadFrequently: true }), data = this.darkData ??= mc.createImageData(mcols, mrows), px = data.data, [r, g, b] = this.gloom;
+    // (Eased by the time that has passed, not by the frame: the same on a screen of any rate. At sixty frames a
+    // second this is three tenths of the way each frame.)
+    const since = Math.max(0, Math.min(0.1, this.time - (this.litAt ?? this.time - 1 / 60))), ease = 1 - Math.exp(-since * 21.4);
+    this.litAt = this.time;
+    for (let i = 0; i < L.lit.length; i++) L.lit[i] += (Math.min(1, L.want[i]) - L.lit[i]) * ease;
+    for (let y = 0; y < mrows; y++) for (let x = 0; x < mcols; x++) {
+      const l = L.lit[(y + pad) * cols + x + pad], o = (y * mcols + x) * 4;
+      px[o] = r; px[o + 1] = g; px[o + 2] = b; px[o + 3] = this.daylight ? 0 : 168 * this.murk * (1 - l * (2 - l));
+    }
+    mc.putImageData(data, 0, 0);
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(map, vx0 * T - ox, vy0 * T - oy, mcols * T, mrows * T);
+    ctx.imageSmoothingEnabled = false;
+    this.darkAt = [vx0 * T - ox, vy0 * T - oy, mcols * T, mrows * T];
+    // The core's slow turning rays.
+    const cxp = HX * T - ox, cyp = HY * T - oy;
+    if (cxp > -80 && cyp > -80 && cxp < W + 80 && cyp < H + 80) {
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.fillStyle = '#5cc4f0';
+      for (let ray = 0; ray < 6; ray++) {
+        const a = this.time * 0.25 + ray * 1.0472, len = 46 + Math.sin(this.time * 1.7 + ray * 2) * 10 + this.coreFlash * 80;
+        ctx.globalAlpha = 0.07 + this.coreFlash * 0.5;
+        this.line(cxp + Math.cos(a) * 24, cyp + Math.sin(a) * 24, cxp + Math.cos(a) * len, cyp + Math.sin(a) * len);
+        this.line(cxp + Math.cos(a + 0.04) * 24, cyp + Math.sin(a + 0.04) * 24, cxp + Math.cos(a + 0.04) * len * 0.8, cyp + Math.sin(a + 0.04) * len * 0.8);
+      }
+      ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+    }
+  }
+
+  // A line of whole pixels, clipped to the view; `dash` (0-1) draws only that share of every 4 pixels.
+  line(x0, y0, x1, y1, dash = 1) {
+    const { ctx, W, H } = this;
+    // A long line is cut down to the part that crosses the view before it is walked.
+    const dxf = x1 - x0, dyf = y1 - y0;
+    let t0 = 0, t1 = 1;
+    for (const [p, q] of [[-dxf, x0 + 2], [dxf, W + 2 - x0], [-dyf, y0 + 2], [dyf, H + 2 - y0]]) {
+      if (p === 0) { if (q < 0) return; continue; }
+      const t = q / p;
+      if (p < 0) { if (t > t1) return; if (t > t0) t0 = t; } else { if (t < t0) return; if (t < t1) t1 = t; }
+    }
+    const skip = Math.round(Math.max(Math.abs(dxf), Math.abs(dyf)) * t0);
+    x1 = Math.round(x0 + dxf * t1); y1 = Math.round(y0 + dyf * t1); x0 = Math.round(x0 + dxf * t0); y0 = Math.round(y0 + dyf * t0);
+    const dx = Math.abs(x1 - x0), dy = Math.abs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
+    let err = dx - dy, n = skip;
+    for (let guard = 0; guard < 4000; guard++) {
+      if (x0 >= 0 && y0 >= 0 && x0 < W && y0 < H && (dash >= 1 || (n & 3) < dash * 4)) ctx.fillRect(x0, y0, 1, 1);
+      if (x0 === x1 && y0 === y1) break;
+      const e2 = 2 * err;
+      if (e2 > -dy) { err -= dy; x0 += sx; }
+      if (e2 < dx) { err += dx; y0 += sy; }
+      n++;
+    }
+  }
+  drawTether(ox, oy) {
+    const { ctx, W, H } = this, d = this.drill, R = this.val('tether');
+    // Where the tether's reach ends: a faint dotted ring, bright for a moment when the drill is turned back by it.
+    const cx = HX * T - ox, cy = HY * T - oy, rad = (R + 0.5) * T, off = Math.hypot(W / 2 - cx, H / 2 - cy), half = Math.hypot(W, H) / 2;
+    if (off + half > rad && off - half < rad) {
+      ctx.fillStyle = this.edge > 0 ? '#ff7a5a' : '#f4ecd8'; ctx.globalAlpha = this.edge > 0 ? 0.9 : 0.3;
+      // Only the arc that crosses the view is walked: the ring may be thousands of cells round.
+      const mid = Math.atan2(H / 2 - cy, W / 2 - cx), sweep = Math.min(Math.PI, half / rad * 1.3), step = 7 / rad, phase = (this.time * 0.05) % step;
+      for (let a = Math.ceil((mid - sweep) / step) * step + phase; a < mid + sweep; a += step) {
+        const x = Math.round(cx + Math.cos(a) * rad), y = Math.round(cy + Math.sin(a) * rad);
+        if (x >= 0 && y >= 0 && x < W && y < H) ctx.fillRect(x, y, 2, 1);
+      }
+      ctx.globalAlpha = 1;
+    }
+    const pts = this.lay().map(([x, y]) => [x * T - ox, y * T - oy]);
+    const wob = this.twang > 0 ? Math.sin(this.time * 90) * this.twang * 5 : 0;
+    // Turned back at the edge it shows red; otherwise it is whatever the reach upgrades have made it.
+    const own = TETHERS[this.S.lv.tether], style = this.twang > 0 ? { a: '#ff5a4a', b: '#ff5a4a', dash: 1, thick: own.thick } : own;
+    if (this.over) {
+      // It leaves the drill's tail, and is laid out from the core's end so that its braid stays put on the ground
+      // as the drill pays it out.
+      pts[0] = [d.x * T - ox - Math.cos(d.ang) * 5, d.y * T - oy - Math.sin(d.ang) * 5];
+      this.ropes.push({ pts: pts.reverse(), style, wob });
+      return;
+    }
+    for (const pass of own.thick ? [2, 1, 0] : [1, 0]) {
+      const shadow = pass === (own.thick ? 2 : 1), use = shadow ? { a: '#16121c', b: '#16121c', dash: 1 } : style;
+      for (let i = 0; i < pts.length - 1; i++) {
+        const [x0, y0] = pts[i], [x1, y1] = pts[i + 1];
+        if (Math.max(x0, x1) < -2 || Math.max(y0, y1) < -2 || Math.min(x0, x1) > W + 2 || Math.min(y0, y1) > H + 2) continue;
+        if (wob && Math.hypot(x1 - x0, y1 - y0) < 600) {
+          // A plucked string: the middle of each span swings across it.
+          const mx = (x0 + x1) / 2, my = (y0 + y1) / 2, len = Math.hypot(x1 - x0, y1 - y0) || 1, nx = -(y1 - y0) / len * wob, ny = (x1 - x0) / len * wob;
+          this.drawSpan(x0, y0, mx + nx, my + ny, use, pass); this.drawSpan(mx + nx, my + ny, x1, y1, use, pass);
+        } else this.drawSpan(x0, y0, x1, y1, use, pass);
+      }
+    }
+  }
+
+  button(x, y, w, h, act) { this.buttons.push({ x, y, w, h, act }); }
+  // What a haul's banner says besides its title and what it paid: how many cells came and what their grit was
+  // multiplied by, and that the piece was over the winch's load where it was (a keystone slab is the haul the winch
+  // is for); and, where a prism came with it, what the prism multiplied the gems by (null: no prism).
+  // And third, where the haul held a pocket's mineral that raised a count of specimens: by how many.
+  bannerSays(b) { return [`${b.n} x${b.mult.toFixed(1)}${b.over < 1 ? ' WINCH OVER LOAD' : ''}`, b.shine > 1 ? `PRISM x${b.shine}` : null, b.spec > 0 ? `+${b.spec}` : null]; }
+  // What the next thing to be bought with a direction's specimens asks of them, or 0 where nothing is left to buy.
+  specNeed(kin) { const u = WORKS.find(u => u.kin === kin && this.cost(u)); return u ? this.cost(u).spec : 0; }
+  drawHud(ox, oy) {
+    const { ctx, W, H, S } = this, now = this.time * 1000, d = this.drill;
+    this.buttons.length = 0; this.panels.length = 0;
+    // Banner of the last haul. (It, the word across the screen and a new place's name stand clear of the map, and of
+    // a place's plate where that has had to go under the map: `plateLow`.)
+    const head = this.plateLow ? 78 : Math.max(60, H * 0.2);
+    if (this.banner) {
+      const b = this.banner, pop = Math.min(1, b.t / 0.12), y = Math.round(head - (1 - pop) * 8);
+      ctx.globalAlpha = Math.min(1, (b.life - b.t) * 3);
+      const big = (b.n >= 10 ? 2 : 1) + (b.t < 0.07 ? 1 : 0);
+      text(ctx, b.title, W / 2, y, b.n >= 30 ? '#ffe14a' : '#ffffff', 0.5, big);
+      const [size, prism, spec] = this.bannerSays(b);
+      text(ctx, size, W / 2, y + 11 * big + 2, b.over < 1 ? '#ffb060' : '#bfe6ff', 0.5);
+      let line = `+${compact(b.grit)}`, lw = textWidth(line) + 11;
+      const gems = [1, 2, 3, 4].filter(g => b.gems[g] > 0);
+      for (const g of gems) lw += textWidth(`+${compact(b.gems[g])}`) + 15;
+      if (spec) lw += textWidth(spec) + 17;
+      let lx = Math.round(W / 2 - lw / 2), ly = y + 11 * big + 14;
+      draw(ctx, 'icons', 'grit', lx, ly - 1); text(ctx, line, lx + 11, ly, '#ffe14a'); lx += textWidth(line) + 15;
+      for (const g of gems) { draw(ctx, 'icons', GEM_ICON[g], lx, ly - 1); text(ctx, `+${compact(b.gems[g])}`, lx + 11, ly, GEM_COLOR[g]); lx += textWidth(`+${compact(b.gems[g])}`) + 15; }
+      // The specimens a pocket's mineral added, with the mineral itself beside the figure.
+      if (spec) { if (b.mineral) this.drawMineral(ctx, b.mineral, lx - 1, ly - 3); else draw(ctx, 'icons', `spec-${GEM_ICON[b.specOf]}`, lx, ly - 1); text(ctx, spec, lx + 13, ly, GEM_COLOR[b.specOf]); }
+      // A prism among the cells: what it multiplied the gems by, in the gems' colours by turns.
+      if (prism) text(ctx, prism, W / 2, ly + 12, GEM_COLOR[1 + ((now / 240) | 0) % 4], 0.5);
+      ctx.globalAlpha = 1;
+    }
+    // Over a dead drill the screen goes dark.
+    if (d.mode === 'dead' && this.tow) { ctx.globalAlpha = Math.min(0.85, this.tow.t / DEATH); ctx.fillStyle = '#07060b'; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1; }
+    if (this.notice) {
+      const note = this.notice, pop = Math.min(1, note.t / 0.12);
+      ctx.globalAlpha = Math.min(1, (note.life - note.t) * 3);
+      text(ctx, note.title, W / 2, Math.round(head - (1 - pop) * 8), note.colour, 0.5, 2 + (note.t < 0.07 ? 1 : 0));
+      if (note.sub) text(ctx, note.sub, W / 2, Math.round(head) + 24, '#ffe14a', 0.5);
+      ctx.globalAlpha = 1;
+    }
+    if (S.won && this.wonAt !== undefined && this.time - this.wonAt < 6) text(ctx, 'CORE RESTORED', W / 2, H * 0.36, '#ffe14a', 0.5, 2);
+    // A ground met for the first time: its name alone, large, a little under where a haul's banner goes (and under
+    // the banner itself, if one is up). A name too long for the screen is set on two lines, or small.
+    const place = this.place;
+    if (place && place.card) {
+      const pop = Math.min(1, place.t / 0.12), words = place.title.split(' '), fits = s => textWidth(s, 2) <= W - 8;
+      let lines = [place.title], big = 2;
+      if (!fits(place.title)) {
+        let best = null;
+        for (let n = 1; n < words.length; n++) {
+          const a = words.slice(0, n).join(' '), b = words.slice(n).join(' '), wide = Math.max(textWidth(a, 2), textWidth(b, 2));
+          if (fits(a) && fits(b) && (!best || wide < best[2])) best = [a, b, wide];
+        }
+        if (best) lines = [best[0], best[1]]; else big = 1;
+      }
+      const under = this.banner ? Math.round(head) + 11 * (this.banner.n >= 10 ? 2 : 1) + (this.banner.shine > 1 ? 42 : 30) : 0, y = Math.max(under, Math.round(Math.max(head + 14, H * 0.3) - (1 - pop) * 8));
+      ctx.globalAlpha = Math.min(1, (place.life - place.t) * 3);
+      lines.forEach((line, n) => text(ctx, line, W / 2, y + n * 11 * big, place.colour, 0.5, big + (n === 0 && lines.length === 1 && place.t < 0.07 ? 1 : 0)));
+      ctx.globalAlpha = 1;
+    }
+    // The bar, at the foot of the screen: what has been banked, the hull, what the lab knows, and how much of its
+    // reach the tether has left. A tap on it opens the panel (what the drill is, the lab's notes, the chart, the
+    // menu), and another shuts it.
+    const B = H - 44;
+    slice9(ctx, 'ui', 'panel', 2, B + 2, W - 4, 40);
+    draw(ctx, 'icons', 'grit', 6, B + 5);
+    text(ctx, compact(S.grit - this.pending.grit), 18, B + 6 - (this.counted > 0 ? 1 : 0), this.counted > 0 ? '#ffffff' : '#ffe14a');
+    const gw = (W - 30) / 4;
+    for (let g = 1; g < 5; g++) {
+      const gx = Math.round(6 + (g - 1) * gw), have = S.gems[g] - this.pending.gems[g];
+      ctx.globalAlpha = S.gems[g] > 0 ? 1 : 0.35;
+      draw(ctx, 'icons', GEM_ICON[g], gx, B + 17);
+      text(ctx, compact(have), gx + 12, B + 18, GEM_COLOR[g]);
+      ctx.globalAlpha = 1;
+    }
+    const R = this.val('tether'), far = this.far, left = Math.max(0, R - far), label = compact(left), room = textWidth(label) + 10;
+    this.bar(6, B + 29, W - 12 - room, 'tether', left / R, far / R > 0.93 ? '#ff7a5a' : '#f4ecd8', this.twang > 0);
+    text(ctx, label, W - 6, B + 30, this.twang > 0 ? '#ff7a5a' : '#f4ecd8', 1);
+    // The hull: a pip for each knock it can take, after the grit. One just lost shows red for a moment, the last
+    // one left stays red, and a hull just mended shows white.
+    const pips = this.val('hull'), sound = this.hull, hx = 18 + textWidth(compact(S.grit - this.pending.grit)) + 7;
+    for (let n = 0; n < pips; n++) {
+      const x = hx + n * 5, full = n < sound, lost = n === sound && this.knocked > 0;
+      ctx.fillStyle = '#16121c'; ctx.fillRect(x, B + 6, 4, 7);
+      ctx.fillStyle = lost ? '#ff5a4a' : !full ? '#3a3450' : this.mended > 0 ? '#ffffff' : sound === 1 ? '#ff7a5a' : '#bfe6ff';
+      ctx.fillRect(x + 1, B + 7, 2, 5);
+    }
+    // What the lab has analysed, of all it can: shown once there is a first sample, lit for a moment by a new level.
+    const known = LAB.filter(e => S.lab[e.key]).length;
+    if (known && hx + pips * 5 + 4 < W - 6 - textWidth(`${known}/${LAB.length}`) - 11) {
+      const count = `${known}/${LAB.length}`, lit = this.labFlash > 0 && ((now / 120) | 0) % 2 === 0;
+      text(ctx, count, W - 6, B + 6, lit ? '#ffffff' : '#8cf2c4', 1);
+      draw(ctx, 'icons', 'lab', W - 6 - textWidth(count) - 11, B + 5);
+    }
+    this.button(0, B, W, 44, () => this.openLab(!this.lab));
+    // The place the drill has come into: its name on a plate, with its direction's gem (and a second gem, where
+    // the place pays two).
+    if (!place || place.card) this.plateLow = false;
+    if (place && !place.card) {
+      const more = place.also ? 11 : 0, slide = Math.min(1, place.t / 0.15), pw = textWidth(place.title) + 23 + more, px = 4 - Math.round((1 - slide) * (1 - slide) * 10);
+      ctx.globalAlpha = Math.min(1, slide, (place.life - place.t) / 0.3);
+      // (At the head of the screen; under the map, where its name is too long to stand beside it.)
+      const ty = px + pw > W - 60 ? 58 : 4;
+      this.plateLow = ty > 4;
+      slice9(ctx, 'ui', 'panel', px, ty, pw, 14);
+      this.panels.push([px, ty, pw, 14]);
+      if (place.mineral) this.drawMineral(ctx, place.mineral, px + 3, ty + 1); else draw(ctx, 'icons', place.icon, px + 4, ty + 2);
+      if (place.also) draw(ctx, 'icons', place.also, px + 15, ty + 2);
+      text(ctx, place.title, px + 17 + more, ty + 2, place.colour);
+      ctx.globalAlpha = 1;
+    }
+    // Specimens just banked: the count of that direction's slides out under the top bar, below where a place's
+    // plate goes, with what the next thing they buy asks, while there is one.
+    const line = this.specLine;
+    if (line) {
+      const need = this.specNeed(line.kin), label = `${Math.floor(S.spec[line.kin] + 1e-9)}${need ? `/${need}` : ''}`;
+      const slide = Math.min(1, line.t / 0.15), pw = textWidth(label) + 23, px = 4 - Math.round((1 - slide) * (1 - slide) * 10);
+      ctx.globalAlpha = Math.min(1, slide, (line.life - line.t) / 0.3);
+      slice9(ctx, 'ui', 'panel', px, 20, pw, 14);
+      this.panels.push([px, 20, pw, 14]);
+      draw(ctx, 'icons', `spec-${GEM_ICON[line.kin]}`, px + 4, 22);
+      text(ctx, label, px + 17, 22, GEM_COLOR[line.kin]);
+      ctx.globalAlpha = 1;
+    }
+    // The map, in the top right corner.
+    this.drawMap(W - 52, 6);
+    // The shop's button, over the bar, when the drill is home.
+    const by = H - 88;
+    if (this.atCore && !this.shop && !this.lab && d.mode === 'free') {
+      // (Whether anything can be bought is asked only here, where the button shows it: out in the ground it would
+      // count what is left of the reach again after every cut, for nothing.)
+      const afford = ROWS.some(u => this.canBuy(u));
+      const w = 84, x = Math.round(W / 2 - w / 2), up = afford && ((now / 300) | 0) % 2;
+      slice9(ctx, 'ui', afford ? (up ? 'button-down' : 'button') : 'panel', x, by + 6, w, 24);
+      text(ctx, 'UPGRADES', x + w / 2, by + 13, afford ? '#ffffff' : '#9a94a8', 0.5);
+      this.button(x - 4, by, w + 8, 36, () => { this.shop = true; sfx.tap(); });
+      if (afford && S.stats.buys === 0) draw(ctx, 'ui', 'hand', x + w / 2 - 4, by + 18 + Math.round(Math.sin(now / 150) * 3));
+    }
+    // The idea, shown and not told: a hand draws a loop, as the tether must be drawn round the loose piece.
+    if (S.stats.hauls === 0 && !this.shop && !this.lab && this.input.id === null) {
+      const u = (now % 2200) / 2200, turn = u * 6.2832 - 1.5708, cx = W / 2 - 20, hx = cx - 6 + Math.cos(turn) * 20, hy = (H - 44) * 0.72 + Math.sin(turn) * 14;
+      ctx.fillStyle = '#ffffff';
+      for (let n = 1; n < 14; n++) { const a = turn - n * 0.22; ctx.globalAlpha = 1 - n / 14; ctx.fillRect(Math.round(cx + Math.cos(a) * 20), Math.round((H - 44) * 0.72 + Math.sin(a) * 14) - 2, 2, 2); }
+      ctx.globalAlpha = 1;
+      draw(ctx, 'ui', 'hand', hx, hy);
+      if (S.stats.moves < 1.5) draw(ctx, 'logo', 'logo', W / 2 - 66, 62);
+    }
+    // Where the thumb is steering from, and which way.
+    if (this.input.id !== null && !this.shop && !this.lab) {
+      const { ax, ay, px, py } = this.input;
+      ctx.globalAlpha = 0.5; ctx.fillStyle = '#ffffff';
+      ctx.fillRect(Math.round(ax) - 1, Math.round(ay) - 1, 3, 3);
+      this.line(ax, ay, px, py, 0.5);
+      ctx.globalAlpha = 1;
+    }
+    this.shopRise = this.shop ? Math.min(1, this.shopRise + 0.12) : 0;
+    if (this.shop) this.drawShop();
+    this.labRise = this.lab ? Math.min(1, this.labRise + 0.12) : 0;
+    if (this.lab) this.drawLab();
+  }
+  // The map: everything within the tether's reach, the core in the middle. Ground that has been seen shows as
+  // rock or open; the rest only as whose ground it is, so there is always somewhere to choose to go. Whose it is
+  // is asked of the world as far as it is known (`biomeKnown`): what a piece already made holds, seen or not, so
+  // that an older saved game's map never shows a place that its ground does not have.
+  // The map. In the corner it shows the ground near the drill with the drill in its middle, so many cells to a
+  // pixel as RANGE gives: the whole of a long reach in so small a square cannot be read. The core, where it is off
+  // the map, is a mark at the map's edge on the way home. `big` draws the chart instead: { size, per }, the whole
+  // reach about the core, in a square that many pixels across.
+  drawMap(x, y, big = null) {
+    const { ctx } = this, w = this.world, d = this.drill, R = this.val('tether'), lens = this.val('maplens');
+    const size = big ? big.size : 46, per = big ? big.per : this.val('maprange'), mx0 = big ? big.cx ?? HX : Math.floor(d.x) + 0.5, my0 = big ? big.cy ?? HY : Math.floor(d.y) + 0.5;
+    const M = big ? (this.chartMap ??= {}) : this;
+    if (!big) {
+      slice9(ctx, 'ui', 'panel', x - 3, y - 3, size + 6, size + 6);
+      this.mapRect = [x - 3, y - 3, size + 6, size + 6];
+      // With the chart bought, a tap on the map opens it.
+      if (this.val('chart') && !this.lab && !this.shop) {
+        ctx.fillStyle = '#ffe14a'; ctx.fillRect(x - 2, y - 2, size + 4, 1); ctx.fillRect(x - 2, y + size + 1, size + 4, 1);
+        this.button(x - 3, y - 3, size + 6, size + 6, () => this.openLab(true, 'chart'));
+      }
+    }
+    let map = M.mapCanvas;
+    if (!map || map.width !== size) { map = M.mapCanvas = document.createElement('canvas'); map.width = map.height = size; M.mapData = map.getContext('2d', { willReadFrequently: true }).createImageData(size, size); M.mapAt = -1; M.mapFor = null; }
+    // The picture is drawn again when what it shows may have changed. The chart knows that from the ground's own
+    // count of its changes (`World.stirred`), and stands as it is while nothing moves, however long it is open. The
+    // map in the corner does not ask that count, which in flight moves nearly every frame, more often than is worth
+    // drawing again: it is drawn again every half second as well, which catches what the version does not.
+    const view = `${this.version}${big ? `+${w.stirred}` : ''}:${R}:${per}:${lens}:${mx0},${my0}`;
+    if (M.mapFor !== view || (!big && this.time - M.mapAt > 0.5)) {
+      M.mapAt = this.time; M.mapFor = view;
+      const px = M.mapData.data;
+      for (let v = 0; v < size; v++) for (let u = 0; u < size; u++) {
+        const wx = Math.floor(mx0 + (u - size / 2 + 0.5) * per), wy = Math.floor(my0 + (v - size / 2 + 0.5) * per), o = (v * size + u) * 4, k = w.peek(wx, wy);
+        let [r, g, b] = rowOf(w.biomeKnown(wx, wy)).map;
+        const inside = Math.hypot(wx - C, wy - C) <= R;
+        let shade = (k < 0 ? 0.3 : k === K.EMPTY ? 0.12 : 0.85) * (inside ? 1 : 0.45);
+        // What the lens tells apart is drawn in its own colour, at full strength.
+        const L = k > 0 ? LENS[k] : undefined;
+        if (L !== undefined && L[0] <= lens) { r = L[1]; g = L[2]; b = L[3]; shade = inside ? 1 : 0.6; }
+        px[o] = r * shade + 8; px[o + 1] = g * shade + 7; px[o + 2] = b * shade + 10; px[o + 3] = 255;
+      }
+      map.getContext('2d', { willReadFrequently: true }).putImageData(M.mapData, 0, 0);
+    }
+    ctx.drawImage(map, x, y);
+    const at = (wx, wy) => [x + size / 2 + (wx - mx0) / per, y + size / 2 + (wy - my0) / per];
+    // The tether, the reach, what each direction hides, the core and the drill.
+    ctx.save(); ctx.beginPath(); ctx.rect(x, y, size, size); ctx.clip();
+    ctx.fillStyle = '#f4ecd8'; ctx.globalAlpha = 0.5;
+    for (let a = 0; a < 6.283; a += 0.09) { const [mx, my] = at(HX + Math.cos(a) * R, HY + Math.sin(a) * R); ctx.fillRect(Math.round(mx), Math.round(my), 1, 1); }
+    ctx.globalAlpha = 1; ctx.fillStyle = TETHERS[this.S.lv.tether].a;
+    for (let n = 1; n < this.band.length; n++) {
+      const [ax, ay] = at(...this.band[n - 1]), [bx, by] = at(...this.band[n]);
+      // (A span that lies off the map is not walked: far out, that is nearly all of them.)
+      if (Math.max(ax, bx) < x - 1 || Math.min(ax, bx) > x + size + 1 || Math.max(ay, by) < y - 1 || Math.min(ay, by) > y + size + 1) continue;
+      const steps = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay)));
+      for (let s = 0; s <= steps; s++) ctx.fillRect(Math.round(ax + (bx - ax) * s / steps), Math.round(ay + (by - ay) * s / steps), 1, 1);
+    }
+    for (let dir = 0; dir < 4; dir++) {
+      if (this.S.relics[dir]) continue;
+      const [mx, my] = at(HX + DX[dir] * RELIC_R, HY + DY[dir] * RELIC_R);
+      ctx.fillStyle = GEM_COLOR[DIR_BIOME[dir]]; ctx.fillRect(Math.round(mx) - 1, Math.round(my) - 1, 3, 3);
+    }
+    // The first keystone slab, a ring of its own size, until it hangs by no key: somewhere to go, once it is near
+    // enough to lie on the map (or on the chart, which shows the whole reach).
+    const slab = this.firstRing();
+    if (slab) {
+      const [mx, my] = at(slab.cx + 0.5, slab.cy + 0.5), r = Math.max(1.5, slab.p / per);
+      // (Where its middle lies on the map: nothing beyond the map is marked at its edge.)
+      if (Math.max(Math.abs(mx - x - size / 2), Math.abs(my - y - size / 2)) <= size / 2 - 2) {
+        ctx.fillStyle = SPOT.key[1];
+        for (let a = 0; a < 6.283; a += 0.7 / r) ctx.fillRect(Math.round(mx + Math.cos(a) * r - 0.5), Math.round(my + Math.sin(a) * r - 0.5), 1, 1);
+      }
+    }
+    // Things seen and not yet taken, each a dot in its own colour.
+    for (const [cell, , colour] of this.S.marks) {
+      const wx = cell % N, wy = Math.floor(cell / N);
+      if (Math.hypot(wx + 0.5 - HX, wy + 0.5 - HY) > R) continue;
+      const [mx, my] = at(wx + 0.5, wy + 0.5);
+      ctx.fillStyle = '#0c0a12'; ctx.fillRect(Math.round(mx) - 1, Math.round(my) - 1, 3, 3);
+      ctx.fillStyle = colour; ctx.fillRect(Math.round(mx) - 1, Math.round(my) - 1, 2, 2);
+    }
+    if (((this.time * 2) | 0) % 2) this.world.wrecks.forEach(([wx, wy], n) => {
+      if (this.S.wrecks?.[n] || Math.hypot(wx + 0.5 - HX, wy + 0.5 - HY) > R) return;
+      const [mx, my] = at(wx + 0.5, wy + 0.5);
+      ctx.fillStyle = '#ff9a3a'; ctx.fillRect(Math.round(mx) - 1, Math.round(my), 3, 1); ctx.fillRect(Math.round(mx), Math.round(my) - 1, 1, 3);
+    });
+    // What the finder knows of and the drill has not seen: a dot each, in the find's own colour, ringed dark.
+    for (const [what, fx, fy] of this.findsNear(mx0, my0, size * per / 2)) {
+      const [mx, my] = at(fx + 0.5, fy + 0.5);
+      ctx.fillStyle = '#0c0a12'; ctx.fillRect(Math.round(mx) - 2, Math.round(my) - 2, 4, 4);
+      ctx.fillStyle = SPOT[what][1]; ctx.fillRect(Math.round(mx) - 1, Math.round(my) - 1, 2, 2);
+    }
+    // Pockets within reach that the drill has not been into: a pip each, in the pocket's own colour.
+    // (Only those that lie on the map: the map in the corner shows the drill's surroundings and nothing beyond.)
+    for (const Z of this.pocketPips()) {
+      const [mx, my] = at(Z.cx + 0.5, Z.cy + 0.5);
+      if (Math.max(Math.abs(mx - x - size / 2), Math.abs(my - y - size / 2)) > size / 2 - 2) continue;
+      ctx.fillStyle = '#0c0a12'; ctx.fillRect(Math.round(mx) - 2, Math.round(my) - 2, 4, 4);
+      ctx.fillStyle = rowOf(Z.row).pocket.pip ?? bright(rowOf(Z.row).map); ctx.fillRect(Math.round(mx) - 1, Math.round(my) - 1, 2, 2);
+    }
+    // The core; where it is off the map, a mark at the map's edge on the way home.
+    let [hx, hy] = at(HX, HY);
+    const hox = hx - x - size / 2, hoy = hy - y - size / 2, hoff = Math.max(Math.abs(hox), Math.abs(hoy)), hedge = size / 2 - 2;
+    if (hoff > hedge) { hx = x + size / 2 + hox * hedge / hoff; hy = y + size / 2 + hoy * hedge / hoff; }
+    ctx.fillStyle = '#84dcff'; ctx.fillRect(Math.round(hx) - 1, Math.round(hy) - 1, 3, 3);
+    const [dx, dy] = at(d.x, d.y);
+    ctx.fillStyle = ((this.time * 3) | 0) % 2 ? '#ffffff' : '#ffd83a'; ctx.fillRect(Math.round(dx) - 1, Math.round(dy) - 1, 3, 3);
+    ctx.restore();
+  }
+  // The finds the finder marks within `half` cells of a place (square) and within its range of the drill: those of the kinds its level knows, that
+  // still lie where the seed laid them (a pocket or a wreck may have taken the place), within the tether's reach,
+  // and that the drill has not yet seen (what it has seen is on the map already). Asked of the seed alone: no
+  // ground is made to answer. The list is kept while the place, the span and the level stay the same.
+  findsNear(cx, cy, half) {
+    const w = this.world, level = this.val('mapfinder'), R = this.val('tether');
+    if (!level) return [];
+    // (Sectors of finds that are both in the view asked about and within the finder's range of the drill.)
+    const d = this.drill, far = FINDER[level], lo = (a, b) => Math.floor((Math.max(a - half, b - far) - C) / FIND), hi = (a, b) => Math.floor((Math.min(a + half, b + far) - C) / FIND);
+    const x0 = lo(cx, d.x), x1 = hi(cx, d.x), y0 = lo(cy, d.y), y1 = hi(cy, d.y);
+    const key = `${this.S.seed}:${level}:${R}:${x0},${y0},${x1},${y1}:${Math.floor(d.x / 8)},${Math.floor(d.y / 8)}:${this.version}`;
+    if (this.foundFor !== key) {
+      this.foundFor = key; this.found = [];
+      for (let sy = y0; sy <= y1 && this.found.length < 200; sy++) for (let sx = x0; sx <= x1; sx++) {
+        const [what, fx, fy] = w.findSpot(sx, sy);
+        if (what === null || !(FOUND[what] <= level) || Math.hypot(fx - C, fy - C) > R || Math.hypot(fx + 0.5 - d.x, fy + 0.5 - d.y) > far || w.peek(fx, fy) >= 0) continue;
+        const laid = w.kindAt(fx, fy, w.biomeAt(fx, fy));
+        if ((what === 'cache' && laid !== K.CACHE) || (what === 'prism' && laid !== K.PRISM) || rowOf(w.biomeAt(fx, fy)).pocket !== null) continue;
+        this.found.push([what, fx, fy]);
+      }
+    }
+    return this.found;
+  }
+  // The pockets the map marks: those whose middles lie within the tether's reach and that the drill has not been
+  // into, the PIPS nearest the drill. One whose ground was made before pockets were laid (an older saved game's:
+  // the cell at its middle holds some other ground) is not there, and is not marked. The list is made again when
+  // the drill comes into another sector of pockets, the reach changes or a pocket is visited: not every frame.
+  pocketPips() {
+    const w = this.world, d = this.drill, S = this.S, R = this.val('tether');
+    const key = `${S.seed}:${Math.floor((d.x - C) / ZONE)},${Math.floor((d.y - C) / ZONE)}:${R}:${Object.keys(S.visited).length}`;
+    if (key !== this.pipsFor) {
+      this.pipsFor = key;
+      const far = Z => (Z.cx + 0.5 - d.x) ** 2 + (Z.cy + 0.5 - d.y) ** 2;
+      this.pips = w.pocketsWithin(R).filter(Z => !S.visited[Z.key] && w.biomeKnown(Z.cx, Z.cy) === Z.row).sort((a, b) => far(a) - far(b)).slice(0, PIPS);
+    }
+    return this.pips;
+  }
+  // The first keystone slab, while it is there to be found: the world's record of it, or null once none of its
+  // keys is left (cut, or hauled with it), or where the ground there was made before slabs were (an older saved
+  // game: what is there is the cells' to say). Where the ground is not made yet, it will be.
+  firstRing() {
+    const w = this.world, slab = w.firstSlab;
+    return slab && slab.keys.some(i => { const k = w.laid(i); return k < 0 || k === K.KEY; }) ? slab : null;
+  }
+  bar(x, y, w, icon, fill, color, flash) {
+    const { ctx } = this;
+    draw(ctx, 'icons', icon, x, y);
+    ctx.fillStyle = '#0c0a12'; ctx.fillRect(x + 11, y + 2, w - 11, 6);
+    ctx.fillStyle = flash ? '#ffffff' : color; ctx.fillRect(x + 12, y + 3, Math.round((w - 13) * Math.max(0, Math.min(1, fill))), 4);
+  }
+  // The chart's view, kept within bounds: zoomed from 1 (the whole reach) to where a cell is four pixels, its middle
+  // never so far from the core that the view leaves the square the whole reach is drawn in.
+  chartMost() { return Math.max(1, this.chartBase / 0.25); }
+  chartView() {
+    const c = this.chart, size = this.chartRect ? this.chartRect[2] : 1;
+    c.zoom = Math.max(1, Math.min(this.chartMost(), c.zoom));
+    const room = Math.max(0, size * this.chartBase / 2 * (1 - 1 / c.zoom));
+    c.x = Math.max(HX - room, Math.min(HX + room, c.x)); c.y = Math.max(HY - room, Math.min(HY + room, c.y));
+    return c;
+  }
+  // Zoom the chart `by` times about the point (sx, sy) of the screen, which stays over the same ground.
+  chartZoom(by, sx, sy) {
+    if (!this.chartRect) return;
+    const c = this.chartView(), [rx, ry, size] = this.chartRect, ox = sx - rx - size / 2, oy = sy - ry - size / 2, per = this.chartBase / c.zoom;
+    const wx = c.x + ox * per, wy = c.y + oy * per;
+    c.zoom = Math.max(1, Math.min(this.chartMost(), c.zoom * by));
+    c.x = wx - ox * this.chartBase / c.zoom; c.y = wy - oy * this.chartBase / c.zoom;
+    this.chartView();
+  }
+  // A wheel turned over the chart zooms it about the pointer. Returns whether the chart took it.
+  wheel(x, y, delta) {
+    const r = this.lab && this.labTab === 'chart' ? this.chartRect : null;
+    if (!r || x < r[0] || y < r[1] || x >= r[0] + r[2] || y >= r[1] + r[3]) return false;
+    this.chartZoom(delta < 0 ? 1.2 : 1 / 1.2, x, y);
+    return true;
+  }
+  // A finger moved on the chart: one drags it, two pinch it (and drag it by the point between them).
+  chartMove(id, x, y) {
+    const T2 = this.chartTouch, was = T2.get(id), c = this.chartView();
+    if (T2.size >= 2) {
+      const [oid, other] = [...T2].find(([key]) => key !== id), before = Math.hypot(was[0] - other[0], was[1] - other[1]), after = Math.hypot(x - other[0], y - other[1]);
+      const mid = [(x + other[0]) / 2, (y + other[1]) / 2], midWas = [(was[0] + other[0]) / 2, (was[1] + other[1]) / 2], per = this.chartBase / c.zoom;
+      c.x -= (mid[0] - midWas[0]) * per; c.y -= (mid[1] - midWas[1]) * per;
+      if (before > 4 && after > 4) this.chartZoom(after / before, mid[0], mid[1]);
+    } else { const per = this.chartBase / c.zoom; c.x -= (x - was[0]) * per; c.y -= (y - was[1]) * per; }
+    T2.set(id, [x, y]);
+    this.chartView();
+  }
+  // The chart can be read once it is bought, wherever the drill is.
+  get charted() { return this.val('chart') > 0; }
+  // The tabs of the panel the top bar opens (STATS: what the drill is now; ANALYSIS: the lab's notes; CHART: the
+  // whole reach), and its cross.
+  panelTabs(px, py, pw, HEAD) {
+    const { ctx } = this;
+    let tx = px + 8;
+    for (const [id, name] of [['stats', 'STATS'], ['lab', 'LAB'], ...(this.charted ? [['chart', 'MAP']] : []), ['menu', 'MENU']]) {
+      const tw = textWidth(name), on = this.labTab === id;
+      text(ctx, name, tx, py + 7, on ? '#ffe14a' : '#8a84a0');
+      if (on) { ctx.fillStyle = '#ffe14a'; ctx.fillRect(tx, py + 17, tw, 1); }
+      this.buttons.unshift({ x: tx - 4, y: py, w: tw + 10, h: HEAD, act: () => { this.labTab = id; sfx.tap(); } });
+      tx += tw + 12;
+    }
+    text(ctx, 'x', px + pw - 12, py + 6, '#ffffff');
+    this.buttons.unshift({ x: px + pw - 24, y: py, w: 24, h: HEAD, act: () => { this.lab = false; sfx.tap(); } });
+  }
+  // What the drill is now, a line a thing: every figure read from the game itself, so it cannot say otherwise than
+  // the game plays. What a hazard does to this drill is in green where something fitted has turned it.
+  stats() {
+    const S = this.S, parts = (S.wrecks ?? []).filter(Boolean).length, known = LAB.filter(e => S.lab[e.key]), mender = this.val('mender');
+    const best = known.reduce((most, e) => Math.max(most, labLevel(S.lab[e.key])), 0);
+    return [
+      ['REACH', `${this.val('tether')} CELLS`],
+      ['BIT', `MK${this.val('drill')}`],
+      ['SPEED', `x${this.val('momentum')}`],
+      ['WINCH', `x${this.val('winch')}`],
+      ['SCAN', `${this.val('scanner')} CELLS`],
+      ['HULL', `${this.hull}/${this.val('hull')} PIPS`],
+      ['MENDS', `1 PIP / ${mender} S`, this.S.lv.mender > 0],
+      ['LAVA', this.swims ? 'SWIMS IN IT' : 'BURNS', this.swims],
+      ['SPORES', this.val('sporedrive') ? `SPEED x${BOOST.by}` : 'KNOCK', this.val('sporedrive') > 0],
+      ['ARCS', this.val('arccoil') ? 'MEND A PIP' : 'KNOCK', this.val('arccoil') > 0],
+      ['HAUL PAY', `+${parts * 10}% (${parts}/8 PARTS)`, parts > 0],
+      ['FURTHEST OUT', `${Math.floor(S.out ?? 0)} CELLS`],
+      ['PLACES MET', `${Object.keys(S.met).length}`],
+      ['REFINERY', `GRIT x${this.val('refinery')}, GEMS x${this.val('cutter')}`, S.lv.refinery + S.lv.cutter > 0],
+      ['LAMP', `${this.val('lamp')} CELLS`, S.lv.lamp > 0],
+      ['BLACK BOX', this.val('blackbox') ? `KEEPS ${Math.round(this.val('blackbox') * 100)}%` : 'NONE', S.lv.blackbox > 0],
+      ['ANALYSED', known.length ? `${known.length}/${LAB.length}, UP TO +${best}%` : `0/${LAB.length}`, known.length > 0],
+      ['SPECIMENS', [1, 2, 3, 4].map(k => this.specs(k)).join(' / ')],
+      ['MAP', `${Math.round(this.val('maprange') * 46)} CELLS, ${MAPS[1].show(this.val('maplens'))}`, this.S.lv.maprange + this.S.lv.maplens > 0],
+      ['FINDER', this.val('mapfinder') ? `${['', 'CACHES', '+GEODES', 'ALL'][this.val('mapfinder')]}, ${FINDER[this.val('mapfinder')]} CELLS` : 'NONE', this.val('mapfinder') > 0],
+      ['CHART', this.val('chart') ? 'YES' : 'NONE', this.val('chart') > 0],
+    ];
+  }
+  // The menu: the sound, and a new world (two taps, so a slip of the thumb does not cost a world).
+  drawMenu(px, y0, pw) {
+    const { ctx } = this, sure = this.confirmReset > 0;
+    slice9(ctx, 'ui', 'button', px + 6, y0 + 4, pw - 12, 20);
+    text(ctx, 'SOUND', px + 14, y0 + 10, '#ffffff');
+    text(ctx, isMuted() ? 'OFF' : 'ON', px + pw - 14, y0 + 10, isMuted() ? '#ff7a5a' : '#8cf2c4', 1);
+    this.buttons.unshift({ x: px + 6, y: y0 + 4, w: pw - 12, h: 20, act: () => { setMuted(!isMuted()); sfx.tap(); } });
+    // The music has a switch of its own (with the sound off there is none, whatever it says).
+    const playing = isMusic() && !isMuted();
+    slice9(ctx, 'ui', 'button', px + 6, y0 + 28, pw - 12, 20);
+    text(ctx, 'MUSIC', px + 14, y0 + 34, isMuted() ? '#8a84a0' : '#ffffff');
+    text(ctx, isMusic() ? 'ON' : 'OFF', px + pw - 14, y0 + 34, playing ? '#8cf2c4' : isMusic() ? '#8a84a0' : '#ff7a5a', 1);
+    this.buttons.unshift({ x: px + 6, y: y0 + 28, w: pw - 12, h: 20, act: () => { setMusic(!isMusic()); sfx.tap(); } });
+    slice9(ctx, 'ui', sure ? 'button-off' : 'button', px + 6, y0 + 52, pw - 12, 20);
+    text(ctx, sure ? 'TAP AGAIN: NEW WORLD' : 'NEW WORLD', px + pw / 2, y0 + 58, sure ? '#ff7a5a' : '#ffffff', 0.5);
+    this.buttons.unshift({ x: px + 6, y: y0 + 52, w: pw - 12, h: 20, act: () => {
+      if (this.confirmReset > 0) { this.confirmReset = 0; this.fresh((Math.random() * 1e9) | 0); this.save(); sfx.relic(); } else { this.confirmReset = 2.5; sfx.tap(); }
+    } });
+  }
+  // Under the menu's rows, the long frames written down (`frameTook`) and the frames that threw (`failed`), newest
+  // first: how long, and where the time went, so that whoever sees the game freeze can say what it was doing.
+  drawStalls(px, y0, pw) {
+    const { ctx } = this;
+    text(ctx, 'LONG FRAMES', px + 8, y0, '#8a84a0');
+    this.stalls.slice().reverse().forEach((s, n) => {
+      // (A frame that threw says what and where, as much of it as the panel has room for.)
+      if (s.err) { text(ctx, `ERR ${s.where} ${s.err}`.toUpperCase().replace(/[^A-Z0-9 ]/g, ' ').replace(/ +/g, ' ').slice(0, Math.floor((pw - 16) / 6)), px + 8, y0 + 11 + n * 10, '#ff7a5a'); return; }
+      const ours = s.update + s.render, where = ours < s.gap / 2 ? 'BROWSER' : s.ms >= ours / 2 && s.top ? s.top.toUpperCase() : s.update > s.render ? 'STEP' : 'DRAW';
+      text(ctx, `${(s.gap / 1000).toFixed(1)}S ${where} ${s.update}+${s.render} AT ${s.out}`, px + 8, y0 + 11 + n * 10, '#bcb4cc');
+    });
+  }
+  drawStats(px, y0, pw) {
+    const { ctx } = this;
+    this.stats().forEach(([name, value, lit], n) => {
+      const y = y0 + 2 + n * 11;
+      if (n % 2 === 0) { ctx.fillStyle = '#241f38'; ctx.fillRect(px + 4, y - 1, pw - 8, 11); }
+      text(ctx, name, px + 8, y, '#bcb4cc');
+      text(ctx, value, px + pw - 8, y, lit === undefined ? '#ffffff' : lit ? '#8cf2c4' : '#8a84a0', 1);
+    });
+  }
+  // The lab's notes: everything it can know, a line each (what is not yet analysed is only a question mark), and
+  // under the list what it has to say of the line that was tapped. Where the list is longer than the screen it is
+  // turned a page at a time.
+  drawLab() {
+    const { ctx, W, H, S } = this, RH = 13, HEAD = 20, NOTE = 48;
+    ctx.globalAlpha = 0.6 * this.labRise; ctx.fillStyle = '#07060b'; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1;
+    const pw = Math.min(W - 8, 200), px = Math.round((W - pw) / 2);
+    const room = H - 48 - HEAD - NOTE - 4, paged = Math.floor(room / RH) < LAB.length, rows = paged ? Math.max(3, Math.floor((room - 14) / RH)) : LAB.length, pages = Math.ceil(LAB.length / rows);
+    const sel = LAB_OF[this.labSel] ?? LAB[0];
+    if (this.labPage < 0 || this.labPage >= pages) this.labPage = Math.floor(LAB.indexOf(sel) / rows);
+    if (this.labTab === 'chart' && !this.charted) this.labTab = 'stats';
+    const chart = Math.min(pw - 12, H - 52 - HEAD - 10);
+    const rise = 1 - this.labRise, ph = this.labTab === 'menu' ? HEAD + 80 + (this.stalls.length ? 14 + this.stalls.length * 10 : 0) : this.labTab === 'chart' ? HEAD + chart + 10 : this.labTab === 'stats' ? HEAD + this.stats().length * 11 + 8 : HEAD + rows * RH + NOTE + (paged ? 14 : 0) + 4, py = Math.max(2, Math.round((H - 44 - ph) / 2)) + Math.round(rise * rise * 60);
+    slice9(ctx, 'ui', 'panel', px, py, pw, ph);
+    this.button(px, py, pw, ph, () => {});
+    this.buttons.at(-1).swallow = true;
+    this.chartRect = null;
+    this.panelTabs(px, py, pw, HEAD);
+    if (this.labTab === 'stats') { this.drawStats(px, py + HEAD, pw); return; }
+    if (this.labTab === 'menu') { this.drawMenu(px, py + HEAD, pw); if (this.stalls.length) this.drawStalls(px, py + HEAD + 78, pw); return; }
+    if (this.labTab === 'chart') {
+      // The chart is dragged to look about it and pinched (or wheeled, or stepped by its two buttons) to look closer:
+      // from the whole reach down to four pixels a cell, never past the edge of the whole reach's own view.
+      const cx0 = Math.round(px + (pw - chart) / 2), cy0 = py + HEAD + 3;
+      this.chartRect = [cx0, cy0, chart, chart]; this.chartBase = Math.max(0.3, this.val('tether') * 2.25 / chart);
+      const view = this.chartView();
+      this.drawMap(cx0, cy0, { size: chart, per: this.chartBase / view.zoom, cx: view.x, cy: view.y });
+      [['+', 1.5], ['-', 1 / 1.5]].forEach(([sign, by], n) => {
+        const bx = cx0 + chart - 16, by0 = cy0 + chart - 32 + n * 16, can = by > 1 ? view.zoom < this.chartMost() - 1e-9 : view.zoom > 1 + 1e-9;
+        slice9(ctx, 'ui', can ? 'button' : 'button-off', bx, by0, 14, 14);
+        text(ctx, sign, bx + 7, by0 + 2, can ? '#ffffff' : '#6a6478', 0.5);
+        this.buttons.unshift({ x: bx - 1, y: by0 - 1, w: 16, h: 16, act: () => { this.chartZoom(by, cx0 + chart / 2, cy0 + chart / 2); sfx.tap(); } });
+      });
+      if (view.zoom > 1.01) text(ctx, `x${view.zoom.toFixed(1)}`, cx0 + 3, cy0 + chart - 12, '#f4ecd8');
+      return;
+    }
+    LAB.slice(this.labPage * rows, this.labPage * rows + rows).forEach((e, r) => {
+      const y = py + HEAD + r * RH, n = S.lab[e.key] ?? 0, on = e === sel;
+      if (on) { ctx.fillStyle = '#3a3260'; ctx.fillRect(px + 4, y, pw - 8, RH - 1); }
+      if (n) {
+        const [sheet, frame] = e.key.split(':'), f = sheets[sheet].frames[frame];
+        ctx.drawImage(sheets[sheet].image, f[0] + 2, f[1] + 2, 12, 12, px + 6, y, 12, 12);
+        text(ctx, e.name, px + 22, y + 2, on ? '#ffe14a' : '#ffffff');
+        text(ctx, `+${labLevel(n)}%`, px + pw - 8, y + 2, '#8cf2c4', 1);
+      } else {
+        text(ctx, '?', px + 10, y + 2, '#6a6478');
+        text(ctx, '? ? ?', px + 22, y + 2, on ? '#bcb4cc' : '#6a6478');
+      }
+      this.buttons.unshift({ x: px + 4, y, w: pw - 8, h: RH, act: () => { this.labSel = e.key; sfx.tap(); } });
+    });
+    // What the lab says of the line chosen.
+    const ny = py + HEAD + rows * RH + 3, n = S.lab[sel.key] ?? 0;
+    ctx.fillStyle = '#4a4468'; ctx.fillRect(px + 6, ny - 2, pw - 12, 1);
+    if (n) {
+      text(ctx, `${compact(n)} SAMPLES. NEXT +1% AT ${compact(labNext(n))}`, px + 8, ny + 1, '#bfe6ff');
+      wrap(sel.note, pw - 16).slice(0, 3).forEach((line, l) => text(ctx, line, px + 8, ny + 12 + l * 10, '#d8d0c0'));
+    } else {
+      text(ctx, 'NOT ANALYSED YET', px + 8, ny + 1, '#bcb4cc');
+      wrap(`CUT THROUGH ONE WITH THE BIT. FOUND: ${sel.where}.`, pw - 16).slice(0, 3).forEach((line, l) => text(ctx, line, px + 8, ny + 12 + l * 10, '#9a94a8'));
+    }
+    if (paged) {
+      const fy = py + ph - 16;
+      text(ctx, `< ${this.labPage + 1}/${pages} >`, px + pw / 2, fy + 2, '#bfe6ff', 0.5);
+      this.buttons.unshift({ x: px + 4, y: fy - 2, w: pw / 2 - 4, h: 16, act: () => { this.labPage = (this.labPage + pages - 1) % pages; sfx.tap(); } });
+      this.buttons.unshift({ x: px + pw / 2, y: fy - 2, w: pw / 2 - 4, h: 16, act: () => { this.labPage = (this.labPage + 1) % pages; sfx.tap(); } });
+    }
+  }
+  drawShop() {
+    const { ctx, W, H, S } = this;
+    ctx.globalAlpha = 0.6 * this.shopRise; ctx.fillStyle = '#07060b'; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1;
+    // (The panel is as tall as its longest tab, so it does not jump when the tab is changed.)
+    const most = Math.max(...TABS.map(t => t.rows.length)), tab = TABS.find(t => t.id === this.shopTab) ?? TABS[0];
+    const pw = Math.min(W - 8, 200), px = Math.round((W - pw) / 2), rh = Math.max(24, Math.min(32, Math.floor((H - 100) / most)));
+    const rise = 1 - this.shopRise, ph = 22 + rh * most + 22, py = Math.max(2, Math.round((H - 44 - ph) / 2)) + Math.round(rise * rise * 60);
+    slice9(ctx, 'ui', 'panel', px, py, pw, ph);
+    this.button(px, py, pw, ph, () => {});
+    // The tabs: the one that is open in yellow, and a dot on one that has something to buy.
+    let tx = px + 8;
+    for (const t of TABS) {
+      const tw = textWidth(t.name), id = t.id;
+      text(ctx, t.name, tx, py + 7, t === tab ? '#ffe14a' : '#8a84a0');
+      if (t === tab) { ctx.fillStyle = '#ffe14a'; ctx.fillRect(tx, py + 17, tw, 1); }
+      if (t.rows.some(u => this.canBuy(u))) { ctx.fillStyle = '#8ce060'; ctx.fillRect(tx + tw + 2, py + 6, 2, 2); }
+      this.buttons.unshift({ x: tx - 4, y: py, w: tw + 10, h: 20, act: () => { this.shopTab = id; sfx.tap(); } });
+      tx += tw + 9;
+    }
+    text(ctx, 'x', px + pw - 12, py + 6, '#ffffff');
+    this.buttons.unshift({ x: px + pw - 24, y: py, w: 24, h: 22, act: () => { this.shop = false; sfx.tap(); } });
+    tab.rows.forEach((u, n) => {
+      const y = py + 20 + n * rh, c = this.cost(u), can = this.canBuy(u), lit = this.bought?.id === u.id;
+      slice9(ctx, 'ui', lit ? 'button-down' : !c ? 'button-max' : can ? 'button' : 'button-off', px + 4, y, pw - 8, rh - 1);
+      // What it will look like once bought (or does now, at its last level).
+      const l = S.lv[u.id], next = Math.min(l + 1, u.values.length - 1), vx = px + 7, vy = y + Math.floor((rh - 17) / 2);
+      ctx.fillStyle = '#0c0a12'; ctx.fillRect(vx, vy, 16, 16);
+      if (u.id === 'drill') this.drawDrill(vx + 8, vy + 8, 0, next, S.lv.momentum, this.time * 1000);
+      else if (u.id === 'momentum') this.drawDrill(vx + 8, vy + 8, 0, S.lv.drill, next, -1);
+      else if (u.id === 'tether') { for (const pass of TETHERS[next].thick ? [1, 0] : [0]) this.drawSpan(vx + 1, vy + 12 + pass, vx + 14, vy + 3 + pass, TETHERS[next]); }
+      else if (u.id === 'winch') drawScaled(ctx, 'core', `core-a-${Math.min(5, next)}`, vx, vy, 16, 16);
+      else if (u.id === 'scanner') draw(ctx, 'dish', `dish-${Math.min(4, next)}`, vx, vy);
+      else if (u.id === 'hull') this.drawDrill(vx + 8, vy + 8, 0, S.lv.drill, S.lv.momentum, -1, 1, 1, ctx, next);
+      else if (u.kin !== undefined && u.spec) this.drawDrill(vx + 8, vy + 8, 0, S.lv.drill, S.lv.momentum, -1, 1, 1, ctx, S.lv.hull, u.id);
+      else if (MAPS.includes(u)) draw(ctx, 'upgrades', u.icon, vx + 2, vy + 2);
+      else if (u.pic) draw(ctx, 'icons', u.pic, vx + 3, vy + 3);
+      else { draw(ctx, 'upgrades', u.icon, vx + 2, vy + 2); text(ctx, `${u.values[next]}`, vx + 15, vy + 7, '#ffffff', 1); }
+      // What it is, what it does, and what the next level changes.
+      text(ctx, u.name, px + 25, y + 2, '#ffffff');
+      // (A thing fitted once has no levels to show: it is FITTED or it is not.)
+      const once = u.values.length === 2, steps = once ? (c ? '' : 'FITTED') : c ? `${u.show(u.values[l])}>${u.show(u.values[l + 1])}` : `${u.show(u.values[l])} MAX`;
+      text(ctx, steps, px + 31 + textWidth(u.name), y + 2, c ? '#bfe6ff' : '#ffe14a');
+      const lack = c ? this.lacks(u) : null;
+      // What must be found first is said on the second line, and no price is shown until it has been.
+      // (A row tall enough for three lines keeps what the thing does on its second, whatever is on the third.)
+      const tall = rh >= 30;
+      // (The reach's row says so where its price is cut for ground that is spent.)
+      const what = u.id === 'tether' && c && this.groundLeft() < 1 ? 'GROUND SPENT: PRICE CUT' : u.what;
+      if (lack) { if (tall) text(ctx, what, px + 25, y + 11, '#c8c2d4'); text(ctx, lack, px + 25, y + rh - (tall ? 11 : 12), '#ff9a6a'); }
+      else if (c) {
+        // The cost sits on the second line when the first is full. It is lit by what has come home (`banked`), as
+        // the purchase itself is judged: never shown as enough while the tap would be refused.
+        let cx = px + pw - 18;
+        const have = c.spec ? this.specs(u.kin) : 0, asks = c.spec ? `${have}/${c.spec}` : '';
+        const wide = textWidth(u.name) + textWidth(steps) + textWidth(compact(c.grit)) + (c.gems ? textWidth(compact(c.gems)) + 16 : 0) + (c.spec ? textWidth(asks) + 16 : 0) > pw - 80, cy = wide ? y + rh - (tall ? 11 : 12) : y + 2;
+        draw(ctx, 'icons', 'grit', cx, cy - 1);
+        text(ctx, compact(c.grit), cx - 2, cy, this.banked() >= c.grit ? '#ffe14a' : '#ff7a5a', 1);
+        if (c.gems > 0) {
+          cx -= textWidth(compact(c.grit)) + 16;
+          draw(ctx, 'icons', GEM_ICON[u.gem], cx, cy - 1);
+          text(ctx, compact(c.gems), cx - 2, cy, this.banked(u.gem) >= c.gems ? GEM_COLOR[u.gem] : '#ff7a5a', 1);
+        }
+        // Specimens: how many are in hand of how many are asked, with the direction's own stone.
+        if (c.spec > 0) {
+          cx -= textWidth(compact(c.grit)) + 16;
+          draw(ctx, 'icons', `spec-${GEM_ICON[u.kin]}`, cx, cy - 1);
+          text(ctx, asks, cx - 2, cy, have >= c.spec ? GEM_COLOR[u.kin] : '#ff7a5a', 1);
+        }
+        const short = c.gems > 0 && this.banked(u.gem) < c.gems;
+        if (!wide || tall) text(ctx, short ? `${GEM_WHERE[u.gem]}, PAST ${HOME_R}` : what, px + 25, wide ? y + 11 : y + rh - 12, short ? GEM_COLOR[u.gem] : what === u.what ? '#c8c2d4' : '#8ce060');
+      } else text(ctx, u.what, px + 25, y + rh - 12, '#e8c070');
+      this.buttons.unshift({ x: px + 4, y, w: pw - 8, h: rh - 1, act: () => this.buy(u) });
+    });
+    const fy = py + ph - 19;
+    // Why a tap was refused is said on the footer's line: the header is the tabs'. (A new world is in the menu.)
+    const note = this.shopNote && this.shopNote.t > 0 ? this.shopNote : null;
+    if (note) note.t -= 1 / 60;
+    if (note) text(ctx, note.text, px + pw / 2, fy + 4, note.color, 0.5);
+  }
+}

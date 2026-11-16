@@ -1,7 +1,8 @@
 // Tetherbore: the economy and the shop. What everything costs, worked out from one model of how fast a player
 // earns, and the rows of the shop's four tabs that are bought with it; and what the lab can know. Nothing here
 // needs the game, a canvas or a sound, so a tool may ask the prices and the reaches of this alone. (A name in the
-// notes below that is not made here, such as `reelIfRound`, `findsNear`, LENS or BOOST, is the game's: js/game.js.)
+// notes below that is not made here is the game's: `reelIfRound` or BOOST in js/game.js, `findsNear` or LENS in
+// js/drawing.js, which draws it.)
 import { B } from './world.js';
 
 // ---------------------------------------------------------------- the economy
@@ -131,8 +132,8 @@ export const WORKS = [
 // The shop's third tab, MAP: what the map in the corner shows.
 //   RANGE    how many cells of ground a pixel of the map is, so how far it shows: 69 cells across at first
 //   LENS     what the map tells apart from plain rock, in colours of their own: ore; then hard ground and hazards;
-//            then minerals, caches and whatever else was laid to be found (`LENS`)
-//   FINDER   finds not yet seen are marked on the map: caches; then geodes; then prisms (`findsNear`)
+//            then minerals, caches and whatever else was laid to be found (js/drawing.js: `LENS`)
+//   FINDER   finds not yet seen are marked on the map: caches; then geodes; then prisms (js/drawing.js: `findsNear`)
 //   CHART    a map of the whole of the tether's reach (a tap on the map; the third tab of the top bar's panel)
 export const MAPS = [
   { id: 'maprange', icon: 'scanner', name: 'RANGE', what: 'MAP SHOWS FURTHER', values: [1.5, 2.25, 3.5, 5], gem: B.FROST, ...levels([2, 4, 6], 0.25), show: v => `${Math.round(v * 46)}` },
