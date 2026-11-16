@@ -245,6 +245,7 @@ const TETHERS = [
 // Nothing is too hard to cut: tougher ground only takes longer (js/world.js: `digTime`), and a better bit cuts all
 // of it faster.
 const SPEED = [1, 1.6, 2.4, 3.6, 5];
+const ROUND = 3.5, BRAID = 4;                    // on the fine canvas: how wide a rope rounds a corner, and the length of one turn of its braid, in the game's pixels
 const FLY = 9, BODY = 0.34;                     // cells a second in open ground; the drill's half-width in cells
 const SIDE = [1, N, -1, -N];                    // the cells beside a cell, as steps of its number: east, south, west, north
 const LIGHT_STEP = [[1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, -1, 1], [1, 1, 1.41], [-1, 1, 1.41], [1, -1, 1.41], [-1, -1, 1.41]];
@@ -1829,6 +1830,18 @@ export class Game {
     this.stalls = this.stalls.slice(-5);
     try { localStorage.setItem('tetherbore-stalls', JSON.stringify(this.stalls)); } catch { /* not kept */ }
   }
+  // A frame that threw (js/main.js catches it, and the game goes on): written down among the long frames, what was
+  // thrown and where, no more than one a second.
+  failed(error) {
+    console.error(error);
+    const now = performance.now();
+    if (now - (this.failedAt ?? -1e9) < 1000) return;
+    this.failedAt = now;
+    const where = /at (?:\w+\.)?(\w+)/.exec(String(error?.stack ?? '').split('\n')[1] ?? '')?.[1] ?? '';
+    this.stalls.push({ err: String(error?.message ?? error).slice(0, 80), where, out: Math.round(this.far) });
+    this.stalls = this.stalls.slice(-5);
+    try { localStorage.setItem('tetherbore-stalls', JSON.stringify(this.stalls)); } catch { /* not kept */ }
+  }
   // The docking the game goes back to: what is banked, bought and known now, and the ground as it is now (the
   // world keeps what it changes from here on, `World.mark`). Made on leaving the core, and when a game begins.
   dockMark() {
@@ -2107,7 +2120,7 @@ export class Game {
     // The mender gives a pip back every so many seconds out in the ground, counted from the last knock or mend.
     if (this.val('mender') && this.dents > 0 && d.mode !== 'dead') {
       this.mendIn += dt;
-      if (this.mendIn >= this.val('mender')) { this.mendIn = 0; this.dents--; this.mended = 0.5; this.sparkle(d.x * T, d.y * T, 5, '#8ce060'); sfx.tick?.(); }
+      if (this.mendIn >= this.val('mender')) { this.mendIn = 0; this.dents--; this.mended = 0.5; this.sparkle(d.x * T, d.y * T, 5, '#8ce060'); sfx.tick(0); }
     } else this.mendIn = 0;
     this.shield = Math.max(0, this.shield - dt); this.knocked = Math.max(0, this.knocked - dt); this.mended = Math.max(0, this.mended - dt);
     if (this.notice) { this.notice.t += dt; if (this.notice.t > this.notice.life) this.notice = null; }
@@ -2471,8 +2484,14 @@ export class Game {
     for (const r of this.ropes) {
       const pts = r.pts;
       if (pts.length < 2) continue;
-      const wide = r.style.thick ? 2 : 1.4;
-      const trace = dy => {
+      const wide = r.style.thick ? 2 : 1.4, braid = r.style.b !== r.style.a;
+      // A rope that is no loop is traced only where it crosses the view (`ropeRuns`). Far out nearly all of the
+      // tether lies off the screen, and so does nearly all of the rope of every haul on its way home: traced whole,
+      // three times each, a dozen hauls a thousand cells out were a dozen ropes twenty thousand pixels long in every
+      // frame, and a phone stood still drawing them.
+      const runs = r.loop ? null : this.ropeRuns(pts, braid);
+      if (runs !== null && !runs.length) continue;
+      const trace = (dy, only = null) => {
         o.beginPath();
         if (r.loop) {
           // A closed curve through the middles of its sides.
@@ -2482,30 +2501,36 @@ export class Game {
           o.closePath();
           return;
         }
-        o.moveTo(pts[0][0], pts[0][1] + dy);
-        for (let i = 1; i < pts.length; i++) {
-          const [x, y] = pts[i], [px, py] = pts[i - 1];
-          if (r.wob && Math.hypot(x - px, y - py) < 600) {
-            // A plucked string: each span bows across itself.
-            const len = Math.hypot(x - px, y - py) || 1;
-            o.quadraticCurveTo((px + x) / 2 - (y - py) / len * r.wob * 2, (py + y) / 2 + (x - px) / len * r.wob * 2 + dy, x, y + dy);
-          } else if (i + 1 < pts.length) {
-            // Round the corner, as wide as the shorter span beside it allows.
-            const nx = pts[i + 1][0], ny = pts[i + 1][1];
-            o.arcTo(x, y + dy, nx, ny + dy, Math.min(3.5, Math.hypot(x - px, y - py) / 2, Math.hypot(nx - x, ny - y) / 2));
-          } else o.lineTo(x, y + dy);
+        for (const [from, to] of only ? [only] : runs) {
+          o.moveTo(pts[from][0], pts[from][1] + dy);
+          for (let i = from + 1; i <= to; i++) {
+            const [x, y] = pts[i], [px, py] = pts[i - 1];
+            if (r.wob && Math.hypot(x - px, y - py) < 600) {
+              // A plucked string: each span bows across itself.
+              const len = Math.hypot(x - px, y - py) || 1;
+              o.quadraticCurveTo((px + x) / 2 - (y - py) / len * r.wob * 2, (py + y) / 2 + (x - px) / len * r.wob * 2 + dy, x, y + dy);
+            } else if (i < to) {
+              // Round the corner, as wide as the shorter span beside it allows.
+              const nx = pts[i + 1][0], ny = pts[i + 1][1];
+              o.arcTo(x, y + dy, nx, ny + dy, Math.min(ROUND, Math.hypot(x - px, y - py) / 2, Math.hypot(nx - x, ny - y) / 2));
+            } else o.lineTo(x, y + dy);
+          }
         }
       };
       o.setLineDash([]); o.lineCap = 'round';
       o.strokeStyle = 'rgba(10, 8, 16, 0.7)'; o.lineWidth = wide + 1.2; trace(0.8); o.stroke();
       o.strokeStyle = r.style.a; o.lineWidth = wide; trace(0); o.stroke();
-      if (r.style.b !== r.style.a) {
-        // The second strand of the braid, in short lengths along it.
-        o.lineCap = 'butt'; o.setLineDash([4 * r.style.dash, 4 * (1 - r.style.dash)]);
-        o.strokeStyle = r.style.b; o.lineWidth = wide * 0.62; trace(0); o.stroke();
-        o.setLineDash([]);
+      if (braid) {
+        // The second strand of the braid, in short lengths along it: each part of the rope begins its lengths where
+        // the whole rope would have them, so the braid stays put on the ground whatever part of it is in view.
+        o.lineCap = 'butt'; o.setLineDash([BRAID * r.style.dash, BRAID * (1 - r.style.dash)]);
+        o.strokeStyle = r.style.b; o.lineWidth = wide * 0.62;
+        if (r.loop) { trace(0); o.stroke(); }
+        else for (const run of runs) { o.lineDashOffset = run[2] % BRAID; trace(0, run); o.stroke(); }
+        o.lineDashOffset = 0; o.setLineDash([]);
       }
-      for (const [x, y] of pts) { bx0 = Math.min(bx0, x); by0 = Math.min(by0, y); bx1 = Math.max(bx1, x); by1 = Math.max(by1, y); }
+      if (r.loop) for (const [x, y] of pts) { bx0 = Math.min(bx0, x); by0 = Math.min(by0, y); bx1 = Math.max(bx1, x); by1 = Math.max(by1, y); }
+      else for (const [from, to] of runs) for (let i = from; i <= to; i++) { const [x, y] = pts[i]; bx0 = Math.min(bx0, x); by0 = Math.min(by0, y); bx1 = Math.max(bx1, x); by1 = Math.max(by1, y); }
     }
     // (The drill and its wake are drawn here too: their place is cleared with the ropes'.)
     if (fine) for (const [x, y] of [[this.drillDrawn[0], this.drillDrawn[1]], ...fine.wake.map(([, wx, wy]) => [wx, wy])]) { bx0 = Math.min(bx0, x - 8); by0 = Math.min(by0, y - 8); bx1 = Math.max(bx1, x + 8); by1 = Math.max(by1, y + 8); }
@@ -2541,6 +2566,41 @@ export class Game {
     if (this.mapRect) o.clearRect(...this.mapRect);
     for (const b of this.buttons) o.clearRect(b.x, b.y, b.w, b.h);
     for (const p of this.panels) o.clearRect(...p);
+  }
+  // The parts of a rope that cross the view, each [its first point, its last, how far along the whole rope it
+  // begins]. A part is the spans that come within a few pixels of the screen, and one span more at each end so that
+  // the corners beside the view are rounded as they are in the whole rope; parts that meet are one. The distance
+  // (asked for a braided rope: it is where the braid's short lengths begin) is measured along the rope as it is
+  // drawn, round every corner's arc and not through its point, so a part traced alone lies on the pixels the whole
+  // rope would have drawn there. Nothing here is in proportion to the rope's length but a little arithmetic.
+  ropeRuns(pts, braid = false) {
+    const { W, H } = this, n = pts.length, m = 12, runs = [];
+    for (let i = 1; i < n; i++) {
+      const a = pts[i - 1], b = pts[i];
+      if (Math.max(a[0], b[0]) < -m || Math.min(a[0], b[0]) > W + m || Math.max(a[1], b[1]) < -m || Math.min(a[1], b[1]) > H + m) continue;
+      const from = Math.max(0, i - 2), to = Math.min(n - 1, i + 1), last = runs[runs.length - 1];
+      if (last && from <= last[1]) last[1] = to; else runs.push([from, to, 0]);
+    }
+    const far = runs.length ? runs[runs.length - 1][0] : 0;
+    if (!braid || far === 0) return runs;
+    // Along the rope from its first point: straight to where each corner's arc begins, round the arc, and on from
+    // where it ends. A part that begins at a corner begins at the corner's own point, short of the arc's end by
+    // the length of its tangent.
+    let cx = pts[0][0], cy = pts[0][1], len = 0, next = runs[0][0] === 0 ? 1 : 0;
+    for (let i = 1; i <= far; i++) {
+      const [x, y] = pts[i], [px, py] = pts[i - 1], [nx, ny] = pts[i + 1];
+      const r = Math.min(ROUND, Math.hypot(x - px, y - py) / 2, Math.hypot(nx - x, ny - y) / 2);
+      const ax = cx - x, ay = cy - y, al = Math.hypot(ax, ay), bx = nx - x, by = ny - y, bl = Math.hypot(bx, by);
+      let t = 0, arc = 0;
+      if (r > 0 && al > 0 && bl > 0) {
+        const cos = Math.max(-1, Math.min(1, (ax * bx + ay * by) / (al * bl)));
+        if (1 - cos > 1e-9) { t = r * Math.sqrt((1 + cos) / (1 - cos)); arc = r * (Math.PI - Math.acos(cos)); }
+      }
+      len += Math.abs(al - t) + arc;
+      cx = x + (bl ? bx / bl * t : 0); cy = y + (bl ? by / bl * t : 0);
+      while (next < runs.length && runs[next][0] === i) runs[next++][2] = len - t;
+    }
+    return runs;
   }
   // A rope through `pts` (a closed loop if `closed`), as one clean line of pixels: a smooth curve through the points,
   // with no doubled corners.
@@ -2988,7 +3048,10 @@ export class Game {
     for (let a = 0; a < 6.283; a += 0.09) { const [mx, my] = at(HX + Math.cos(a) * R, HY + Math.sin(a) * R); ctx.fillRect(Math.round(mx), Math.round(my), 1, 1); }
     ctx.globalAlpha = 1; ctx.fillStyle = TETHERS[this.S.lv.tether].a;
     for (let n = 1; n < this.band.length; n++) {
-      const [ax, ay] = at(...this.band[n - 1]), [bx, by] = at(...this.band[n]), steps = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay)));
+      const [ax, ay] = at(...this.band[n - 1]), [bx, by] = at(...this.band[n]);
+      // (A span that lies off the map is not walked: far out, that is nearly all of them.)
+      if (Math.max(ax, bx) < x - 1 || Math.min(ax, bx) > x + size + 1 || Math.max(ay, by) < y - 1 || Math.min(ay, by) > y + size + 1) continue;
+      const steps = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay)));
       for (let s = 0; s <= steps; s++) ctx.fillRect(Math.round(ax + (bx - ax) * s / steps), Math.round(ay + (by - ay) * s / steps), 1, 1);
     }
     for (let dir = 0; dir < 4; dir++) {
@@ -3190,12 +3253,14 @@ export class Game {
       if (this.confirmReset > 0) { this.confirmReset = 0; this.fresh((Math.random() * 1e9) | 0); this.save(); sfx.relic(); } else { this.confirmReset = 2.5; sfx.tap(); }
     } });
   }
-  // Under the menu's rows, the long frames written down (`frameTook`), newest first: how long, and where the time
-  // went, so that whoever sees the game freeze can say what it was doing.
+  // Under the menu's rows, the long frames written down (`frameTook`) and the frames that threw (`failed`), newest
+  // first: how long, and where the time went, so that whoever sees the game freeze can say what it was doing.
   drawStalls(px, y0, pw) {
     const { ctx } = this;
     text(ctx, 'LONG FRAMES', px + 8, y0, '#8a84a0');
     this.stalls.slice().reverse().forEach((s, n) => {
+      // (A frame that threw says what and where, as much of it as the panel has room for.)
+      if (s.err) { text(ctx, `ERR ${s.where} ${s.err}`.toUpperCase().replace(/[^A-Z0-9 ]/g, ' ').replace(/ +/g, ' ').slice(0, Math.floor((pw - 16) / 6)), px + 8, y0 + 11 + n * 10, '#ff7a5a'); return; }
       const ours = s.update + s.render, where = ours < s.gap / 2 ? 'BROWSER' : s.ms >= ours / 2 && s.top ? s.top.toUpperCase() : s.update > s.render ? 'STEP' : 'DRAW';
       text(ctx, `${(s.gap / 1000).toFixed(1)}S ${where} ${s.update}+${s.render} AT ${s.out}`, px + 8, y0 + 11 + n * 10, '#bcb4cc');
     });

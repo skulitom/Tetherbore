@@ -35,17 +35,22 @@ window.addEventListener('pagehide', () => game.save());
 
 let last = performance.now(), manual = !!shot;
 function frame(now) {
-  if (!manual) {
-    const gap = now - last, dt = Math.min(0.05, gap / 1000);
-    last = now;
+  // The next frame is asked for before this one is made, and whatever this one throws is caught and written down
+  // (`Game.failed`): nothing that goes wrong in a frame stops the game. It did once: the hull mending itself asked
+  // for a sound with no pitch, the browser threw from the middle of the step, the next frame was never asked for,
+  // and the game stood still for good, twenty seconds after any knock.
+  requestAnimationFrame(frame);
+  if (manual) return;
+  const gap = now - last, dt = Math.min(0.05, gap / 1000);
+  last = now;
+  try {
     const t0 = performance.now();
     game.update(dt);
     const t1 = performance.now();
     game.render();
     // (A frame that took long is written down, with where the time went: `Game.frameTook`.)
     game.frameTook(gap, t1 - t0, performance.now() - t1);
-  }
-  requestAnimationFrame(frame);
+  } catch (error) { game.failed(error); }
 }
 requestAnimationFrame(frame);
 
