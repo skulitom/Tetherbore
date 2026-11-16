@@ -16,7 +16,7 @@
 // test/all.mjs runs the flights in which the verifiers found something: 45 (a wreck wound and not reeled), 33
 // (basalt that set in the open), 60 and 50 (stuck at the end of the reach), 57 (a bend hooked beyond the string's
 // end), 39 (throws), 51 (bombs and the shop).
-import { makeGame, random, tetherFaults, UPGRADES, C, N, K, world } from '../harness.mjs';
+import { makeGame, random, tetherFaults, farStart, UPGRADES, C, N, K, world } from '../harness.mjs';
 
 const argv = process.argv.slice(2);
 const [seed = 30, turns = 300, reach = 5, sx = 0, sy = 0] = argv.slice(0, 5).map(Number);
@@ -30,13 +30,7 @@ const d = game.drill, w = game.world, rnd = random(seed * 7 + 1);
 const rel = i => `${(i % N) - C},${Math.floor(i / N) - C}`;
 const at = () => `${(d.x - HX).toFixed(2)},${(d.y - HY).toFixed(2)}`;
 
-if (sx || sy) {
-  const len = Math.hypot(sx, sy);
-  for (let s = 0; s <= len; s += 0.5) for (let u = -1; u <= 1; u++) for (let v = -1; v <= 1; v++) w.setK((C + Math.round(sy * s / len) + v) * N + C + Math.round(sx * s / len) + u, K.EMPTY);
-  d.x = C + sx + 0.5; d.y = C + sy + 0.5; d.mode = 'free';
-  game.band = [[d.x, d.y], [HX, HY]];
-  game.changed();
-}
+if (sx || sy) farStart(game, sx, sy);
 // Staged, not natural: lone cells of bedrock near the core, which nothing cuts or hauls, so the band stays wound
 // round them on the way home and through a throw.
 if (flags.has('pillars')) {

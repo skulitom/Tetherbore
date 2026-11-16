@@ -6,7 +6,9 @@
 //   game.input.auto = [1, 0, 1];          // steer: [x, y, how hard 0..1], or null to let go
 //   game.update(1 / 60);
 //
-// Nothing is drawn (the canvas swallows every call), so this tests what the game does, not how it looks.
+// `farStart` stages a start deep in the ground and `wander` is the fuzzes' random steering; `tetherFaults` and
+// `Oracle` check the tether. Nothing is drawn (the canvas swallows every call), so this tests what the game does,
+// not how it looks.
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
@@ -81,6 +83,47 @@ export function rubbleHash() {
     },
     get hex() { return (a >>> 0).toString(16).padStart(8, '0') + (b >>> 0).toString(16).padStart(8, '0'); },
   };
+}
+
+// A straight tunnel three cells wide from the core out to the offset (sx, sy), as the fuzzes stage a start deep in
+// the ground: a step every half cell along the line, rounded to the cell it lies in, and the cells round that opened.
+// A cell `keep` says yes to is left as it is (a wreck, a prism and its ore). The steps are rounded exactly so for
+// every flight written with it was flown through these cells and no others.
+export function tunnel(game, sx, sy, keep = () => false) {
+  const w = game.world, len = Math.hypot(sx, sy);
+  for (let s = 0; s <= len; s += 0.5) for (let u = -1; u <= 1; u++) for (let v = -1; v <= 1; v++) {
+    const i = (C + Math.round(sy * s / len) + v) * N + C + Math.round(sx * s / len) + u;
+    if (!keep(i)) w.setK(i, K.EMPTY);
+  }
+}
+
+// A start at (sx, sy) from the core: the tunnel out to it, and the drill set down free at its end with the tether
+// running straight back home.
+export function farStart(game, sx, sy, keep) {
+  tunnel(game, sx, sy, keep);
+  setDown(game, sx, sy);
+}
+
+// The drill set down free at (sx, sy) from the core, the tether straight from it to the core, and the game told the
+// ground has changed. (Called on its own by a script that does more to the ground between cutting the tunnel and
+// setting the drill down, as the hazard fuzz plants its hazards.)
+export function setDown(game, sx, sy) {
+  const d = game.drill;
+  d.x = C + sx + 0.5; d.y = C + sy + 0.5; d.mode = 'free';
+  game.band = [[d.x, d.y], [C + 0.5, C + 0.5]];
+  game.changed();
+}
+
+// The fuzzes' random flight, as `game.input.auto` for one frame after another. A turn swings the heading by up to
+// 1.25 radians either way and holds it for 10 to 59 frames at full strength; one turn in ten lets go instead (null).
+// The three numbers a turn takes from `rnd` are drawn as it begins, in that order, so a script that draws nothing
+// else while it flies flies as it did when it wrote this loop out for itself.
+export function* wander(rnd, turns, heading = 0) {
+  for (let turn = 0; turn < turns; turn++) {
+    heading += (rnd() - 0.5) * 2.5;
+    const hold = 10 + Math.floor(rnd() * 50), pause = rnd() < 0.1;
+    for (let f = 0; f < hold; f++) yield pause ? null : [Math.cos(heading), Math.sin(heading), 1];
+  }
 }
 
 // Everything wrong with the tether as it lies now, as a list of strings (empty when it is sound):

@@ -2,7 +2,7 @@
 // not from further off, not once its part is held, and not once the wreck itself has gone. Ticks are counted
 // (Game.ticks), never timed: over the same three seconds there are more of them close by than far off.
 //   node test/regress/s5-wreck-tick.mjs
-import { makeGame, world, C, N } from '../harness.mjs';
+import { makeGame, farStart, world, C, N } from '../harness.mjs';
 const { K } = world;
 
 const game = await makeGame(7, { tether: 4 }), w = game.world, S = game.S, d = game.drill, fails = [];
@@ -10,14 +10,9 @@ const [wx, wy] = w.wrecks[0], wreck = wy * N + wx;
 // The drill is stood `far` cells east of the wreck, in a room at the end of a tunnel carved from the core as the
 // tether fuzz carves a far start, and three seconds pass.
 const ticksAt = far => {
-  const x = wx + far, y = wy, sx = x - C, sy = y - C, len = Math.hypot(sx, sy);
-  for (let s = 0; s <= len; s += 0.5) for (let u = -1; u <= 1; u++) for (let v = -1; v <= 1; v++) {
-    const i = (C + Math.round(sy * s / len) + v) * N + C + Math.round(sx * s / len) + u;
-    if (w.k(i) !== K.WRECK) w.setK(i, K.EMPTY);
-  }
-  d.x = d.px = x + 0.5; d.y = d.py = y + 0.5; d.vx = d.vy = 0; d.mode = 'free';
-  game.band = [[d.x, d.y], [C + 0.5, C + 0.5]];
-  game.changed();
+  const x = wx + far, y = wy;
+  d.px = x + 0.5; d.py = y + 0.5; d.vx = d.vy = 0;
+  farStart(game, x - C, y - C, i => w.k(i) === K.WRECK);
   game.tickIn = 0;
   const before = game.ticks;
   for (let f = 0; f < 180; f++) game.update(1 / 60);

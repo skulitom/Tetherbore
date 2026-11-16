@@ -3,7 +3,7 @@
 // frames (into a canvas that swallows it, which still catches a missing sprite), buys what it can, opens the shop
 // and sets off bombs.
 //   node test/smoke.mjs [seed] [turns]
-import { makeGame, random, tetherFaults, UPGRADES, C, N, K } from './harness.mjs';
+import { makeGame, random, tetherFaults, farStart, UPGRADES, C } from './harness.mjs';
 
 const [seed = 7, turns = 120] = process.argv.slice(2).map(Number);
 const problems = [];
@@ -11,14 +11,8 @@ const note = (where, what) => { if (problems.length < 20) problems.push(`${where
 
 for (const [name, sx, sy, reach] of [['home', 0, 0, 4], ['north', 0, -260, 6], ['south', 0, 260, 6], ['west', -260, 0, 6], ['east', 260, 0, 6], ['far north-east', 700, -700, 8], ['far south', 0, 1300, 9]]) {
   const game = await makeGame(seed, { tether: reach, drill: 3 });
-  const d = game.drill, w = game.world, rnd = random(seed + sx * 3 + sy * 7);
-  if (sx || sy) {
-    const len = Math.hypot(sx, sy);
-    for (let s = 0; s <= len; s += 0.5) for (let u = -1; u <= 1; u++) for (let v = -1; v <= 1; v++) w.setK((C + Math.round(sy * s / len) + v) * N + C + Math.round(sx * s / len) + u, K.EMPTY);
-    d.x = C + sx + 0.5; d.y = C + sy + 0.5; d.mode = 'free';
-    game.band = [[d.x, d.y], [C + 0.5, C + 0.5]];
-    game.changed();
-  }
+  const d = game.drill, rnd = random(seed + sx * 3 + sy * 7);
+  if (sx || sy) farStart(game, sx, sy);
   game.S.grit = 5e6; game.S.gems = [0, 5000, 5000, 5000, 5000];
   let heading = rnd() * 6.283, frames = 0;
   try {

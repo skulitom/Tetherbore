@@ -2,27 +2,20 @@
 // floods the ground at every bend the tether still has, each flood up to 400000 cells. Fails when look() on that
 // frame looks at more than 300,000 cells of ground, or leaves a fault in the tether.
 //   node test/regress/g-home-arrival.mjs [seed] [turns] [reach level] [start x] [start y]
-import { makeGame, random, tetherFaults, C, N, K } from '../harness.mjs';
+import { makeGame, random, tetherFaults, farStart, wander, C } from '../harness.mjs';
 const [seed = 5, turns = 250, reach = 8, sx = 500, sy = 0] = process.argv.slice(2).map(Number);
 const game = await makeGame(seed, { tether: reach, drill: 4, momentum: 4, scanner: 4 });
-const d = game.drill, w = game.world, rnd = random(seed), dt = 1 / 60;
-const len = Math.hypot(sx, sy);
-for (let s = 0; s <= len; s += 0.5) for (let u = -1; u <= 1; u++) for (let v = -1; v <= 1; v++) w.setK((C + Math.round(sy * s / len) + v) * N + C + Math.round(sx * s / len) + u, K.EMPTY);
-d.x = C + sx + 0.5; d.y = C + sy + 0.5; d.mode = 'free';
-game.band = [[d.x, d.y], [C + 0.5, C + 0.5]];
-game.changed();
-let lookMs = 0, floods = 0, looked = 0, lookCells = 0, dockCells = 0, frames = 0, heading = Math.atan2(sy, sx);
+const d = game.drill, w = game.world, dt = 1 / 60;
+farStart(game, sx, sy);
+let lookMs = 0, floods = 0, looked = 0, lookCells = 0, dockCells = 0, frames = 0;
 const kind = w.k; w.k = function (i) { looked++; return kind.call(this, i); };
 // (Ground is also read straight from the world's pieces, when a piece is followed and when the tether sweeps: counted too.)
 const follow = w.follow; w.follow = function (...a) { const n = this.followed; try { return follow.apply(this, a); } finally { looked += this.followed - n; } };
 const sweep = game.catchIn; game.catchIn = function (...a) { const n = this.swept; try { return sweep.apply(this, a); } finally { looked += this.swept - n; } };
 const look = game.look; game.look = function () { const t0 = performance.now(), l0 = looked; look.call(this); lookMs = performance.now() - t0; lookCells = Math.max(lookCells, looked - l0); };
 const pieceIn = w.pieceIn; w.pieceIn = function (...a) { floods++; const got = pieceIn.apply(this, a); return got; };
-for (let turn = 0; turn < turns; turn++) {
-  heading += (rnd() - 0.5) * 2.5;
-  const hold = 10 + Math.floor(rnd() * 50), pause = rnd() < 0.1;
-  for (let f = 0; f < hold; f++) { game.input.auto = pause ? null : [Math.cos(heading), Math.sin(heading), 1]; game.update(dt); frames++; }
-}
+// The flight sets off the way the tunnel runs.
+for (const auto of wander(random(seed), turns, Math.atan2(sy, sx))) { game.input.auto = auto; game.update(dt); frames++; }
 const out = game.far, bendsOut = game.band.length - 2;
 let worst = 0, worstLook = 0, bendsAtDock = 0, homeFrames = 0, docked = false;
 for (; homeFrames < 40000 && game.far > 0.05; homeFrames++) {

@@ -9,7 +9,7 @@
 //   - it is drawn from the finds sheet over its rock, afresh each frame, turning through its three frames, and it
 //     sheds chips of glass in whatever ground it lies.
 //   node test/regress/c5-prism.mjs
-import { makeGame, tetherFaults, world, C, N } from '../harness.mjs';
+import { makeGame, tetherFaults, farStart, world, C, N } from '../harness.mjs';
 import { flyTo, idle, fixRandom } from './lib/lasso.mjs';
 const { K, B, GEMS } = world;
 const atlas = await import('../../js/atlas.js');
@@ -21,18 +21,15 @@ const at = (x, y) => (C + y) * N + C + x;
 // ---- 1. The world's own prism, flown round.
 {
   const PX = -223, PY = -353;
-  const game = await makeGame(7, { tether: 7, drill: 4 }), w = game.world, d = game.drill, S = game.S;
+  const game = await makeGame(7, { tether: 7, drill: 4 }), w = game.world, S = game.S;
   const ring = [];
   for (let v = -1; v <= 1; v++) for (let u = -1; u <= 1; u++) if (u || v) ring.push(at(PX + u, PY + v));
   check(w.k(at(PX, PY)) === K.PRISM && ring.every(i => w.k(i) === K.ORE_A), `the prism at ${PX},${PY} is ${w.k(at(PX, PY))} in ${ring.map(i => w.k(i))}`);
   const [what, fx, fy] = w.findSpot(Math.floor(PX / 48), Math.floor(PY / 48));
   check(what === 'prism' && fx === C + PX && fy === C + PY, `the world says the sector holds ${what} at ${fx - C},${fy - C}`);
-  // A tunnel three cells wide from the core to four cells south of it, as the fuzz stages a start.
-  const sx = PX, sy = PY + 4, len = Math.hypot(sx, sy);
-  for (let s = 0; s <= len; s += 0.5) for (let u = -1; u <= 1; u++) for (let v = -1; v <= 1; v++) { const i = at(Math.round(sx * s / len) + u, Math.round(sy * s / len) + v); if (Math.max(Math.abs((i % N) - C - PX), Math.abs(Math.floor(i / N) - C - PY)) > 1) w.setK(i, K.EMPTY); }
-  d.x = C + sx + 0.5; d.y = C + sy + 0.5; d.mode = 'free';
-  game.band = [[d.x, d.y], [C + 0.5, C + 0.5]];
-  game.changed();
+  // A tunnel three cells wide from the core to four cells south of it, as the fuzz stages a start, which leaves the
+  // nine standing where it runs past them.
+  farStart(game, PX, PY + 4, i => Math.max(Math.abs((i % N) - C - PX), Math.abs(Math.floor(i / N) - C - PY)) <= 1);
   const nine = [at(PX, PY), ...ring], plain = game.payOf(ring), with1 = game.payOf(nine), kin = w.row(at(PX, PY)).kin;
   check(plain.gems[kin] === 8 * GEMS[K.ORE_A] && with1.gems[kin] === Math.round(plain.gems[kin] * 1.5) && with1.shine === 1.5, `the ring pays ${plain.gems[kin]} gems, and with its prism ${with1.gems[kin]}`);
   // Round it: a ring of cuts two cells out from the prism, east about, begun and ended at the tunnel's west side

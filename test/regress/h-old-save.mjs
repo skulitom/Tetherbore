@@ -15,7 +15,7 @@
 //     tether looked at after every frame and the screen drawn, and the game is saved and loaded again each time.
 import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
-import { makeGame, random, tetherFaults, UPGRADES, C, N, K, world } from '../harness.mjs';
+import { makeGame, random, tetherFaults, farStart, UPGRADES, C, N, K, world } from '../harness.mjs';
 
 const { BIOMES, rowOf } = world, problems = [], note = text => { if (problems.length < 16) problems.push(text); };
 const save = JSON.parse(gunzipSync(readFileSync(new URL('../fixtures/save-4293f7c.json.gz', import.meta.url))));
@@ -115,11 +115,8 @@ const fly = async (sx, sy, turns, seed) => {
   game.save();
   await new Promise(done => setTimeout(done, 20));
   if (!(await game.restore())) { note('the game did not load again'); return; }
-  const rnd = random(seed), len = Math.hypot(sx, sy), d = game.drill;
-  for (let s = 0; s <= len; s += 0.5) for (let u = -1; u <= 1; u++) for (let v = -1; v <= 1; v++) w.setK((C + Math.round(sy * s / len) + v) * N + C + Math.round(sx * s / len) + u, K.EMPTY);
-  d.x = C + sx + 0.5; d.y = C + sy + 0.5; d.mode = 'free';
-  game.band = [[d.x, d.y], [C + 0.5, C + 0.5]];
-  game.changed();
+  const rnd = random(seed);
+  farStart(game, sx, sy);
   let heading = rnd() * 6.283;
   for (let turn = 0; turn < turns; turn++) {
     heading += (rnd() - 0.5) * 2.5;
