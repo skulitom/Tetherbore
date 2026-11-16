@@ -107,6 +107,9 @@ const KIN_ITEMS = ['lode-items', 'frost-items', 'ember-items', 'mire-items', 'lo
 //   gloom, dark         the colour of its dark, and how deep the dark is (1 as everywhere today)
 //   mote                [colour, drift]: the motes in its air, and whether they 'fall', 'rise', 'sway' or hang 'still'
 //   map, debris         its colour on the map (its sheet's own ground colour) and the three colours of its chips
+//   decor, decor2       the set of pieces its caves have (js/decor.js; frames `<set>-<place>-<n>` of the decor
+//                       sheets), and a cross's donor's pieces, mixed in among them (null: none)
+//   air                 the animation of the `air` sheet its motes are drawn as, in their colour (null: a dot)
 //   gen                 the thresholds its standard ground is laid by: { dense, oreA, oreB, slate, cave, cavern }
 //                       (null: the home ground, which has rules of its own in `kindAt`)
 //   haz, haz2           its hazards, { type, rate, t } or null: K.HAZARD cells are the first, K.HAZARD2 the second
@@ -182,7 +185,7 @@ export function biome(f) {
     id, name, title: f.title ?? name.toUpperCase(), kin, gemA: f.gemA ?? kin, gemB: f.gemB ?? kin,
     rich: f.rich ?? 1, gemx: f.gemx ?? 1, worth: f.worth ?? 1, dig: f.dig ?? 1,
     sheet: f.sheet ?? name, floor: f.floor ?? `${name}-floor`, items: f.items ?? KIN_ITEMS[kin], itemsB: f.itemsB ?? f.items ?? KIN_ITEMS[kin],
-    gloom: f.gloom, dark: f.dark ?? 1, mote: f.mote, map: f.map, debris: f.debris,
+    gloom: f.gloom, dark: f.dark ?? 1, mote: f.mote, map: f.map, debris: f.debris, decor: f.decor ?? null, decor2: f.decor2 ?? null, air: f.air ?? null,
     gen: g, haz: f.haz ?? null, haz2: f.haz2 ?? null, lavaVol: f.lavaVol ?? 5, freeze: f.freeze ?? 0,
     glass: f.glass ?? false, extras: f.extras ?? [], pocket: f.pocket ?? null, cross: f.cross ?? null,
     lay: g && { dense: g.dense, oreA: g.oreA, oreB: g.oreB, slate: g.slate, cave: g.cave, cavern: g.cavern, haz, hazT, haz2, haz2T,
@@ -507,6 +510,16 @@ export const HERALD_R = 165, HERALD_OFF = 14, HERALD_RHO = 9, HERALD_ON = 40, HE
 // Where each direction's herald lies: its sector of pockets, and the way out from the core and the way aside.
 const HERALD_AT = [null, { sx: 0, sy: -2, ux: 0, uy: -1, ox: 1, oy: 0 }, { sx: -1, sy: 1, ux: 0, uy: 1, ox: -1, oy: 0 }, { sx: -2, sy: -1, ux: -1, uy: 0, ox: 0, oy: -1 }, { sx: 1, sy: 0, ux: 1, uy: 0, ox: 0, oy: 1 }];
 
+// ---------------------------------------------------------------- how each ground looks in its caves
+// The set of pieces each hand-made ground's caves have (js/decor.js, art/decor.mjs) and what its motes are drawn as
+// (an animation of the `air` sheet). A drift's cavern is sky and an ash flat has no open cell: neither has a set.
+// Nothing here changes what is laid or paid.
+const LOOKS = [[0, 'crust', null], [1, 'frost', 'flake'], [2, 'ember', 'ember'], [3, 'mire', 'spore'], [4, 'lode', null],
+  [5, 'rime', 'flake'], [6, 'magma', 'ember'], [7, 'bloom', 'firefly'], [8, 'gilt', 'glint'], [17, 'firn', 'flake'], [18, 'serac', 'flake'],
+  [19, 'scoria', 'ember'], [20, 'forge', 'ember'], [21, 'tangle', 'spore'], [22, 'sporefall', 'spore'], [23, 'redrock', null], [24, 'loess', null],
+  [32, 'hive', 'glint'], [33, null, 'glint'], [34, null, 'ash'], [35, 'grotto', 'spore'], [36, 'tinder', 'ember'], [37, 'glaze', 'flake'], [38, 'shale', null]];
+for (const [id, decor, air] of LOOKS) Object.assign(BIOMES[id], { decor, air });
+
 // ---------------------------------------------------------------- generated ground: crosses
 // Everything above is made by hand. A cross is made by rule from three hand-made parts, so that a player who knows
 // the parts can read it at a glance (docs/CONTENT-PLAN.md, section 4 (a)):
@@ -554,7 +567,8 @@ export const crossRow = (host, donor, structure) => {
   return biome({ id: crossId(host, donor, structure), name: title.toLowerCase(), title, kin: host, gemB: donor, rich: 1.25,
     sheet: `x-${own.name}-${from.name}`, floor: own.floor, items: own.items, itemsB: from.items, gloom: own.gloom, mote: own.mote,
     map, debris: [own.debris[0], patch, ACCENT[donor]], gen: { ...own.gen, ...SHAPES[shape].gen }, extras: SHAPES[shape].extras,
-    haz: own.haz, haz2: hazard, freeze: own.freeze || from.freeze, cross: { host, donor, structure: shape } });
+    haz: own.haz, haz2: hazard, freeze: own.freeze || from.freeze, cross: { host, donor, structure: shape },
+    decor: own.decor, decor2: own.decor && from.decor && `${own.decor}-${from.decor}`, air: own.air });
 };
 for (let host = B.FROST; host <= B.LODE; host++) for (const donor of DONORS[host]) for (let structure = 0; structure < 5; structure++) crossRow(host, donor, structure);
 

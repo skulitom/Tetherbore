@@ -4,7 +4,8 @@
 // rule of play: what these methods keep on the game is what was drawn and where (the pieces of ground, the chart's
 // picture and view, what can be tapped this frame).
 import { N, C, K, B, DX, DY, BIOMES, HAZARDS, ZONE, FIND, rowOf, hazOf, cellHash, RELIC_R, HOME_R } from './world.js';
-import { sheets, draw, drawScaled, frameAt, duration, slice9, text, textWidth } from './atlas.js';
+import { sheets, draw, drawScaled, frameAt, duration, slice9, text, textWidth, tinted } from './atlas.js';
+import { decorAt, markAt, natural, framesOf, placeOf } from './decor.js';
 import { sfx, isMuted, setMuted, isMusic, setMusic } from './audio.js';
 import { WORKS, MAPS, TABS, LAB, LAB_OF, labLevel, labNext, ROWS } from './shop.js';
 // (The middle of the core and two figures of the rules are the game's, read from js/game.js, which imports this
@@ -62,6 +63,9 @@ const CHIPS = [];
 CHIPS[K.KEY] = ['#8a94a8', '#eef4ff', '#b0603a']; CHIPS[K.PRISM] = ['#ffffff', '#bfe6ff', '#d8b8ff'];
 // How many keystones in view glint in the dark at once (the nearest the drill), how bright, and how far.
 const KEY_GLINTS = 12, KEY_GLINT = 0.4, KEY_GLOW = 2;
+// Glowing decor (js/decor.js): as many as DECOR_MOST in view have a halo, at DECOR_HALO, and the nearest DECOR_GLOWS
+// also light the cave about them, as bright as DECOR_GLOW for as far as DECOR_REACH cells.
+const DECOR_MOST = 64, DECOR_HALO = 0.85, DECOR_GLOWS = 12, DECOR_GLOW = 0.4, DECOR_REACH = 2.2;
 // How the tether looks at each level of reach: rope, braid, cable, then lines of light.
 const TETHERS = [
   { a: '#e8dcc0', b: '#e8dcc0', dash: 1 }, { a: '#e8dcc0', b: '#b89a6c', dash: 0.5 }, { a: '#f0d890', b: '#b0803a', dash: 0.5 },
@@ -386,7 +390,9 @@ export class Drawing {
     for (const m of this.motes) {
       if (w.peek(Math.floor(m.x / T), Math.floor(m.y / T)) !== K.EMPTY) continue;
       ctx.globalAlpha = Math.max(0, Math.min(1, m.t, m.life - m.t)) * (0.35 + 0.3 * Math.sin(this.time * 3 + m.seed)); ctx.fillStyle = m.mote[0];
-      ctx.fillRect(Math.round(m.x - ox), Math.round(m.y - oy), 1, 1);
+      // (A ground's motes may be small sprites of the `air` sheet, in the mote's colour: flakes, embers, spores.)
+      if (m.air) { const f = frameAt('air', m.air, now + m.seed * 97); ctx.drawImage(tinted('air', m.mote[0]), f[0], f[1], f[2], f[3], Math.round(m.x - ox) - (f[2] >> 1), Math.round(m.y - oy) - (f[3] >> 1), f[2], f[3]); }
+      else ctx.fillRect(Math.round(m.x - ox), Math.round(m.y - oy), 1, 1);
     }
     ctx.globalAlpha = 1;
     { const t0 = performance.now(); this.light(ox, oy); this.timed('light', t0); }
@@ -618,7 +624,7 @@ export class Drawing {
     let c = this.chunks.get(key);
     if (!c) {
       // Far-off pieces are dropped, so a long journey does not hold every piece it passed.
-      if (this.chunks.size > 180) for (const [k, old] of this.chunks) if (Math.abs(old.cx - cx) > 9 || Math.abs(old.cy - cy) > 12) this.chunks.delete(k);
+      if (this.chunks.size > 180) for (const [k, old] of this.chunks) if (Math.abs(old.cx - cx) > 9 || Math.abs(old.cy - cy) > 12) { this.chunks.delete(k); this.wild?.delete(k); this.glowing?.delete(k); }
       const canvas = document.createElement('canvas');
       canvas.width = canvas.height = 128;
       c = { canvas, ctx: canvas.getContext('2d', { alpha: false }), v: -1, cx, cy, ops: null };
@@ -637,6 +643,7 @@ export class Drawing {
   paint(ctx, x0, y0) {
     const w = this.world;
     ctx.globalAlpha = 1; ctx.fillStyle = '#07060b'; ctx.fillRect(0, 0, 128, 128);
+    this.lights(x0, y0);
     for (let y = y0; y < y0 + 8; y++) for (let x = x0; x < x0 + 8; x++) {
       const i = y * N + x, k = w.k(i), b = w.b(i), row = rowOf(b), px = (x - x0) * T, py = (y - y0) * T;
       const floorSheet = row.floor, floors = sheets[floorSheet].tiles[255], floor = floors[(cellHash(x, y, 1) * floors.length) | 0];
@@ -647,7 +654,7 @@ export class Drawing {
       }
       const m = k === K.EMPTY ? 255 : w.mask(x, y);
       if (m !== 255 || k === K.EMPTY) draw(ctx, floorSheet, floor, px, py);
-      if (k === K.EMPTY) continue;
+      if (k === K.EMPTY) { this.adorn(ctx, i, x, y, row, px, py); continue; }
       const sheet = this.rockSheet(k, b), rects = sheets[sheet].tiles[m];
       draw(ctx, sheet, rects[(cellHash(x, y, 3) * rects.length) | 0], px, py);
       const ux = px - ((m & 4) ? 0 : 1), uy = py - ((m & 16) ? 0 : 1);
@@ -669,6 +676,91 @@ export class Drawing {
         }
       }
     }
+  }
+
+  // ---- each ground's own pieces in its caves (js/decor.js), drawn into the pieces of ground with the floors.
+  // An open cell's piece of decor, or failing that the mark on its back wall, drawn over its floor. None is drawn
+  // under lava (it runs into tunnels, and is drawn over them each frame with its corners rounded), and no icicle
+  // where one has fallen (`game.fallen`). A piece that glows is written down for `glowsIn`.
+  adorn(ctx, i, x, y, row, px, py) {
+    if (row.decor === null || row.decor === undefined || this.world.lava.has(i)) return;
+    let f = decorAt(this.world, i, x, y, row, this.wilds ??= j => this.wildAt(j));
+    if (f !== null && this.fallen?.has(i) && placeOf(f) === 'top') f = null;
+    if (f === null) f = markAt(x, y, row);
+    if (f === null) return;
+    const what = framesOf().frame.get(f);
+    draw(ctx, what.sheet, f, px, py);
+    if (what.glow) this.shining.push(i, what.glow[0], what.glow[1], what.glow[2]);
+  }
+  // The frame of the piece or the mark that cell `i` shows (in view or not), or null.
+  decorOf(i) {
+    const w = this.world, x = i & (N - 1), y = i >>> 14, row = w.row(i);
+    if (w.k(i) !== K.EMPTY || !w.s(i) || row.decor === null || row.decor === undefined || w.lava.has(i)) return null;
+    const f = decorAt(w, i, x, y, row, this.wilds ??= j => this.wildAt(j));
+    return f !== null && !(this.fallen?.has(i) && placeOf(f) === 'top') ? f : markAt(x, y, row);
+  }
+  // Whether the seed left cell `i` open (js/decor.js: `natural`): asked of the world once for each cell, and kept
+  // with the piece of ground the cell is in, for as long as that piece is kept and the world is the same.
+  wildAt(i) {
+    const w = this.world, x = i & (N - 1), y = i >>> 14, key = (y >> 3) * 4096 + (x >> 3), book = this.wild ??= new Map();
+    let e = book.get(key);
+    if (!e || e.seed !== w.seed) book.set(key, e = { seed: w.seed, cells: new Uint8Array(64) });
+    const at = ((y & 7) << 3) | (x & 7);
+    if (e.cells[at] === 0) e.cells[at] = natural(w, i, x, y) ? 1 : 2;
+    return e.cells[at] === 1;
+  }
+  // The glowing pieces of the piece of ground at (x0, y0), written down afresh each time it is painted: four
+  // numbers to a glow, its cell, where in the cell it is and its halo.
+  lights(x0, y0) {
+    this.shining = [];
+    (this.glowing ??= new Map()).set((y0 >> 3) * 4096 + (x0 >> 3), this.shining);
+  }
+  // The glowing pieces in view (DECOR_MOST of them at the most, the nearest the drill): each has its halo laid over
+  // the dark (`halos`), and the nearest DECOR_GLOWS light the cave a little, each wavering in its own time. Kept in
+  // arrays made once.
+  glowsIn(ox, oy) {
+    const G = this.glows ??= { n: 0, at: new Int32Array(DECOR_MOST), gx: new Float32Array(DECOR_MOST), gy: new Float32Array(DECOR_MOST), halo: new Array(DECOR_MOST), far: new Float32Array(DECOR_MOST), order: new Int32Array(DECOR_MOST) };
+    const { W, H } = this, d = this.drill;
+    G.n = 0;
+    if (!this.glowing) return;
+    const x0 = Math.floor(ox / T) - 1, y0 = Math.floor(oy / T) - 1, x1 = Math.floor((ox + W) / T) + 1, y1 = Math.floor((oy + H) / T) + 1;
+    for (let cy = y0 >> 3; cy <= y1 >> 3; cy++) for (let cx = x0 >> 3; cx <= x1 >> 3; cx++) {
+      const list = this.glowing.get(cy * 4096 + cx);
+      if (!list) continue;
+      for (let k = 0; k < list.length; k += 4) {
+        const i = list[k], x = i & (N - 1), y = i >>> 14;
+        if (x < x0 || x > x1 || y < y0 || y > y1) continue;
+        const far = (x + 0.5 - d.x) ** 2 + (y + 0.5 - d.y) ** 2;
+        let n = G.n;
+        // (Once there are as many as there may be, a nearer one takes the place of the furthest.)
+        if (n === DECOR_MOST) { let worst = 0; for (let m = 1; m < n; m++) if (G.far[m] > G.far[worst]) worst = m; if (G.far[worst] <= far) continue; n = worst; } else G.n++;
+        G.at[n] = i; G.gx[n] = list[k + 1]; G.gy[n] = list[k + 2]; G.halo[n] = list[k + 3]; G.far[n] = far;
+      }
+    }
+    const n = G.n, order = G.order;
+    for (let m = 0; m < n; m++) {
+      let k = m;
+      while (k > 0 && G.far[order[k - 1]] > G.far[m]) { order[k] = order[k - 1]; k--; }
+      order[k] = m;
+    }
+    for (let m = 0; m < Math.min(n, DECOR_GLOWS); m++) {
+      const i = G.at[order[m]], x = i & (N - 1), y = i >>> 14;
+      this.shine(x, y, DECOR_GLOW + 0.04 * Math.sin(this.time * 1.7 + cellHash(x, y, 27) * 6.28), DECOR_REACH);
+    }
+  }
+  // The halos of the glowing pieces in view, over the dark, in their own colours, each breathing in its own time.
+  // Not in daylight (a staged picture with no dark), where there is nothing for them to show through.
+  halos(ox, oy) {
+    const G = this.glows, ctx = this.ctx;
+    if (!G || !G.n || this.daylight || !sheets.halo) return;
+    const s = sheets.halo, image = s.image;
+    ctx.globalCompositeOperation = 'lighter';
+    for (let m = 0; m < G.n; m++) {
+      const i = G.at[m], x = i & (N - 1), y = i >>> 14, r = s.frames[G.halo[m]];
+      ctx.globalAlpha = DECOR_HALO * (0.8 + 0.2 * Math.sin(this.time * 1.7 + cellHash(x, y, 27) * 6.28));
+      ctx.drawImage(image, r[0], r[1], r[2], r[3], Math.round(x * T - ox + G.gx[m] - r[2] / 2), Math.round(y * T - oy + G.gy[m] - r[3] / 2), r[2], r[3]);
+    }
+    ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
   }
 
   // Light spreads from a cell through open ground, losing a little with every cell, and soaks a short way into
@@ -743,6 +835,7 @@ export class Drawing {
     }
     this.glints = keys.length;
     for (const i of keys) this.shine(i % N, Math.floor(i / N), KEY_GLINT, KEY_GLOW);
+    this.glowsIn(ox, oy);
     // One pixel of darkness per cell, drawn sixteen times the size and smoothed.
     const mcols = vx1 - vx0 + 1, mrows = vy1 - vy0 + 1;
     let map = this.dark;
@@ -765,6 +858,7 @@ export class Drawing {
     ctx.drawImage(map, vx0 * T - ox, vy0 * T - oy, mcols * T, mrows * T);
     ctx.imageSmoothingEnabled = false;
     this.darkAt = [vx0 * T - ox, vy0 * T - oy, mcols * T, mrows * T];
+    this.halos(ox, oy);
     // The core's slow turning rays.
     const cxp = HX * T - ox, cyp = HY * T - oy;
     if (cxp > -80 && cyp > -80 && cxp < W + 80 && cyp < H + 80) {

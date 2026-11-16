@@ -2203,8 +2203,8 @@ export class Game {
     this.murk += (here.dark - this.murk) * k;
     // Motes hang in open ground near the view; each belongs to the ground it was born over.
     while (this.motes.length < 34) {
-      const x = this.cam.x + (Math.random() - 0.5) * (W + 60), y = this.cam.y + (Math.random() - 0.5) * (H + 60);
-      this.motes.push({ x, y, seed: Math.random() * 100, t: 0, life: 4 + Math.random() * 5, mote: w.row(Math.floor(y / T) * N + Math.floor(x / T)).mote });
+      const x = this.cam.x + (Math.random() - 0.5) * (W + 60), y = this.cam.y + (Math.random() - 0.5) * (H + 60), row = w.row(Math.floor(y / T) * N + Math.floor(x / T));
+      this.motes.push({ x, y, seed: Math.random() * 100, t: 0, life: 4 + Math.random() * 5, mote: row.mote, air: row.air });
     }
     for (const m of this.motes) {
       m.t += dt;

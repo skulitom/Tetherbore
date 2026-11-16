@@ -1,5 +1,5 @@
 // A staged view of the world, for tools/shot.mjs to photograph and for looking at a far place by hand:
-//   index.html?shot&seed=7&at=0,-300&reach=6&zoom=4&lit&met&wake&key&pocket&haul=1
+//   index.html?shot&seed=7&at=0,-300&reach=6&zoom=4&lit&met&wake&key&pocket&haul=1&cave
 // js/main.js loads this file only when the address has `shot`; ordinary play never fetches it.
 //
 // The view is a fresh world on `seed` (7 if none is given). It reads no saved game and is never saved. The drill
@@ -27,6 +27,11 @@
 // in): one is a light haul, which says what it paid where it lay, and two have a banner; either brings out the
 // count of specimens under the top bar.
 //
+// `cave` stands the drill in a natural cave of the ground at `at`, within CAVE cells of it: the open cell with the
+// most open cells against rock in the eleven by fifteen round it (about what a phone shows), at the end of a tunnel
+// from the core that stops three cells short of it and a way one cell wide on from there, with no room carved. So
+// the cave is as the ground has it, with the pieces of its own that hang, stand and grow in it (js/decor.js).
+//
 // The view is held still: `tetherbore.advance(ms)` steps it, `tetherbore.resume()` lets it play.
 import * as world from './world.js';
 import { T, UPGRADES } from './game.js';
@@ -37,6 +42,7 @@ const MOST = 8192;                              // the widest the zoomed canvas 
 const WAKE = 12;                                // how far from the drill a hazard to wake is looked for, in cells
 const KEY = 80;                                 // how far from `at` the middle of a slab to stage the last key of may lie
 const POCKET = 150;                             // and the middle of a pocket to stand the drill in
+const CAVE = 40;                                // and a cave to stand the drill in
 
 // The pocket nearest (ax, ay) and where the drill may stand in it: { zone, at: [x, y] }, or null where none is
 // near. The place is an open cell among those three cells from the pocket's middle (in a hive, the lane of the
@@ -137,6 +143,26 @@ function lastKey(game, ax, ay) {
   return { slab: S, at: best.at, into: best.into, line };
 }
 
+// The open cell of the ground at (ax, ay), within CAVE cells of it, with the most open cells against rock in the
+// eleven by fifteen round it (the world is fresh, so open is as the seed left it), and of those the nearest (ax, ay);
+// or null where there is none.
+function inCave(game, ax, ay) {
+  const w = game.world, open = (x, y) => w.k(y * N + x) === K.EMPTY, ground = w.b(ay * N + ax);
+  let best = null;
+  for (let v = -CAVE; v <= CAVE; v++) for (let u = -CAVE; u <= CAVE; u++) {
+    const x = ax + u, y = ay + v;
+    if (!open(x, y) || w.b(y * N + x) !== ground || Math.hypot(x - C, y - C) < 12) continue;
+    let room = 0;
+    for (let b = -7; b <= 7; b++) for (let a = -5; a <= 5; a++) {
+      const p = x + a, q = y + b;
+      if (open(p, q) && (!open(p - 1, q) || !open(p + 1, q) || !open(p, q - 1) || !open(p, q + 1))) room++;
+    }
+    const far = u * u + v * v;
+    if (!best || room > best.room || (room === best.room && far < best.far)) best = { room, far, at: [x, y] };
+  }
+  return best;
+}
+
 export function stage(game, query) {
   const number = (name, fallback) => { const text = query.get(name); return text === null || text.trim() === '' || !Number.isFinite(+text) ? fallback : +text; };
   const reaches = UPGRADES.find(u => u.id === 'tether').values;
@@ -154,6 +180,9 @@ export function stage(game, query) {
   // Inside a pocket: likewise.
   const pocket = !key && query.has('pocket') && query.get('pocket') !== '0' ? inPocket(game, C + dx, C + dy) : null;
   if (pocket) { dx = pocket.at[0] - C; dy = pocket.at[1] - C; }
+  // In a cave: likewise.
+  const cave = !key && !pocket && query.has('cave') && query.get('cave') !== '0' ? inCave(game, C + dx, C + dy) : null;
+  if (cave) { dx = cave.at[0] - C; dy = cave.at[1] - C; }
   const far = Math.hypot(dx, dy), least = reaches.findIndex(R => R >= far + (key ? key.slab.p * 2 + 6 : pocket ? pocket.zone.reach * 2 : 8));
   const level = Math.max(0, Math.min(reaches.length - 1, Math.floor(number('reach', least < 0 ? reaches.length - 1 : least))));
   game.S.lv.tether = level;
@@ -168,12 +197,13 @@ export function stage(game, query) {
       const x = C + Math.round(dx * s / far) + u, y = C + Math.round(dy * s / far) + v;
       if (key && ((u || v) && w.slabCell(key.slab, x, y) || key.line.has(y * N + x) || w.slabCell(key.slab, x, y) === 3)) continue;
       if (pocket && (u || v) && Math.hypot(x - pocket.zone.cx, y - pocket.zone.cy) < pocket.zone.reach + 3) continue;
+      if (cave && s > far - 3) continue;
       w.setK(y * N + x, K.EMPTY);
     }
     // (And every cell the straight line from the core passes through there, so the tether lies in open ground
     // all the way: a way one cell wide, cut a cell at a time, does not hold a line that runs askew.)
-    if (pocket) for (const i of world.cellsAlong(HX, HY, C + dx + 0.5, C + dy + 0.5, Math.ceil(far * 2) + 8)) w.setK(i, K.EMPTY);
-    if (!key && !pocket) for (let v = -ROOM; v <= ROOM; v++) for (let u = -ROOM; u <= ROOM; u++) w.setK((C + dy + v) * N + C + dx + u, K.EMPTY);
+    if (pocket || cave) for (const i of world.cellsAlong(HX, HY, C + dx + 0.5, C + dy + 0.5, Math.ceil(far * 2) + 8)) w.setK(i, K.EMPTY);
+    if (!key && !pocket && !cave) for (let v = -ROOM; v <= ROOM; v++) for (let u = -ROOM; u <= ROOM; u++) w.setK((C + dy + v) * N + C + dx + u, K.EMPTY);
     d.x = d.px = C + dx + 0.5; d.y = d.py = C + dy + 0.5; d.mode = 'free';
     game.band = [[d.x, d.y], [HX, HY]];
     game.changed();
@@ -234,6 +264,7 @@ export function stage(game, query) {
         biome: b, ground: world.BIOMES[b]?.name ?? `${b}`,
         loose: game.pieces.length, woke,
         // Inside a pocket: where its middle lies, its radius and its ground; and how many cells were hauled.
+        cave: cave && { at: [cave.at[0] - C, cave.at[1] - C], room: cave.room },
         pocket: pocket && { at: [pocket.zone.cx - C, pocket.zone.cy - C], radius: pocket.zone.rho, ground: world.BIOMES[pocket.zone.row].name, hauled: hauled.length, specimens: game.S.spec },
         // The last key of a slab: where the slab lies and how big it is, the cell of key the drill pushes into,
         // and how many cells the glow of the cut in hand holds (0: no cut in hand).
