@@ -19,7 +19,7 @@
 // `node tools/sounds.mjs` renders every sound in a browser and measures it; test/regress/sound-layers.mjs holds the
 // rules above with no browser.
 
-let ctx = null, master = null, room = null, space = null, keys = null, noiseBuffer = null, muted = false, music = true;
+let ctx = null, master = null, room = null, space = null, keys = null, noiseBuffer = null, muted = false, music = true, aside = false;
 try { muted = localStorage.getItem('tetherbore-mute') === '1'; music = localStorage.getItem('tetherbore-music') !== '0'; } catch { /* private mode */ }
 
 const LEVEL = 0.4;                       // the master gain when not muted
@@ -28,7 +28,7 @@ const LEVEL = 0.4;                       // the master gain when not muted
 // many layers pile up nothing is clipped. Two more ways in, `room` and `space`, also feed a short echo of a small
 // stone room: a little of it for blows (room), more for notes that should hang in the air (space).
 export function unlock() {
-  if (ctx) { if (ctx.state === 'suspended') ctx.resume(); return; }
+  if (ctx) { if (ctx.state === 'suspended' && !aside) ctx.resume(); return; }
   const AC = window.AudioContext || window.webkitAudioContext;
   if (!AC) return;
   const c = new AC(), rate = c.sampleRate;
@@ -75,6 +75,18 @@ export function unlock() {
   seed = (seed ^ Date.now()) >>> 0;      // no two sittings wander the same way
   ctx = c;
   try { tune(); } catch { /* no music */ }
+  if (aside) setAside(true);
+}
+// While the page is out of sight or another window has the focus the game is silent: the context is held still, so
+// what is sounding stops where it is and goes on when the player comes back, and no sound is made meanwhile (one
+// asked for would wait on the stopped clock and come with all the others at once on the way back).
+export function setAside(value) {
+  aside = !!value;
+  if (!ctx) return;
+  try {
+    if (aside) ctx.suspend?.()?.catch?.(() => {});
+    else if (ctx.state === 'suspended') ctx.resume()?.catch?.(() => {});
+  } catch { /* left as it was */ }
 }
 export const isMuted = () => muted;
 export function setMuted(value) {
@@ -353,9 +365,10 @@ const make = {
 const GAP = { dig: 0.04, crumble: 0.055, grind: 0.095, tick: 0.04, gem: 0.05, slide: 0.05, thud: 0.05, clink: 0.08, hiss: 0.1, puff: 0.08, freeze: 0.06, zap: 0.06, knock: 0.1, banked: 0.08, relic: 0.25, ping: 0.05 };
 const played = Object.create(null);
 let told = false;
-// A sound by name: `sfx.dig(2)`. Nothing happens with no context, when muted, or sooner than its gap after the last.
+// A sound by name: `sfx.dig(2)`. Nothing happens with no context, when muted, while the page is aside (`setAside`),
+// or sooner than its gap after the last.
 const sound = (name, build) => (...args) => {
-  if (!ctx || muted) return;
+  if (!ctx || muted || aside) return;
   const t = ctx.currentTime, was = played[name];
   if (was !== undefined && t >= was && t - was < (GAP[name] ?? 0.02)) return;
   played[name] = t;

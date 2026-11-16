@@ -1,6 +1,7 @@
 // Boots the game: loads the art, sizes the canvas in whole device pixels, and feeds it touches, keys and time.
 import { loadAtlas } from './atlas.js';
 import { Game } from './game.js';
+import { setAside } from './audio.js';
 
 const canvas = document.getElementById('game');
 await loadAtlas();
@@ -32,6 +33,12 @@ canvas.addEventListener('contextmenu', e => e.preventDefault());
 window.addEventListener('keydown', e => { if (!e.repeat && !e.metaKey && !e.ctrlKey && game.key(e.code, true)) e.preventDefault(); else if (e.repeat && /^Arrow|Space/.test(e.code)) e.preventDefault(); });
 window.addEventListener('keyup', e => { game.key(e.code, false); });
 document.addEventListener('visibilitychange', () => { if (document.hidden) game.save(); });
+// The game is silent while its tab is hidden or another window has the focus (js/audio.js, `setAside`).
+const quiet = () => setAside(document.hidden || document.hasFocus?.() === false);
+document.addEventListener('visibilitychange', quiet);
+window.addEventListener('blur', quiet);
+window.addEventListener('focus', quiet);
+quiet();
 window.addEventListener('pagehide', () => game.save());
 
 let last = performance.now(), manual = !!shot;

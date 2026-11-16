@@ -11,6 +11,8 @@
 //   - Sounds that come in bursts have a least gap: sixty cuts asked for in a second are at most 26 sounds, thirty
 //     grinds at most 11; and with many layers sounding the small sounds make little or nothing.
 //   - A sound that goes wrong does not throw into the frame that asked for it, and says so once.
+//   - While the page is aside (hidden, or another window has the focus) the context is suspended and no sound makes
+//     anything; a touch then does not wake it, and coming back resumes it.
 //   - The music is made once (13 nodes and one timer), makes no node however long it plays, is soft and slow, and
 //     stops with its switch or the mute and comes back; both switches are kept in storage.
 // What they sound like is not held here: `node tools/sounds.mjs` measures that in a browser.
@@ -21,7 +23,7 @@ globalThis.window = globalThis;
 globalThis.document = { hidden: false };
 
 // ---------------------------------------------------------------- Web Audio, stood in for
-let clock = 100, made = [], contexts = 0, resumed = 0, broken = false;
+let clock = 100, made = [], contexts = 0, resumed = 0, suspended = 0, broken = false;
 class Param {
   constructor(value) { this.first = value; this.now = value; this.events = []; this.sets = 0; }
   get value() { return this.now; }
@@ -45,6 +47,7 @@ class Context {
   constructor() { contexts++; this.sampleRate = 48000; this.state = 'running'; this.destination = new Node('destination'); }
   get currentTime() { return clock; }
   resume() { resumed++; this.state = 'running'; }
+  suspend() { suspended++; this.state = 'suspended'; }
   createGain() { return new Node('gain', { gain: 1 }); }
   createOscillator() { if (broken) throw new Error('no oscillator today'); return new Node('oscillator', { frequency: 440, detune: 0 }); }
   createBufferSource() { return new Node('noise'); }
@@ -223,6 +226,19 @@ from = made.length;
 audio.setMuted(false);
 if (audio.isMuted() || master.gain.value !== level || kept.get('tetherbore-mute') !== '0' || timers.size !== 1 || made.length - from !== 13) fails.push('unmuted, the master is not back at its level or the music is not back');
 audio.setMusic(false);
+
+// ---------------------------------------------------------------- aside: the page hidden or out of focus
+clock += 10;
+const wasResumed = resumed;
+audio.setAside(true);
+if (!suspended) fails.push('aside, the context was not suspended');
+audio.unlock();
+if (resumed !== wasResumed) fails.push('aside, a touch resumed the context');
+for (const one of ASKS) { const nodes = ask(one); if (nodes.length) fails.push(`${said(one)} made ${nodes.length} nodes while aside`); }
+audio.setAside(false);
+if (resumed !== wasResumed + 1) fails.push('back from aside, the context was not resumed');
+clock += 10;
+if (!ask(['tap']).length) fails.push('back from aside, a tap made nothing');
 
 console.log(fails.length ? `DEFECT: ${[...new Set(fails)].slice(0, 30).join('\n        ')}` : `ok: ${ASKS.length} sounds, none over ${most} nodes, every gain from nothing to nothing; sixty cuts asked in a second are ${digs} sounds and thirty grinds ${grinds}; the music is 13 nodes and posted ${notes} changes in ten minutes`);
 process.exit(fails.length ? 1 : 0);
