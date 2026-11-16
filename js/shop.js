@@ -33,15 +33,10 @@ export const haulBonus = (n, winch = 1) => 1 + winch * Math.log2(Math.max(1, n))
 // times better. (It was (load / n) ** 0.35 a cell, and on grit alone: a tunnel that cut a whole quarter of the
 // ground off paid for half the shop in one haul, and its gems were not thinned at all.)
 export const WINCH_LOAD = [150, 400, 1000, 2300, 5000, 12000, 25000, 50000, 100000];
-// And it draws in no more than HAUL_MOST times its load at once: a piece larger than that stays where it hangs,
-// and the game says so (`reelIfRound`). Over its load a haul pays less a cell, so a piece many times the load was
-// ground thrown away: a game cut one tunnel round the whole of a reach of 230, the winch drew in a hundred and
-// sixty thousand cells for the pay of six thousand, nothing was left within reach, and the next reach cost four
-// times the grit there was. A piece too big for the winch is cut smaller, or left for a better winch.
-// (Forty times: four was tried, and a drill flown at random with the first winch was refused pieces of one to three
-// thousand cells in every flight. Forty leaves every such haul alone and stops only the enormous one: with the
-// winches a game has by then, the whole of a reach at once is refused at every reach from the second on.)
-export const HAUL_MOST = 40;
+// It draws in whatever the tether is round, however much: over its load a haul pays less a cell. (It drew in no
+// more than forty times its load at once, and a piece larger than that stayed where it hung: a game had cut one
+// tunnel round the whole of a reach of 230 and been paid six thousand for a hundred and sixty thousand cells. But a
+// loop round half the longest reach is the biggest thing a game can do, and it was refused at every reach.)
 export const overload = (n, level) => n <= WINCH_LOAD[level] ? 1 : WINCH_LOAD[level] * (1 + Math.log(n / WINCH_LOAD[level])) / n;
 export const income = R => { const side = Math.max(4, Math.min(48, R / 3)); return side * PACE / 4 * WORTH * richness(R * 0.7) * haulBonus(side * side); };
 export const round2 = n => { const unit = 10 ** Math.max(0, Math.floor(Math.log10(n)) - 1); return Math.round(n / unit) * unit; };

@@ -1,11 +1,11 @@
 // Tetherbore: the game. A drill flies free on a tether from a fixed core, cuts whatever ground it is pushed into,
 // and reels in any piece of ground it has drawn the tether round.
-import { World, N, C, K, B, HARD, GRIT, GEMS, DX, DY, HAZARDS, ZONE, FIND, rowOf, hazOf, gemKin, digTime, cellHash, sight, cellsAlong, HOME_R } from './world.js';
+import { World, CellBook, N, C, K, B, HARD, GRIT, GEMS, DX, DY, HAZARDS, ZONE, FIND, rowOf, hazOf, gemKin, digTime, cellHash, sight, cellsAlong, HOME_R } from './world.js';
 import { sheets, frameAt, duration } from './atlas.js';
 import { sfx, unlock, setAmbience } from './audio.js';
-import { richness, haulBonus, WINCH_LOAD, HAUL_MOST, overload, income, round2, NEEDS, UPGRADES, LAB, LAB_OF, labLevel, labNext, CORE, ROWS, REACH } from './shop.js';
+import { richness, haulBonus, overload, income, round2, NEEDS, UPGRADES, LAB, LAB_OF, labLevel, labNext, CORE, ROWS, REACH } from './shop.js';
 import { Drawing, T, DIR_BIOME, GEM_ICON, GEM_COLOR, GEM_WHERE, SPOT, bright, compact, DEBRIS } from './drawing.js';
-export { richness, haulBonus, HAUL_MOST, overload, income, UPGRADES, LAB, labLevel, labNext, WORKS, MAPS, CORE } from './shop.js';
+export { richness, haulBonus, overload, income, UPGRADES, LAB, labLevel, labNext, WORKS, MAPS, CORE } from './shop.js';
 
 export { T };
 export const HX = C + 0.5, HY = C + 0.5;        // the middle of the core, in cells
@@ -23,10 +23,13 @@ export const RUBBLE = 400;
 // a place of its own (a pocket, a deep ground, a strain or a cross: `placeHaul`) by that place, in its colour; and a
 // giant, from a thousand cells, by GIANTS, louder and brighter at each step. The last word is kept for a haul of half
 // of all the ground the longest tether reaches round (HALF: the disc of the last reach, halved, eight million cells
-// and more). The winch cannot draw in so much yet (`HAUL_MOST`), so nothing can earn it until that cap goes.
+// and more): the loop is round nine tenths of HALF at the least, and at least two fifths of HALF is ground (`isHalf`).
+// It is asked of the loop's area and not of the cells hauled, as caves, tunnels and ground hauled before take a fifth
+// of any reach or more: a loop round exactly half the longest reach hauls six and a half million cells.
 const SIZES = [[200, 'COLOSSAL!'], [80, 'HUGE HAUL!'], [30, 'BIG HAUL!'], [10, 'NICE CUT!']];
 export const GIANTS = [[1000, 'MOUNTAINOUS!'], [4000, 'TITANIC!'], [15000, 'AVALANCHE!'], [50000, 'CATACLYSM!'], [150000, 'CONTINENTAL!'], [400000, 'WORLD EATER!']];
 export const HALF = Math.round(Math.PI * REACH[REACH.length - 1] ** 2 / 2);
+export const isHalf = (n, area) => area >= HALF * 0.9 && n >= HALF * 0.4;
 // The places with words of their own, by the name of their ground; a cross is its noun's haul, and any other place
 // of its own its title's.
 const PLACE_HAULS = {
@@ -36,13 +39,15 @@ const PLACE_HAULS = {
 };
 export const placeHaul = row => !row || !(row.pocket || row.cross || (row.id >= 5 && row.id <= 31)) ? null
   : PLACE_HAULS[row.name] ?? `${row.cross ? row.title.split(' ').pop() : row.title} HAUL!`;
-// Which giant a haul of `n` cells is: 0 none, 1 to GIANTS.length, and one more for HALF.
-export const giantOf = n => n >= HALF ? GIANTS.length + 1 : GIANTS.findLastIndex(([at]) => n >= at) + 1;
-// The title of a haul of `n` cells with what was found in it, lying mostly in ground `row` (null: no one ground):
+// Which giant a haul of `n` cells is, made by a loop round `area` cells: 0 none, 1 to GIANTS.length, and one more
+// for HALF.
+export const giantOf = (n, area = 0) => isHalf(n, area) ? GIANTS.length + 1 : GIANTS.findLastIndex(([at]) => n >= at) + 1;
+// The title of a haul of `n` cells with what was found in it, lying mostly in ground `row` (null: no one ground),
+// made by a loop round `area` cells (0: not known, as when a haul is staged by hand):
 // [title, giant, whether the place named it]. Half of everything outshouts anything; a relic and a wreck's part are
 // told before any size, as they are rarer than any; a cache and a rare hazard are told before any but a giant's.
-export function haulTitle(n, { relic = -1, parts = 0, caches = 0, rare = null } = {}, row = null) {
-  const giant = giantOf(n), place = n >= 30 ? placeHaul(row) : null;
+export function haulTitle(n, { relic = -1, parts = 0, caches = 0, rare = null } = {}, row = null, area = 0) {
+  const giant = giantOf(n, area), place = n >= 30 ? placeHaul(row) : null;
   if (giant > GIANTS.length) return ['HALF THE WORLD!', giant, false];
   if (relic >= 0) return ['RELIC!', giant, false];
   if (parts) return ['WRECK PART! PAY +10%', giant, false];
@@ -165,7 +170,7 @@ export class Game {
     this.W = 180; this.H = 320;
     this.time = 0;
     this.input = { id: null, ax: 0, ay: 0, px: 0, py: 0, vx: 0, vy: 0, m: 0, keys: new Set(), auto: null };
-    this.band = []; this.pieces = []; this.pieceOf = new Map(); this.preview = []; this.under = new Set();
+    this.band = []; this.pieces = []; this.pieceOf = new CellBook(); this.preview = []; this.under = new Set();
     this.taken = []; this.walked = new Set(); this.boxes = new WeakMap(); this.cuts = 0; this.homeKey = '';
     this.swept = 0;                         // cells the tether's sweeps have looked at, for tests of how much work is done
     this.effects = []; this.popups = []; this.hauls = []; this.clouds = []; this.sparks = new Map(); this.lavaVol = new Map(); this.frostOpen = [];
@@ -225,7 +230,7 @@ export class Game {
     this.drill = { x: HX, y: HY, px: HX, py: HY, vx: 0, vy: 0, ang: 0, mode: 'free', tx: 0, ty: 0, speed: 0, dig: -1, digT: 0, digDur: 1, stun: 0, squash: 0, run: 0, armed: true, cell: -1, home: true };
     this.cam = { x: HX * T, y: HY * T };
     this.band = [[HX, HY], [HX, HY]];
-    this.pieces = []; this.pieceOf = new Map(); this.taken.length = 0; this.homeKey = ''; this.homeEnd = [HX, HY];
+    this.pieces = []; this.pieceOf = new CellBook(); this.taken.length = 0; this.homeKey = ''; this.homeEnd = [HX, HY];
     this.chain = null; this.hauled = null; this.specLine = null; this.pipsFor = ''; this.drifts.clear(); this.crushedAt = -9;
     // The hull is whole on a new game and on a game loaded: what is saved is its level, never its dents.
     this.dents = 0; this.shield = 0; this.tow = null; this.knocked = 0; this.mended = 0; this.notice = null; this.smokeIn = 0; this.boost = 0; this.mendIn = 0;
@@ -678,7 +683,7 @@ export class Game {
     }
     // A cut into ground that was held may have cut a piece off, of any size. All the cells opened together are
     // asked about at once: a piece is cut off by them all, not by any one.
-    if (cut.length) for (const cells of w.freed(cut, 120000)) {
+    if (cut.length) for (const cells of w.freed(cut, Infinity)) {
       // Known already, cell for cell: nothing new.
       const known = of.get(cells[0]);
       if (!known || known.length !== cells.length) this.enter(cells);
@@ -689,6 +694,8 @@ export class Game {
     // A dot on the map stays until the thing it marks is gone: cut, hauled, or turned into something else.
     const marks = this.S.marks;
     if (marks.length && marks.some(m => { const k = w.laid(m[0]); return k >= 0 && k !== m[1]; })) this.S.marks = marks.filter(m => { const k = w.laid(m[0]); return k < 0 || k === m[1]; });
+    // (The book lets go of the pieces that are no longer loose: a piece hauled is not held on to by it.)
+    of.keep?.(this.pieces);
   }
   // A piece of loose ground goes into the books. Ground known as loose before that lies within it is part of it now.
   // (A drift's boulder: its drift is one whose boulders are in the books, until the drill is well away: `driftsOut`.)
@@ -746,7 +753,7 @@ export class Game {
       if (w.laid(i + SIDE[s]) !== K.EMPTY) continue;
       if (!known) { if (this.pieceOf.has(i)) return false; known = true; }
       if (!w.isle(i, s, 600)) continue;
-      const cells = w.pieceIn(i, -Infinity, -Infinity, Infinity, Infinity, 120000);
+      const cells = w.pieceIn(i, -Infinity, -Infinity, Infinity, Infinity, Infinity);
       if (cells) this.enter(cells);
       return !!cells;
     }
@@ -823,7 +830,7 @@ export class Game {
   // looked at by walking its outline, `most` sides at the most (`World.island`), and an island is taken in among the
   // loose pieces, no more than `limit` cells of it. `walked` is shared between looks while the ground stays as it
   // is, so the same wall is not walked again for every bend on it. Returns whether anything was found.
-  discover(bends, most, walked, limit = 120000) {
+  discover(bends, most, walked, limit = Infinity) {
     const w = this.world;
     let found = false;
     for (const b of bends) {
@@ -888,22 +895,17 @@ export class Game {
       }
       return true;
     });
-    // The winch draws in so much at once and no more (`HAUL_MOST` times its load): of what the tether is round,
-    // the smallest pieces first, as many as it can take together. What is left hangs where it is, loose still, and
-    // the game says why, once every few seconds at the most.
-    const most = HAUL_MOST * WINCH_LOAD[this.S.lv.winch], take = [];
-    let n = 0, left = 0;
-    for (const piece of round.sort((a, b) => a.length - b.length)) { if (n + piece.length <= most) { take.push(piece); n += piece.length; } else left = Math.max(left, piece.length); }
-    if (left && this.time - (this.tooBigAt ?? -9) > 4) {
-      this.tooBigAt = this.time; this.tooBig = left;
-      // (The words are large: a short one, and the figures under it.)
-      this.notice = { title: 'TOO BIG', sub: `${compact(left)} CELLS. WINCH DRAWS ${compact(most)}`, colour: '#ff9a6a', t: 0, life: 3 };
-      sfx.deny(); this.twang = Math.max(this.twang, 0.3);
-    }
-    // No cell is ever handed over twice, and never a haul of nothing.
-    const cells = [...new Set(take.flat())];
+    // The winch draws in all of it, however much that is: a piece over the winch's load pays less a cell for it
+    // (`overload`), and nothing more is held back. (It drew in forty times its load and no more, and said TOO BIG of
+    // the rest: half the longest reach could never be hauled.) No cell is handed over twice: a cell goes with the
+    // piece the book says it is in. And never a haul of nothing.
+    const of = this.pieceOf, cells = [];
+    for (const piece of round) for (const c of piece) if (of.get(c) === piece) cells.push(c);
     if (!cells.length) return;
-    this.haul(cells);
+    // How much the loop is round, in cells: what is hauled may be half of everything (`HALF`).
+    let area = 0;
+    for (let k = 0; k < pts.length; k++) { const a = pts[k], b = pts[(k + 1) % pts.length]; area += a[0] * b[1] - b[0] * a[1]; }
+    this.haul(cells, Math.abs(area) / 2);
     this.changed(cells);
   }
   // The tether lets the drill go this far from the core and no further, whatever road it takes.
@@ -1469,8 +1471,9 @@ export class Game {
     for (let b = 1; b < 5; b++) gems[b] = Math.round(gems[b] * shine * over * cut);
     return { n, grit: Math.round((Math.round(grit * mult) + lump) * refined), gems, lump, spec, minerals, mineral, prisms, shine, relic, caches, parts, wrecks, mult, over, chain: chains ? chain : 0 };
   }
-  // The tether is round these cells: they go, and what they are worth is on its way home.
-  haul(cells) {
+  // The tether is round these cells: they go, and what they are worth is on its way home. `area` is how much the
+  // loop that took them was round, in cells (`reelIfRound`), where it is known.
+  haul(cells, area = 0) {
     // (A haul of nothing would never be over: it ends when the last of its rubble is home.)
     if (!cells.length) return;
     const w = this.world, S = this.S, n = cells.length, pay = this.payOf(cells), { grit, gems, relic, caches, parts, mult, over } = pay;
@@ -1550,7 +1553,7 @@ export class Game {
     this.effect('haul', 'impact', cx, cy);
     sfx.crack(n, linked);
     for (const sp of sprites) if (count < 60 || cellHash(sp.x, sp.y, 9) < 0.4) this.chips(sp.x, sp.y, sp.debris, 2, null, 0.7);
-    const [title, giant, named] = haulTitle(n, { relic, parts, caches, rare: pay.rare }, ground), half = giant > GIANTS.length;
+    const [title, giant, named] = haulTitle(n, { relic, parts, caches, rare: pay.rare }, ground, area), half = giant > GIANTS.length;
     // What the last haul was and paid (`hauled`). Any but a light one says so across the screen, with a flash and
     // a beat of stillness. A light one says what it paid where it lay, and leaves the banner of a bigger haul up.
     // (A haul named by its place has its title in the place's colour; a giant's stays up longer, and HALF's longest.)
@@ -1571,7 +1574,10 @@ export class Game {
       this.hitstop = Math.min(0.16, 0.05 + n * 0.002);
       this.flash = Math.min(0.5, 0.12 + n * 0.006);
       this.ring(cx, cy, '#fff6c8', 30 + Math.min(60, n * 1.5));
-      this.banner = this.hauled;
+      // (A giant's banner stays up while it lasts for anything but a bigger giant: the tether, let go of the ground
+      // it lay against, finds rocks standing free in the caves it passed and hauls them one by one just after.)
+      const up = this.banner;
+      if (!(up && up.giant > giant && up.t < up.life)) this.banner = this.hauled;
       // A place's own haul: a burst of its colours, and its two notes.
       if (named) {
         const chips = ground.pocket?.chips ?? ground.debris;

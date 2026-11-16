@@ -2,30 +2,33 @@
 // that lies mostly in a place of its own (a pocket, a deep ground, a strain, a cross) by that place, in its colour,
 // with a burst of its colours and its two notes; a giant, from a thousand cells, by its own word at each step, with
 // rings after rings, a longer beat of stillness, a brighter flash and a sound of its own; and a haul of half the
-// ground the longest tether reaches round, HALF THE WORLD!, which sets the core blazing too. A relic and a wreck's
+// ground the longest tether reaches round, HALF THE WORLD!, which sets the core blazing too: asked of the area the
+// loop is round (nine tenths of HALF at the least) and of the ground in it (two fifths of HALF at the least). A relic and a wreck's
 // part are told before any size but HALF; a cache and a rare hazard before any but a giant's. Every title fits a
 // narrow screen, a size smaller where it must.
 //   node test/regress/s3-haul-titles.mjs
 import { makeGame, world, C, N } from '../harness.mjs';
 const { K, B, BIOMES } = world;
-const { haulTitle, placeHaul, giantOf, GIANTS, HALF } = await import('../../js/game.js');
+const { haulTitle, placeHaul, giantOf, isHalf, GIANTS, HALF } = await import('../../js/game.js');
 const { REACH } = await import('../../js/shop.js');
 const { textWidth } = await import('../../js/atlas.js');
 
 const fails = [], check = (ok, what) => { if (!ok) fails.push(what); };
-const name = (n, found, row) => haulTitle(n, found, row)[0];
+const name = (n, found, row, area) => haulTitle(n, found, row, area)[0];
 
 // ---- the ladder of sizes, and HALF
 const ladder = [[1, 'HAUL'], [9, 'HAUL'], [10, 'NICE CUT!'], [30, 'BIG HAUL!'], [80, 'HUGE HAUL!'], [200, 'COLOSSAL!'], [999, 'COLOSSAL!'],
-  ...GIANTS.map(([at, word]) => [at, word]), [HALF - 1, GIANTS[GIANTS.length - 1][1]], [HALF, 'HALF THE WORLD!']];
-for (const [n, want] of ladder) check(name(n) === want, `a haul of ${n} is called ${name(n)}, not ${want}`);
+  ...GIANTS.map(([at, word]) => [at, word]), [HALF, GIANTS[GIANTS.length - 1][1]], [Math.round(HALF * 0.8), 'HALF THE WORLD!', HALF]];
+for (const [n, want, area] of ladder) check(name(n, {}, null, area) === want, `a haul of ${n} round ${area ?? 0} is called ${name(n, {}, null, area)}, not ${want}`);
 check(Math.abs(HALF - Math.PI * REACH[REACH.length - 1] ** 2 / 2) < 1 && HALF > 8e6, `HALF is ${HALF} cells, not half the disc of the last reach`);
-check(giantOf(999) === 0 && giantOf(1000) === 1 && giantOf(HALF - 1) === GIANTS.length && giantOf(HALF) === GIANTS.length + 1, 'the giants are not numbered 1 up, with HALF last');
+check(giantOf(999) === 0 && giantOf(1000) === 1 && giantOf(HALF) === GIANTS.length && giantOf(HALF * 0.8, HALF) === GIANTS.length + 1, 'the giants are not numbered 1 up, with HALF last');
+// HALF is a loop round nine tenths of half the reach at the least, with two fifths of it in ground at the least.
+check(isHalf(HALF * 0.4, HALF * 0.9) && !isHalf(HALF * 0.4 - 1, HALF) && !isHalf(HALF, HALF * 0.9 - 1), 'HALF is not a loop round nine tenths of it with two fifths of it in ground');
 check(GIANTS.every(([at], k) => !k || at > GIANTS[k - 1][0]), 'the giants are not in order of size');
 
 // ---- what is found, against the size
 const frost = BIOMES[B.FROST], hive = BIOMES.find(r => r?.name === 'hive'), cross = BIOMES.find(r => r?.cross?.structure === 4);
-check(name(40, { relic: 2 }) === 'RELIC!' && name(5000, { relic: 2 }) === 'RELIC!' && name(HALF, { relic: 2 }) === 'HALF THE WORLD!', 'a relic is not told before any size but HALF');
+check(name(40, { relic: 2 }) === 'RELIC!' && name(5000, { relic: 2 }) === 'RELIC!' && name(HALF * 0.8, { relic: 2 }, null, HALF) === 'HALF THE WORLD!', 'a relic is not told before any size but HALF');
 check(name(40, { parts: 1 }).startsWith('WRECK PART') && name(5000, { parts: 1 }).startsWith('WRECK PART'), 'a wreck part is not told before any size');
 check(name(500, { caches: 1 }) === 'CACHE!' && name(5000, { caches: 1 }) === 'TITANIC!', 'a cache is not told before any size but a giant\'s');
 check(haulTitle(5000, { relic: 1 })[1] === 2, 'a giant with a relic in it is not still a giant (its show)');
@@ -78,5 +81,5 @@ check(!threw, `HALF's banner threw: ${threw?.message}`);
 const titles = [...ladder.map(([, t]) => t), ...BIOMES.map(r => r && placeHaul(r)).filter(Boolean), 'HALF THE REACH IN ONE HAUL'];
 for (const t of titles) check(textWidth(t, 1) <= 312, `${t} is ${textWidth(t, 1)} pixels wide, too wide for a narrow screen`);
 
-console.log(fails.length ? `DEFECT: ${[...new Set(fails)].slice(0, 30).join('\n        ')}` : `ok: ${ladder.length} sizes up to HALF (${HALF} cells), ${titles.length - ladder.length - 1} places with words of their own, a giant's show and HALF's`);
+console.log(fails.length ? `DEFECT: ${[...new Set(fails)].slice(0, 30).join('\n        ')}` : `ok: ${ladder.length} sizes up to HALF (a loop round ${HALF} cells), ${titles.length - ladder.length - 1} places with words of their own, a giant's show and HALF's`);
 process.exit(fails.length ? 1 : 0);

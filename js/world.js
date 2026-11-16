@@ -563,7 +563,9 @@ export const DX = [1, 0, -1, 0], DY = [0, 1, 0, -1];
 // `freed` walks outlines: JOIN sides each while there is more than one to settle or one is known to be held, WALK
 // sides in all, OUTLINE sides for the one left when nothing says it is not the rest of the world. HOLLOW is how
 // many cells are followed from a cut that opened only on to a closed hollow.
-const STEP = [1, N, -1, -N], OUTLINE = 600, JOIN = 20000, WALK = 60000, HOLLOW = 4000;
+// (JOIN was 20,000 and WALK 60,000: a loop round half of the longest reach, 2,300 cells, has an inner outline of
+// fifteen thousand sides and more, and twice that where caves run into the tunnel, so it was held for ever.)
+const STEP = [1, N, -1, -N], OUTLINE = 600, JOIN = 60000, WALK = 150000, HOLLOW = 4000;
 // Plain home ground runs out to HOME_R before any direction's ground begins; the flanks turn strange past DEEP_R;
 // what each direction hides lies RELIC_R out; the world ends at WORLD_R.
 export const HOME_R = 130, DEEP_R = 900, RELIC_R = 2000, WORLD_R = 2400;
@@ -704,6 +706,62 @@ const keyed = (codes, size, ways) => {
   }
   return runs === ways;
 };
+
+// A book of which loose piece each cell is in (js/game.js: `pieceOf`), asked as a Map is (get, set, has, delete,
+// clear, size) but kept as numbers in typed arrays, one for each piece of the world that holds a loose cell: 0 for
+// none, else the piece's number in `refs`. (It was a Map: a loop round half the longest reach cuts six and a half
+// million cells loose at once, and a Map of them took three seconds and six hundred megabytes to fill and empty.)
+// `keep` lets go of the pieces that are no longer loose, so a piece hauled is not held on to by its number.
+export class CellBook {
+  constructor() { this.clear(); }
+  clear() { this.parts = []; this.refs = [null]; this.ids = new Map(); this.size = 0; }
+  // The number of a piece of the world, and a cell's place in it.
+  static part(c) { return ((c >>> 20) << 8) | ((c >>> 6) & 255); }
+  static at(c) { return (((c >>> 14) & 63) << 6) | (c & 63); }
+  get(c) { const part = this.parts[CellBook.part(c)], n = part ? part[CellBook.at(c)] : 0; return n ? this.refs[n] ?? undefined : undefined; }
+  has(c) { return this.get(c) !== undefined; }
+  set(c, piece) {
+    const id = CellBook.part(c), at = CellBook.at(c);
+    let part = this.parts[id], n = this.ids.get(piece);
+    if (!part) part = this.parts[id] = new Int32Array(CH * CH);
+    if (n === undefined) { n = this.refs.length; this.refs.push(piece); this.ids.set(piece, n); }
+    if (!part[at] || !this.refs[part[at]]) this.size++;
+    part[at] = n;
+    return this;
+  }
+  delete(c) {
+    const part = this.parts[CellBook.part(c)], at = CellBook.at(c);
+    if (!part || !part[at]) return false;
+    const was = this.refs[part[at]];
+    part[at] = 0;
+    if (was) this.size--;
+    return !!was;
+  }
+  // Every cell in a piece, as a Map's keys.
+  *keys() {
+    for (let id = 0; id < this.parts.length; id++) {
+      const part = this.parts[id];
+      if (!part) continue;
+      const base = (id >>> 8) * CH * N + (id & 255) * CH;
+      for (let at = 0; at < part.length; at++) if (part[at] && this.refs[part[at]]) yield base + (at >>> 6) * N + (at & 63);
+    }
+  }
+  // And, as a Map has them, the pieces and the pairs of each cell and its piece.
+  *values() { for (const c of this.keys()) yield this.get(c); }
+  *entries() { for (const c of this.keys()) yield [c, this.get(c)]; }
+  [Symbol.iterator]() { return this.entries(); }
+  forEach(each) { for (const [c, piece] of this.entries()) each(piece, c, this); }
+  // Only the pieces in `live` are loose: any other's number is let go of, and any cell of it still marked with it
+  // is in no piece. Costs a look at each piece numbered since, and at each cell of a piece let go of.
+  keep(live) {
+    const set = live instanceof Set ? live : new Set(live);
+    for (const [piece, n] of this.ids) {
+      if (set.has(piece)) continue;
+      for (const c of piece) { const part = this.parts[CellBook.part(c)], at = CellBook.at(c); if (part && part[at] === n) { part[at] = 0; this.size--; } }
+      this.refs[n] = null; this.ids.delete(piece);
+    }
+  }
+}
 
 export class World {
   constructor() {

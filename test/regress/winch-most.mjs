@@ -1,12 +1,13 @@
 // No game is left with nothing to cut and a rope it cannot pay for. One was: a tunnel cut right round a reach of
 // 230 lassoed the whole of it, a hundred and sixty thousand cells, the winch drew that in for the pay of six
 // thousand (over its load a haul pays less a cell), and with nothing left in reach the next reach cost four times
-// the grit there was. Two things hold now. The winch draws in no more than forty times its load at once: a piece
-// larger than that hangs where it is and the game says why, while smaller pieces wound with it still come. And the
-// next reach costs less where the ground this one reaches is spent, down to next to nothing.
+// the grit there was. Now the next reach costs less where the ground this one reaches is spent, down to next to
+// nothing. And there is no most the winch draws in: it once drew in no more than forty times its load and said
+// TOO BIG of the rest, so that half the longest reach could never be hauled. Whatever the tether is round comes, in
+// one haul, and a piece over the winch's load pays less a cell (`overload`).
 import { makeGame, UPGRADES, C, N, K } from '../harness.mjs';
 
-const { HAUL_MOST } = await import('../../js/game.js'), { textWidth } = await import('../../js/atlas.js');
+const game0 = await import('../../js/game.js'), { overload, haulBonus } = game0;
 const fails = [], check = (ok, what) => { if (!ok) fails.push(what); };
 const reach = UPGRADES.find(u => u.id === 'tether');
 // A block of solid ground `w` by `h` cells with its corner at (x0, y0) from the core, standing in open ground, and
@@ -21,12 +22,12 @@ const block = (game, x0, y0, w, h) => {
   return cells;
 };
 
-check(HAUL_MOST === 40, `the winch draws in ${HAUL_MOST} times its load`);
+check(game0.HAUL_MOST === undefined, 'the game still has a most that the winch draws in');
 
-// ---- a piece over what the winch draws in stays, and the game says why; a smaller one wound with it comes
+// ---- a piece fifty times the first winch's load comes, with a small one wound with it, in one haul at less a cell
 {
   const game = await makeGame(7, { tether: 6 }), w = game.world;
-  // (The first winch's load is 150 cells: it draws in 6,000.)
+  // (The first winch's load is 150 cells; the great block is 8,100, which the winch once refused.)
   const big = block(game, 20, -45, 90, 90), small = block(game, 120, -10, 20, 20);
   game.changed();
   game.pieces = game.pieces.filter(p => p.length < 400).concat([big, small]); game.changed();
@@ -36,16 +37,34 @@ check(HAUL_MOST === 40, `the winch draws in ${HAUL_MOST} times its load`);
   const d = game.drill; d.x = d.px = C + 10.5; d.y = d.py = C - 60.5; d.home = false;
   const hauls = game.S.stats.hauls;
   game.reelIfRound();
-  // (With it comes whatever else small the loop is round: the first loose piece of a new game lies beside the core.)
-  check(game.S.stats.hauls === hauls + 1 && game.S.stats.best >= small.length && game.S.stats.best < small.length + 40 && small.every(i => w.k(i) === K.EMPTY), `the small block wound with the great one: ${game.S.stats.hauls - hauls} hauls, the largest ${game.S.stats.best} cells`);
-  check(big.every(i => w.k(i) === K.SOFT) && game.pieces.includes(big), `${big.filter(i => w.k(i) !== K.SOFT).length} cells of the block of ${big.length} are gone`);
-  check(game.notice?.title === 'TOO BIG' && game.notice.sub === '8.1K CELLS. WINCH DRAWS 6.0K' && textWidth(game.notice.title, 2) < 170 && textWidth(game.notice.sub) < 170, `the game says '${game.notice?.title}', '${game.notice?.sub}'`);
-  // It does not say so again at once, however often it is asked; and with a winch that draws it, the block comes.
-  game.notice = null; game.reelIfRound();
-  check(game.notice === null, 'asked again at once, the game said so again');
-  game.S.lv.winch = 1; game.reelIfRound();
-  check(big.every(i => w.k(i) === K.EMPTY) && game.S.stats.best >= big.length, `with the second winch (it draws ${HAUL_MOST * 400}) ${big.filter(i => w.k(i) === K.EMPTY).length} of the block's ${big.length} cells came`);
+  // (With them comes whatever else small the loop is round: the first loose piece of a new game lies beside the core.)
+  const n = game.hauled?.n;
+  check(game.S.stats.hauls === hauls + 1 && n >= big.length + small.length && n < big.length + small.length + 40, `the blocks came in ${game.S.stats.hauls - hauls} hauls, the last of ${n} cells`);
+  check(big.every(i => w.k(i) === K.EMPTY) && small.every(i => w.k(i) === K.EMPTY) && !game.pieces.includes(big), `${big.filter(i => w.k(i) !== K.EMPTY).length} cells of the great block and ${small.filter(i => w.k(i) !== K.EMPTY).length} of the small are still there`);
+  check(game.notice?.title !== 'TOO BIG', `the game says '${game.notice?.title}'`);
+  check(game.hauled.over === overload(n, 0) && game.hauled.over < 0.2 && Math.abs(game.hauled.mult - haulBonus(n, 1) * game.hauled.over) < 1e-9, `over the load the haul is at ${game.hauled.over} of full pay, x${game.hauled.mult}`);
+  check(game.banner?.giant === 2 && game.banner.title === 'TITANIC!', `the haul is called ${game.banner?.title}`);
   game.resize(320, 568, 1); game.render();
+}
+
+// ---- ground cut loose is found however big it is (past 120,000 cells it was held), and the book of it stays right
+{
+  const game = await makeGame(7, { tether: 6 }), w = game.world, book = game.pieceOf;
+  const big = block(game, 30, -250, 500, 500), plug = [];
+  // A plug of ground across the moat holds the block to the world, and then it is cut.
+  for (let x = 27; x < 30; x++) { const i = (C - 100) * N + C + x; w.setK(i, K.SOFT); plug.push(i); }
+  game.changed();
+  check(!book.has(big[0]), 'the block is loose while the plug holds it');
+  for (const i of plug) w.setK(i, K.EMPTY);
+  game.changed(plug);
+  const piece = book.get(big[0]), inBook = () => game.pieces.reduce((sum, cells) => sum + cells.length, 0);
+  check(piece && piece.length === big.length && big.every(i => book.get(i) === piece) && book.size === inBook(), `the block of ${big.length} cut loose is ${piece ? `a piece of ${piece.length}` : 'held'}, the book holds ${book.size} cells of ${inBook()}`);
+  // A tether round it, and it comes in one haul; the book lets go of it.
+  game.band = [[C + 25.5, C - 260.5], [C + 540.5, C - 260.5, 0, 0, 0], [C + 540.5, C + 260.5, 0, 0, 0], [C + 25.5, C + 260.5, 0, 0, 0], [C + 0.5, C + 0.5]];
+  const d = game.drill; d.x = d.px = C + 25.5; d.y = d.py = C - 260.5; d.home = false;
+  game.reelIfRound();
+  check(big.every(i => w.k(i) === K.EMPTY) && game.hauled.n >= big.length && game.banner?.title === 'CONTINENTAL!', `the block came as a haul of ${game.hauled?.n}, ${game.banner?.title}`);
+  check(!book.has(big[0]) && book.size === inBook() && !book.ids?.has(piece), `after the haul the book holds ${book.size} cells of ${inBook()}, and ${book.ids?.has(piece) ? 'still' : 'no longer'} the block`);
 }
 
 // ---- the next reach costs less where the ground within this one is spent
@@ -74,5 +93,5 @@ check(HAUL_MOST === 40, `the winch draws in ${HAUL_MOST} times its load`);
   check(UPGRADES.filter(u => u.id !== 'tether').every(u => game.cost(u) === null || game.cost(u).grit === u.grit[game.S.lv[u.id]]), 'a row other than the reach costs something other than its price');
 }
 
-console.log(fails.length ? `DEFECT:\n  ${fails.join('\n  ')}` : 'no defect: the winch leaves hanging what is over forty times its load and says so, draws in what is under it, and the next reach costs less where the ground is spent: a game with everything in reach gone buys it and goes on');
+console.log(fails.length ? `DEFECT:\n  ${fails.join('\n  ')}` : 'no defect: the winch draws in whatever the tether is round, at less a cell over its load, and the next reach costs less where the ground is spent: a game with everything in reach gone buys it and goes on');
 process.exit(fails.length ? 1 : 0);

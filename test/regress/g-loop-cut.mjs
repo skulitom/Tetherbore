@@ -6,10 +6,10 @@
 //
 // 1. The cut that closes a loop round 300 x 300 cells of natural ground: the piece is known, and nothing but the
 //    piece is followed.
-// 2. The same round 400 x 400 (more than the 120,000 cells a piece may have): nothing is known, and no more than
-//    those 120,000 cells are followed.
+// 2. The same round 400 x 400: the piece is known, and nothing but the piece is followed. (A piece once had no more
+//    than 120,000 cells, and this one was held: a loop round half the longest reach is six and a half million.)
 // 3. A cut through the wall between two long corridors, each with over 20,000 sides of wall and no way round but
-//    the cut: nothing comes loose, nothing is followed at all, and the walk gives up within its 60,000 sides.
+//    the cut: nothing comes loose, nothing is followed at all, and the walk gives up within its 150,000 sides.
 //   node test/regress/g-loop-cut.mjs
 import { makeGame, tetherFaults, C, N, K } from '../harness.mjs';
 
@@ -47,7 +47,7 @@ function cutFrom(game, x, y, way, target, road = []) {
   return cost;
 }
 
-for (const [W, most] of [[300, true], [400, false]]) {
+for (const W of [300, 400]) {
   const game = await makeGame(7, { tether: 9, drill: 4, momentum: 4 }), w = game.world, X = 800;
   // Staged: tunnels one cell wide along row 0 from the core and round three sides of the square, all but one cell.
   for (let x = 3; x <= X; x++) w.setK(at(x, 0), K.EMPTY);
@@ -57,9 +57,7 @@ for (const [W, most] of [[300, true], [400, false]]) {
   w.setK(at(X - W, -1), K.SOFT);
   game.pieces = []; game.changed();
   const cost = cutFrom(game, X - W, 0, [0, -1], at(X - W, -1)), big = game.pieces.map(p => p.length).filter(n => n > 1000);
-  const ok = most
-    ? big.length === 1 && cost.followed <= big[0] + 50 && cost.sides <= 20000 && cost.made <= 20
-    : big.length === 0 && cost.followed <= 120001 && cost.sides <= 20000 && cost.made <= 30;
+  const ok = big.length === 1 && cost.followed <= big[0] + 50 && cost.sides <= 20000 && cost.made <= 30;
   report(`a loop closed round ${W} x ${W}`, game, ok, `${big.length ? `a piece of ${big[0]} cells is known` : 'no piece is known'}; the cut walked ${cost.sides} sides, followed ${cost.followed} cells and made ${cost.made} pieces of world`);
 }
 {
@@ -79,7 +77,7 @@ for (const [W, most] of [[300, true], [400, false]]) {
   game.pieces = []; game.changed();
   // (The first piece beside the core, four cells, is all that lies loose here.)
   const cost = cutFrom(game, 120, 10, [1, 0], at(121, 10), [[0, 10]]), loose = game.pieces.filter(p => p.length > 4).length;
-  const ok = !loose && cost.followed === 0 && cost.sides <= 60000 && cost.sides >= 20000 && cost.made <= 2;
+  const ok = !loose && cost.followed === 0 && cost.sides <= 150000 && cost.sides >= 20000 && cost.made <= 2;
   report('a cut through the wall between two long corridors', game, ok, `${loose} pieces came loose; the cut walked ${cost.sides} sides, followed ${cost.followed} cells and made ${cost.made} pieces of world`);
 }
 console.log(bad ? 'DEFECT: a cut did more work than its outlines and what it freed' : 'no defect');
