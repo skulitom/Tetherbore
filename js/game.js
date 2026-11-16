@@ -2652,11 +2652,35 @@ export class Game {
       }
       // The haul's own rope: a loop round the lot, and a line from it along the way home.
       if (hull.length && h.doneAt === undefined) {
-        hull.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
         const turn = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]), ring = [];
+        // A big heap has a thousand corners and an outline of a score of them, and sorting them all was the dearest
+        // part of drawing a busy frame. The corners furthest out to the right, down, left and up and along the four
+        // diagonals between make an octagon inside the outline, and a corner inside that cannot be on the outline,
+        // so those are thrown out before the sort. Only a corner inside by more than rounding could account for
+        // goes: one on the octagon's edge, or a hair either side of it, is left to the outline to keep or pass over.
+        // (r is the corner furthest right, dr the one furthest down and right, and so on round.)
+        let r = hull[0], dr = r, d = r, dl = r, l = r, ul = r, u = r, ur = r;
+        for (const p of hull) {
+          const x = p[0], y = p[1];
+          if (x > r[0]) r = p; if (x < l[0]) l = p; if (y > d[1]) d = p; if (y < u[1]) u = p;
+          if (x + y > dr[0] + dr[1]) dr = p; if (x + y < ul[0] + ul[1]) ul = p; if (y - x > dl[1] - dl[0]) dl = p; if (y - x < ur[1] - ur[0]) ur = p;
+        }
+        // (In turn round the compass, with any corner that repeats the one before it left out: an edge of no length
+        // would have every corner on it.)
+        const oct = [r, dr, d, dl, l, ul, u, ur].filter((p, i, all) => p[0] !== all[(i + 7) % 8][0] || p[1] !== all[(i + 7) % 8][1]), n = oct.length;
+        let kept = hull;
+        if (n > 2) {
+          kept = [];
+          for (const p of hull) { let i = 0; while (i < n && turn(oct[i], oct[(i + 1) % n], p) > 1e-3) i++; if (i < n) kept.push(p); }
+        }
+        kept.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
         for (const pass of [0, 1]) {
           const start = ring.length;
-          for (const p of pass ? hull.slice().reverse() : hull) { while (ring.length >= start + 2 && turn(ring[ring.length - 2], ring[ring.length - 1], p) <= 0) ring.pop(); ring.push(p); }
+          for (let k = 0; k < kept.length; k++) {
+            const p = kept[pass ? kept.length - 1 - k : k];
+            while (ring.length >= start + 2 && turn(ring[ring.length - 2], ring[ring.length - 1], p) <= 0) ring.pop();
+            ring.push(p);
+          }
           ring.pop();
         }
         if (ring.length > 2) {
