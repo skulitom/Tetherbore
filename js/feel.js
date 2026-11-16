@@ -6,7 +6,8 @@
 // the flats, honey dripping in a hive). Over all of it lies a layer the size of the screen in the ground's colour:
 // a fog, an edge of dark or of heat from below, rime in the corners. A cross has its host's feel and a touch of its
 // donor's at half strength. Each ground's is a row of `FEELS`, by the ground's name; a ground with none of its own
-// (a row a test makes) has its direction's.
+// (a row a test makes) has its direction's. And where a ground's caves have icicles (js/decor.js), one that the
+// drill flies under shivers and falls and shatters, and a quake shakes a few loose.
 //
 // It is only feel. What must stay true:
 //   - Nothing here changes a cell, the flight, the hull, the tether, a haul or what anything pays, and nothing
@@ -14,7 +15,12 @@
 //     (test/regress/s6-feel.mjs plays two side by side).
 //   - It never draws from Math.random (the game's tests count those draws): it has a generator of its own, seeded
 //     from the world's seed. And it never writes the game's own particles, motes, shake or flash: what it shows is
-//     its own, in a pool of POOL particles made once and used again, so a frame makes nothing new.
+//     its own, in a pool of POOL particles made once and used again, so a frame makes nothing new. (The motes are
+//     drawn leaning with its wind, `drift`, and are not moved.)
+//   - What it keeps that the drawing reads is the icicles that have fallen (`fallen`, which is the game's
+//     `game.fallen`): a fall is kept only when an icicle hung there and its particle was made, the piece of ground
+//     it hung in is drawn again without it (`game.redraw`), and they are all given back with everything else when
+//     the feel is begun again (a new world, a game loaded, a trip lost). An icicle hurts nothing and changes no cell.
 //   - It reads the world only where it has been seen (`peek`, and the piece's own ground for a seen cell), so no
 //     piece of the world is ever made for it; whether a floor is a natural cave's is asked (`first`) only of the
 //     few cells whose hash has already chosen them for a vent.
@@ -28,7 +34,8 @@
 //   - The layers over the whole screen are not drawn in a lit view (a staged picture of the ground).
 import { N, C, K, BIOMES, rowOf, cellHash } from './world.js';
 import { sheets, draw } from './atlas.js';
-import { sfx } from './audio.js';
+import { sfx, PLINK } from './audio.js';
+import { framesOf, falls, placeOf } from './decor.js';
 
 const T = 16;                                   // pixels in a cell, as js/drawing.js has it
 const CALM = 40;                                // within this many cells of the core nothing comes by itself
@@ -39,17 +46,22 @@ const PIECES = 64;                              // the most pieces of 8 x 8 cell
 const VENTS = 12;                               // the most vents in view it keeps going
 const BUILDS = 4;                               // the most pieces it looks at afresh in a frame
 const GRAVITY = 300;                            // pixels a second, a second, for what falls
+const SHIVER = 0.35, LOOSE = 0.3;               // how long an icicle shivers before it falls; the least time between two falling
+const UNDER = 4;                                // how many cells over the drill an icicle falls from as it flies under
+const TOLD = 16;                                // the cuts about to close over that it remembers having creaked
 
 // ---------------------------------------------------------------- the table
 // A row of FEELS says what a ground does; everything is optional:
 //   drip     { every: [a, b], color, step, slow? }   a drop swells on a ceiling in view, falls and plinks (`step`
-//                                             is its note of PLINK in js/audio.js, or 'scale' for any of five);
+//                                             is its note of PLINK in js/audio.js, the key of the music that is
+//                                             playing, or 'scale' for any note of that key's scale);
 //                                             `slow`, it is a big drop that swells for longer (honey)
 //   creak    { every, pitch }                 the ice groans, and a hairline crack shows on a face in view
-//   quake    { every, power }                 the ground shakes (the view only) and grit falls from the ceilings
+//   quake    { every, power }                 the ground shakes (the view only), grit falls from the ceilings, and
+//                                             in caves with icicles a few in view are shaken loose
 //   gust     { every, strength, streak, haze? }   the wind gets up for a few seconds: streaks cross the view, and
 //                                             what the feel lets float leans with it (`haze`: the fog thickens by so
-//                                             much while it blows). The game's own motes are left as they are.
+//                                             much while it blows). The game's own motes are drawn leaning with it.
 //   bubble   { every, color }                 gas rises from a floor, wobbles and pops
 //   steam    { every, color }                 a puff of steam out of a floor
 //   trickle  { cut, every?, color }           sand pours from the roof over a cut just finished, for `cut`
@@ -145,11 +157,27 @@ export function feelOf(row) {
     f = { ...host };
     for (const [key, entry] of Object.entries(mark)) if (!f[key]) f[key] = half(entry);
   } else f = FEELS[row.name] ?? FEELS[KIN_FEEL[row.kin]] ?? FEELS.crust;
-  // (What the drawing needs of it is named once here, not in a frame.)
-  f = { ...f, layers: [f.fog && `fog:${f.fog.color}`, f.edge && `edge:${f.edge.color}:${f.edge.below ? 1 : 0}`].filter(Boolean) };
+  // (What the drawing needs of it is named once here, not in a frame: each layer over the screen, known by its
+  // spec, which is the same object in every ground that has the same layer, and its picture's name, which is its
+  // colour and kind, as the picture is.)
+  f = { ...f, layers: [f.fog && { key: `fog:${f.fog.color}`, spec: f.fog, fog: true }, f.edge && { key: `edge:${f.edge.color}:${f.edge.below ? 1 : 0}`, spec: f.edge, fog: false }].filter(Boolean) };
   known.set(row, f);
   return f;
 }
+// Whether a ground's caves have icicles that may fall (asked once the sheets are loaded, and kept by the row).
+const icy = new WeakMap();
+function icyOf(row) {
+  let v = icy.get(row);
+  if (v !== undefined) return v;
+  const sets = framesOf().sets;
+  if (!sets[row.decor]) return false;
+  v = [row.decor, row.decor2].some(set => !!set && !!sets[set]?.top.some(falls));
+  icy.set(row, v);
+  return v;
+}
+// The frames of the icicles that are falling, by number, so that a particle holds a number and not a string.
+const SHAPES = [null], SHAPE = new Map();
+const shapeOf = name => { let n = SHAPE.get(name); if (n === undefined) { n = SHAPES.length; SHAPES.push(name); SHAPE.set(name, n); } return n; };
 
 // ---------------------------------------------------------------- the particles
 // Each kind moves as its own: what falls (a drop, a shard, a grain) falls until the floor worked out when it was
@@ -182,8 +210,12 @@ export class Feel {
     this.next = new Float64Array(EVENTS.length);
     this.glowing = [];                          // the lights this frame, [x, y, power, reach] (`lights`)
     for (let n = 0; n < 8; n++) this.glowing.push([0, 0, 0, 0]);
-    this.layers = [];                           // the screen's layers as they ease in and out: { key, alpha }
+    this.layers = [];                           // the screen's layers as they ease in and out: { key, alpha, spec, fog }
     this.art = new Map();                       // what each layer is drawn from, made once for each colour
+    this.frosts = new Map();                    // the frost at the corners, by colour: a picture for each stage of growth
+    this.fallen = new Set();                    // the cells whose icicle has fallen (the game's `fallen`, which the drawing reads)
+    this.loose = new Int32Array(8);             // the icicles a quake may shake loose, while it chooses
+    this.told = new Int32Array(TOLD); this.toldAt = new Float64Array(TOLD);   // the cuts that have creaked, and when each was cut
     this.reset(7);
   }
   reset(seed) {
@@ -198,6 +230,8 @@ export class Feel {
     this.heard = -9; this.tellAt = -9; this.crackleAt = -9; this.pourAt = -9; this.lavaAt = -9; this.lavaWas = 0;
     this.lastDig = -1; this.breathIn = 0; this.wakeIn = 0; this.hot = 0; this.flyIn = 0; this.fallIn = 0; this.tellIn = 0;
     this.rime = 0; this.layers.length = 0; this.lit = 0; this.forced = null; this.cv = -1;
+    this.fallen.clear(); this.icicleNext = 0; this.watchIn = 0; this.drift = 0;
+    this.told.fill(0); this.toldN = 0;
     this.work = 0;                              // cells looked at this frame, for the tests
     this.events = 0;                            // how many events have come since the reset (for the tests)
   }
@@ -359,11 +393,12 @@ export class Feel {
       const what = this.forced;
       this.forced = null;
       if (what === 'flies') this.swarm(game, F.flies ?? { most: 6, color: '#b4f070' }, true);
-      else if (what === 'icicle') { const i = this.pick(game, false, 4); if (i >= 0) this.icicleFall(game, i); }
+      else if (what === 'icicle') { if (!this.loosen(game, 1, 5) && !this.loosen(game, 1, 10)) { const i = this.pick(game, false, 4); if (i >= 0) this.icicleFall(game, i); } }
       else if (what === 'rime') this.rime = 1;
       else if (EVENTS.includes(what)) this.fire(game, what, F[what] ?? PLAIN[what]);
     }
     this.tells(game, F, open, dt);
+    this.watch(game, row, dt);
     this.going(game, F, dt);
     this.wake(game, F, dt);
     this.move(game, dt);
@@ -381,7 +416,7 @@ export class Feel {
     if (what === 'drip') {
       const i = this.pick(game, false, 9);
       if (i < 0) return;
-      const x = i % N, y = Math.floor(i / N), step = entry.step === 'scale' ? Math.floor(this.rnd() * 5) : entry.step ?? 0;
+      const x = i % N, y = Math.floor(i / N), step = entry.step === 'scale' ? Math.floor(this.rnd() * PLINK.scale.length) : entry.step ?? 0;
       // (It hangs a moment, swelling, before it falls: a negative age.)
       const p = this.spawn(DROP, x * T + 4 + Math.floor(this.rnd() * 8), y * T + 1, 0, 0, 3, ink(entry.color), entry.slow ? 2 : 1, this.floorUnder(w, x, y));
       if (p >= 0) { this.t[p] = entry.slow ? -1.2 : -0.5; this.vx[p] = step + 100; }
@@ -407,6 +442,8 @@ export class Feel {
         const x = i % N, y = Math.floor(i / N), debris = (this.rowAt(w, x, y - 1) ?? BIOMES[0]).debris;
         for (let g = 0; g < 3; g++) this.spawn(GRAIN, x * T + 2 + this.rnd() * 12, y * T, (this.rnd() - 0.5) * 8, this.rnd() * 30, 2, ink(debris[g % debris.length]), 1, this.floorUnder(w, x, y));
       }
+      // And in caves with icicles, a few in view come down, one after another.
+      if (icyOf(w.row(game.di))) this.loosen(game, 1 + Math.round(power * 2), 12);
     } else if (what === 'gust') {
       const s = entry.strength ?? 1;
       this.windTo = (this.rnd() < 0.5 ? -30 : 30) * s; this.gustLeft = 2.5 + this.rnd() * 1.5; this.streak = ink(entry.streak ?? '#d8d0c0');
@@ -488,12 +525,17 @@ export class Feel {
     if (open && (this.tellIn -= dt) <= 0) {
       this.tellIn = 0.4;
       const dcx = Math.floor(d.x), dcy = Math.floor(d.y);
-      for (let n = 0, most = Math.min(400, game.frostOpen.length); n < most; n++) {
-        const i = game.frostOpen[n], x = i % N, y = Math.floor(i / N), freeze = (this.rowAt(w, x, y) ?? BIOMES[0]).freeze;
-        const age = game.clock - (w.dug.get(i) ?? game.clock);
-        if (!freeze || age < freeze - 3 || (Math.max(Math.abs(dcx - x), Math.abs(dcy - y)) > 2 && !game.under.has(i))) continue;
-        if (this.time - this.tellAt > 2) { this.tellAt = this.time; sfx.creak(1, 1.2); for (let s = 0; s < 3; s++) this.spawn(GLINT, x * T + 2 + this.rnd() * 12, y * T + 2 + this.rnd() * 12, 0, 0, 0.5, ink('#dff4ff'), 0); }
-        break;
+      // (The newest cuts first, as the drill is nearest them. Each creaks once, as it comes within three seconds of
+      // closing, though the tether hold it open for good: it is remembered by its cell and when it was cut.)
+      for (let n = game.frostOpen.length - 1, last = Math.max(0, n - 399); n >= last && this.time - this.tellAt > 2; n--) {
+        const i = game.frostOpen[n], x = i % N, y = Math.floor(i / N), freeze = (this.rowAt(w, x, y) ?? BIOMES[0]).freeze, cut = w.dug.get(i);
+        if (!freeze || cut === undefined || game.clock - cut < freeze - 3 || (Math.max(Math.abs(dcx - x), Math.abs(dcy - y)) > 2 && !game.under.has(i))) continue;
+        let told = false;
+        for (let m = 0; m < TOLD; m++) if (this.told[m] === i + 1 && this.toldAt[m] === cut) { told = true; break; }
+        if (told) continue;
+        this.told[this.toldN] = i + 1; this.toldAt[this.toldN] = cut; this.toldN = (this.toldN + 1) % TOLD;
+        this.tellAt = this.time; sfx.creak(1, 1.2);
+        for (let s = 0; s < 3; s++) this.spawn(GLINT, x * T + 2 + this.rnd() * 12, y * T + 2 + this.rnd() * 12, 0, 0, 0.5, ink('#dff4ff'), 0);
       }
     }
     // Crystals woken near the drill.
@@ -552,6 +594,8 @@ export class Feel {
     // The wind eases up to a gust and down again, and while it blows streaks cross the view.
     if (this.gustLeft > 0 && (this.gustLeft -= dt) <= 0) this.windTo = 0;
     this.wind += (this.windTo - this.wind) * (1 - Math.exp(-dt * 1.5));
+    // (How far the wind has pushed the air, easing back as it drops: the game's motes are drawn so far over.)
+    this.drift += (this.wind - 0.6 * this.drift) * Math.min(dt, 0.1);
     for (let n = Math.floor(dt * Math.abs(this.wind) * 0.8 + this.rnd()); n > 0 && Math.abs(this.wind) > 6; n--) {
       const up = this.wind > 0 ? this.x0 - 1 : this.x1 + 1;
       this.spawn(STREAK, (up + this.rnd() * (this.x1 - this.x0) * 0.5 * Math.sign(this.wind)) * T, (this.y0 + this.rnd() * (this.y1 - this.y0 + 1)) * T, this.wind * 4.5, 0, 0.7 + this.rnd() * 0.6, this.streak ?? WHITE, 4 + Math.floor(this.rnd() * 9));
@@ -671,16 +715,18 @@ export class Feel {
   // corners for as long as the drill is in ground that has it, and goes when it is not (at once, on the core).
   atmosphere(game, F, dt) {
     const k = 1 - Math.exp(-dt * 1.5);
+    // (A layer is known by its whole spec: two grounds whose edges are of one colour may differ in how dark it is or
+    // whether it pulses, and the one gone into eases in as the other goes.)
     for (let m = 0; m < F.layers.length; m++) {
-      const key = F.layers[m];
+      const d = F.layers[m];
       let there = false;
-      for (let n = 0; n < this.layers.length; n++) if (this.layers[n].key === key) there = true;
-      if (!there) this.layers.push({ key, alpha: 0, spec: m === 0 && F.fog ? F.fog : F.edge, fog: m === 0 && !!F.fog });
+      for (let n = 0; n < this.layers.length; n++) if (this.layers[n].spec === d.spec) there = true;
+      if (!there) this.layers.push({ key: d.key, alpha: 0, spec: d.spec, fog: d.fog });
     }
     for (let n = this.layers.length - 1; n >= 0; n--) {
       const l = this.layers[n];
       let want = 0;
-      for (let m = 0; m < F.layers.length; m++) if (F.layers[m] === l.key) want = 1;
+      for (let m = 0; m < F.layers.length; m++) if (F.layers[m].spec === l.spec) want = 1;
       l.alpha += (want - l.alpha) * k;
       if (!want && l.alpha < 0.01) this.layers.splice(n, 1);
     }
@@ -690,27 +736,81 @@ export class Feel {
   }
 
   // ---------------------------------------------------------------- an icicle falls
-  // An icicle that hung from the ceiling of the open cell `i` falls, to the floor under it, and shatters there.
-  // The icicles are drawn with the ground (js/decor.js), which says where they hang; this is what is to be called
-  // when one comes down, and `fallen` what has. (Nothing calls it yet but `force('icicle')`.)
-  icicleFall(game, i, length = 5) {
-    const w = game.world, x = i % N, y = Math.floor(i / N), p = this.spawn(ICICLE, x * T + 4 + Math.floor(cellHash(x, y, 43) * 8), y * T + 1, 0, 0, 3, ink('#cfeeff'), Math.max(2, Math.min(9, length)), this.floorUnder(w, x, y));
-    this.gone ??= new Int32Array(64);
-    this.gone[(this.goneAt = ((this.goneAt ?? -1) + 1) % 64)] = i + 1;
-    return p >= 0;
+  // The icicles are drawn with the ground (js/decor.js), which says where they hang. One the drill flies under (in
+  // its column or the one either side, within UNDER cells over it, with nothing but open ground between) shivers
+  // and falls; a quake shakes a few in view loose. They begin to fall one at a time, LOOSE seconds apart at the
+  // least: one that must wait its turn hangs still until then.
+  watch(game, row, dt) {
+    const d = game.drill;
+    if ((this.watchIn -= dt) > 0) return;
+    this.watchIn = 0.1;
+    if (this.time < this.icicleNext || d.mode === 'dead' || Math.abs(d.vx) + Math.abs(d.vy) < 1 || !icyOf(row)) return;
+    const w = game.world, cx = Math.floor(d.x), cy = Math.floor(d.y);
+    for (let u = -1; u <= 1; u++) for (let v = 0; v <= UNDER; v++) {
+      const x = cx + u, y = cy - v;
+      if (w.peek(x, y) !== K.EMPTY) break;
+      const i = y * N + x;
+      if (w.peek(x, y - 1) <= 0 || this.fallen.has(i)) continue;
+      const f = game.decorOf(i);
+      if (f !== null && falls(f) && placeOf(f) === 'top') { this.icicleFall(game, i, f); return; }
+    }
   }
-  fallen(i) { return !!this.gone && this.gone.includes(i + 1); }
+  // Up to `most` of the icicles hanging in view within `reach` cells of the drill, chosen at random, come down:
+  // how many did.
+  loosen(game, most, reach) {
+    const d = game.drill;
+    let found = 0, seen = 0;
+    for (let cy = this.ry0; cy <= this.ry1; cy++) for (let cx = this.rx0; cx <= this.rx1; cx++) {
+      const p = this.pieces.get(cy * 4096 + cx);
+      if (!p?.built) continue;
+      for (let m = 0; m < p.nc; m++) {
+        const i = p.ceil[m], x = i % N, y = Math.floor(i / N);
+        if (x <= this.x0 || x >= this.x1 || y <= this.y0 || y >= this.y1 || Math.abs(x + 0.5 - d.x) > reach || Math.abs(y + 0.5 - d.y) > reach || this.fallen.has(i)) continue;
+        const f = game.decorOf(i);
+        if (f === null || !falls(f) || placeOf(f) !== 'top') continue;
+        // (Each one found has the same chance of being among those kept, however many there are.)
+        seen++;
+        if (found < this.loose.length) this.loose[found++] = i;
+        else { const at = Math.floor(this.rnd() * seen); if (at < this.loose.length) this.loose[at] = i; }
+      }
+    }
+    let fell = 0;
+    for (let n = 0; n < found && fell < most; n++) {
+      const at = n + Math.floor(this.rnd() * (found - n)), i = this.loose[at];
+      this.loose[at] = this.loose[n];
+      if (this.icicleFall(game, i, game.decorOf(i))) fell++;
+    }
+    return fell;
+  }
+  // The icicle that hung from the ceiling of the open cell `i`, drawn as the frame `frame`, comes down: it shivers,
+  // falls to the floor under it and shatters there. With no frame (a ceiling with nothing hanging from it, for a
+  // picture or a test) a plain sliver falls. Whether it came: a fall is kept (`fallen`) only if it did.
+  icicleFall(game, i, frame = null) {
+    if (this.fallen.has(i)) return false;
+    const w = game.world, x = i % N, y = Math.floor(i / N), wait = Math.max(0, this.icicleNext - this.time);
+    if (wait > 4 * LOOSE) return false;
+    const p = frame
+      ? this.spawn(ICICLE, x * T, y * T, 0, 0, 3, shapeOf(frame), 0, this.floorUnder(w, x, y) - 7)
+      : this.spawn(ICICLE, x * T + 4 + Math.floor(cellHash(x, y, 43) * 8), y * T + 1, 0, 0, 3, ink('#cfeeff'), 5, this.floorUnder(w, x, y));
+    if (p < 0) return false;
+    this.t[p] = -(wait + SHIVER);
+    this.icicleNext = this.time + wait + LOOSE;
+    if (frame) { this.fallen.add(i); game.redraw?.(i); }
+    return true;
+  }
   shatter(game, p) {
-    const x = this.x[p], y = this.y[p];
+    // (A frame is a cell's size, with its icicle in the top half: it breaks where its tip meets the floor.)
+    const framed = this.size[p] === 0, x = this.x[p] + (framed ? 8 : 0), y = framed ? this.floor[p] + 6 : this.y[p];
     this.kind[p] = 0; this.live--;
-    for (let n = 6 + Math.floor(this.rnd() * 5); n > 0; n--) this.spawn(SHARD, x, y - 1, (this.rnd() - 0.5) * 70, -40 - this.rnd() * 60, 0.6 + this.rnd() * 0.3, ink(n & 1 ? '#e8fbff' : '#8ab8dc'), 1, y + 1);
+    for (let n = 6 + Math.floor(this.rnd() * 5); n > 0; n--) this.spawn(SHARD, x + (framed ? Math.round((this.rnd() - 0.5) * 8) : 0), y - 1, (this.rnd() - 0.5) * 70, -40 - this.rnd() * 60, 0.6 + this.rnd() * 0.3, ink(n & 1 ? '#e8fbff' : '#8ab8dc'), 1, y + 1);
     const near = 1 - Math.hypot(x / T - game.drill.x, y / T - game.drill.y) / HEAR;
     sfx.shatter(Math.max(0, near));
   }
 
   // Makes something come at once, whatever the ground and whatever its clock says (for pictures and tests):
-  // any of the events, or 'flies' (a ground's fireflies, all of them round the drill), 'icicle' (one falls near
-  // the drill) or 'rime' (the corners frosted over).
+  // any of the events, or 'flies' (a ground's fireflies, all of them round the drill), 'icicle' (one hanging in
+  // view near the drill comes down, or with none a sliver from a ceiling beside it) or 'rime' (the corners frosted
+  // over).
   force(what) { this.forced = what; }
 
   // ---------------------------------------------------------------- drawing
@@ -719,7 +819,7 @@ export class Feel {
     const w = game.world, W = game.W, H = game.H;
     for (let i = 0; i < POOL; i++) {
       const k = this.kind[i];
-      if (!k || LIT[k] || (this.t[i] < 0 && k !== DROP)) continue;
+      if (!k || LIT[k] || (this.t[i] < 0 && k !== DROP && k !== ICICLE)) continue;
       const px = Math.round(this.x[i] - ox), py = Math.round(this.y[i] - oy), u = Math.max(0, this.t[i]) / this.life[i];
       if (px < -8 || py < -8 || px >= W + 8 || py >= H) continue;
       ctx.fillStyle = INKS[this.ink[i]];
@@ -761,8 +861,11 @@ export class Feel {
         ctx.globalAlpha = 0.5 * (1 - u);
         if (sheets.cracks) draw(ctx, 'cracks', 'crack-1', px, py);
       } else if (k === ICICLE) {
+        // (Waiting its turn it hangs still; then it shivers a moment, a pixel either way, and falls.)
+        const shiver = this.t[i] < 0 && this.t[i] > -SHIVER ? ((this.frame >> 1) & 1 ? 1 : -1) : 0;
         ctx.globalAlpha = 1;
-        ctx.fillRect(px, py, 1, this.size[i]); ctx.fillStyle = '#ffffff'; ctx.fillRect(px, py, 1, 2);
+        if (this.size[i] === 0) { const name = SHAPES[this.ink[i]]; draw(ctx, framesOf().frame.get(name).sheet, name, px + shiver, py); }
+        else { ctx.fillRect(px + shiver, py, 1, this.size[i]); ctx.fillStyle = '#ffffff'; ctx.fillRect(px + shiver, py, 1, 2); }
       } else {
         ctx.globalAlpha = Math.min(1, 2 * (1 - u));
         ctx.fillRect(px, py, 1, 1);
@@ -913,9 +1016,9 @@ export class Feel {
   // Frost at the four corners, as one picture of 64 x 64 whose quarters are the corners: needles of ice grown out
   // from each corner, a pixel at a time, each pixel with the stage it comes at.
   frost(color, stage) {
-    const key = `rime:${color}:${stage}`;
-    let art = this.art.get(key);
-    if (art) return art;
+    let arts = this.frosts.get(color);
+    if (!arts) this.frosts.set(color, arts = []);
+    if (arts[stage]) return arts[stage];
     const S = 64, Q = S / 2;
     if (!this.needles) {
       // When each pixel of one corner's frost grows: needles from the corner, branching, longer near the edges.
@@ -952,7 +1055,7 @@ export class Feel {
       }
     }
     c.putImageData(data, 0, 0);
-    this.art.set(key, canvas);
+    arts[stage] = canvas;
     return canvas;
   }
   // The lights the feel gives, inside the drawing's own (`Game.light`): the fireflies nearest the drill.

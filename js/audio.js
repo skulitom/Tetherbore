@@ -401,17 +401,27 @@ for (const name of Object.keys(make)) sfx[name] = sound(name, make[name]);
 // beside the drill; whatever a sound is asked with (nothing, or a number that is no number), it makes its sound:
 // what is not a number is taken as beside the drill, and every other figure has a plain value of its own. The low
 // sounds are pitched where a phone's speaker still plays them, a hundred cycles and up.
-// The notes a drop is struck on (a step of `scale` over `base`): the music may point these at the ground's own scale.
+// The notes a drop is struck on (a step of `scale` over `base`), which the music points at the key of the piece it
+// is playing (`retune`): the root lifted by octaves to between 620 and 1240 Hz, and the piece's scale. So a drop, the
+// grotto's notes and the ice's singing are in the music of the ground they are heard in.
 export const PLINK = { base: 880, scale: [0, 2, 4, 7, 9] };
+// The note of PLINK's key nearest to `f`.
+const inKey = f => {
+  const s = 12 * Math.log2(f / PLINK.base), o = Math.floor(s / 12), r = s - 12 * o;
+  let best = 12;
+  for (const d of PLINK.scale) if (Math.abs(d - r) < Math.abs(best - r)) best = d;
+  return PLINK.base * 2 ** (o + best / 12);
+};
 const loud = near => Number.isFinite(near) ? 0.35 + 0.65 * Math.min(1, Math.max(0, near)) : 1;
 const figure = (value, plain, least, most) => Number.isFinite(value) ? Math.min(most, Math.max(least, value)) : plain;
 const quirks = {
-  // A groan in the ice, and the long falling note a frozen lake sings after it. `pitch` is the ice's (1 the north's).
+  // A groan in the ice, and the long falling note a frozen lake sings after it, from a note of the music's key down
+  // to another. `pitch` is the ice's (1 the north's).
   creak(near, pitch) {
     if (crowded()) return;
     const a = loud(near), p = figure(pitch, 1, 0.4, 2.5), f = vary(170, 0.12) * p;
     tone(f, 0.6, { type: 'sawtooth', gain: 0.05 * a, to: f * 0.8, lp: 900, lpTo: 480, attack: 0.12, out: room });
-    tone(vary(1900, 0.1) * p, 0.42, { type: 'sine', gain: 0.03 * a, to: 420 * p, delay: 0.16, attack: 0.01, out: space });
+    tone(inKey(vary(1900, 0.1) * p), 0.42, { type: 'sine', gain: 0.03 * a, to: inKey(420 * p), delay: 0.16, attack: 0.01, out: space });
   },
   // An icicle hits the floor: glass breaking, and two bright notes.
   shatter(near) {
@@ -435,10 +445,12 @@ const quirks = {
     tone(vary(150, 0.1), 0.12, { type: 'sine', gain: 0.06 * a, to: 420, lp: 900, attack: 0.01 });
     noise(0.03, { type: 'lowpass', freq: 700, gain: 0.03 * a, delay: 0.1 });
   },
-  // The ground shakes: a rumble, a low note under it falling, and grit coming down. `power` 0.3 to 2.
+  // The ground shakes: a rumble, a low note under it falling, and grit coming down. `power` 0.3 to 2. The music
+  // steps back a little while it shakes (as deep as anything else asks, and no deeper: `hush`).
   quake(power) {
-    if (crowded()) return;
     const p = figure(power, 1, 0.3, 2), length = 1.2 + 0.4 * p;
+    hush(0.75, length);
+    if (crowded()) return;
     noise(length, { type: 'lowpass', freq: 400, to: 200, q: 0.8, gain: 0.08 + 0.03 * p, attack: 0.15, out: room });
     tone(vary(105, 0.05), length * 0.9, { type: 'triangle', gain: 0.07 + 0.03 * p, to: 72, attack: 0.12, out: room });
     grains(4 + Math.round(2 * p), 0.9, { first: 0.03, gain: 0.03, freq: 900, type: 'bandpass', delay: 0.2 });
@@ -509,6 +521,7 @@ function settle() {
   if (!ctx || !wanted || wanted === playing) return;
   if (playing && ctx.currentTime - wantedAt < SETTLE) return;
   playing = wanted;
+  retune(playing);
   if (bed) {
     const [hz, low] = playing.air, t = ctx.currentTime;
     bed.filter.frequency.setTargetAtTime(hz, t, 1.2);
@@ -516,6 +529,8 @@ function settle() {
   }
   if (band) turn(playing);
 }
+// The drops are struck in the key of the piece that plays (PLINK).
+function retune(s) { PLINK.base = keep(s.root, 620, 1240); PLINK.scale = MODES[s.mode] ?? MODES.major5; }
 // What a bell is scaled by in its wave, as the waves with more harmonics sound the louder.
 const BELL = { sine: 1, triangle: 1, keys: 0.9, glass: 0.8, hollow: 0.9, reed: 0.7, organ: 0.7, choir: 0.8, brass: 0.6, buzz: 0.5, bass: 0.8, anvil: 0.7, square: 0.5, sawtooth: 0.55 };
 const bellOf = s => BELL[s.bell] ?? 1;
@@ -1019,9 +1034,16 @@ function post(at, n) {
   }
   if (s.perc && !B) { const c = pat(s.perc.pattern, n, i, bar); if (DRUMS[c]) hit(at, c, vel, s); }
 }
-// The pads: the chord rises on the pad that is silent while the other falls.
+// The pads: the chord rises on the pad that is silent while the other falls. A pad still in another piece's wave
+// takes no chord: the pad held over a turn is let go at the first chord after it, and in a piece whose bars are
+// short its next chord would be posted while it is still falling, before it could be dressed, and so on round,
+// every other chord in the last ground's wave for as long as the drill stayed. Instead the sounding pad holds its
+// chord a bar or two more, and the other is dressed as soon as it has gone quiet (`redress`).
 function chordOn(at, s, chord) {
-  const p = s.pad, on = band.on < 0 ? 0 : 1 - band.on, v = band.pads[on], old = band.on < 0 ? null : band.pads[band.on], up = s.fit.pad[chord] ?? 1;
+  const p = s.pad, old = band.on < 0 ? null : band.pads[band.on], up = s.fit.pad[chord] ?? 1;
+  let on = band.on < 0 ? 0 : 1 - band.on;
+  if (band.pads[on].wave !== p.wave) { if (old || band.pads[1 - on].wave !== p.wave) return; on = 1 - on; }
+  const v = band.pads[on];
   const when = Math.max(at, v.last), f = p.tones.map(k => pitch(s, 'pad', chord + k, up));
   v.osc[0].frequency.setValueAtTime(f[0], when); v.osc[1].frequency.setValueAtTime(f[1] + p.spread, when);
   v.gain.gain.setTargetAtTime(p.gain * band.mix, when, p.rise);
@@ -1082,6 +1104,7 @@ function hit(at, c, vel, s) {
 export function hear(ground, far = 300) {
   away = far; lastGround = ground; lastDeep = false;
   wanted = playing = scoreOf(ground);
+  retune(playing);
   if (band) turn(playing);
 }
 // For the tests: every phrase a score's voices play (each chord's pads and patterns, the lead's range, the motif

@@ -14,7 +14,12 @@
 //   - Quirks: a quake shakes the view and is heard, and is still again within two and a half seconds; fireflies
 //     come round a drill that stands still in the west; a cut finished in the east pours sand and is heard; a cut
 //     in the north about to close over creaks with the drill beside it, and one far from the drill and the tether
-//     does not; an icicle that falls shatters, aloud; a shooting star crosses a drift; a cross has both its
+//     does not, and one held open creaks once, the newest cuts looked at first; an icicle flown under shivers,
+//     falls and shatters, aloud, is drawn no more and changes nothing else, one with no room for it does not fall,
+//     and all hang again when the feel is begun again; a quake in thaw shakes a few in view loose, no two beginning
+//     to fall within 0.3 seconds; going from the south into the forge, whose edge is of the same colour and darker,
+//     the forge's edge is the one that shows; the frost at the corners is made once; a gust pushes the air over and
+//     it eases back; a shooting star crosses a drift; a cross has both its
 //     grounds' quirks; within forty cells of the core nothing comes by itself and nothing gives light; and the
 //     sounds that come by themselves come no more than one in 1.2 seconds.
 //   node test/regress/s6-feel.mjs
@@ -22,6 +27,7 @@ import { makeGame, farStart, wander, random, world, C, N, K } from '../harness.m
 
 const { sfx } = await import(new URL('../../js/audio.js', import.meta.url));
 const { feelOf, FEELS } = await import(new URL('../../js/feel.js', import.meta.url));
+const { falls } = await import(new URL('../../js/decor.js', import.meta.url));
 const { BIOMES, B } = world;
 const fails = [], check = (ok, what) => { if (!ok) fails.push(what); };
 
@@ -116,8 +122,8 @@ check(worst.calls <= 450, `the feel's passes made ${worst.calls} calls on the ca
 check(worst.live > 40 && worst.flies >= 5, `with a quirk every second the feel never held more than ${worst.live} particles and ${worst.flies} fireflies: it hardly ran`);
 
 // ---------------------------------------------------------------- each quirk happens
-const heard = {};
-for (const name of ['creak', 'shatter', 'drip', 'blub', 'quake', 'gust', 'trickle', 'crackle']) { heard[name] = 0; sfx[name] = () => { heard[name]++; }; }
+const heard = {}, tells = [];
+for (const name of ['creak', 'shatter', 'drip', 'blub', 'quake', 'gust', 'trickle', 'crackle']) { heard[name] = 0; sfx[name] = (...args) => { heard[name]++; if (name === 'creak' && args[0] === 1) tells.push(args); }; }
 const stage = async (x, y, levels = {}) => { const game = await makeGame(7, { tether: 9, drill: 3, ...levels }); metAll(game); farStart(game, x, y); return game; };
 const run = (game, seconds, auto = null) => { game.input.auto = auto; for (let n = 0; n < seconds * 60; n++) game.update(1 / 60); };
 {
@@ -154,14 +160,118 @@ const run = (game, seconds, auto = null) => { game.input.auto = auto; for (let n
   let was = heard.creak;
   run(game, 1);
   check(freeze > 0 && heard.creak === was, `a cut thirty cells from the drill, about to close over, creaked (${heard.creak - was} times; the ground freezes in ${freeze} s)`);
+  // (Behind four hundred cuts made before it, far off and fresh: the newest are looked at first.)
+  const fresh = (Math.floor(d.y) + 1) * N + Math.floor(d.x) - 30;
+  w.setK(fresh, K.EMPTY); w.dug.set(fresh, game.clock);
+  for (let n = 0; n < 400; n++) game.frostOpen.push(fresh);
   w.dug.set(beside, game.clock - freeze + 2); game.frostOpen.push(beside);
   was = heard.creak;
+  const told = tells.length;
   run(game, 1);
-  check(heard.creak > was, 'a cut beside the drill, about to close over, did not creak');
+  check(heard.creak > was && tells.length === told + 1, `a cut beside the drill, about to close over behind four hundred older cuts, creaked ${tells.length - told} times as it came to (once is meant)`);
+  // Held open by the drill beside it, it creaks no more.
+  run(game, 8);
+  check(tells.length === told + 1, `a cut held open beside the drill creaked ${tells.length - told} times in nine seconds (once is meant)`);
   const shards = heard.shatter;
   f.force('icicle');
   run(game, 2);
   check(heard.shatter === shards + 1, `an icicle made to fall shattered aloud ${heard.shatter - shards} times`);
+}
+// The icicles of a cave (js/decor.js): only the feel is stepped, with the drill set down in a cave of the seed's
+// under an icicle that has open ground under it, the view on it.
+const ICICLE = 15, T = 16;
+const icicleNear = (game, sx, sy, R = 60) => {
+  const w = game.world;
+  w.see(C + sx, C + sy, R);
+  for (let y = C + sy - R + 2; y < C + sy + R - 4; y++) for (let x = C + sx - R + 2; x < C + sx + R - 2; x++) {
+    const i = y * N + x, f = game.decorOf(i);
+    if (f && falls(f) && [1, 2, 3].every(v => w.peek(x, y + v) === K.EMPTY) && w.peek(x - 1, y + 2) === K.EMPTY && w.peek(x + 1, y + 2) === K.EMPTY) return i;
+  }
+  return -1;
+};
+const setUnder = (game, i, down = 2) => {
+  const d = game.drill;
+  d.x = (i % N) + 0.5; d.y = Math.floor(i / N) + down + 0.5; d.vx = 0; d.vy = 0; d.mode = 'free';
+  game.cam.x = d.x * T; game.cam.y = d.y * T;
+};
+const feelFor = (game, seconds, then = () => {}) => { for (let n = 0; n < seconds * 60; n++) { game.feel.step(game, 1 / 60); then(n); } };
+const cellsAbout = (w, i) => { let h = 0; for (let v = -12; v <= 12; v++) for (let u = -12; u <= 12; u++) h = Math.imul(h ^ (w.k(i + v * N + u) + 3), 16777619); return h; };
+{
+  // Flown under, an icicle shivers, falls and shatters aloud; the cell is drawn without it from then on, and
+  // nothing else is changed: no cell, no knock, not the ground's version. An icicle stood under, not flown under,
+  // stays.
+  const game = await makeGame(7, { tether: 9, drill: 3 }), w = game.world, f = game.feel, d = game.drill;
+  metAll(game);
+  const i = icicleNear(game, -40, -310);
+  check(i >= 0, 'no icicle with open ground under it in the north to fly under');
+  if (i >= 0) {
+    check(game.fallen === f.fallen, 'the game\'s fallen icicles are not the feel\'s');
+    setUnder(game, i);
+    feelFor(game, 1);
+    check(!f.fallen.has(i), 'an icicle fell over a drill standing still under it');
+    const version = game.version, dents = game.dents, cells = cellsAbout(w, i), shards = heard.shatter, frame = game.decorOf(i);
+    let redrawn = 0;
+    const redraw = game.redraw.bind(game);
+    game.redraw = j => { if (j === i) redrawn++; redraw(j); };
+    d.vx = 4;
+    let falling = -1;
+    feelFor(game, 0.3, () => { d.x = (i % N) + 0.5; for (let p = 0; p < 160 && falling < 0; p++) if (f.kind[p] === ICICLE && f.size[p] === 0) falling = p; });
+    check(f.fallen.has(i) && falling >= 0 && redrawn === 1, `an icicle flown under did not come down (kept as fallen: ${f.fallen.has(i)}, falling: ${falling >= 0}, drawn again ${redrawn} times)`);
+    check(!game.decorOf(i) || !falls(game.decorOf(i)), `an icicle that has fallen is still there to draw: ${game.decorOf(i)} (it was ${frame})`);
+    feelFor(game, 3);
+    check(heard.shatter > shards, 'an icicle that fell did not shatter aloud');
+    check(game.version === version && game.dents === dents && cellsAbout(w, i) === cells, `an icicle that fell changed the game: version ${version} to ${game.version}, dents ${dents} to ${game.dents}, the cells about it ${cellsAbout(w, i) === cells ? 'the same' : 'changed'}`);
+    game.redraw = redraw;
+    // With no room for its particle, an icicle does not come down and is not kept as fallen.
+    const other = icicleNear(game, (i % N) - C + 20, Math.floor(i / N) - C, 30);
+    if (other >= 0 && other !== i) {
+      const kinds = f.kind.slice(), live = f.live;
+      f.kind.fill(5); f.live = 160; f.icicleNext = 0;
+      check(!f.icicleFall(game, other, game.decorOf(other)) && !f.fallen.has(other), 'an icicle with no room for its particle was kept as fallen');
+      f.kind.set(kinds); f.live = live;
+    }
+    // A trip lost, a game loaded or a new world: the icicles hang again.
+    game.begin();
+    check(game.fallen === f.fallen && f.fallen.size === 0, `begun again, ${f.fallen.size} icicles are still kept as fallen`);
+  }
+}
+{
+  // A quake in thaw (the north with the south's mark) shakes a few icicles in view loose, one beginning to fall
+  // LOOSE (0.3) seconds after another at the least.
+  const game = await makeGame(7, { tether: 9, drill: 3 }), f = game.feel;
+  metAll(game);
+  const i = icicleNear(game, -128, -1408, 70);
+  check(i >= 0 && game.world.row(i).name === 'thaw', `no icicle with open ground under it in thaw (${i >= 0 ? game.world.row(i).name : 'none'})`);
+  if (i >= 0) {
+    setUnder(game, i, 3);
+    feelFor(game, 0.5);
+    const was = f.fallen.size;
+    f.force('quake');
+    let waits = null;
+    feelFor(game, 0.2, () => { if (!waits && f.fallen.size > was) { waits = []; for (let p = 0; p < 160; p++) if (f.kind[p] === ICICLE) waits.push(-f.t[p] - 0.35); } });
+    waits = (waits ?? []).sort((a, b) => a - b);
+    const view = [...f.fallen].every(j => j % N > f.x0 && j % N < f.x1 && Math.floor(j / N) > f.y0 && Math.floor(j / N) < f.y1);
+    check(f.fallen.size - was >= 2 && view, `a quake in thaw shook ${f.fallen.size - was} icicles loose${view ? '' : ', some out of view'}`);
+    check(waits.every((t, n) => !n || t - waits[n - 1] >= 0.3 - 0.02), `icicles shaken loose begin to fall ${waits.map(t => t.toFixed(2)).join(', ')} s from now: less than 0.3 s apart`);
+  }
+}
+{
+  // The air: a layer over the screen is known by all of it. The south and the forge have edges of one colour,
+  // and the forge's darker: gone from one to the other, the other's eases in and the first's goes.
+  const game = await stage(0, 150), f = game.feel, ember = feelOf(BIOMES[B.EMBER]), forge = feelOf(BIOMES.find(r => r?.name === 'forge'));
+  check(ember.edge.color.join() === forge.edge.color.join() && ember.edge.alpha !== forge.edge.alpha, 'the south\'s edge and the forge\'s are no longer of one colour and two darknesses (the test wants a new pair)');
+  for (let n = 0; n < 600; n++) f.atmosphere(game, ember, 1 / 60);
+  for (let n = 0; n < 600; n++) f.atmosphere(game, forge, 1 / 60);
+  const edges = f.layers.filter(l => !l.fog);
+  check(edges.length === 1 && edges[0].spec === forge.edge && edges[0].alpha > 0.99, `from the south into the forge the edge is ${edges.map(l => `${l.spec.alpha} at ${l.alpha.toFixed(2)}`).join(', ')} (the forge's, ${forge.edge.alpha}, is meant)`);
+  // And the frost at the corners is made once for each colour and stage, and found again with nothing made.
+  check(f.frost('#dff4ff', 3) === f.frost('#dff4ff', 3) && ![...f.art.keys()].some(k => k.startsWith('rime')), 'the frost at the corners is not kept by its colour and stage');
+  // The wind: a gust pushes the air over (the game's motes are drawn so far over), and it eases back.
+  f.force('gust');
+  run(game, 2.5);
+  const pushed = Math.abs(f.drift);
+  run(game, 12);
+  check(pushed > 15 && Math.abs(f.drift) < 3, `a gust pushed the air ${pushed.toFixed(1)} pixels over, and after it, ${Math.abs(f.drift).toFixed(1)}`);
 }
 {
   const game = await stage(14, -165), f = game.feel;

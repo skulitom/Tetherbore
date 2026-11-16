@@ -238,7 +238,7 @@ for (const [id, [dx, dy]] of Object.entries(PLACES)) {
   if (icicle >= 0) {
     const x = icicle % N, y = Math.floor(icicle / N), s1 = sketch(), s2 = sketch();
     h.paint(s1, x & ~7, y & ~7);
-    h.fallen = new Set([icicle]);
+    h.feel.fallen.add(icicle);
     h.paint(s2, x & ~7, y & ~7);
     check(s1.calls.join() !== s2.calls.join() && !(h.decorOf(icicle) && falls(h.decorOf(icicle))), 'an icicle that has fallen is still drawn');
   }

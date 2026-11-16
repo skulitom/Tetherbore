@@ -202,6 +202,7 @@ export class Game {
     this.knocked = 0; this.mended = 0; this.notice = null;            // a pip just lost and the hull just mended (seconds left to show it), and the word across the screen
     this.smokeIn = 0; this.wrecks = 0; this.knocks = 0;               // until a hull in trouble next smokes; wrecks and knocks since the game began (for tests and tools)
     this.feel = new Feel();                                           // the feel of the ground the drill is in: what only shows and sounds (js/feel.js)
+    this.fallen = this.feel.fallen;                                   // the cells whose icicle has fallen: the feel's, which it keeps and gives back
     // (The parts of a frame whose time is added up by name, for `frameTook`.)
     for (const name of ['save', 'changed', 'haul', 'revert', 'updateHazards', 'updateHauls', 'homecoming', 'sweepHome', 'look']) {
       const part = this[name];

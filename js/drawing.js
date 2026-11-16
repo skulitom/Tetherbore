@@ -391,12 +391,15 @@ export class Drawing {
       if (p.star) { const arm = fade > 0.5 ? 2 : 1; ctx.fillRect(px - arm, py, arm * 2 + 1, 1); ctx.fillRect(px, py - arm, 1, arm * 2 + 1); }
       else ctx.fillRect(px, py, p.size, p.size);
     }
+    // (The ground's wind, a gust, leans them over as it blows, each a little differently: only as they are drawn.)
+    const lean = this.feel.drift;
     for (const m of this.motes) {
-      if (w.peek(Math.floor(m.x / T), Math.floor(m.y / T)) !== K.EMPTY) continue;
+      const mx = m.x + lean * (0.7 + 0.3 * Math.sin(m.seed));
+      if (w.peek(Math.floor(mx / T), Math.floor(m.y / T)) !== K.EMPTY) continue;
       ctx.globalAlpha = Math.max(0, Math.min(1, m.t, m.life - m.t)) * (0.35 + 0.3 * Math.sin(this.time * 3 + m.seed)); ctx.fillStyle = m.mote[0];
       // (A ground's motes may be small sprites of the `air` sheet, in the mote's colour: flakes, embers, spores.)
-      if (m.air) { const f = frameAt('air', m.air, now + m.seed * 97); ctx.drawImage(tinted('air', m.mote[0]), f[0], f[1], f[2], f[3], Math.round(m.x - ox) - (f[2] >> 1), Math.round(m.y - oy) - (f[3] >> 1), f[2], f[3]); }
-      else ctx.fillRect(Math.round(m.x - ox), Math.round(m.y - oy), 1, 1);
+      if (m.air) { const f = frameAt('air', m.air, now + m.seed * 97); ctx.drawImage(tinted('air', m.mote[0]), f[0], f[1], f[2], f[3], Math.round(mx - ox) - (f[2] >> 1), Math.round(m.y - oy) - (f[3] >> 1), f[2], f[3]); }
+      else ctx.fillRect(Math.round(mx - ox), Math.round(m.y - oy), 1, 1);
     }
     ctx.globalAlpha = 1;
     { const t0 = performance.now(); this.light(ox, oy); this.timed('light', t0); }
@@ -705,6 +708,8 @@ export class Drawing {
     const f = decorAt(w, i, x, y, row, this.wilds ??= j => this.wildAt(j));
     return f !== null && !(this.fallen?.has(i) && placeOf(f) === 'top') ? f : markAt(x, y, row);
   }
+  // The piece of ground cell `i` is in is drawn again at the next frame (an icicle has fallen from it), and no other.
+  redraw(i) { const c = this.chunks.get(((i >>> 14) >> 3) * 4096 + ((i & (N - 1)) >> 3)); if (c) c.v = -1; }
   // Whether the seed left cell `i` open (js/decor.js: `natural`): asked of the world once for each cell, and kept
   // with the piece of ground the cell is in, for as long as that piece is kept and the world is the same.
   wildAt(i) {

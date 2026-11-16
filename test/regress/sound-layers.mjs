@@ -17,7 +17,9 @@
 //     often the ground changes, is soft, posts each voice's notes in the order of their times and always a little
 //     ahead, changes a voice's waveform only while it is silent, changes ground only when the drill has stayed, posts
 //     nothing while the page is hidden, and stops with its switch or the mute and comes back with the score it was
-//     playing; both switches are kept in storage. Every ground's call and bell is its own score's.
+//     playing; both switches are kept in storage. Every ground's call and bell is its own score's. Gone into a
+//     piece whose bars are short, both pads wear its wave within a few seconds. A drop and the ice's singing are
+//     in the key of the piece that plays, and a quake steps the music back a little while it shakes.
 // What they sound like is not held here: `node tools/sounds.mjs` measures that in a browser.
 //   node test/regress/sound-layers.mjs
 const fails = [], kept = new Map();
@@ -54,11 +56,11 @@ class Context {
   createGain() { return new Node('gain', { gain: 1 }); }
   createOscillator() {
     if (broken) throw new Error('no oscillator today');
-    // (Every time an oscillator is dressed in a waveform is written down, with the time.)
+    // (Every time an oscillator is dressed in a waveform is written down, with the time, and what it wears.)
     const o = new Node('oscillator', { frequency: 440, detune: 0 });
-    o.dressed = []; let type = 'sine';
-    Object.defineProperty(o, 'type', { get: () => type, set: v => { type = v; o.dressed.push(clock); } });
-    o.setPeriodicWave = wave => { o.wave = wave; o.dressed.push(clock); };
+    o.dressed = []; o.worn = 'sine'; let type = 'sine';
+    Object.defineProperty(o, 'type', { get: () => type, set: v => { type = v; o.worn = v; o.dressed.push(clock); } });
+    o.setPeriodicWave = wave => { o.wave = wave; o.worn = wave; o.dressed.push(clock); };
     return o;
   }
   createBufferSource() { return new Node('noise'); }
@@ -304,6 +306,52 @@ clock += 0.3; audio.setAmbience('ember', false, 200); timer.run(); clock += 0.3;
 if (audio.musicNow().playing !== 'frost' || dressed() !== still || audio.musicNow().turns !== turns) fails.push(`a border crossed and crossed back within 0.6 s turned the music ${audio.musicNow().turns - turns} times (to ${audio.musicNow().playing}, ${dressed() - still} voices dressed)`);
 audio.setAmbience('ember', false, 200); runFor(4);
 if (audio.musicNow().playing !== 'ember' || audio.musicNow().score !== 'ember' || !audio.musicNow().dressed || audio.musicNow().turns !== turns + 1) fails.push(`held in the south for 4 s, the music plays ${audio.musicNow().score}, having turned ${audio.musicNow().turns - turns} times (once is meant)`);
+// The drops, the grotto's notes and the ice's singing are in the key of the piece that plays: here the south's,
+// its root lifted by octaves and its seven-note scale.
+const inKey = (f, s, scale) => { const k = 12 * Math.log2(f / s.root), r = ((Math.round(k) % 12) + 12) % 12; return Math.abs(k - Math.round(k)) < 1e-6 && scale.includes(r); };
+{
+  const s = audio.scoreOf('ember'), scale = audio.PLINK.scale, up = Math.log2(audio.PLINK.base / s.root);
+  if (!(scale.length === 7 && Math.abs(up - Math.round(up)) < 1e-9 && audio.PLINK.base >= 620 && audio.PLINK.base < 1240)) fails.push(`playing the south, a drop is struck over ${audio.PLINK.base} Hz in a scale of ${scale.length} notes (the south's root, ${s.root} Hz, lifted by octaves, and its seven are meant)`);
+  for (const step of [-3, 0, 2, 5, 9]) {
+    clock += 1;
+    const f = ask(['drip', 1, step]).find(node => node.kind === 'oscillator')?.frequency.events[0]?.value;
+    if (!inKey(f, s, scale)) fails.push(`playing the south, a drop of step ${step} plinks at ${f} Hz, not a note of its key`);
+  }
+  clock += 2;
+  const sung = ask(['creak', 1, 1]).filter(node => node.kind === 'oscillator')[1]?.frequency.events.map(e => e.value) ?? [];
+  if (!(sung.length === 2 && sung.every(f => inKey(f, s, scale)))) fails.push(`playing the south, the ice sings from ${sung.map(Math.round).join(' to ')} Hz, not from a note of its key to another`);
+}
+// A quake steps the music back a little for as long as it shakes, and it comes back.
+{
+  const ducked = () => duck.gain.events.filter(e => e.value < 1).length;
+  clock += 5; runFor(1);
+  const was = ducked();
+  clock += 2; ask(['quake', 1]);
+  const step = duck.gain.events.at(-1);
+  if (!(ducked() === was + 1 && step.value >= 0.6 && step.value <= 0.85)) fails.push(`a quake steps the music back to ${step?.value} (a little, to about three quarters, is meant)`);
+  runFor(3);
+  if (duck.gain.events.at(-1).value !== 1) fails.push('after a quake the music does not come back');
+}
+// Gone into a piece whose bars are short beside how slowly its pads fall, both pads wear its wave within a bar or
+// two: the pad held over the turn takes no chord before it has gone quiet and been dressed. (It used to take every
+// other chord in the last ground's wave for as long as the drill stayed.)
+{
+  const pads = band.filter(node => node.kind === 'oscillator' && !swayers.includes(node) && band.filter(o => o.kind === 'oscillator' && o.outs[0] === node.outs[0]).length === 2);
+  const postings = [];
+  for (const o of pads) {
+    const post = o.frequency.setValueAtTime.bind(o.frequency);
+    o.frequency.setValueAtTime = (v, t) => { postings.push({ o, t, wave: o.worn }); post(v, t); };
+  }
+  if (pads.length !== 4) fails.push(`the music's pads are ${pads.length} oscillators (two to a pad are meant)`);
+  for (const [from, to] of [['crust', 'bloom'], ['frost', 'shale'], ['crust', 'hive']]) {
+    audio.setAmbience(from, false, 200); runFor(20);
+    const t0 = clock;
+    audio.setAmbience(to, false, 200); runFor(60);
+    const waves = new Set(postings.filter(p => p.t > t0 + 4).map(p => p.wave));
+    if (waves.size !== 1) fails.push(`from ${from} into ${to}, the pads' chords after the first four seconds are posted in ${waves.size} waves (one, ${to}'s, is meant)`);
+    postings.length = 0;
+  }
+}
 // The page hidden: nothing is posted; shown again, nothing is posted in the past.
 runFor(3);
 document.hidden = true;

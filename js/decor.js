@@ -8,10 +8,10 @@
 //
 // How another part of the game asks about a cell: `game.decorOf(i)` (js/drawing.js) is the name of the frame that
 // cell shows, `<set>-<place>-<n>`, or null; `placeOf(name)` is 'top', 'bottom', 'left', 'right' or 'floor', and
-// `falls(name)` whether it is an icicle, which may fall. `game.fallen`, a Set of cell numbers that the game may keep
-// (it is not there until something makes it), is the cells whose icicle has fallen: paint draws no piece hanging
-// in them (the mark of the back wall, if the cell has one, shows instead). Whatever adds to it says the ground has
-// changed (`game.version++`), as a cut does, so the pieces in view are drawn again.
+// `falls(name)` whether it is an icicle, which may fall. `game.fallen`, a Set of cell numbers, is the cells whose
+// icicle has fallen: paint draws no piece hanging in them (the mark of the back wall, if the cell has one, shows
+// instead). It is the feel's (js/feel.js), which lets them fall, has the piece of ground each hung in drawn again
+// (`game.redraw`), and empties it when it is begun again: a new world, a game loaded, a trip lost.
 import { N, C, K, cellHash } from './world.js';
 import { sheets } from './atlas.js';
 
