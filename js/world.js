@@ -616,7 +616,6 @@ export const PROVINCE = 256;
 // Generated ground (crosses) is a share of the provinces that grows with the distance of a province's middle from
 // the core: none under CROSS_FROM cells out, then a part in 2,500 for each cell further, and never over CROSS_MOST.
 export const CROSS_FROM = 500, CROSS_MOST = 0.35;
-export const onCore = (x, y) => Math.abs(x - C) <= 1 && Math.abs(y - C) <= 1;
 
 const hash = (x, y, s) => {
   let h = Math.imul(x, 374761393) ^ Math.imul(y, 668265263) ^ Math.imul(s, 1442695041);
@@ -1358,7 +1357,6 @@ export class World {
   laid(i) { const p = this.chunks[((i >>> 20) << 8) | ((i >>> 6) & 255)]; return p ? p.kind[(((i >>> 14) & 63) << 6) | (i & 63)] : -1; }
   at(x, y) { return this.k(y * N + x); }
   solid(x, y) { return this.k(y * N + x) !== K.EMPTY; }
-  lavaAt(i) { return this.lava.get(i) ?? 0; }
   // The row of the ground a cell lies in, and what hazard the cell is ('lava', 'spore', 'spark') or null.
   row(i) { return BIOMES[this.b(i)] ?? BIOMES[0]; }
   hazAt(i) { const k = this.k(i); return k === K.HAZARD || k === K.HAZARD2 ? hazOf(k, this.row(i)) : null; }

@@ -3,7 +3,7 @@
 // the world made.
 //   node tools/ground-worth.mjs [--seeds 4] [--cells 20000] [--against <a checkout of the game>] [--rows]
 //
-// The game's prices are worked out from one figure for the ground, WORTH (js/game.js: 1.6, "grit in an average
+// The game's prices are worked out from one figure for the ground, WORTH (js/shop.js: 1.6, "grit in an average
 // cell"), and the plan's rule is: if the sampled mean of a ring moves more than 15 in a hundred from what it was
 // with grounds 0 to 8 alone, WORTH is set to the sampled figure and every price follows. This says whether it has.
 //

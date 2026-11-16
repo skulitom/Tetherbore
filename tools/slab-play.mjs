@@ -23,12 +23,11 @@
 // `play` and `field` return what happened; test/regress/c5-slab-play.mjs holds the first slab of a new game, and a
 // lap of a cobble field's joints, to it.
 import { fileURLToPath } from 'node:url';
-import { makeGame, random, tetherFaults, UPGRADES, C, N, K, world } from '../test/harness.mjs';
+import { makeGame, random, tetherFaults, UPGRADES, SPEED, FLY, C, N, K, world } from '../test/harness.mjs';
 import { fly } from './fly.mjs';
 import { slabsOf } from './slabs.mjs';
 
 const { HARD, DX, DY, digTime, hazOf } = world, HX = C + 0.5, HY = C + 0.5;
-const SPEED = [1, 1.6, 2.4, 3.6, 5], FLY = 9;
 
 // What a player holds when level `tether` of reach is theirs: every level of bit, winch and ram priced below it.
 export function holds(tether) {

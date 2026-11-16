@@ -9,7 +9,7 @@
 // And the owner's rule the fix must keep: a new direction cancels a cut in progress. Pushed west until the west
 // cell is half cut, then north: the north cell is cut and the west cell is left standing.
 //   node test/regress/i-diagonal-notch.mjs
-import { makeGame, random, C, N, K } from '../harness.mjs';
+import { makeGame, random, SPEED, C, N, K } from '../harness.mjs';
 
 const at = (x, y) => (C + y) * N + C + x, HX = C + 0.5;
 async function stage(ram, bit) {
@@ -24,7 +24,7 @@ async function stage(ram, bit) {
   game.changed();
   let cuts = [];
   const dig = game.finishDig.bind(game); game.finishDig = i => { cuts.push(i); dig(i); };
-  return { game, d, w, cuts, dur: [1, 1.6, 2.4, 3.6, 5].map(v => 1 / v)[bit] };
+  return { game, d, w, cuts, dur: SPEED.map(v => 1 / v)[bit] };
 }
 let bad = 0;
 for (const [ram, bit, hz] of [[4, 4, 60], [0, 0, 60], [2, 2, 30], [4, 0, 120]]) {

@@ -15,8 +15,9 @@
 // It asks the world itself (`province`, `biomeAt`, `kindAt`) and makes no piece of it. A window of 96 x 96 cells in
 // the middle of a province is counted, if nine tenths of it and more are the province's own ground.
 import { World, C, K, B, BIOMES, PROVINCE, KIND_NAMES, DEEP_R, GRIT, digTime } from '../js/world.js';
+import { REACH } from '../js/shop.js';
 
-const REACH = [12, 22, 40, 72, 130, 230, 420, 750, 1350, 2300], SIZE = 96;
+const SIZE = 96;
 const strains = () => BIOMES.filter(row => row && row.id >= 17 && row.id <= 31);
 // The provinces of a world between the four round the core and the deep flanks, nearest the core first:
 // [px, py, kin, ground, how far its middle is]. Whose direction a province is, is asked of the cell in its middle.

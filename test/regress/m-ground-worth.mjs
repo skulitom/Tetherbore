@@ -1,5 +1,5 @@
 // The model check (docs/CONTENT-PLAN.md, section 4): the prices are worked out from what an average cell of ground
-// is worth (js/game.js: WORTH), so nothing the build lays may move the mean worth of a solid cell, in any ring round
+// is worth (js/shop.js: WORTH), so nothing the build lays may move the mean worth of a solid cell, in any ring round
 // the core, more than 15 in a hundred from what it was with grounds 0 to 8 alone. tools/ground-worth.mjs counts it;
 // this holds it, on four worlds with 5,000 cells to a ring and direction (the tool's own run asks more).
 //   node test/regress/m-ground-worth.mjs
