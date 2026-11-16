@@ -1,10 +1,10 @@
-// The hull, and losing the drill. A knock takes a pip and for a moment after nothing takes another; with the last
+// The hull, and losing the drill. A knock takes a pip and for three seconds after nothing takes another; with the last
 // pip gone the drill is lost: it lies dead for DEATH seconds, whatever the thumb does, and then the game is what it
 // was at the last docking (the moment the drill last left the core): what was banked, bought and analysed then,
 // and the ground as it was then, every cut and haul since undone. The drill stands whole in the middle of the core
 // and leaves only on a fresh stroke; the screen says TRIP LOST and what it cost. What was banked before leaving is
 // kept. Riding on to the core mends a hull that is only dented. HULL is the shop's sixth row, a pip a level from
-// three to seven, and a game saved before there was a hull loads with three.
+// five to nine, and a game saved before there was a hull loads with five.
 // Ground hauled away is known to be gone without the drill going to look (the map shows it open).
 import { makeGame, tetherFaults, random, DEATH, UPGRADES, K, B, N, C } from '../harness.mjs';
 
@@ -21,14 +21,18 @@ const rest = (game, seconds) => { for (let f = 0; f < seconds * 60; f++) game.up
   const cell = C * N + C + 9, was = w.k(cell), seen = w.s(C * N + C + 30);
   fly(game, 1, 0, 3);
   const out = Math.hypot(game.drill.x - HX, game.drill.y - HY);
-  check(out > 4 && game.hull === 3 && w.k(cell) === K.EMPTY && was !== K.EMPTY, `three seconds east the drill is ${out.toFixed(1)} cells out with ${game.hull} pips; the cell on its way was ${was} and is ${w.k(cell)}`);
+  check(out > 4 && game.hull === 5 && w.k(cell) === K.EMPTY && was !== K.EMPTY, `three seconds east the drill is ${out.toFixed(1)} cells out with ${game.hull} pips; the cell on its way was ${was} and is ${w.k(cell)}`);
   // Out on the trip: grit earned, a sample analysed.
   game.S.grit += 250; game.S.lab['lode-items:oreA'] = 3;
-  check(game.hit(0.3) === true && game.hull === 2 && game.drill.stun > 0, `a knock left ${game.hull} pips and a stun of ${game.drill.stun}`);
-  check(game.hit(0.3) === false && game.hull === 2, `a second knock at once left ${game.hull} pips`);
+  check(game.hit(0.3) === true && game.hull === 4 && game.drill.stun > 0, `a knock left ${game.hull} pips and a stun of ${game.drill.stun}`);
+  check(game.hit(0.3) === false && game.hull === 4, `a second knock at once left ${game.hull} pips`);
+  // (Nothing lands for three seconds after a knock: not a second and a half after, and then again.)
   rest(game, 1.6);
-  check(game.hit(0.3) === true && game.hull === 1 && game.drill.mode !== 'dead', `a knock after the moment had passed left ${game.hull} pips`);
+  check(game.hit(0.3) === false && game.hull === 4, `a knock a second and a half after the last left ${game.hull} pips`);
   rest(game, 1.6);
+  check(game.hit(0.3) === true && game.hull === 3 && game.drill.mode !== 'dead', `a knock after the moment had passed left ${game.hull} pips`);
+  for (const left of [2, 1]) { rest(game, 3.1); check(game.hit(0.3) === true && game.hull === left && game.drill.mode !== 'dead', `the next knock left ${game.hull} pips`); }
+  rest(game, 3.1);
   check(game.hit(0.3) === true && game.hull === 0 && game.drill.mode === 'dead' && game.notice?.title === 'HULL GONE', `the last knock: ${game.hull} pips, mode ${game.drill.mode}, the screen says ${game.notice?.title}`);
   game.render();
   // The thumb does nothing to a dead drill, and it lies where it fell.
@@ -37,7 +41,7 @@ const rest = (game, seconds) => { for (let f = 0; f < seconds * 60; f++) game.up
   game.input.auto = [1, 0, 1];
   while (game.drill.mode === 'dead' && frames < 600) { game.update(1 / 60); frames++; if (game.drill.mode === 'dead') check(game.drill.x === at[0] && game.drill.y === at[1], 'a dead drill moved'); if (frames % 9 === 0) game.render(); }
   check(Math.abs(frames - DEATH * 60) <= 2, `the drill lay dead for ${frames} frames, where DEATH is ${DEATH} s`);
-  check(game.drill.mode === 'free' && game.drill.x === HX && game.drill.y === HY && game.hull === 3 && game.band.length === 2, `after it the drill is ${game.drill.mode} at ${game.drill.x - HX},${game.drill.y - HY} with ${game.hull} pips and a tether of ${game.band.length} points`);
+  check(game.drill.mode === 'free' && game.drill.x === HX && game.drill.y === HY && game.hull === 5 && game.band.length === 2, `after it the drill is ${game.drill.mode} at ${game.drill.x - HX},${game.drill.y - HY} with ${game.hull} pips and a tether of ${game.band.length} points`);
   check(game.S.grit === 500 && !game.S.lab['lode-items:oreA'], `the game went back to grit ${game.S.grit} and a lab of ${JSON.stringify(game.S.lab)}`);
   check(w.k(cell) === was && w.s(C * N + C + 30) === seen, `the cell cut on the trip is ${w.k(cell)} (was ${was}); the ground the trip saw is ${w.s(C * N + C + 30) ? 'still seen' : 'unseen again'}`);
   // (250 put in the purse by this test, and whatever the cutting itself brought home.)
@@ -74,7 +78,7 @@ for (const seed of [7, 19, 23]) {
   if (game.drill.mode !== 'dead') { game.dents = game.val('hull') - 1; game.shield = 0; game.hit(0.3); }
   rest(game, DEATH + 0.2);
   const still = near.filter((i, n) => w.k(i) !== before[n]).length;
-  check(game.drill.mode === 'free' && game.drill.x === HX && game.drill.y === HY && game.hull === 3, `world ${seed}: lost ${far.toFixed(0)} cells out, the drill is ${game.drill.mode} at ${(game.drill.x - HX).toFixed(1)},${(game.drill.y - HY).toFixed(1)}`);
+  check(game.drill.mode === 'free' && game.drill.x === HX && game.drill.y === HY && game.hull === 5, `world ${seed}: lost ${far.toFixed(0)} cells out, the drill is ${game.drill.mode} at ${(game.drill.x - HX).toFixed(1)},${(game.drill.y - HY).toFixed(1)}`);
   check(changed > 20 && still === 0 && game.S.grit === grit, `world ${seed}: the trip changed ${changed} cells near the core, ${still} are still changed; grit ${game.S.grit} (was ${grit})`);
   game.input.auto = null; game.update(1 / 60);
   fly(game, 0, 1, 2);
@@ -85,15 +89,15 @@ for (const seed of [7, 19, 23]) {
 {
   const game = await makeGame(7, { drill: 4 }, { hull: true });
   fly(game, 1, 0, 3); game.hit(0.3); rest(game, 1);
-  check(game.hull === 2, `a knock out east left ${game.hull} pips`);
+  check(game.hull === 4, `a knock out east left ${game.hull} pips`);
   fly(game, -1, 0, 4);
-  check(game.hull === 3 && game.drill.mode !== 'dead', `back on the core the hull has ${game.hull} pips`);
+  check(game.hull === 5 && game.drill.mode !== 'dead', `back on the core the hull has ${game.hull} pips`);
 }
 
 // ---- the row, and a game saved before there was a hull
 {
   const row = UPGRADES[5];
-  check(row.id === 'hull' && row.name === 'HULL' && row.values.join() === '3,4,5,6,7' && row.gem === B.EMBER, `the shop's sixth row is ${row?.id} with values ${row?.values}`);
+  check(row.id === 'hull' && row.name === 'HULL' && row.values.join() === '5,6,7,8,9' && row.gem === B.EMBER, `the shop's sixth row is ${row?.id} with values ${row?.values}`);
   check(row.gems[0] === 0 && row.grit.every((g, l) => l === 0 || g > row.grit[l - 1]), `the hull's prices are ${row.grit} grit and ${row.gems} gems`);
   const game = await makeGame(7, {}, { hull: true });
   game.S.grit = 1e9; game.S.gems[B.EMBER] = 1e6;
@@ -103,15 +107,15 @@ for (const seed of [7, 19, 23]) {
   const { LAB } = await import('../../js/game.js');
   for (const e of LAB.slice(0, 10)) game.S.lab[e.key] = 1;
   for (let l = 0; l < 4; l++) game.buy(row);
-  check(game.S.lv.hull === 4 && game.val('hull') === 7 && game.hull === 7 && game.cost(row) === null, `four levels bought: level ${game.S.lv.hull}, ${game.hull} pips`);
+  check(game.S.lv.hull === 4 && game.val('hull') === 9 && game.hull === 9 && game.cost(row) === null, `four levels bought: level ${game.S.lv.hull}, ${game.hull} pips`);
   game.shop = true; game.shopRise = 1; game.render(); game.shop = false; game.render();
   game.save();
   const loaded = await makeGame(7, {}, { hull: true }); await loaded.restore();
-  check(loaded.S.lv.hull === 4 && loaded.hull === 7, `loaded, the hull is at level ${loaded.S.lv.hull} with ${loaded.hull} pips`);
+  check(loaded.S.lv.hull === 4 && loaded.hull === 9, `loaded, the hull is at level ${loaded.S.lv.hull} with ${loaded.hull} pips`);
   const { hull, ...lv } = game.S.lv;
   localStorage.setItem('tetherbore-save-v3', JSON.stringify({ v: 3, ...game.S, lv }));
   const old = await makeGame(7, {}, { hull: true }); await old.restore();
-  check(old.S.lv.hull === 0 && old.hull === 3, `a game saved before there was a hull loads at level ${old.S.lv.hull} with ${old.hull} pips`);
+  check(old.S.lv.hull === 0 && old.hull === 5, `a game saved before there was a hull loads at level ${old.S.lv.hull} with ${old.hull} pips`);
 }
 
 // ---- ground hauled away is seen to be gone

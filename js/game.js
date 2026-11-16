@@ -76,7 +76,7 @@ export const UPGRADES = [
   // The hull: how many knocks the drill takes before it is wrecked and wound home (`hit`, `wreck`), a pip a level,
   // each a plate more on the drill. Its first level is priced beside a reach that has only just met hazards and
   // asks no gems; from there on it takes the south's, whose lava is the worst of what it is for.
-  { id: 'hull', icon: 'hull', name: 'HULL', what: 'TAKES MORE KNOCKS', values: [3, 4, 5, 6, 7], gem: B.EMBER, needs: ['kinds', [1, 3, 6, 10]], ...levels([4.5, 5.5, 6.5, 7.5], 0.5), show: v => `${v}` },
+  { id: 'hull', icon: 'hull', name: 'HULL', what: 'TAKES MORE KNOCKS', values: [5, 6, 7, 8, 9], gem: B.EMBER, needs: ['kinds', [1, 3, 6, 10]], ...levels([4.5, 5.5, 6.5, 7.5], 0.5), show: v => `${v}` },
 ];
 // What the lab can know: each thing the bit can crush, by the sheet and frame it is drawn from (`Game.sampleOf`),
 // with its name, where it lies, and the lab's note on it. A thing crushed is a sample analysed, and what is known
@@ -114,13 +114,14 @@ const wrap = (words, wide) => {
 // The shop's second tab, WORKS: what is fitted to the drill for the rare things found in pockets. Each row is paid
 // for in grit and in the specimens of one direction (`kin`; `spec`, how many each level asks), which only that
 // direction's pockets give. A row of two values is fitted once; MENDER has levels.
-//   MENDER      the hull mends itself: a pip back every so many seconds out in the ground (the value)
+//   MENDER      the hull mends itself, a pip back every so many seconds since the last knock (the value): every
+//               twenty with no mender fitted, so a drill that gets clear of trouble recovers, and faster with one
 //   LAVA SKIN   lava neither knocks the hull nor stops the drill: it flies through it
 //   SPORE DRIVE a spore pod's burst does not knock: it drives the drill half as fast again for BOOST seconds
 //   ARC COIL    a crystal's arc does not knock: it mends a pip
 const works = (beside, share, spec) => ({ beside, grit: beside.map(at => priced(at, share)), gems: beside.map(() => 0), spec });
 export const WORKS = [
-  { id: 'mender', name: 'MENDER', what: 'HULL MENDS ITSELF', values: [0, 30, 18, 10], kin: B.FROST, gem: B.FROST, ...works([5, 6, 7], 0.4, [8, 16, 30]), show: v => v ? `${v}S` : 'OFF' },
+  { id: 'mender', name: 'MENDER', what: 'HULL MENDS FASTER', values: [20, 14, 9, 5], kin: B.FROST, gem: B.FROST, ...works([5, 6, 7], 0.4, [8, 16, 30]), show: v => `${v}S` },
   { id: 'lavaskin', name: 'LAVA SKIN', what: 'SWIMS IN LAVA', values: [0, 1], kin: B.EMBER, gem: B.EMBER, ...works([5.5], 0.4, [12]), show: v => v ? 'ON' : 'OFF' },
   { id: 'sporedrive', name: 'SPORE DRIVE', what: 'SPORES SPEED IT UP', values: [0, 1], kin: B.MIRE, gem: B.MIRE, ...works([5.5], 0.4, [12]), show: v => v ? 'ON' : 'OFF' },
   { id: 'arccoil', name: 'ARC COIL', what: 'ARCS MEND THE HULL', values: [0, 1], kin: B.LODE, gem: B.LODE, ...works([5.5], 0.4, [12]), show: v => v ? 'ON' : 'OFF' },
@@ -147,10 +148,15 @@ const ROWS = [...UPGRADES, ...WORKS, ...MAPS];
 const TABS = [{ id: 'rig', name: 'RIG', rows: UPGRADES }, { id: 'works', name: 'WORKS', rows: WORKS }, { id: 'map', name: 'MAP', rows: MAPS }];
 // How long a spore pod's burst drives a drill fitted with the spore drive, and how much faster.
 const BOOST = { time: 3, by: 1.5 };
-// After a knock nothing takes another pip, or stuns again, for SHIELD seconds: time to get clear. A drill whose
+// After a knock nothing takes another pip, or stuns again, for SHIELD seconds: time to get clear. (It was a second
+// and a half. What knocks comes in runs, pods bursting one after another, arcs leaping from crystal to crystal:
+// a drill flown at random was lost a dozen seconds after its first knock, all three pips to one mistake.)
+// A drill whose
 // last pip is gone lies dead for DEATH seconds, the screen going dark, and then the game is back at the last
 // docking (`revert`).
-const SHIELD = 1.5;
+const SHIELD = 3;
+// How far from a crystal its arc knocks the drill, in cells either way (it was 3.5: most of the screen's width).
+const ARC = 2.5;
 export const DEATH = 1.2;
 // How long each blow that knocks the hull stuns, in seconds: lava cut into, lava touched, an arc, a spore burst.
 // (Before there was a hull an arc stunned for 0.7 s and lava for 0.5: with a pip gone as well, and SHIELD running
@@ -1003,9 +1009,8 @@ export class Game {
       if (m > 0 && (d.vx * (d.x - HX) + d.vy * (d.y - HY)) > 0 && this.edge <= 0) this.refuse();
       d.run = 0;
     }
-    // Pushed into lava, the hull burns. (Lava is shut to the drill, as rock is: a drill it has hemmed in can
-    // wait for it to drain or set, or push, and be wrecked and wound home.)
-    if (m > 0 && (hitX || hitY) && !this.swims && this.scalds(ix, iy, hitX, hitY) && this.hit(JOLT.burn) && d.mode === 'dead') { this.look(); return; }
+    // (Pushed against lava the drill is only stopped, as by rock: lava burns what cuts into it and what it pours on
+    // to, not what leans on it. It did burn, and a drill hemmed in by lava was lost for trying to move.)
     // Pushed into ground, it cuts.
     if (m > 0 && (hitX || hitY)) {
       // A cut in progress goes on while the drill is still pressed into that cell and the stick has not turned from
@@ -1071,14 +1076,6 @@ export class Game {
       if (first < 0) first = i;
     }
     return first;
-  }
-  // Is the drill being pushed into lava: is any of the places its body is pressed against, on the side it was
-  // stopped (the places `bite` looks for rock in), a cell of lava?
-  scalds(ix, iy, hitX, hitY) {
-    const w = this.world, d = this.drill, reach = BODY + 0.3, sx = Math.sign(d.vx) || Math.sign(ix) || 1, sy = Math.sign(d.vy) || Math.sign(iy) || 1;
-    if (hitX) for (const v of [0, -BODY, BODY]) if (w.lava.has(Math.floor(d.y + v) * N + Math.floor(d.x + sx * reach))) return true;
-    if (hitY) for (const u of [0, -BODY, BODY]) if (w.lava.has(Math.floor(d.y + sy * reach) * N + Math.floor(d.x + u))) return true;
-    return false;
   }
   // Does a body standing at (x, y) lie in lava?
   inLava(x, y) {
@@ -1667,7 +1664,7 @@ export class Game {
     const w = this.world, d = this.drill;
     this.effect('zap', 'impact', (x + 0.5) * T, (y + 0.5) * T);
     sfx.zap();
-    if (Math.max(Math.abs(d.x - x - 0.5), Math.abs(d.y - y - 0.5)) <= 3.5) {
+    if (Math.max(Math.abs(d.x - x - 0.5), Math.abs(d.y - y - 0.5)) <= ARC) {
       // (Fitted with the arc coil, the arc is taken in: it mends a pip where it would have taken one.)
       if (this.val('arccoil')) { if (this.dents) { this.dents--; this.mended = 0.5; } this.popup(d.x - 0.5, d.y - 1, 'CHARGED', '#d8b8ff'); sfx.gem(4); }
       else this.hit(JOLT.arc);
@@ -3052,7 +3049,7 @@ export class Game {
       ['WINCH', `x${this.val('winch')}`],
       ['SCAN', `${this.val('scanner')} CELLS`],
       ['HULL', `${this.hull}/${this.val('hull')} PIPS`],
-      ['MENDER', mender ? `1 PIP / ${mender} S` : 'NONE', mender > 0],
+      ['MENDS', `1 PIP / ${mender} S`, this.S.lv.mender > 0],
       ['LAVA', this.swims ? 'SWIMS IN IT' : 'BURNS', this.swims],
       ['SPORES', this.val('sporedrive') ? `SPEED x${BOOST.by}` : 'KNOCK', this.val('sporedrive') > 0],
       ['ARCS', this.val('arccoil') ? 'MEND A PIP' : 'KNOCK', this.val('arccoil') > 0],

@@ -1,7 +1,7 @@
 // The shop's second tab. Four things are fitted for grit and the specimens of one direction each: without the
 // specimens the tap is refused and says where they are found; with them the specimens are spent. Each changes
-// what a hazard does to the drill: LAVA SKIN lets it through lava unknocked, SPORE DRIVE turns a pod's burst into
-// speed, ARC COIL turns an arc into a pip mended, MENDER gives a pip back in time. A game saved before them loads
+// what a hazard does to the drill: LAVA SKIN lets it through lava, SPORE DRIVE turns a pod's burst into speed,
+// ARC COIL turns an arc into a pip mended, MENDER mends the hull faster than it mends itself. A game saved before them loads
 // with none. The panel the top bar opens says what the drill is now, from the game's own figures.
 import { makeGame, UPGRADES, WORKS, MAPS, K, B, N, C } from '../harness.mjs';
 
@@ -27,7 +27,7 @@ check(WORKS.every(u => u.grit.length === u.values.length - 1 && u.spec.length ==
   check(game.S.lv.lavaskin === 1 && Math.abs(game.S.spec[B.EMBER] - 0.6) < 1e-9 && game.S.grit === grit - u.grit[0] && game.S.spec[B.FROST] === 40 && game.cost(u) === null && game.specNeed(B.EMBER) === 0, `bought: level ${game.S.lv.lavaskin}, the south's specimens ${game.S.spec[B.EMBER]}, grit down ${grit - game.S.grit}`);
   const m = row('mender');
   for (let l = 0; l < 3; l++) game.buy(m);
-  check(game.S.lv.mender === 2 && game.val('mender') === 18 && Math.abs(game.S.spec[B.FROST] - 16) < 1e-9, `the mender bought as far as 40 specimens go: level ${game.S.lv.mender}, one pip every ${game.val('mender')} s, ${game.S.spec[B.FROST]} specimens left`);
+  check(game.S.lv.mender === 2 && game.val('mender') === 9 && Math.abs(game.S.spec[B.FROST] - 16) < 1e-9, `the mender bought as far as 40 specimens go: level ${game.S.lv.mender}, one pip every ${game.val('mender')} s, ${game.S.spec[B.FROST]} specimens left`);
   // Both tabs draw, and a tap on a tab opens it.
   game.resize(320, 568, 1); game.shop = true; game.shopRise = 1; game.render();
   // (The tabs stand in the panel's header, left to right, each a button twenty high and under sixty wide.)
@@ -56,7 +56,7 @@ check(WORKS.every(u => u.grit.length === u.values.length - 1 && u.spec.length ==
   check(WORKS.every(u => old.S.lv[u.id] === 0) && !old.swims, `a game saved before the second tab loads with ${JSON.stringify(old.S.lv)}`);
 }
 
-// ---- lava: shut to the drill and a knock; with the skin, neither
+// ---- lava: shut to the drill, as rock is (leaning on it does not burn); with the skin, the drill flies through it
 for (const skin of [0, 1]) {
   const game = await fitted('lavaskin', skin), w = game.world, d = game.drill;
   // A corridor east of the core, and lava across it.
@@ -66,7 +66,7 @@ for (const skin of [0, 1]) {
   game.changed();
   fly(game, 1, 0, 2.5);
   const through = d.x > C + 8.5;
-  check(skin ? through && game.hull === 3 && d.mode !== 'dead' : !through && game.hull < 3, `${skin ? 'with' : 'without'} the lava skin the drill flew east to ${(d.x - C).toFixed(1)} with ${game.hull} pips`);
+  check(skin ? through && game.hull === 5 && d.mode !== 'dead' : !through && game.hull === 5, `${skin ? 'with' : 'without'} the lava skin the drill flew east to ${(d.x - C).toFixed(1)} with ${game.hull} pips`);
 }
 
 // ---- a spore pod's burst: a knock; with the drive, speed
@@ -75,7 +75,7 @@ for (const drive of [0, 1]) {
   fly(game, 1, 0, 2);
   game.clouds.push({ x: Math.floor(d.x), y: Math.floor(d.y), t: 0, life: 1.5 });
   rest(game, 0.1);
-  check(drive ? game.hull === 3 && game.boost > 2 && game.popups.some(p => p.label === 'BOOST') : game.hull === 2 && game.boost === 0, `${drive ? 'with' : 'without'} the spore drive a burst left ${game.hull} pips and a drive of ${game.boost.toFixed(1)} s`);
+  check(drive ? game.hull === 5 && game.boost > 2 && game.popups.some(p => p.label === 'BOOST') : game.hull === 4 && game.boost === 0, `${drive ? 'with' : 'without'} the spore drive a burst left ${game.hull} pips and a drive of ${game.boost.toFixed(1)} s`);
   // (How fast it flies in open ground, driven and not: a long room, and a second's flight in it.)
   for (let x = -40; x <= 40; x++) for (let y = 20; y <= 24; y++) game.world.setK((C + y) * N + C + x, K.EMPTY);
   d.x = d.px = C - 30.5; d.y = d.py = C + 22.5; game.band = [[d.x, d.y], [C + 0.5, C + 0.5]]; game.changed();
@@ -91,19 +91,27 @@ for (const coil of [0, 1]) {
   fly(game, 1, 0, 2);
   game.dents = 1;
   game.zap(Math.floor(d.x) + 2, Math.floor(d.y));
-  check(coil ? game.hull === 3 && game.popups.some(p => p.label === 'CHARGED') : game.hull === 1, `${coil ? 'with' : 'without'} the arc coil an arc two cells off left ${game.hull} pips of a hull that had 2`);
+  check(coil ? game.hull === 5 && game.popups.some(p => p.label === 'CHARGED') : game.hull === 3, `${coil ? 'with' : 'without'} the arc coil an arc two cells off left ${game.hull} pips of a hull that had 4`);
+  // An arc further off than two and a half cells does not reach the drill.
+  if (!coil) { game.shield = 0; game.zap(Math.floor(d.x) + 3, Math.floor(d.y)); check(game.hull === 3, `an arc three cells off left ${game.hull} pips`); }
 }
 
-// ---- the mender: a pip back in time, out in the ground
+// ---- the hull mends itself: a pip back twenty seconds after the last knock, and sooner with a mender fitted
 {
   const game = await fitted('mender', 1), none = await fitted('mender', 0);
+  check(game.val('mender') === 14 && none.val('mender') === 20, `a pip mends every ${none.val('mender')} s, and every ${game.val('mender')} with the first mender`);
   for (const g of [game, none]) { fly(g, 1, 0, 2); g.dents = 2; }
-  rest(game, 29); rest(none, 29);
-  check(game.hull === 1 && none.hull === 1, `a second short of the mender's time the hull has ${game.hull} pips`);
+  rest(game, 13); rest(none, 13);
+  check(game.hull === 3 && none.hull === 3, `a second short of the mender's time the hull has ${game.hull} pips`);
   rest(game, 2); rest(none, 2);
-  check(game.hull === 2 && none.hull === 1, `after the mender's thirty seconds the hull has ${game.hull} pips, and ${none.hull} with no mender`);
-  rest(game, 31);
-  check(game.hull === 3, `after sixty the hull has ${game.hull} pips`);
+  check(game.hull === 4 && none.hull === 3, `after the mender's fourteen seconds the hull has ${game.hull} pips, and ${none.hull} with no mender`);
+  rest(none, 6);
+  check(none.hull === 4, `after twenty-one seconds a hull with no mender has ${none.hull} pips`);
+  // A knock starts the count again.
+  none.hit(0.3); rest(none, 19);
+  check(none.hull === 3, `nineteen seconds after a knock a hull with no mender has ${none.hull} pips`);
+  rest(none, 2);
+  check(none.hull === 4, `twenty-one seconds after it, ${none.hull}`);
 }
 
 // ---- what the drill is now
@@ -111,7 +119,7 @@ for (const coil of [0, 1]) {
   const game = await fitted('lavaskin', 1);
   game.S.lv.tether = 3; game.S.lv.hull = 2; game.dents = 1; game.S.lab['lode-items:oreA'] = 4;
   const said = Object.fromEntries(game.stats().map(([name, value, lit]) => [name, [value, lit]]));
-  check(said.REACH[0] === '72 CELLS' && said.HULL[0] === '4/5 PIPS' && said.LAVA[0] === 'SWIMS IN IT' && said.LAVA[1] === true && said.SPORES[0] === 'KNOCK' && said.SPORES[1] === false && said.ANALYSED[0] === '1/12, UP TO +3%', `the stats say ${JSON.stringify(said)}`);
+  check(said.REACH[0] === '72 CELLS' && said.HULL[0] === '6/7 PIPS' && said.MENDS[0] === '1 PIP / 20 S' && said.LAVA[0] === 'SWIMS IN IT' && said.LAVA[1] === true && said.SPORES[0] === 'KNOCK' && said.SPORES[1] === false && said.ANALYSED[0] === '1/12, UP TO +3%', `the stats say ${JSON.stringify(said)}`);
   game.resize(320, 568, 1); game.labTab = 'stats'; game.openLab(true); game.render();
   // (The panel's tabs stand in its header, left to right: STATS, LAB, MENU; and MAP before MENU once the chart is bought.)
   const heads = game.buttons.filter(b => b.h === 20 && b.w < 60 && b.w > 24 && b.y < game.H / 2).sort((a, b) => a.x - b.x);
