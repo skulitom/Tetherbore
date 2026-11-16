@@ -1303,6 +1303,8 @@ export class Game {
     if (say) { this.crushedAt = this.time; this.popup(x, y, 'CRUSHED', '#9a94a8'); }
     if (!e) return;
     const n = this.S.lab[key] = (this.S.lab[key] ?? 0) + 1;
+    // (One count on the screen at a time: cutting through a seam of ore, each would lie over the last.)
+    this.popups = this.popups.filter(p => !p.label.startsWith('SAMPLE '));
     if ((n & (n - 1)) === 0) {
       this.popup(x, y + 0.7, `ANALYSED +${labLevel(n)}%`, '#8cf2c4');
       this.sparkle((x + 0.5) * T, (y + 0.5) * T, 6, '#8cf2c4');
@@ -2026,7 +2028,7 @@ export class Game {
   // Words that rise from a cell and fade (with an icon of the `icons` sheet before them). The same words in the
   // same colour take the place of those already up.
   popup(cx, cy, label, color, icon) { this.popups = this.popups.filter(p => p.label !== label || p.color !== color); this.popups.push({ x: (cx + 0.5) * T, y: cy * T, label, color, icon, t: 0 }); }
-  onScreen(x, y) { const sx = x * T - this.cam.x + this.W / 2, sy = y * T - this.cam.y + this.H / 2; return sx > -T && sy > -T && sx < this.W && sy < this.H; }
+  onScreen(x, y) { const sx = x * T - this.cam.x + this.W / 2, sy = y * T - this.cam.y + (this.H - 44) / 2; return sx > -T && sy > -T && sx < this.W && sy < this.H; }
 
   // ------------------------------------------------------------ update
   update(dt) {
@@ -2136,7 +2138,8 @@ export class Game {
   render() {
     const { ctx, W, H, world: w } = this, d = this.drill, now = this.time * 1000;
     const sx = this.shake ? (cellHash((now / 16) | 0, 1, 5) - 0.5) * this.shake : 0, sy = this.shake ? (cellHash((now / 16) | 0, 2, 5) - 0.5) * this.shake : 0;
-    const ox = Math.round(this.cam.x - W / 2 + sx), oy = Math.round(this.cam.y - H / 2 + sy);
+    // (The drill is kept in the middle of the screen above the bar, not of the whole screen.)
+    const ox = Math.round(this.cam.x - W / 2 + sx), oy = Math.round(this.cam.y - (H - 44) / 2 + sy);
     ctx.fillStyle = '#07060b';
     ctx.fillRect(0, 0, W, H);
     this.ropes.length = 0; this.drillDrawn = null;
@@ -2720,9 +2723,11 @@ export class Game {
   drawHud(ox, oy) {
     const { ctx, W, H, S } = this, now = this.time * 1000, d = this.drill;
     this.buttons.length = 0; this.panels.length = 0;
-    // Banner of the last haul.
+    // Banner of the last haul. (It, the word across the screen and a new place's name stand clear of the map, and of
+    // a place's plate where that has had to go under the map: `plateLow`.)
+    const head = this.plateLow ? 78 : Math.max(60, H * 0.2);
     if (this.banner) {
-      const b = this.banner, pop = Math.min(1, b.t / 0.12), y = Math.round(H * 0.2 - (1 - pop) * 8);
+      const b = this.banner, pop = Math.min(1, b.t / 0.12), y = Math.round(head - (1 - pop) * 8);
       ctx.globalAlpha = Math.min(1, (b.life - b.t) * 3);
       const big = (b.n >= 10 ? 2 : 1) + (b.t < 0.07 ? 1 : 0);
       text(ctx, b.title, W / 2, y, b.n >= 30 ? '#ffe14a' : '#ffffff', 0.5, big);
@@ -2746,8 +2751,8 @@ export class Game {
     if (this.notice) {
       const note = this.notice, pop = Math.min(1, note.t / 0.12);
       ctx.globalAlpha = Math.min(1, (note.life - note.t) * 3);
-      text(ctx, note.title, W / 2, Math.round(H * 0.2 - (1 - pop) * 8), note.colour, 0.5, 2 + (note.t < 0.07 ? 1 : 0));
-      if (note.sub) text(ctx, note.sub, W / 2, Math.round(H * 0.2) + 24, '#ffe14a', 0.5);
+      text(ctx, note.title, W / 2, Math.round(head - (1 - pop) * 8), note.colour, 0.5, 2 + (note.t < 0.07 ? 1 : 0));
+      if (note.sub) text(ctx, note.sub, W / 2, Math.round(head) + 24, '#ffe14a', 0.5);
       ctx.globalAlpha = 1;
     }
     if (S.won && this.wonAt !== undefined && this.time - this.wonAt < 6) text(ctx, 'CORE RESTORED', W / 2, H * 0.36, '#ffe14a', 0.5, 2);
@@ -2765,7 +2770,7 @@ export class Game {
         }
         if (best) lines = [best[0], best[1]]; else big = 1;
       }
-      const under = this.banner ? Math.round(H * 0.2) + 11 * (this.banner.n >= 10 ? 2 : 1) + (this.banner.shine > 1 ? 42 : 30) : 0, y = Math.max(under, Math.round(H * 0.3 - (1 - pop) * 8));
+      const under = this.banner ? Math.round(head) + 11 * (this.banner.n >= 10 ? 2 : 1) + (this.banner.shine > 1 ? 42 : 30) : 0, y = Math.max(under, Math.round(Math.max(head + 14, H * 0.3) - (1 - pop) * 8));
       ctx.globalAlpha = Math.min(1, (place.life - place.t) * 3);
       lines.forEach((line, n) => text(ctx, line, W / 2, y + n * 11 * big, place.colour, 0.5, big + (n === 0 && lines.length === 1 && place.t < 0.07 ? 1 : 0)));
       ctx.globalAlpha = 1;
@@ -2807,11 +2812,13 @@ export class Game {
     this.button(0, B, W, 44, () => this.openLab(!this.lab));
     // The place the drill has come into: its name on a plate, with its direction's gem (and a second gem, where
     // the place pays two).
+    if (!place || place.card) this.plateLow = false;
     if (place && !place.card) {
       const more = place.also ? 11 : 0, slide = Math.min(1, place.t / 0.15), pw = textWidth(place.title) + 23 + more, px = 4 - Math.round((1 - slide) * (1 - slide) * 10);
       ctx.globalAlpha = Math.min(1, slide, (place.life - place.t) / 0.3);
       // (At the head of the screen; under the map, where its name is too long to stand beside it.)
       const ty = px + pw > W - 60 ? 58 : 4;
+      this.plateLow = ty > 4;
       slice9(ctx, 'ui', 'panel', px, ty, pw, 14);
       this.panels.push([px, ty, pw, 14]);
       if (place.mineral) this.drawMineral(ctx, place.mineral, px + 3, ty + 1); else draw(ctx, 'icons', place.icon, px + 4, ty + 2);
@@ -2838,7 +2845,7 @@ export class Game {
     const by = H - 88;
     const afford = ROWS.some(u => this.canBuy(u));
     if (this.atCore && !this.shop && !this.lab && d.mode === 'free') {
-      const w = 84, x = Math.round(W / 2 - w / 2) - 14, up = afford && ((now / 300) | 0) % 2;
+      const w = 84, x = Math.round(W / 2 - w / 2), up = afford && ((now / 300) | 0) % 2;
       slice9(ctx, 'ui', afford ? (up ? 'button-down' : 'button') : 'panel', x, by + 6, w, 24);
       text(ctx, 'UPGRADES', x + w / 2, by + 13, afford ? '#ffffff' : '#9a94a8', 0.5);
       this.button(x - 4, by, w + 8, 36, () => { this.shop = true; sfx.tap(); });
@@ -2846,9 +2853,9 @@ export class Game {
     }
     // The idea, shown and not told: a hand draws a loop, as the tether must be drawn round the loose piece.
     if (S.stats.hauls === 0 && !this.shop && !this.lab && this.input.id === null) {
-      const u = (now % 2200) / 2200, turn = u * 6.2832 - 1.5708, cx = W / 2 - 20, hx = cx - 6 + Math.cos(turn) * 20, hy = H * 0.72 + Math.sin(turn) * 14;
+      const u = (now % 2200) / 2200, turn = u * 6.2832 - 1.5708, cx = W / 2 - 20, hx = cx - 6 + Math.cos(turn) * 20, hy = (H - 44) * 0.72 + Math.sin(turn) * 14;
       ctx.fillStyle = '#ffffff';
-      for (let n = 1; n < 14; n++) { const a = turn - n * 0.22; ctx.globalAlpha = 1 - n / 14; ctx.fillRect(Math.round(cx + Math.cos(a) * 20), Math.round(H * 0.72 + Math.sin(a) * 14) - 2, 2, 2); }
+      for (let n = 1; n < 14; n++) { const a = turn - n * 0.22; ctx.globalAlpha = 1 - n / 14; ctx.fillRect(Math.round(cx + Math.cos(a) * 20), Math.round((H - 44) * 0.72 + Math.sin(a) * 14) - 2, 2, 2); }
       ctx.globalAlpha = 1;
       draw(ctx, 'ui', 'hand', hx, hy);
       if (S.stats.moves < 1.5) draw(ctx, 'logo', 'logo', W / 2 - 66, 62);
@@ -3173,13 +3180,15 @@ export class Game {
       text(ctx, steps, px + 31 + textWidth(u.name), y + 2, c ? '#bfe6ff' : '#ffe14a');
       const lack = c ? this.lacks(u) : null;
       // What must be found first is said on the second line, and no price is shown until it has been.
-      if (lack) text(ctx, lack, px + 25, y + rh - 12, '#ff9a6a');
+      // (A row tall enough for three lines keeps what the thing does on its second, whatever is on the third.)
+      const tall = rh >= 30;
+      if (lack) { if (tall) text(ctx, u.what, px + 25, y + 11, '#c8c2d4'); text(ctx, lack, px + 25, y + rh - (tall ? 11 : 12), '#ff9a6a'); }
       else if (c) {
         // The cost sits on the second line when the first is full. It is lit by what has come home (`banked`), as
         // the purchase itself is judged: never shown as enough while the tap would be refused.
         let cx = px + pw - 18;
         const have = c.spec ? this.specs(u.kin) : 0, asks = c.spec ? `${have}/${c.spec}` : '';
-        const wide = textWidth(u.name) + textWidth(steps) + textWidth(compact(c.grit)) + (c.gems ? textWidth(compact(c.gems)) + 16 : 0) + (c.spec ? textWidth(asks) + 16 : 0) > pw - 80, cy = wide ? y + rh - 12 : y + 2;
+        const wide = textWidth(u.name) + textWidth(steps) + textWidth(compact(c.grit)) + (c.gems ? textWidth(compact(c.gems)) + 16 : 0) + (c.spec ? textWidth(asks) + 16 : 0) > pw - 80, cy = wide ? y + rh - (tall ? 11 : 12) : y + 2;
         draw(ctx, 'icons', 'grit', cx, cy - 1);
         text(ctx, compact(c.grit), cx - 2, cy, this.banked() >= c.grit ? '#ffe14a' : '#ff7a5a', 1);
         if (c.gems > 0) {
@@ -3194,7 +3203,7 @@ export class Game {
           text(ctx, asks, cx - 2, cy, have >= c.spec ? GEM_COLOR[u.kin] : '#ff7a5a', 1);
         }
         const short = c.gems > 0 && this.banked(u.gem) < c.gems;
-        if (!wide) text(ctx, short ? `${GEM_WHERE[u.gem]}, PAST ${HOME_R}` : u.what, px + 25, y + rh - 12, short ? GEM_COLOR[u.gem] : '#c8c2d4');
+        if (!wide || tall) text(ctx, short ? `${GEM_WHERE[u.gem]}, PAST ${HOME_R}` : u.what, px + 25, wide ? y + 11 : y + rh - 12, short ? GEM_COLOR[u.gem] : '#c8c2d4');
       } else text(ctx, u.what, px + 25, y + rh - 12, '#e8c070');
       this.buttons.unshift({ x: px + 4, y, w: pw - 8, h: rh - 1, act: () => this.buy(u) });
     });
