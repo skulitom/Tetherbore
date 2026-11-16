@@ -1,0 +1,78 @@
+# For skulitom/Tetherbore: .github/workflows/itch.yml
+# Every push to master puts the game on itch.io, the way static.yml already puts it on GitHub Pages.
+#
+# Safe to add before anything else exists: with no BUTLER_API_KEY secret the job says so and passes, pushing nothing.
+#
+# What it needs, once:
+#   1. The itch.io project exists at skulitom.itch.io/tetherbore (a Draft is enough; kind of project "HTML").
+#   2. The repository secret BUTLER_API_KEY holds an itch.io API key (https://itch.io/user/settings/api-keys, or the
+#      one `butler login` saves). Never print it: a key seen in a public log must be revoked on that page.
+#   3. After the first push: on the project's Edit page, tick "This file will be played in the browser" on the html5
+#      upload and set the embed size (itch.io's docs: that tag is set on the Edit page, after a first upload).
+#      Later pushes to the same channel replace the file and keep the tag.
+#
+# Saved games survive a push: the game keeps them in the browser's storage, not in the upload.
+# Sources read 2026-11-16: https://itch.io/docs/butler/pushing.html, /login.html, /installing.html.
+
+name: Push to itch.io
+
+on:
+  push:
+    branches: ["master"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: "itch"
+  cancel-in-progress: true   # only the newest push matters
+
+jobs:
+  push:
+    runs-on: ubuntu-latest
+    env:
+      BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+      ITCH_TARGET: skulitom/tetherbore:html5
+    steps:
+      - name: Is the key there?
+        id: key
+        run: |
+          if [ -z "$BUTLER_API_KEY" ]; then
+            echo "::notice::BUTLER_API_KEY is not set, so nothing was pushed to itch.io."
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.key.outputs.present == 'true'
+
+      - uses: actions/setup-node@v4
+        if: steps.key.outputs.present == 'true'
+        with:
+          node-version: 24
+
+      # The quick gate (about 20 seconds): the unattended play in every direction. The full `node test/all.mjs`
+      # takes about three minutes and one of its tests needs an installed Edge or Chrome.
+      - name: Play every direction unattended
+        if: steps.key.outputs.present == 'true'
+        run: node test/smoke.mjs
+
+      - name: The files a browser loads
+        if: steps.key.outputs.present == 'true'
+        run: |
+          mkdir dist
+          cp index.html manifest.webmanifest dist/
+          cp -r css js assets media dist/
+          test -f dist/index.html
+          echo "$(find dist -type f | wc -l) files"
+
+      - name: Push with butler
+        if: steps.key.outputs.present == 'true'
+        run: |
+          curl -fsSL -o butler.zip https://broth.itch.zone/butler/linux-amd64/LATEST/archive/default
+          unzip -q butler.zip -d butler
+          chmod +x butler/butler
+          ./butler/butler version
+          ./butler/butler push dist "$ITCH_TARGET" --userversion "$(git rev-parse --short HEAD)"
