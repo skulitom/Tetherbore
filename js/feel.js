@@ -29,8 +29,9 @@
 //   - Within CALM cells of the core nothing comes by itself: home is quiet. The clock its events keep stands still
 //     while the shop or the lab is open, as the game's own does; what is already moving goes on moving.
 //   - Its sounds (js/audio.js, "the sounds of the ground") are few and soft: one a second or so at the most of
-//     those that come by themselves, only within HEAR cells of the drill, and none while a wreck ticks, a haul comes
-//     in or a banner is up. Those the drill sets off itself are kept apart only by their own least gap.
+//     those that come by themselves (an icicle a quake shakes loose among them), only within HEAR cells of the
+//     drill, and none while a wreck ticks, a haul comes in or a banner is up. Those the drill sets off itself are
+//     kept apart only by their own least gap, and are heard only within HEAR cells of it too.
 //   - The layers over the whole screen are not drawn in a lit view (a staged picture of the ground).
 import { N, C, K, BIOMES, rowOf, cellHash } from './world.js';
 import { sheets, draw } from './atlas.js';
@@ -48,7 +49,6 @@ const BUILDS = 4;                               // the most pieces it looks at a
 const GRAVITY = 300;                            // pixels a second, a second, for what falls
 const SHIVER = 0.35, LOOSE = 0.3;               // how long an icicle shivers before it falls; the least time between two falling
 const UNDER = 4;                                // how many cells over the drill an icicle falls from as it flies under
-const TOLD = 16;                                // the cuts about to close over that it remembers having creaked
 
 // ---------------------------------------------------------------- the table
 // A row of FEELS says what a ground does; everything is optional:
@@ -160,10 +160,16 @@ export function feelOf(row) {
   // (What the drawing needs of it is named once here, not in a frame: each layer over the screen, known by its
   // spec, which is the same object in every ground that has the same layer, and its picture's name, which is its
   // colour and kind, as the picture is.)
-  f = { ...f, layers: [f.fog && { key: `fog:${f.fog.color}`, spec: f.fog, fog: true }, f.edge && { key: `edge:${f.edge.color}:${f.edge.below ? 1 : 0}`, spec: f.edge, fog: false }].filter(Boolean) };
+  f = { ...f, layers: layersOf(f) };
   known.set(row, f);
   return f;
 }
+const layersOf = f => [f.fog && { key: `fog:${f.fog.color}`, spec: f.fog, fog: true }, f.edge && { key: `edge:${f.edge.color}:${f.edge.below ? 1 : 0}`, spec: f.edge, fog: false }].filter(Boolean);
+// The pictures of the layers over the screen, by name, made once for all games (`texture`); and every layer any ground
+// has, one of whose pictures is made in each of the first frames of a game (`step`), so that none is made in the
+// frame the drill comes into a ground (a cross has its host's layers, and a row a test makes its direction's).
+const ART = new Map(), READY = [];
+for (const f of Object.values(FEELS)) for (const l of layersOf(f)) if (!READY.some(r => r.key === l.key)) READY.push(l);
 // Whether a ground's caves have icicles that may fall (asked once the sheets are loaded, and kept by the row).
 const icy = new WeakMap();
 function icyOf(row) {
@@ -178,6 +184,14 @@ function icyOf(row) {
 // The frames of the icicles that are falling, by number, so that a particle holds a number and not a string.
 const SHAPES = [null], SHAPE = new Map();
 const shapeOf = name => { let n = SHAPE.get(name); if (n === undefined) { n = SHAPES.length; SHAPES.push(name); SHAPE.set(name, n); } return n; };
+
+// The values `val` on a grid `gw` x `gh` that wraps, eased between, at (fx, fy) in the grid's own squares.
+const ease = t => t * t * (3 - 2 * t);
+function wraps(val, gw, gh, fx, fy) {
+  const ix = Math.floor(fx), iy = Math.floor(fy), u = ease(fx - ix), t = ease(fy - iy);
+  const x0 = ix % gw, x1 = (ix + 1) % gw, y0 = (iy % gh) * gw, y1 = ((iy + 1) % gh) * gw;
+  return (val[y0 + x0] * (1 - u) + val[y0 + x1] * u) * (1 - t) + (val[y1 + x0] * (1 - u) + val[y1 + x1] * u) * t;
+}
 
 // ---------------------------------------------------------------- the particles
 // Each kind moves as its own: what falls (a drop, a shard, a grain) falls until the floor worked out when it was
@@ -195,6 +209,7 @@ export class Feel {
     this.x = new Float32Array(POOL); this.y = new Float32Array(POOL); this.vx = new Float32Array(POOL); this.vy = new Float32Array(POOL);
     this.t = new Float32Array(POOL); this.life = new Float32Array(POOL); this.floor = new Float32Array(POOL);
     this.kind = new Uint8Array(POOL); this.ink = new Uint16Array(POOL); this.size = new Uint8Array(POOL);
+    this.alone = new Uint8Array(POOL);          // of an icicle, whether it came down by itself (a quake shook it loose)
     this.live = 0; this.hunt = 0;
     // Fireflies: where each is (pixels), its own phase, the cell of ore it keeps to (-1: none), how long it has
     // been, how long it is to be, and until when it keeps away from the drill.
@@ -211,11 +226,11 @@ export class Feel {
     this.glowing = [];                          // the lights this frame, [x, y, power, reach] (`lights`)
     for (let n = 0; n < 8; n++) this.glowing.push([0, 0, 0, 0]);
     this.layers = [];                           // the screen's layers as they ease in and out: { key, alpha, spec, fog }
-    this.art = new Map();                       // what each layer is drawn from, made once for each colour
+    this.art = ART;                             // what each layer is drawn from, made once for each colour
     this.frosts = new Map();                    // the frost at the corners, by colour: a picture for each stage of growth
     this.fallen = new Set();                    // the cells whose icicle has fallen (the game's `fallen`, which the drawing reads)
     this.loose = new Int32Array(8);             // the icicles a quake may shake loose, while it chooses
-    this.told = new Int32Array(TOLD); this.toldAt = new Float64Array(TOLD);   // the cuts that have creaked, and when each was cut
+    this.told = new Map();                      // the cuts about to close over that have creaked: by cell, when each was cut
     this.reset(7);
   }
   reset(seed) {
@@ -231,7 +246,7 @@ export class Feel {
     this.lastDig = -1; this.breathIn = 0; this.wakeIn = 0; this.hot = 0; this.flyIn = 0; this.fallIn = 0; this.tellIn = 0;
     this.rime = 0; this.layers.length = 0; this.lit = 0; this.forced = null; this.cv = -1;
     this.fallen.clear(); this.icicleNext = 0; this.watchIn = 0; this.drift = 0;
-    this.told.fill(0); this.toldN = 0;
+    this.told.clear();
     this.work = 0;                              // cells looked at this frame, for the tests
     this.events = 0;                            // how many events have come since the reset (for the tests)
   }
@@ -263,9 +278,13 @@ export class Feel {
     // (A view wider than a phone's, a zoomed picture, is known only for three pieces each way about the drill.)
     const w = game.world, dx = Math.floor(game.drill.x) >> 3, dy = Math.floor(game.drill.y) >> 3;
     const cx0 = Math.max(dx - 3, (this.x0 - 1) >> 3), cy0 = Math.max(dy - 3, (this.y0 - 1) >> 3), cx1 = Math.min(dx + 3, (this.x1 + 1) >> 3), cy1 = Math.min(dy + 3, (this.y1 + 1) >> 3);
+    // (The view slid a cell within the same pieces, the ground unchanged: no piece is looked at again, but the vents
+    // in view are, as one may have come into it or gone out of it.)
     const moved = cx0 !== this.rx0 || cy0 !== this.ry0 || cx1 !== this.rx1 || cy1 !== this.ry1;
-    if (!moved && game.version === this.cv) return;
+    const slid = this.x0 !== this.sx0 || this.y0 !== this.sy0 || this.x1 !== this.sx1 || this.y1 !== this.sy1;
+    if (!moved && !slid && game.version === this.cv) return;
     this.cv = game.version; this.rx0 = cx0; this.ry0 = cy0; this.rx1 = cx1; this.ry1 = cy1;
+    this.sx0 = this.x0; this.sy0 = this.y0; this.sx1 = this.x1; this.sy1 = this.y1;
     // (No more than BUILDS pieces are made again in a frame: the rest are, in the frames after.)
     let builds = 0;
     for (let cy = cy0; cy <= cy1; cy++) for (let cx = cx0; cx <= cx1; cx++) {
@@ -306,6 +325,9 @@ export class Feel {
       }
     }
   }
+  // The piece cell `i` is in is looked at again at the next frame (lava has come into the cell or gone out of it),
+  // and no other.
+  redraw(i) { const p = this.pieces.get((Math.floor(i / N) >> 3) * 4096 + ((i % N) >> 3)); if (p) p.v = -1; this.cv = -1; }
   claim() {
     const p = this.spare.pop();
     if (p) return p;
@@ -375,6 +397,7 @@ export class Feel {
   step(game, dt) {
     const w = game.world, d = game.drill, row = w.row(game.di), F = feelOf(row), open = !game.shop && !game.lab;
     this.frame++; this.time += dt; this.work = 0;
+    if (ART.size < READY.length) for (const l of READY) if (!ART.has(l.key)) { this.texture(l); break; }
     this.view(game);
     this.refresh(game);
     if (F !== this.F) this.enter(F);
@@ -443,7 +466,7 @@ export class Feel {
         for (let g = 0; g < 3; g++) this.spawn(GRAIN, x * T + 2 + this.rnd() * 12, y * T, (this.rnd() - 0.5) * 8, this.rnd() * 30, 2, ink(debris[g % debris.length]), 1, this.floorUnder(w, x, y));
       }
       // And in caves with icicles, a few in view come down, one after another.
-      if (icyOf(w.row(game.di))) this.loosen(game, 1 + Math.round(power * 2), 12);
+      if (icyOf(w.row(game.di))) this.loosen(game, 1 + Math.round(power * 2), 12, true);
     } else if (what === 'gust') {
       const s = entry.strength ?? 1;
       this.windTo = (this.rnd() < 0.5 ? -30 : 30) * s; this.gustLeft = 2.5 + this.rnd() * 1.5; this.streak = ink(entry.streak ?? '#d8d0c0');
@@ -526,15 +549,19 @@ export class Feel {
       this.tellIn = 0.4;
       const dcx = Math.floor(d.x), dcy = Math.floor(d.y);
       // (The newest cuts first, as the drill is nearest them. Each creaks once, as it comes within three seconds of
-      // closing, though the tether hold it open for good: it is remembered by its cell and when it was cut.)
+      // closing, though the tether hold it open for good: it is remembered by its cell and when it was cut, for as
+      // long as it is open. It is the drill's own sound, kept apart only by its own gap, but it is placed: heard only
+      // within HEAR cells of the drill, the softer the further, so a cut the tether holds open far off is not told
+      // until the drill comes back near it.)
       for (let n = game.frostOpen.length - 1, last = Math.max(0, n - 399); n >= last && this.time - this.tellAt > 2; n--) {
         const i = game.frostOpen[n], x = i % N, y = Math.floor(i / N), freeze = (this.rowAt(w, x, y) ?? BIOMES[0]).freeze, cut = w.dug.get(i);
         if (!freeze || cut === undefined || game.clock - cut < freeze - 3 || (Math.max(Math.abs(dcx - x), Math.abs(dcy - y)) > 2 && !game.under.has(i))) continue;
-        let told = false;
-        for (let m = 0; m < TOLD; m++) if (this.told[m] === i + 1 && this.toldAt[m] === cut) { told = true; break; }
-        if (told) continue;
-        this.told[this.toldN] = i + 1; this.toldAt[this.toldN] = cut; this.toldN = (this.toldN + 1) % TOLD;
-        this.tellAt = this.time; sfx.creak(1, 1.2);
+        const near = 1 - Math.hypot(x + 0.5 - d.x, y + 0.5 - d.y) / HEAR;
+        if (near <= 0 || this.told.get(i) === cut) continue;
+        // (What is remembered of cuts since closed over or cut again is let go, now and then.)
+        if (this.told.size >= 64) for (const [j, at] of this.told) if (w.dug.get(j) !== at) this.told.delete(j);
+        this.told.set(i, cut);
+        this.tellAt = this.time; sfx.creak(near, 1.2);
         for (let s = 0; s < 3; s++) this.spawn(GLINT, x * T + 2 + this.rnd() * 12, y * T + 2 + this.rnd() * 12, 0, 0, 0.5, ink('#dff4ff'), 0);
       }
     }
@@ -755,9 +782,9 @@ export class Feel {
       if (f !== null && falls(f) && placeOf(f) === 'top') { this.icicleFall(game, i, f); return; }
     }
   }
-  // Up to `most` of the icicles hanging in view within `reach` cells of the drill, chosen at random, come down:
-  // how many did.
-  loosen(game, most, reach) {
+  // Up to `most` of the icicles hanging in view within `reach` cells of the drill, chosen at random, come down
+  // (`alone`: by themselves, a quake's, and not the drill's): how many did.
+  loosen(game, most, reach, alone = false) {
     const d = game.drill;
     let found = 0, seen = 0;
     for (let cy = this.ry0; cy <= this.ry1; cy++) for (let cx = this.rx0; cx <= this.rx1; cx++) {
@@ -778,14 +805,15 @@ export class Feel {
     for (let n = 0; n < found && fell < most; n++) {
       const at = n + Math.floor(this.rnd() * (found - n)), i = this.loose[at];
       this.loose[at] = this.loose[n];
-      if (this.icicleFall(game, i, game.decorOf(i))) fell++;
+      if (this.icicleFall(game, i, game.decorOf(i), alone)) fell++;
     }
     return fell;
   }
   // The icicle that hung from the ceiling of the open cell `i`, drawn as the frame `frame`, comes down: it shivers,
   // falls to the floor under it and shatters there. With no frame (a ceiling with nothing hanging from it, for a
-  // picture or a test) a plain sliver falls. Whether it came: a fall is kept (`fallen`) only if it did.
-  icicleFall(game, i, frame = null) {
+  // picture or a test) a plain sliver falls. Whether it came: a fall is kept (`fallen`) only if it did. One that
+  // comes down `alone` is heard as a sound that comes by itself is; one the drill set off, as the drill's own.
+  icicleFall(game, i, frame = null, alone = false) {
     if (this.fallen.has(i)) return false;
     const w = game.world, x = i % N, y = Math.floor(i / N), wait = Math.max(0, this.icicleNext - this.time);
     if (wait > 4 * LOOSE) return false;
@@ -793,18 +821,19 @@ export class Feel {
       ? this.spawn(ICICLE, x * T, y * T, 0, 0, 3, shapeOf(frame), 0, this.floorUnder(w, x, y) - 7)
       : this.spawn(ICICLE, x * T + 4 + Math.floor(cellHash(x, y, 43) * 8), y * T + 1, 0, 0, 3, ink('#cfeeff'), 5, this.floorUnder(w, x, y));
     if (p < 0) return false;
-    this.t[p] = -(wait + SHIVER);
+    this.t[p] = -(wait + SHIVER); this.alone[p] = alone ? 1 : 0;
     this.icicleNext = this.time + wait + LOOSE;
     if (frame) { this.fallen.add(i); game.redraw?.(i); }
     return true;
   }
   shatter(game, p) {
     // (A frame is a cell's size, with its icicle in the top half: it breaks where its tip meets the floor.)
-    const framed = this.size[p] === 0, x = this.x[p] + (framed ? 8 : 0), y = framed ? this.floor[p] + 6 : this.y[p];
+    const framed = this.size[p] === 0, x = this.x[p] + (framed ? 8 : 0), y = framed ? this.floor[p] + 6 : this.y[p], alone = this.alone[p];
     this.kind[p] = 0; this.live--;
     for (let n = 6 + Math.floor(this.rnd() * 5); n > 0; n--) this.spawn(SHARD, x + (framed ? Math.round((this.rnd() - 0.5) * 8) : 0), y - 1, (this.rnd() - 0.5) * 70, -40 - this.rnd() * 60, 0.6 + this.rnd() * 0.3, ink(n & 1 ? '#e8fbff' : '#8ab8dc'), 1, y + 1);
-    const near = 1 - Math.hypot(x / T - game.drill.x, y / T - game.drill.y) / HEAR;
-    sfx.shatter(Math.max(0, near));
+    // (Either way it is heard only within HEAR cells of the drill.)
+    const near = alone ? this.hear(game, Math.floor(x / T), Math.floor((y - 1) / T)) : 1 - Math.hypot(x / T - game.drill.x, y / T - game.drill.y) / HEAR;
+    if (near > 0) sfx.shatter(near);
   }
 
   // Makes something come at once, whatever the ground and whatever its clock says (for pictures and tests):
@@ -876,7 +905,7 @@ export class Feel {
   // Over the dark, adding light: sparks, glints, stars, fireflies, vents and the drill's heat; then the layers over
   // the whole screen.
   glow(game, ctx, ox, oy) {
-    const W = game.W, H = game.H, now = this.time, d = game.drill;
+    const W = game.W, H = game.H, now = this.time, d = game.drill, w = game.world;
     ctx.globalCompositeOperation = 'lighter';
     for (let n = 0; n < this.nv; n++) {
       const i = this.vents[n], x = i % N, y = Math.floor(i / N), px = x * T - ox, py = y * T + T - 1 - oy, h = cellHash(x, y, 42);
@@ -897,10 +926,14 @@ export class Feel {
         if (this.size[i]) { const arm = u < 0.5 ? 2 : 1; ctx.fillRect(px - arm, py, arm * 2 + 1, 1); ctx.fillRect(px, py - arm, 1, arm * 2 + 1); }
         else ctx.fillRect(px, py, 1, 1);
       } else if (k === STAR) {
-        // A streak behind its head, brightest at the head.
+        // A streak behind its head, brightest at the head, passing behind rock: only what is over open ground shows.
         const len = 14, sx = this.vx[i] / Math.hypot(this.vx[i], this.vy[i]), sy = this.vy[i] / Math.hypot(this.vx[i], this.vy[i]);
-        for (let s = 0; s < len; s++) { ctx.globalAlpha = Math.min(1, (1 - u) * 1.6) * (1 - s / len); ctx.fillRect(Math.round(px - sx * s), Math.round(py - sy * s), 1, 1); }
-        ctx.globalAlpha = Math.min(1, (1 - u) * 1.6); ctx.fillRect(px, py - 1, 1, 1); ctx.fillRect(px, py + 1, 1, 1);
+        for (let s = 0; s < len; s++) {
+          const qx = Math.round(px - sx * s), qy = Math.round(py - sy * s);
+          if (w.peek(Math.floor((qx + ox) / T), Math.floor((qy + oy) / T)) !== K.EMPTY) continue;
+          ctx.globalAlpha = Math.min(1, (1 - u) * 1.6) * (1 - s / len); ctx.fillRect(qx, qy, 1, 1);
+        }
+        if (w.peek(Math.floor((px + ox) / T), Math.floor((py + oy) / T)) === K.EMPTY) { ctx.globalAlpha = Math.min(1, (1 - u) * 1.6); ctx.fillRect(px, py - 1, 1, 1); ctx.fillRect(px, py + 1, 1, 1); }
       }
     }
     for (let f = 0; f < this.flies; f++) {
@@ -976,8 +1009,9 @@ export class Feel {
       ctx.globalAlpha = 1;
     }
   }
-  // A layer's picture, made the first time it is drawn: a fog of soft blobs that tiles 128 x 64, or an edge 32
-  // square (the dark round the rim, or heat from the foot), in the layer's colour, drawn larger and smoothed.
+  // A layer's picture, made in the first frames of a game (or else the first time it is drawn): a fog of soft blobs
+  // that tiles 128 x 64, or an edge 32 square (the dark round the rim, or heat from the foot), in the layer's colour,
+  // drawn larger and smoothed.
   texture(l) {
     let art = this.art.get(l.key);
     if (art) return art;
@@ -987,17 +1021,11 @@ export class Feel {
     let s = 0x9e3779b9 ^ (r * 65536 + g * 256 + b);
     const rnd = () => (s = (Math.imul(s, 1664525) + 1013904223) >>> 0) / 4294967296;
     // (A fog is two layers of values on a grid that wraps, eased between; it tiles with no seam.)
-    const grid = fog ? [[8, 4, Array.from({ length: 32 }, rnd)], [16, 8, Array.from({ length: 128 }, rnd)]] : [];
-    const ease = t => t * t * (3 - 2 * t);
+    const coarse = fog ? Array.from({ length: 32 }, rnd) : null, fine = fog ? Array.from({ length: 128 }, rnd) : null;
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
       let a;
       if (fog) {
-        let v = 0;
-        for (const [gw, gh, val] of grid) {
-          const fx = x / w * gw, fy = y / h * gh, ix = Math.floor(fx), iy = Math.floor(fy), u = ease(fx - ix), t = ease(fy - iy);
-          const at = (i, j) => val[((j + gh) % gh) * gw + ((i + gw) % gw)];
-          v += ((at(ix, iy) * (1 - u) + at(ix + 1, iy) * u) * (1 - t) + (at(ix, iy + 1) * (1 - u) + at(ix + 1, iy + 1) * u) * t) * (gw === 8 ? 0.65 : 0.35);
-        }
+        const v = wraps(coarse, 8, 4, x / w * 8, y / h * 4) * 0.65 + wraps(fine, 16, 8, x / w * 16, y / h * 8) * 0.35;
         a = Math.max(0, Math.min(1, (v - 0.32) * 2.6)) ** 1.2;
       } else if (l.spec.below) {
         const v = y / (h - 1), side = Math.abs(x / (w - 1) - 0.5) * 2;

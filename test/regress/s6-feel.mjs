@@ -14,14 +14,19 @@
 //   - Quirks: a quake shakes the view and is heard, and is still again within two and a half seconds; fireflies
 //     come round a drill that stands still in the west; a cut finished in the east pours sand and is heard; a cut
 //     in the north about to close over creaks with the drill beside it, and one far from the drill and the tether
-//     does not, and one held open creaks once, the newest cuts looked at first; an icicle flown under shivers,
-//     falls and shatters, aloud, is drawn no more and changes nothing else, one with no room for it does not fall,
-//     and all hang again when the feel is begun again; a quake in thaw shakes a few in view loose, no two beginning
-//     to fall within 0.3 seconds; going from the south into the forge, whose edge is of the same colour and darker,
-//     the forge's edge is the one that shows; the frost at the corners is made once; a gust pushes the air over and
-//     it eases back; a shooting star crosses a drift; a cross has both its
-//     grounds' quirks; within forty cells of the core nothing comes by itself and nothing gives light; and the
-//     sounds that come by themselves come no more than one in 1.2 seconds.
+//     does not, and one held open creaks once, the newest cuts looked at first; of two dozen the tether holds open
+//     each within hearing creaks once, softer for being off, and none further off at all; an icicle flown under
+//     shivers, falls and shatters, aloud, is drawn no more and changes nothing else, one with no room for it does
+//     not fall, and all hang again when the feel is begun again; a quake in thaw shakes a few in view loose, no two
+//     beginning to fall within 0.3 seconds, and with a notice up they shatter unheard; going from the south into the
+//     forge, whose edge is of the same colour and darker, the forge's edge is the one that shows; the frost at the
+//     corners is made once; a gust pushes the air over and it eases back; a shooting star crosses a drift, and is
+//     drawn only over open ground; the view slid a cell at a time, the vents kept going are those in view; lava run
+//     into a cave's piece leaves it drawn as a fresh painting has it, and the feel looks at the cell again; a cross
+//     has both its grounds' quirks; within forty cells of the core nothing comes by itself and nothing gives light;
+//     and the sounds that come by themselves come no more than one in 1.2 seconds.
+//   - The layers over the screen: all their pictures are made in a game's first second, none in the frame a ground
+//     is come into.
 //   node test/regress/s6-feel.mjs
 import { makeGame, farStart, wander, random, world, C, N, K } from '../harness.mjs';
 
@@ -48,6 +53,15 @@ const thaw = feelOf(BIOMES.find(r => r?.name === 'thaw'));
 check(thaw.creak && thaw.rime && thaw.quake?.power === 0.6 && thaw.quake.every[0] === 44 && thaw.vent?.p === 0.025, `thaw's feel is not the north's with the south's mark at half strength: ${JSON.stringify(thaw)}`);
 const made = world.biome({ ...BIOMES[B.EMBER], id: 120, name: 'test-made-ember' });
 check(JSON.stringify(feelOf(made)) === JSON.stringify(feelOf(BIOMES[B.EMBER])), 'a made row of the south does not feel as the south');
+{
+  // The pictures of the layers over the screen are all made in a game's first frames, one a frame, so that none is
+  // made in the frame the drill comes into a ground (a fog's took a phone a frame or two).
+  const game = await makeGame(7, { tether: 9, drill: 3 }), f = game.feel;
+  for (let n = 0; n < 60; n++) f.step(game, 1 / 60);
+  const missing = new Set();
+  for (const row of [...BIOMES, made]) if (row) for (const l of feelOf(row).layers) if (!f.art.has(l.key)) missing.add(l.key);
+  check(missing.size === 0, `after a game's first second the pictures of ${[...missing].join(', ')} were still to be made`);
+}
 
 // ---------------------------------------------------------------- the feel changes nothing
 // Math.random is a generator of each game's own, the same in both, so the two are the same game.
@@ -123,7 +137,7 @@ check(worst.live > 40 && worst.flies >= 5, `with a quirk every second the feel n
 
 // ---------------------------------------------------------------- each quirk happens
 const heard = {}, tells = [];
-for (const name of ['creak', 'shatter', 'drip', 'blub', 'quake', 'gust', 'trickle', 'crackle']) { heard[name] = 0; sfx[name] = (...args) => { heard[name]++; if (name === 'creak' && args[0] === 1) tells.push(args); }; }
+for (const name of ['creak', 'shatter', 'drip', 'blub', 'quake', 'gust', 'trickle', 'crackle']) { heard[name] = 0; sfx[name] = (...args) => { heard[name]++; if (name === 'creak' && args[1] === 1.2) tells.push(args); }; }
 const stage = async (x, y, levels = {}) => { const game = await makeGame(7, { tether: 9, drill: 3, ...levels }); metAll(game); farStart(game, x, y); return game; };
 const run = (game, seconds, auto = null) => { game.input.auto = auto; for (let n = 0; n < seconds * 60; n++) game.update(1 / 60); };
 {
@@ -176,6 +190,25 @@ const run = (game, seconds, auto = null) => { game.input.auto = auto; for (let n
   f.force('icicle');
   run(game, 2);
   check(heard.shatter === shards + 1, `an icicle made to fall shattered aloud ${heard.shatter - shards} times`);
+}
+{
+  // Twenty-four cuts the tether lies in, about to close over, some within ten cells of the drill and some further:
+  // in two minutes each near one creaks once, the further the softer, and none further off creaks at all, though
+  // there are more of them than a short memory would hold (only the feel's tells are stepped).
+  const game = await stage(60, -150), w = game.world, d = game.drill, f = game.feel, F = feelOf(w.row(game.di)), freeze = w.row(game.di).freeze;
+  run(game, 2.5);
+  w.see(Math.floor(d.x), Math.floor(d.y), 20);
+  game.frostOpen.length = 0;
+  let near = 0;
+  for (let k = 0; k < 24; k++) {
+    const i = (Math.floor(d.y) - 3 - (k / 12 | 0)) * N + Math.floor(d.x) - 4 - k % 12;
+    w.setK(i, K.EMPTY); w.dug.set(i, game.clock - freeze + 1); game.frostOpen.push(i); game.under.add(i);
+    if (Math.hypot(i % N + 0.5 - d.x, Math.floor(i / N) + 0.5 - d.y) < 10) near++;
+  }
+  const told = tells.length;
+  for (let n = 0; n < 1200; n++) { f.time += 0.1; f.tells(game, F, true, 0.1); }
+  const said = tells.slice(told);
+  check(near >= 8 && near < 24 && said.length === near && said.every(([loud]) => loud > 0 && loud < 0.75), `of twenty-four cuts held open by the tether, ${near} within ten cells of the drill, ${said.length} creaked in two minutes, as loud as ${said.map(([loud]) => loud.toFixed(2)).join(', ')} (each near one once, softer for being off, is meant)`);
 }
 // The icicles of a cave (js/decor.js): only the feel is stepped, with the drill set down in a cave of the seed's
 // under an icicle that has open ground under it, the view on it.
@@ -279,6 +312,71 @@ const cellsAbout = (w, i) => { let h = 0; for (let v = -12; v <= 12; v++) for (l
   f.force('stars');
   for (let n = 0; n < 10; n++) { game.update(1 / 60); for (let i = 0; i < f.kind.length; i++) if (f.kind[i] === 11) stars = true; }
   check(stars, 'a shooting star made to come over a drift did not');
+  // And it passes behind the drift's floating rock: of stars across the whole view, only what is over open ground
+  // is drawn.
+  f.kind.fill(0); f.live = 0; f.flies = 0; f.nv = 0;
+  for (let y = f.y0; y <= f.y1; y += 2) for (let x = f.x0; x <= f.x1; x += 3) f.spawn(11, x * T + 5, y * T + 7, 180, 70, 0.45, 0);
+  let open = 0, over = 0;
+  const ox = Math.round(game.cam.x - game.W / 2), oy = Math.round(game.cam.y - (game.H - 44) / 2);
+  const ctx = new Proxy({}, { get: (t, k) => k === 'fillRect' ? (x, y) => { if (game.world.peek(Math.floor((x + ox) / T), Math.floor((y + oy) / T)) === K.EMPTY) open++; else over++; } : k in t ? t[k] : () => {}, set: (t, k, v) => { t[k] = v; return true; } });
+  f.hot = 0;
+  f.glow({ W: game.W, H: game.H, drill: game.drill, world: game.world, sparks: new Map(), daylight: true, scale: 1 }, ctx, ox, oy);
+  check(open > 50 && over === 0, `of shooting stars across a drift, ${over} pixels were drawn over rock (and ${open} over open ground)`);
+}
+{
+  // An icicle a quake shakes loose comes down by itself, and is heard as what comes by itself is: not while a
+  // notice is up. (One the drill flies under is its own, and is heard whatever is up.)
+  const game = await makeGame(7, { tether: 9, drill: 3 }), f = game.feel;
+  metAll(game);
+  const i = icicleNear(game, -128, -1408, 70);
+  if (i >= 0) {
+    setUnder(game, i, 3);
+    feelFor(game, 0.5);
+    const was = f.fallen.size, shards = heard.shatter;
+    game.notice = { title: 'TEST', sub: '', colour: '#fff', t: 0, life: 9 };
+    f.force('quake');
+    feelFor(game, 3);
+    check(f.fallen.size - was >= 2 && heard.shatter === shards, `with a notice up, a quake in thaw shook ${f.fallen.size - was} icicles loose and ${heard.shatter - shards} shattered aloud (none is meant)`);
+  }
+}
+{
+  // The vents in view are those in view: the view slid a cell at a time through the forge, the ground unchanged,
+  // the feel keeps going just the vents a fresh look finds.
+  const game = await stage(60, 500, { scanner: 4 }), f = game.feel;
+  for (let n = 0; n < 30; n++) { game.update(1 / 60); game.render(); }
+  const listed = () => [...f.vents.slice(0, f.nv)].sort((a, b) => a - b).join();
+  let wrong = 0, seen = 0;
+  for (let n = 0; n < 24; n++) {
+    game.cam.x += n < 12 ? 16 : -16; game.cam.y += n % 3 ? 0 : 16;
+    f.step(game, 1 / 60);
+    const now = listed();
+    f.cv = -1; f.rx0 = NaN; f.refresh(game);
+    if (listed() !== now) wrong++;
+    seen += f.nv;
+  }
+  check(seen > 0 && wrong === 0, `the view slid a cell at a time through the forge 24 times, and ${wrong} times the vents kept going were not those in view`);
+}
+{
+  // Lava running into an open cell of a cave in the south, the ground otherwise as it was: the cave's piece in
+  // the cell is drawn no more (as a fresh painting of the ground has it), and the feel looks at the cell again.
+  const game = await stage(0, 150, { tether: 5, drill: 4 }), w = game.world, d = game.drill, f = game.feel;
+  for (let n = 0; n < 30; n++) { game.update(1 / 60); game.render(); }
+  let i = -1, j = -1;
+  for (let v = -8; v <= 8 && i < 0; v++) for (let u = -8; u <= 8 && i < 0; u++) {
+    const c = (Math.floor(d.y) + v) * N + Math.floor(d.x) + u;
+    if (Math.abs(u) + Math.abs(v) < 3 || !game.decorOf(c)) continue;
+    for (const s of [1, -1, N, -N]) if (w.k(c + s) === K.EMPTY && w.s(c + s) && !w.lava.has(c + s) && c + s !== game.di) { i = c; j = c + s; break; }
+  }
+  check(i >= 0, 'no piece of a cave beside open ground near the drill in the south');
+  if (i >= 0) {
+    const key = ((Math.floor(i / N)) >> 3) * 4096 + ((i % N) >> 3), sum = f.pieces.get(key)?.sum, version = game.version;
+    w.lava.set(j, 9); game.lavaVol.set(j, 6);
+    for (let t = 0; t < 600 && !w.lava.has(i); t++) { game.update(1 / 60); game.render(); }
+    const ops = game.chunks.get(key).ops;
+    game.redraw(i); game.render();
+    check(w.lava.has(i) && game.version === version && game.chunks.get(key).ops === ops && game.decorOf(i) === null, `lava ran into a cave's piece (${w.lava.has(i)}; the version ${version} to ${game.version}), and the piece of ground drawn was not what a fresh painting draws`);
+    check(sum !== undefined && f.pieces.get(key)?.sum !== sum, 'lava ran into a cell, and the feel did not look at it again');
+  }
 }
 {
   // Thaw: the north's creak and the south's quake both come by themselves.

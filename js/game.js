@@ -2010,13 +2010,14 @@ export class Game {
           if (w.hazAt(j) === 'lava') { opened.push(...this.trigger(j, 'lava', false)); continue; }
           if (vol > 1 && w.k(j) === K.EMPTY && !w.lava.has(j) && j !== here && w.s(j) && Math.hypot(x - C, y - C) > 3) {
             w.lava.set(j, 8); this.lavaVol.set(j, vol - 1); this.lavaVol.set(i, 1);
+            this.lavaMoved(j);
             this.quench(j);
             break;
           }
         }
       }
       if (life - dt > 0) { w.lava.set(i, life - dt); continue; }
-      w.lava.delete(i); this.lavaVol.delete(i);
+      w.lava.delete(i); this.lavaVol.delete(i); this.lavaMoved(i);
       // (Nothing closes over in a pocket: lava that ran into one only goes out.)
       if (!lies(i) && Math.abs(dcx - x) + Math.abs(dcy - y) > 1 && w.row(i).pocket === null) {
         w.setK(i, K.BASALT); closed.push(i);
@@ -2149,6 +2150,10 @@ export class Game {
   }
 
   // ------------------------------------------------------------ feel
+  // Lava has run into the open cell `i`, or gone out of it, and the ground has not otherwise changed: what is drawn
+  // in the cell (no piece of a cave's under lava) and what the feel knows of it (no vent) are looked at again, in
+  // that piece of ground alone, and the ground's version, which the game's own work keys on, is left alone.
+  lavaMoved(i) { this.redraw(i); this.feel.redraw(i); }
   // Chips of the ground's own colours (js/drawing.js: `debris`). `ang` is the way the drill was cutting (they fly
   // back at it), null for all round.
   chips(cx, cy, colors, count, ang, speed) {
