@@ -172,6 +172,12 @@ for (const coil of [0, 1]) {
   game.S.lv.mapfinder = 3;
   const all = game.findsNear(C + 0.5, C + 0.5, 115);
   check(all.length > caches.length && all.some(f => f[0] === 'geode'), `the best finder marks ${all.length} finds: ${[...new Set(all.map(f => f[0]))]}`);
+  // It marks what lies near the drill (within 320 cells at its best), however much of the ground is asked about:
+  // on the chart of a long reach there is no more than that, and never a band of dots across the north.
+  game.S.lv.tether = 8;
+  const wide = game.findsNear(C + 0.5, C + 0.5, 1500);
+  check(wide.length > 0 && wide.length < 200 && wide.every(([, fx, fy]) => Math.hypot(fx + 0.5 - game.drill.x, fy + 0.5 - game.drill.y) <= 320) && wide.some(f => f[2] > C) && wide.some(f => f[2] < C), `asked about the whole of a reach of 1,350 the finder marks ${wide.length} finds, the furthest ${Math.round(Math.max(...wide.map(([, fx, fy]) => Math.hypot(fx - game.drill.x, fy - game.drill.y))))} cells from the drill`);
+  game.S.lv.tether = 6;
   game.render();
   // The chart: a third tab of the top bar's panel, at the core, once bought; a tap on the map there opens it.
   game.labTab = 'chart'; game.openLab(true); game.render();
@@ -236,10 +242,25 @@ for (const coil of [0, 1]) {
 {
   const game = await makeGame(7), reach = UPGRADES[0], winch = UPGRADES.find(u => u.id === 'winch');
   game.S.grit = 1e12; game.S.gems = game.S.gems.map(() => 1e6);
-  // Reach is bought with grit alone: no gems of any direction, and nothing that must be found.
+  // Reach is bought with grit alone, no gems of any direction and nothing that must be found in one place; but from
+  // its third level it asks that the drill has been three fifths of the way out its tether already goes.
   game.S.gems = game.S.gems.map(() => 0);
   for (let l = 0; l < 9; l++) game.buy(reach);
-  check(game.S.lv.tether === 9 && game.val('tether') === 2300 && reach.gems.every(g => g === 0) && !reach.needs, `with grit alone the reach is ${game.val('tether')}`);
+  check(game.S.lv.tether === 2 && game.val('tether') === 40 && game.shopNote?.text === 'NEEDS 0/24 CELLS OUT' && reach.gems.every(g => g === 0), `with grit and a drill that has been nowhere the reach is ${game.val('tether')}: '${game.shopNote?.text}'`);
+  game.S.out = 24.5; game.buy(reach); game.buy(reach);
+  check(game.val('tether') === 72 && game.lacks(reach) === 'NEEDS 24/43 CELLS OUT', `having been 24 cells out the reach is ${game.val('tether')}, and the next step says '${game.lacks(reach)}'`);
+  game.S.out = 5000;
+  for (let l = 0; l < 9; l++) game.buy(reach);
+  check(game.S.lv.tether === 9 && game.val('tether') === 2300, `having been everywhere, with grit alone the reach is ${game.val('tether')}`);
+  // How far out the drill has been is its furthest, kept as it flies; a new world begins at none.
+  {
+    const flown = await makeGame(7, { drill: 4 });
+    flown.input.auto = [1, 0, 1]; for (let f = 0; f < 180; f++) flown.update(1 / 60); flown.input.auto = [-1, 0, 1]; for (let f = 0; f < 60; f++) flown.update(1 / 60); flown.input.auto = null;
+    const most = flown.S.out;
+    check(most > 4 && most >= flown.far && Math.abs(most - flown.far) > 0.5, `flown east and part of the way back, the drill is ${flown.far.toFixed(1)} cells out and has been ${most.toFixed(1)}`);
+    flown.fresh(9);
+    check(flown.S.out === 0, `a new world begins having been ${flown.S.out} cells out`);
+  }
   game.S.gems = game.S.gems.map(() => 1e6);
   // The scan's levels ask for wreck parts: none for the first, one for the second.
   const scan = UPGRADES.find(u => u.id === 'scanner');
@@ -247,10 +268,12 @@ for (const coil of [0, 1]) {
   check(game.S.lv.scanner === 1 && game.shopNote?.text === 'NEEDS 0/1 WRECK PARTS', `the scan's second level with no wreck part ${game.S.lv.scanner > 1 ? 'was bought' : 'was refused'}: '${game.shopNote?.text}'`);
   game.S.wrecks[0] = 1; game.buy(scan);
   check(game.S.lv.scanner === 2 && game.lacks(scan) === 'NEEDS 1/2 WRECK PARTS', `with the first wreck's part the scan is at level ${game.S.lv.scanner}, and the next says '${game.lacks(scan)}'`);
-  game.buy(winch); game.buy(winch);
-  check(game.S.lv.winch === 1 && game.lacks(winch) === 'NEEDS 1/3 PLACES MET', `with only the home ground met the winch is at level ${game.S.lv.winch}: '${game.lacks(winch)}'`);
-  game.S.met[1] = 1; game.S.met[2] = 1; game.buy(winch);
-  check(game.S.lv.winch === 2, `with three places met the winch is at level ${game.S.lv.winch}`);
+  // The winch, the bit, the ram and the hull ask how far out the drill has been.
+  game.S.out = 29; game.buy(winch); game.buy(winch);
+  check(game.S.lv.winch === 1 && game.lacks(winch) === 'NEEDS 29/30 CELLS OUT', `having been 29 cells out the winch is at level ${game.S.lv.winch}: '${game.lacks(winch)}'`);
+  game.S.out = 30; game.buy(winch);
+  check(game.S.lv.winch === 2, `having been 30 cells out the winch is at level ${game.S.lv.winch}`);
+  check(UPGRADES.filter(u => u.needs?.[0] === 'out').map(u => u.id).join() === 'tether,drill,winch,momentum,hull', `the rows that ask how far out the drill has been: ${UPGRADES.filter(u => u.needs?.[0] === 'out').map(u => u.id)}`);
   game.shop = true; game.shopRise = 1; game.shopTab = 'rig'; game.render(); game.shop = false;
   const { overload } = await import('../../js/game.js');
   const total = n => n * overload(n, 0);
@@ -299,6 +322,23 @@ for (const coil of [0, 1]) {
   game.S.lv.refinery = 2; game.resize(320, 568, 1); game.shop = true; game.shopRise = 1; game.shopTab = 'core'; game.render(); game.shop = false;
   const said = Object.fromEntries(game.stats().map(([name, value]) => [name, value]));
   check(said.REFINERY === 'GRIT x1.3, GEMS x1' && said.LAMP === '10 CELLS' && said['BLACK BOX'] === 'NONE', `the stats say ${said.REFINERY} / ${said.LAMP} / ${said['BLACK BOX']}`);
+}
+
+// ---- a frame that takes long is written down, with where the time went, and shown in the menu
+{
+  localStorage.removeItem('tetherbore-stalls');
+  const game = await makeGame(7);
+  game.frameTook(16, 2, 3);
+  check(game.stalls.length === 0, 'a frame of sixteen milliseconds was written down as long');
+  const t0 = performance.now() - 300; game.timed('save', t0);
+  game.frameTook(1400, 320, 40);
+  check(game.stalls.length === 1 && game.stalls[0].gap === 1400 && game.stalls[0].top === 'save' && game.stalls[0].ms >= 300 && Object.keys(game.probe).length === 0, `a frame of 1.4 s was written down as ${JSON.stringify(game.stalls)}`);
+  for (let n = 0; n < 8; n++) game.frameTook(250 + n, 1, 1);
+  check(game.stalls.length === 5 && JSON.parse(localStorage.getItem('tetherbore-stalls')).length === 5, `after nine long frames ${game.stalls.length} are kept`);
+  const again = await makeGame(7);
+  check(again.stalls.length === 5, `a game started afterwards knows of ${again.stalls.length} long frames`);
+  again.resize(320, 568, 1); again.openLab(true, 'menu'); again.render(); again.openLab(false);
+  localStorage.removeItem('tetherbore-stalls');
 }
 
 console.log(fails.length ? `DEFECT:\n  ${fails.join('\n  ')}` : 'no defect: the second tab sells four things for specimens, each turns a hazard, and the stats say what the drill is');

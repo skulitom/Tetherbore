@@ -36,10 +36,14 @@ window.addEventListener('pagehide', () => game.save());
 let last = performance.now(), manual = !!shot;
 function frame(now) {
   if (!manual) {
-    const dt = Math.min(0.05, (now - last) / 1000);
+    const gap = now - last, dt = Math.min(0.05, gap / 1000);
     last = now;
+    const t0 = performance.now();
     game.update(dt);
+    const t1 = performance.now();
     game.render();
+    // (A frame that took long is written down, with where the time went: `Game.frameTook`.)
+    game.frameTook(gap, t1 - t0, performance.now() - t1);
   }
   requestAnimationFrame(frame);
 }

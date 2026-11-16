@@ -62,21 +62,26 @@ const levels = (beside, share) => ({ beside, grit: beside.map(at => priced(at, s
 // ground (45, 90, 160 ... cells out); 'kinds', kinds of thing the lab has analysed, two in each direction's own
 // ground and the rest in lava and in pockets; 'places', grounds met, of which the strains, the pockets and the
 // crosses lie further and further out. (`Game.need` counts what is held.)
-const NEEDS = { parts: 'WRECK PARTS', kinds: 'KINDS ANALYSED', places: 'PLACES MET' };
+// 'out' is how far from the core the drill has ever been, in cells, by any road and in any direction: the levels
+// of the first tab ask it, so the rig cannot be bought up from the ground about the core. (Kinds analysed and
+// places met were asked first, and both are to be had within two hundred cells: a game had the bit and the ram at
+// their last levels and a reach of 1,350 with nothing explored past a tenth of it.)
+const NEEDS = { parts: 'WRECK PARTS', kinds: 'KINDS ANALYSED', places: 'PLACES MET', out: 'CELLS OUT' };
 // `values` is what each level gives; `grit` and `gems` what the next level costs; `gem` whose gems it takes.
 export const UPGRADES = [
   // The tether's reach: how far from the core the drill may go, by any road. Each level nearly doubles it. It is
   // bought with grit alone, which every ground gives: no one direction's gems and nothing that must be found in
-  // one place, so a player may follow a single direction as far out as they like.
-  { id: 'tether', icon: 'string', name: 'REACH', what: 'TETHER GOES FURTHER', values: REACH, gem: B.MIRE, ...levels(REACH.slice(0, -1).map((R, l) => l), 1), gems: REACH.slice(0, -1).map(() => 0), show: v => `${v}` },
-  { id: 'drill', icon: 'drill', name: 'BIT', what: 'CUTS FASTER', values: [1, 2, 3, 4, 5], gem: B.LODE, needs: ['kinds', [0, 2, 5, 9]], ...levels([0.6, 2.2, 4.4, 6.6], 0.6), show: v => `MK${v}` },
-  { id: 'winch', icon: 'winch', name: 'WINCH', what: 'BIGGER HAULS AT FULL PAY', values: [1, 1.3, 1.6, 2, 2.5, 3], gem: B.FROST, needs: ['places', [1, 3, 5, 8, 12]], ...levels([0.8, 2, 3.6, 5.4, 7.2], 0.5), show: v => `x${v}` },
+  // one place, so a player may follow a single direction as far out as they like. From the third level it asks that
+  // the drill has been three fifths of the way out its tether already goes, in whatever direction.
+  { id: 'tether', icon: 'string', name: 'REACH', what: 'TETHER GOES FURTHER', values: REACH, gem: B.MIRE, needs: ['out', REACH.slice(0, -1).map((R, l) => l < 2 ? 0 : Math.round(R * 0.6))], ...levels(REACH.slice(0, -1).map((R, l) => l), 1), gems: REACH.slice(0, -1).map(() => 0), show: v => `${v}` },
+  { id: 'drill', icon: 'drill', name: 'BIT', what: 'CUTS FASTER', values: [1, 2, 3, 4, 5], gem: B.LODE, needs: ['out', [0, 40, 130, 400]], ...levels([0.6, 2.2, 4.4, 6.6], 0.6), show: v => `MK${v}` },
+  { id: 'winch', icon: 'winch', name: 'WINCH', what: 'BIGGER HAULS AT FULL PAY', values: [1, 1.3, 1.6, 2, 2.5, 3], gem: B.FROST, needs: ['out', [0, 30, 100, 300, 700]], ...levels([0.8, 2, 3.6, 5.4, 7.2], 0.5), show: v => `x${v}` },
   { id: 'scanner', icon: 'scanner', name: 'SCAN', what: 'SEES DEEPER IN ROCK', values: [3, 4, 5, 7, 9], gem: B.FROST, needs: ['parts', [0, 1, 2, 4]], ...levels([0.4, 1.6, 3.4, 5.8], 0.3), show: v => `${v}` },
-  { id: 'momentum', icon: 'momentum', name: 'RAM', what: 'FLIES FASTER', values: [1, 1.25, 1.5, 1.8, 2.2], gem: B.LODE, needs: ['places', [1, 2, 4, 7]], ...levels([0.7, 2.4, 4.2, 6.2], 0.4), show: v => `x${v}` },
+  { id: 'momentum', icon: 'momentum', name: 'RAM', what: 'FLIES FASTER', values: [1, 1.25, 1.5, 1.8, 2.2], gem: B.LODE, needs: ['out', [0, 60, 200, 600]], ...levels([0.7, 2.4, 4.2, 6.2], 0.4), show: v => `x${v}` },
   // The hull: how many knocks the drill takes before it is wrecked and wound home (`hit`, `wreck`), a pip a level,
   // each a plate more on the drill. Its first level is priced beside a reach that has only just met hazards and
   // asks no gems; from there on it takes the south's, whose lava is the worst of what it is for.
-  { id: 'hull', icon: 'hull', name: 'HULL', what: 'TAKES MORE KNOCKS', values: [5, 6, 7, 8, 9], gem: B.EMBER, needs: ['kinds', [1, 3, 6, 10]], ...levels([4.5, 5.5, 6.5, 7.5], 0.5), show: v => `${v}` },
+  { id: 'hull', icon: 'hull', name: 'HULL', what: 'TAKES MORE KNOCKS', values: [5, 6, 7, 8, 9], gem: B.EMBER, needs: ['out', [150, 300, 600, 1000]], ...levels([4.5, 5.5, 6.5, 7.5], 0.5), show: v => `${v}` },
 ];
 // What the lab can know: each thing the bit can crush, by the sheet and frame it is drawn from (`Game.sampleOf`),
 // with its name, where it lies, and the lab's note on it. A thing crushed is a sample analysed, and what is known
@@ -135,15 +140,18 @@ export const WORKS = [
 export const MAPS = [
   { id: 'maprange', icon: 'scanner', name: 'RANGE', what: 'MAP SHOWS FURTHER', values: [1.5, 2.25, 3.5, 5], gem: B.FROST, ...levels([2, 4, 6], 0.25), show: v => `${Math.round(v * 46)}` },
   { id: 'maplens', icon: 'scanner', name: 'LENS', what: 'MAP TELLS MORE APART', values: [0, 1, 2, 3], gem: B.LODE, ...levels([1.5, 3.5, 5.5], 0.25), show: v => ['ROCK', 'ORE', 'HARD', 'ALL'][v] },
-  { id: 'mapfinder', icon: 'scanner', name: 'FINDER', what: 'MAP MARKS HIDDEN FINDS', values: [0, 1, 2, 3], gem: B.MIRE, ...levels([2.5, 4.5, 6.5], 0.25), show: v => ['OFF', 'CACHE', 'GEODE', 'PRISM'][v] },
+  { id: 'mapfinder', icon: 'scanner', name: 'FINDER', what: 'MARKS FINDS NEAR THE DRILL', values: [0, 1, 2, 3], gem: B.MIRE, ...levels([2.5, 4.5, 6.5], 0.25), show: v => ['OFF', 'CACHE', 'GEODE', 'PRISM'][v] },
   { id: 'chart', icon: 'scanner', name: 'CHART', what: 'TAP MAP FOR THE WHOLE REACH', values: [0, 1], gem: B.EMBER, ...levels([3], 0.3), show: v => v ? 'ON' : 'OFF' },
 ];
 // What the lens shows a kind of ground as, and from which level of it: [level, red, green, blue].
 const LENS = [];
 for (const [level, colour, kinds] of [[1, [214, 178, 64], [K.ORE_A]], [1, [255, 232, 96], [K.ORE_B]], [2, [176, 184, 204], [K.SLATE, K.VAULT, K.KEY, K.STEEL, K.SLAG]], [2, [255, 84, 64], [K.HAZARD, K.HAZARD2]],
   [3, [120, 240, 190], [K.MINERAL, K.NODE, K.CACHE, K.PRISM, K.FOSSIL, K.CAP, K.CAP_LIT, K.TWIN]]]) for (const k of kinds) LENS[k] = [level, ...colour];
-// Which finds the finder marks at each level of it.
+// Which finds the finder marks at each level of it, and how far from the drill it marks them, in cells. (It marked
+// every find within the tether's reach, and listed no more than two hundred, from the north down: on the chart of
+// a long reach that was a solid band of dots across the north and none anywhere else.)
 const FOUND = { cache: 1, geode: 2, prism: 3 };
+const FINDER = [0, 120, 200, 320];
 // The shop's fourth tab, CORE: what is built into the station late in a game, at many times the price of anything
 // in the other tabs (a level costs from one and a half to six times the step of reach it lies beside, and gems by
 // the thousand), each asking besides for much to have been found.
@@ -280,16 +288,24 @@ export class Game {
     this.chart = { zoom: 1, x: HX, y: HY };                           // the chart's view: how far it is zoomed in, and the cell at its middle
     this.chartRect = null; this.chartBase = 1; this.chartTouch = new Map();   // where the chart is on the screen this frame, its cells to a pixel unzoomed, the fingers on it
     this.shopTab = 'rig'; this.labTab = 'stats'; this.boost = 0; this.mendIn = 0;   // the tab each panel is open at; a spore's drive, in seconds left; until the mender's next pip
+    // The last frames that took long (see `frameTook`), kept apart from the game's own save, to find what freezes.
+    this.probe = {}; this.stalls = [];
+    try { this.stalls = JSON.parse(localStorage.getItem('tetherbore-stalls') ?? '[]'); } catch { this.stalls = []; }
     this.docked = null;                                               // what was banked and bought at the last docking, to go back to (`dockMark`)
     this.knocked = 0; this.mended = 0; this.notice = null;            // a pip just lost and the hull just mended (seconds left to show it), and the word across the screen
     this.smokeIn = 0; this.wrecks = 0; this.knocks = 0;               // until a hull in trouble next smokes; wrecks and knocks since the game began (for tests and tools)
+    // (The parts of a frame whose time is added up by name, for `frameTook`.)
+    for (const name of ['save', 'changed', 'haul', 'revert', 'updateHazards', 'updateHauls', 'homecoming', 'sweepHome', 'look']) {
+      const part = this[name];
+      if (typeof part === 'function') this[name] = (...args) => { const t0 = performance.now(); try { return part.apply(this, args); } finally { this.timed(name, t0); } };
+    }
     this.fresh((Math.random() * 1e9) | 0, true);
   }
 
   // ------------------------------------------------------------ state
   fresh(seed, quiet = false) {
     this.S = { seed, grit: 0, gems: [0, 0, 0, 0, 0], lv: Object.fromEntries(ROWS.map(u => [u.id, 0])), relics: [0, 0, 0, 0], wrecks: [0, 0, 0, 0, 0, 0, 0, 0],
-      stats: { hauls: 0, best: 0, buys: 0, moves: 0, time: 0 }, won: false, met: {}, marks: [], visited: {}, spec: [0, 0, 0, 0, 0], lab: {} };
+      stats: { hauls: 0, best: 0, buys: 0, moves: 0, time: 0 }, won: false, met: {}, marks: [], visited: {}, spec: [0, 0, 0, 0, 0], lab: {}, out: 0 };
     this.world.reset(seed);
     this.begin();
     if (!quiet) store().then(db => db.transaction('pieces', 'readwrite').objectStore('pieces').clear()).catch(() => {});
@@ -355,7 +371,7 @@ export class Game {
       this.S = S;
       // What a game saved before these were kept does not have: the wrecks' parts, the grounds met, the dots of
       // things seen on the map, the pockets visited, the specimens of each direction, the lab's samples.
-      S.wrecks ??= [0, 0, 0, 0, 0, 0, 0, 0]; S.met ??= {}; S.marks ??= []; S.visited ??= {}; S.spec ??= [0, 0, 0, 0, 0]; S.lab ??= {};
+      S.wrecks ??= [0, 0, 0, 0, 0, 0, 0, 0]; S.met ??= {}; S.marks ??= []; S.visited ??= {}; S.spec ??= [0, 0, 0, 0, 0]; S.lab ??= {}; S.out ??= 0;
       for (const u of ROWS) this.S.lv[u.id] = Math.min(this.S.lv[u.id] ?? 0, u.values.length - 1);
       this.world.reset(S.seed);
       for (const [id, p] of rows) this.world.chunks[id] = p;
@@ -1792,6 +1808,19 @@ export class Game {
     this.tow.t += dt;
     if (this.tow.t >= DEATH) this.revert(); else this.look();
   }
+  // What a part of a frame took is added up by name (`timed`), and when the whole frame took a fifth of a second
+  // or more the frame is written down: how long from the frame before, how long the game's own stepping and
+  // drawing took of that, and the part that took longest. The rest is the browser's (its own drawing, its
+  // collecting of memory, the phone doing something else). The last five are kept and shown in the menu.
+  timed(name, t0) { this.probe[name] = (this.probe[name] ?? 0) + performance.now() - t0; }
+  frameTook(gap, update, render) {
+    const probe = this.probe; this.probe = {};
+    if (!(gap >= 200) || gap > 60000) return;
+    const [top, ms] = Object.entries(probe).sort((a, b) => b[1] - a[1])[0] ?? ['', 0];
+    this.stalls.push({ gap: Math.round(gap), update: Math.round(update), render: Math.round(render), top, ms: Math.round(ms), out: Math.round(this.far), pieces: this.pieces.length, hauls: this.hauls.length });
+    this.stalls = this.stalls.slice(-5);
+    try { localStorage.setItem('tetherbore-stalls', JSON.stringify(this.stalls)); } catch { /* not kept */ }
+  }
   // The docking the game goes back to: what is banked, bought and known now, and the ground as it is now (the
   // world keeps what it changes from here on, `World.mark`). Made on leaving the core, and when a game begins.
   dockMark() {
@@ -1954,6 +1983,7 @@ export class Game {
       have = held.filter(Boolean).length;
       for (let n = 0; n < counts[l] && n < w.wrecks.length; n++) { const [x, y] = w.wrecks[n]; if (!held[n] && w.kindAt(x, y, w.biomeAt(x, y)) !== K.WRECK) need--; }
     } else if (what === 'kinds') have = LAB.filter(e => S.lab[e.key]).length;
+    else if (what === 'out') have = Math.floor(S.out ?? 0);
     else have = Object.keys(S.met).length;
     return need > 0 ? { what, have, need } : null;
   }
@@ -2063,6 +2093,8 @@ export class Game {
     this.twang = Math.max(0, this.twang - dt); this.coreFlash = Math.max(0, this.coreFlash - dt); this.hurt = Math.max(0, this.hurt - dt);
     this.edge = Math.max(0, this.edge - dt); d.stun = Math.max(0, d.stun - dt); d.squash = Math.max(0, d.squash - dt);
     this.shake = Math.max(0, this.shake - dt * 22);
+    // How far out the drill has ever been.
+    if (this.far > (this.S.out ?? 0)) this.S.out = this.far;
     this.boost = Math.max(0, this.boost - dt);
     // The mender gives a pip back every so many seconds out in the ground, counted from the last knock or mend.
     if (this.val('mender') && this.dents > 0 && d.mode !== 'dead') {
@@ -2356,7 +2388,7 @@ export class Game {
       ctx.fillRect(Math.round(m.x - ox), Math.round(m.y - oy), 1, 1);
     }
     ctx.globalAlpha = 1;
-    this.light(ox, oy);
+    { const t0 = performance.now(); this.light(ox, oy); this.timed('light', t0); }
     // Ground lying loose: cut off from the world, waiting for the tether to be drawn round it. It shows through the
     // dark, with a dotted edge that crawls round it.
     if (this.pieceOf.size) {
@@ -2395,8 +2427,8 @@ export class Game {
       text(ctx, p.label, px, py, p.color, 0.5);
       ctx.globalAlpha = 1;
     }
-    this.drawHud(ox, oy);
-    if (this.over) this.drawRopes(ox, oy);
+    { const t0 = performance.now(); this.drawHud(ox, oy); this.timed('hud', t0); }
+    if (this.over) { const t0 = performance.now(); this.drawRopes(ox, oy); this.timed('ropes', t0); }
   }
 
   // The drill as its upgrades have made it (the bit's metal, whatever the ram has bolted on), drawn about its
@@ -2644,7 +2676,10 @@ export class Game {
     const mcols = vx1 - vx0 + 1, mrows = vy1 - vy0 + 1;
     let map = this.dark;
     if (!map || map.width !== mcols || map.height !== mrows) { map = this.dark = document.createElement('canvas'); map.width = mcols; map.height = mrows; this.darkData = null; }
-    const mc = map.getContext('2d'), data = this.darkData ??= mc.createImageData(mcols, mrows), px = data.data, [r, g, b] = this.gloom;
+    // (The dark's own little canvas is kept in memory, not on the graphics card: pixels are written to it every
+    // frame, and writing pixels to a canvas the card holds stalled a frame for 50 to 90 ms every so often on a
+    // desktop, several times that on a phone. `willReadFrequently` is how a canvas is asked to stay in memory.)
+    const mc = map.getContext('2d', { willReadFrequently: true }), data = this.darkData ??= mc.createImageData(mcols, mrows), px = data.data, [r, g, b] = this.gloom;
     // (Eased by the time that has passed, not by the frame: the same on a screen of any rate. At sixty frames a
     // second this is three tenths of the way each frame.)
     const since = Math.max(0, Math.min(0.1, this.time - (this.litAt ?? this.time - 1 / 60))), ease = 1 - Math.exp(-since * 21.4);
@@ -2920,7 +2955,7 @@ export class Game {
       }
     }
     let map = M.mapCanvas;
-    if (!map || map.width !== size) { map = M.mapCanvas = document.createElement('canvas'); map.width = map.height = size; M.mapData = map.getContext('2d').createImageData(size, size); M.mapAt = -1; }
+    if (!map || map.width !== size) { map = M.mapCanvas = document.createElement('canvas'); map.width = map.height = size; M.mapData = map.getContext('2d', { willReadFrequently: true }).createImageData(size, size); M.mapAt = -1; }
     const view = `${this.version}:${R}:${per}:${lens}:${mx0},${my0}`;
     if (this.time - M.mapAt > 0.5 || M.mapFor !== view) {
       M.mapAt = this.time; M.mapFor = view;
@@ -2935,7 +2970,7 @@ export class Game {
         if (L !== undefined && L[0] <= lens) { r = L[1]; g = L[2]; b = L[3]; shade = inside ? 1 : 0.6; }
         px[o] = r * shade + 8; px[o + 1] = g * shade + 7; px[o + 2] = b * shade + 10; px[o + 3] = 255;
       }
-      map.getContext('2d').putImageData(M.mapData, 0, 0);
+      map.getContext('2d', { willReadFrequently: true }).putImageData(M.mapData, 0, 0);
     }
     ctx.drawImage(map, x, y);
     const at = (wx, wy) => [x + size / 2 + (wx - mx0) / per, y + size / 2 + (wy - my0) / per];
@@ -3000,20 +3035,22 @@ export class Game {
     ctx.fillStyle = ((this.time * 3) | 0) % 2 ? '#ffffff' : '#ffd83a'; ctx.fillRect(Math.round(dx) - 1, Math.round(dy) - 1, 3, 3);
     ctx.restore();
   }
-  // The finds the finder marks within `half` cells of a place (square): those of the kinds its level knows, that
+  // The finds the finder marks within `half` cells of a place (square) and within its range of the drill: those of the kinds its level knows, that
   // still lie where the seed laid them (a pocket or a wreck may have taken the place), within the tether's reach,
   // and that the drill has not yet seen (what it has seen is on the map already). Asked of the seed alone: no
   // ground is made to answer. The list is kept while the place, the span and the level stay the same.
   findsNear(cx, cy, half) {
     const w = this.world, level = this.val('mapfinder'), R = this.val('tether');
     if (!level) return [];
-    const x0 = Math.floor((cx - half - C) / FIND), x1 = Math.floor((cx + half - C) / FIND), y0 = Math.floor((cy - half - C) / FIND), y1 = Math.floor((cy + half - C) / FIND);
-    const key = `${this.S.seed}:${level}:${R}:${x0},${y0},${x1},${y1}:${this.version}`;
+    // (Sectors of finds that are both in the view asked about and within the finder's range of the drill.)
+    const d = this.drill, far = FINDER[level], lo = (a, b) => Math.floor((Math.max(a - half, b - far) - C) / FIND), hi = (a, b) => Math.floor((Math.min(a + half, b + far) - C) / FIND);
+    const x0 = lo(cx, d.x), x1 = hi(cx, d.x), y0 = lo(cy, d.y), y1 = hi(cy, d.y);
+    const key = `${this.S.seed}:${level}:${R}:${x0},${y0},${x1},${y1}:${Math.floor(d.x / 8)},${Math.floor(d.y / 8)}:${this.version}`;
     if (this.foundFor !== key) {
       this.foundFor = key; this.found = [];
       for (let sy = y0; sy <= y1 && this.found.length < 200; sy++) for (let sx = x0; sx <= x1; sx++) {
         const [what, fx, fy] = w.findSpot(sx, sy);
-        if (what === null || !(FOUND[what] <= level) || Math.hypot(fx - C, fy - C) > R || w.peek(fx, fy) >= 0) continue;
+        if (what === null || !(FOUND[what] <= level) || Math.hypot(fx - C, fy - C) > R || Math.hypot(fx + 0.5 - d.x, fy + 0.5 - d.y) > far || w.peek(fx, fy) >= 0) continue;
         const laid = w.kindAt(fx, fy, w.biomeAt(fx, fy));
         if ((what === 'cache' && laid !== K.CACHE) || (what === 'prism' && laid !== K.PRISM) || rowOf(w.biomeAt(fx, fy)).pocket !== null) continue;
         this.found.push([what, fx, fy]);
@@ -3120,6 +3157,7 @@ export class Game {
       ['SPORES', this.val('sporedrive') ? `SPEED x${BOOST.by}` : 'KNOCK', this.val('sporedrive') > 0],
       ['ARCS', this.val('arccoil') ? 'MEND A PIP' : 'KNOCK', this.val('arccoil') > 0],
       ['HAUL PAY', `+${parts * 10}% (${parts}/8 PARTS)`, parts > 0],
+      ['FURTHEST OUT', `${Math.floor(S.out ?? 0)} CELLS`],
       ['PLACES MET', `${Object.keys(S.met).length}`],
       ['REFINERY', `GRIT x${this.val('refinery')}, GEMS x${this.val('cutter')}`, S.lv.refinery + S.lv.cutter > 0],
       ['LAMP', `${this.val('lamp')} CELLS`, S.lv.lamp > 0],
@@ -3127,7 +3165,7 @@ export class Game {
       ['ANALYSED', known.length ? `${known.length}/${LAB.length}, UP TO +${best}%` : `0/${LAB.length}`, known.length > 0],
       ['SPECIMENS', [1, 2, 3, 4].map(k => this.specs(k)).join(' / ')],
       ['MAP', `${Math.round(this.val('maprange') * 46)} CELLS, ${MAPS[1].show(this.val('maplens'))}`, this.S.lv.maprange + this.S.lv.maplens > 0],
-      ['FINDER', this.val('mapfinder') ? ['', 'CACHES', 'CACHES, GEODES', 'ALL FINDS'][this.val('mapfinder')] : 'NONE', this.val('mapfinder') > 0],
+      ['FINDER', this.val('mapfinder') ? `${['', 'CACHES', '+GEODES', 'ALL'][this.val('mapfinder')]}, ${FINDER[this.val('mapfinder')]} CELLS` : 'NONE', this.val('mapfinder') > 0],
       ['CHART', this.val('chart') ? 'YES' : 'NONE', this.val('chart') > 0],
     ];
   }
@@ -3143,6 +3181,16 @@ export class Game {
     this.buttons.unshift({ x: px + 6, y: y0 + 28, w: pw - 12, h: 20, act: () => {
       if (this.confirmReset > 0) { this.confirmReset = 0; this.fresh((Math.random() * 1e9) | 0); this.save(); sfx.relic(); } else { this.confirmReset = 2.5; sfx.tap(); }
     } });
+  }
+  // Under the menu's rows, the long frames written down (`frameTook`), newest first: how long, and where the time
+  // went, so that whoever sees the game freeze can say what it was doing.
+  drawStalls(px, y0, pw) {
+    const { ctx } = this;
+    text(ctx, 'LONG FRAMES', px + 8, y0, '#8a84a0');
+    this.stalls.slice().reverse().forEach((s, n) => {
+      const ours = s.update + s.render, where = ours < s.gap / 2 ? 'BROWSER' : s.ms >= ours / 2 && s.top ? s.top.toUpperCase() : s.update > s.render ? 'STEP' : 'DRAW';
+      text(ctx, `${(s.gap / 1000).toFixed(1)}S ${where} ${s.update}+${s.render} AT ${s.out}`, px + 8, y0 + 11 + n * 10, '#bcb4cc');
+    });
   }
   drawStats(px, y0, pw) {
     const { ctx } = this;
@@ -3165,14 +3213,14 @@ export class Game {
     if (this.labPage < 0 || this.labPage >= pages) this.labPage = Math.floor(LAB.indexOf(sel) / rows);
     if (this.labTab === 'chart' && !this.charted) this.labTab = 'stats';
     const chart = Math.min(pw - 12, H - 52 - HEAD - 10);
-    const rise = 1 - this.labRise, ph = this.labTab === 'menu' ? HEAD + 56 : this.labTab === 'chart' ? HEAD + chart + 10 : this.labTab === 'stats' ? HEAD + this.stats().length * 11 + 8 : HEAD + rows * RH + NOTE + (paged ? 14 : 0) + 4, py = Math.max(2, Math.round((H - 44 - ph) / 2)) + Math.round(rise * rise * 60);
+    const rise = 1 - this.labRise, ph = this.labTab === 'menu' ? HEAD + 56 + (this.stalls.length ? 14 + this.stalls.length * 10 : 0) : this.labTab === 'chart' ? HEAD + chart + 10 : this.labTab === 'stats' ? HEAD + this.stats().length * 11 + 8 : HEAD + rows * RH + NOTE + (paged ? 14 : 0) + 4, py = Math.max(2, Math.round((H - 44 - ph) / 2)) + Math.round(rise * rise * 60);
     slice9(ctx, 'ui', 'panel', px, py, pw, ph);
     this.button(px, py, pw, ph, () => {});
     this.buttons.at(-1).swallow = true;
     this.chartRect = null;
     this.panelTabs(px, py, pw, HEAD);
     if (this.labTab === 'stats') { this.drawStats(px, py + HEAD, pw); return; }
-    if (this.labTab === 'menu') { this.drawMenu(px, py + HEAD, pw); return; }
+    if (this.labTab === 'menu') { this.drawMenu(px, py + HEAD, pw); if (this.stalls.length) this.drawStalls(px, py + HEAD + 54, pw); return; }
     if (this.labTab === 'chart') {
       // The chart is dragged to look about it and pinched (or wheeled, or stepped by its two buttons) to look closer:
       // from the whole reach down to four pixels a cell, never past the edge of the whole reach's own view.

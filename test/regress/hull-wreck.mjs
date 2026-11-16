@@ -101,11 +101,10 @@ for (const seed of [7, 19, 23]) {
   check(row.gems[0] === 0 && row.grit.every((g, l) => l === 0 || g > row.grit[l - 1]), `the hull's prices are ${row.grit} grit and ${row.gems} gems`);
   const game = await makeGame(7, {}, { hull: true });
   game.S.grit = 1e9; game.S.gems[B.EMBER] = 1e6;
-  // Its levels ask that 1, 3, 6 and 10 kinds of thing have been analysed: with none, the tap is refused and says so.
+  // Its levels ask that the drill has been 150, 300, 600 and 1,000 cells out: having been nowhere, the tap is refused and says so.
   game.buy(row);
-  check(game.S.lv.hull === 0 && game.shopNote?.text === 'NEEDS 0/1 KINDS ANALYSED' && game.lacks(row) === 'NEEDS 0/1 KINDS ANALYSED', `with grit and nothing analysed the tap ${game.S.lv.hull ? 'bought' : 'was refused'} and said '${game.shopNote?.text}'`);
-  const { LAB } = await import('../../js/game.js');
-  for (const e of LAB.slice(0, 10)) game.S.lab[e.key] = 1;
+  check(game.S.lv.hull === 0 && game.shopNote?.text === 'NEEDS 0/150 CELLS OUT' && game.lacks(row) === 'NEEDS 0/150 CELLS OUT', `with grit and a drill that has been nowhere the tap ${game.S.lv.hull ? 'bought' : 'was refused'} and said '${game.shopNote?.text}'`);
+  game.S.out = 1000;
   for (let l = 0; l < 4; l++) game.buy(row);
   check(game.S.lv.hull === 4 && game.val('hull') === 9 && game.hull === 9 && game.cost(row) === null, `four levels bought: level ${game.S.lv.hull}, ${game.hull} pips`);
   game.shop = true; game.shopRise = 1; game.render(); game.shop = false; game.render();

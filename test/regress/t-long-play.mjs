@@ -35,7 +35,9 @@ let first = null;
 try { first = await run(true); } catch (error) { note(`threw: ${error.stack.split('\n').slice(0, 4).join(' | ')}`); }
 if (first) {
   const { S, sum, bought, samples } = first;
-  if (S.lv.tether < 4) note(`after ${minutes} minutes the reach is at level ${S.lv.tether}: under 4`);
+  // (A level of reach asks that the drill has been three fifths of the way out the last one goes: the pilot is at
+  // the fourth reach, 72, by six minutes, where it was at the fifth before levels asked for that.)
+  if (S.lv.tether < 3) note(`after ${minutes} minutes the reach is at level ${S.lv.tether}: under 3`);
   if (!first.first.slab) note('the first keystone slab was not brought home');
   if (sum.loops < 8) note(`${sum.loops} rings flown shut: under 8`);
   if (sum.failed > 2) note(`${sum.failed} rings left standing`);
