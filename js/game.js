@@ -1179,7 +1179,7 @@ export class Game {
     // (A pocket's plate has its mineral on it, where the mineral has a picture; any other place its direction's gem.)
     this.place = { title: row.title, icon: GEM_ICON[row.kin] ?? 'grit', mineral: this.mineralOf(row), also: row.gemB !== row.kin ? GEM_ICON[row.gemB] ?? null : null, colour: bright(row.map), t: 0, card, life: card ? CARD : PLATE };
     // (A border that wanders is crossed many times in a few cells: the name changes each time, the sound does not.)
-    if (card) sfx.arrive(row.kin); else if (this.time - this.motifAt > PLATE) sfx.place(row.kin);
+    if (card) sfx.arrive(row); else if (this.time - this.motifAt > PLATE) sfx.place(row);
     this.motifAt = this.time;
   }
   // The name of a ground's mineral, where it is a pocket's and the mineral has a picture on the 'minerals' sheet:
@@ -1589,7 +1589,7 @@ export class Game {
         const chips = ground.pocket?.chips ?? ground.debris;
         for (const colour of chips) this.sparkle(cx, cy, 8, colour);
         this.ring(cx, cy, bright(ground.map), 110, 0.12);
-        sfx.place(ground.kin);
+        sfx.place(ground);
       }
       // A giant: rings after rings, gold and the gems' colours, a longer beat of stillness and a brighter flash, and
       // a sound that grows with it (`sfx.vast`).
@@ -2220,9 +2220,9 @@ export class Game {
       const x = Math.floor((this.cam.x + (Math.random() - 0.5) * W) / T), y = Math.floor((this.cam.y + (Math.random() - 0.5) * H) / T), kk = w.peek(x, y);
       if ((kk === K.ORE_A || kk === K.ORE_B || kk === K.STEEL || kk === K.RELIC || kk === K.CACHE || kk === K.WRECK) && Math.random() < (kk === K.CACHE || kk === K.WRECK ? 1 : 0.5)) this.parts.push({ x: (x + 0.25 + Math.random() * 0.5) * T, y: (y + 0.25 + Math.random() * 0.5) * T, vx: 0, vy: 0, t: 0, life: 0.35, color: '#ffffff', size: 1, star: true });
     }
-    setAmbience(here.kin, here.rich >= 2, this.far);
+    setAmbience(here, here.rich >= 2, this.far);
     this.chime -= dt;
-    if (this.chime <= 0) { this.chime = 2.5 + Math.random() * 4.5; sfx.chime(here.kin); }
+    if (this.chime <= 0) { this.chime = 2.5 + Math.random() * 4.5; sfx.chime(here); }
   }
 
   // ------------------------------------------------------------ small things
