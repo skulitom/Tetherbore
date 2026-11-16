@@ -31,6 +31,10 @@
 // most open cells against rock in the eleven by fifteen round it (about what a phone shows), at the end of a tunnel
 // from the core that stops three cells short of it and a way one cell wide on from there, with no room carved. So
 // the cave is as the ground has it, with the pieces of its own that hang, stand and grow in it (js/decor.js).
+// `feel=<event>` makes something of the ground's feel come at once, whatever the ground and its clock: a quake,
+// a gust, a drip, a creak, a bubble, steam, a trickle, a shooting star (stars), a worm or a crackle; or `flies`
+// (the ground's fireflies, all of them about the drill), `icicle` (one falls near the drill) or `rime` (the
+// corners frosted over). Stepped a little way, the picture catches it (js/feel.js: `force`).
 //
 // The view is held still: `tetherbore.advance(ms)` steps it, `tetherbore.resume()` lets it play.
 import * as world from './world.js';
@@ -232,6 +236,9 @@ export function stage(game, query) {
       set: value => { Object.defineProperty(game.input, 'auto', { configurable: true, enumerable: true, writable: true, value }); },
     });
   }
+  // Something of the ground's feel, made to come at once.
+  const feel = query.get('feel');
+  if (feel) game.feel.force(feel);
   // Nuggets of the pocket's mineral, brought home as a loop round them would bring them.
   const hauled = pocket && haul ? nuggets(game, pocket.zone, haul) : [];
   if (hauled.length) { w.see(Math.floor(d.x), Math.floor(d.y), 12); game.haul(hauled); game.changed(hauled); }
@@ -263,6 +270,8 @@ export function stage(game, query) {
         cells: [Math.round(game.W / T), Math.round(game.H / T)], canvas: [game.W, game.H],
         biome: b, ground: world.BIOMES[b]?.name ?? `${b}`,
         loose: game.pieces.length, woke,
+        // What of the ground's feel is on show, and whether what was made to come has still to (`feel`).
+        feel: { particles: game.feel.live, events: game.feel.events, forced: game.feel.forced },
         // Inside a pocket: where its middle lies, its radius and its ground; and how many cells were hauled.
         cave: cave && { at: [cave.at[0] - C, cave.at[1] - C], room: cave.room },
         pocket: pocket && { at: [pocket.zone.cx - C, pocket.zone.cy - C], radius: pocket.zone.rho, ground: world.BIOMES[pocket.zone.row].name, hauled: hauled.length, specimens: game.S.spec },
