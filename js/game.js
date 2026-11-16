@@ -144,8 +144,22 @@ for (const [level, colour, kinds] of [[1, [214, 178, 64], [K.ORE_A]], [1, [255, 
   [3, [120, 240, 190], [K.MINERAL, K.NODE, K.CACHE, K.PRISM, K.FOSSIL, K.CAP, K.CAP_LIT, K.TWIN]]]) for (const k of kinds) LENS[k] = [level, ...colour];
 // Which finds the finder marks at each level of it.
 const FOUND = { cache: 1, geode: 2, prism: 3 };
-const ROWS = [...UPGRADES, ...WORKS, ...MAPS];
-const TABS = [{ id: 'rig', name: 'RIG', rows: UPGRADES }, { id: 'works', name: 'WORKS', rows: WORKS }, { id: 'map', name: 'MAP', rows: MAPS }];
+// The shop's fourth tab, CORE: what is built into the station late in a game, at many times the price of anything
+// in the other tabs (a level costs from one and a half to six times the step of reach it lies beside, and gems by
+// the thousand), each asking besides for much to have been found.
+//   REFINERY   every haul's grit is multiplied
+//   GEM CUTTER every haul's gems are multiplied
+//   LAMP       the drill's light reaches further (cells)
+//   BLACK BOX  when the drill is lost, this share of the grit the trip had earned is kept
+const deep = (steps, gems) => ({ beside: steps.map(([at]) => at), grit: steps.map(([at, share]) => priced(at, share)), gems });
+export const CORE = [
+  { id: 'refinery', pic: 'grit', name: 'REFINERY', what: 'HAULS PAY MORE GRIT', values: [1, 1.15, 1.3, 1.5, 1.75, 2], gem: B.FROST, needs: ['places', [6, 9, 12, 16, 20]], ...deep([[5, 1.5], [6, 2], [7, 2.5], [8, 3], [8, 6]], [600, 1500, 4000, 10000, 25000]), show: v => `x${v}` },
+  { id: 'cutter', pic: 'lode', name: 'GEM CUTTER', what: 'HAULS PAY MORE GEMS', values: [1, 1.2, 1.4, 1.7, 2], gem: B.LODE, needs: ['kinds', [4, 7, 10, 12]], ...deep([[5.5, 1.5], [6.5, 2], [7.5, 3], [8, 5]], [800, 2500, 8000, 20000]), show: v => `x${v}` },
+  { id: 'lamp', pic: 'bolt', name: 'LAMP', what: 'LIGHT REACHES FURTHER', values: [8.5, 10, 12, 14], gem: B.EMBER, needs: ['parts', [1, 3, 5]], ...deep([[4, 1], [6, 1.5], [8, 2]], [0, 1000, 6000]), show: v => `${v}` },
+  { id: 'blackbox', pic: 'lock', name: 'BLACK BOX', what: 'KEEPS GRIT WHEN LOST', values: [0, 0.25, 0.5, 0.75], gem: B.MIRE, needs: ['places', [5, 10, 15]], ...deep([[5, 1], [6.5, 2], [8, 3]], [400, 2000, 9000]), show: v => `${Math.round(v * 100)}%` },
+];
+const ROWS = [...UPGRADES, ...WORKS, ...MAPS, ...CORE];
+const TABS = [{ id: 'rig', name: 'RIG', rows: UPGRADES }, { id: 'works', name: 'WORKS', rows: WORKS }, { id: 'map', name: 'MAP', rows: MAPS }, { id: 'core', name: 'CORE', rows: CORE }];
 // How long a spore pod's burst drives a drill fitted with the spore drive, and how much faster.
 const BOOST = { time: 3, by: 1.5 };
 // After a knock nothing takes another pip, or stuns again, for SHIELD seconds: time to get clear. (It was a second
@@ -1374,8 +1388,10 @@ export class Game {
     // are worth nothing themselves, as a loop of ash is, nothing is lost and nothing is said.)
     const parts = wrecks.length, over = grit > 0 ? overload(n, S.lv.winch) : 1, mult = haulBonus(n, this.val('winch')) * (1 + 0.1 * (held.filter(Boolean).length + parts)) * over;
     const shine = 1 + 0.5 * Math.min(prisms, 3);
-    for (let b = 1; b < 5; b++) gems[b] = Math.round(gems[b] * shine * over);
-    return { n, grit: Math.round(grit * mult) + lump, gems, lump, spec, minerals, mineral, prisms, shine, relic, caches, parts, wrecks, mult, over, chain: chains ? chain : 0 };
+    // (The station's refinery multiplies a haul's grit, lumps and all; its gem cutter the gems.)
+    const refined = this.val('refinery'), cut = this.val('cutter');
+    for (let b = 1; b < 5; b++) gems[b] = Math.round(gems[b] * shine * over * cut);
+    return { n, grit: Math.round((Math.round(grit * mult) + lump) * refined), gems, lump, spec, minerals, mineral, prisms, shine, relic, caches, parts, wrecks, mult, over, chain: chains ? chain : 0 };
   }
   // The tether is round these cells: they go, and what they are worth is on its way home.
   haul(cells) {
@@ -1786,13 +1802,16 @@ export class Game {
   // and found since is gone, and so is every cut made and every haul taken since: the ground is as it was. The
   // drill stands whole in the middle of the core, and the screen says what the trip cost.
   revert() {
-    const lost = Math.max(0, Math.round(this.S.grit - JSON.parse(this.docked).grit));
+    const earned = Math.max(0, Math.round(this.S.grit - JSON.parse(this.docked).grit));
     this.S = JSON.parse(this.docked);
+    // (The black box keeps a share of what the trip had earned.)
+    const kept = Math.round(earned * this.val('blackbox')), lost = earned - kept;
+    this.S.grit += kept;
     this.world.back();
     this.version++;
     this.begin();
     this.drill.armed = false; this.drill.park = true;
-    this.notice = { title: 'TRIP LOST', sub: lost > 0 ? `-${compact(lost)} GRIT` : '', colour: '#ff7a5a', t: 0, life: 3 };
+    this.notice = { title: 'TRIP LOST', sub: lost > 0 ? `-${compact(lost)} GRIT${kept > 0 ? `, ${compact(kept)} KEPT` : ''}` : '', colour: '#ff7a5a', t: 0, life: 3 };
     this.flash = 0.25; sfx.dock();
     this.save();
   }
@@ -2601,7 +2620,7 @@ export class Game {
     // a little over 1 (light is capped at 1), so the four cells the drill is among are all fully lit and the
     // light under the drill is the same wherever in a cell it is. (Lit from its cell's middle alone, brighter
     // while the bit cut and with a waver, the light pulsed as the drill crossed each cell and at every cut.)
-    const LAMP = 8.5, dcx = Math.floor(d.x), dcy = Math.floor(d.y);
+    const LAMP = this.val('lamp'), dcx = Math.floor(d.x), dcy = Math.floor(d.y);
     for (const [u, v] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
       const cx = Math.floor(d.x - 0.5) + u, cy = Math.floor(d.y - 0.5) + v, lx = cx - x0, ly = cy - y0;
       if ((cx !== dcx || cy !== dcy) && (lx < 0 || ly < 0 || lx >= cols || ly >= rows || L.solid[ly * cols + lx])) continue;
@@ -3102,6 +3121,9 @@ export class Game {
       ['ARCS', this.val('arccoil') ? 'MEND A PIP' : 'KNOCK', this.val('arccoil') > 0],
       ['HAUL PAY', `+${parts * 10}% (${parts}/8 PARTS)`, parts > 0],
       ['PLACES MET', `${Object.keys(S.met).length}`],
+      ['REFINERY', `GRIT x${this.val('refinery')}, GEMS x${this.val('cutter')}`, S.lv.refinery + S.lv.cutter > 0],
+      ['LAMP', `${this.val('lamp')} CELLS`, S.lv.lamp > 0],
+      ['BLACK BOX', this.val('blackbox') ? `KEEPS ${Math.round(this.val('blackbox') * 100)}%` : 'NONE', S.lv.blackbox > 0],
       ['ANALYSED', known.length ? `${known.length}/${LAB.length}, UP TO +${best}%` : `0/${LAB.length}`, known.length > 0],
       ['SPECIMENS', [1, 2, 3, 4].map(k => this.specs(k)).join(' / ')],
       ['MAP', `${Math.round(this.val('maprange') * 46)} CELLS, ${MAPS[1].show(this.val('maplens'))}`, this.S.lv.maprange + this.S.lv.maplens > 0],
@@ -3215,7 +3237,7 @@ export class Game {
       if (t === tab) { ctx.fillStyle = '#ffe14a'; ctx.fillRect(tx, py + 17, tw, 1); }
       if (t.rows.some(u => this.canBuy(u))) { ctx.fillStyle = '#8ce060'; ctx.fillRect(tx + tw + 2, py + 6, 2, 2); }
       this.buttons.unshift({ x: tx - 4, y: py, w: tw + 10, h: 20, act: () => { this.shopTab = id; sfx.tap(); } });
-      tx += tw + 12;
+      tx += tw + 9;
     }
     text(ctx, 'x', px + pw - 12, py + 6, '#ffffff');
     this.buttons.unshift({ x: px + pw - 24, y: py, w: 24, h: 22, act: () => { this.shop = false; sfx.tap(); } });
@@ -3233,6 +3255,7 @@ export class Game {
       else if (u.id === 'hull') this.drawDrill(vx + 8, vy + 8, 0, S.lv.drill, S.lv.momentum, -1, 1, 1, ctx, next);
       else if (u.kin !== undefined && u.spec) this.drawDrill(vx + 8, vy + 8, 0, S.lv.drill, S.lv.momentum, -1, 1, 1, ctx, S.lv.hull, u.id);
       else if (MAPS.includes(u)) draw(ctx, 'upgrades', u.icon, vx + 2, vy + 2);
+      else if (u.pic) draw(ctx, 'icons', u.pic, vx + 3, vy + 3);
       else { draw(ctx, 'upgrades', u.icon, vx + 2, vy + 2); text(ctx, `${u.values[next]}`, vx + 15, vy + 7, '#ffffff', 1); }
       // What it is, what it does, and what the next level changes.
       text(ctx, u.name, px + 25, y + 2, '#ffffff');

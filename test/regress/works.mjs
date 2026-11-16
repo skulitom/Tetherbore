@@ -3,7 +3,7 @@
 // what a hazard does to the drill: LAVA SKIN lets it through lava, SPORE DRIVE turns a pod's burst into speed,
 // ARC COIL turns an arc into a pip mended, MENDER mends the hull faster than it mends itself. A game saved before them loads
 // with none. The panel the top bar opens says what the drill is now, from the game's own figures.
-import { makeGame, UPGRADES, WORKS, MAPS, K, B, N, C } from '../harness.mjs';
+import { makeGame, UPGRADES, WORKS, MAPS, CORE, DEATH, K, B, N, C } from '../harness.mjs';
 
 const fails = [], check = (ok, what) => { if (!ok) fails.push(what); };
 const fly = (game, x, y, seconds) => { game.input.auto = [x, y, 1]; for (let f = 0; f < seconds * 60; f++) game.update(1 / 60); game.input.auto = null; };
@@ -31,7 +31,7 @@ check(WORKS.every(u => u.grit.length === u.values.length - 1 && u.spec.length ==
   // Both tabs draw, and a tap on a tab opens it.
   game.resize(320, 568, 1); game.shop = true; game.shopRise = 1; game.render();
   // (The tabs stand in the panel's header, left to right, each a button twenty high and under sixty wide.)
-  const tabs = game.buttons.filter(b => b.h === 20 && b.y < game.H / 2 && b.w < 60 && b.w > 24 && b.x < game.W * 0.6).sort((a, b) => a.x - b.x);
+  const tabs = game.buttons.filter(b => b.h === 20 && b.y < game.H / 2 && b.w < 60 && b.w > 24 && b.x < game.W - 40).sort((a, b) => a.x - b.x);
   tabs[1]?.act(); game.render();
   // What a refused tap says is written on the footer's line, never over the tabs in the header.
   {
@@ -45,7 +45,7 @@ check(WORKS.every(u => u.grit.length === u.values.length - 1 && u.spec.length ==
     const header = y => y >= top && y < top + 20;
     check(withNote.filter(header).length === without.filter(header).length && withNote.length !== without.length, `with a note up ${withNote.filter(header).length} glyphs are drawn in the header, and ${without.filter(header).length} without`);
   }
-  check(tabs.length === 3 && game.shopTab === 'works', `a tap on the second tab left the shop at '${game.shopTab}'`);
+  check(tabs.length === 4 && game.shopTab === 'works', `a tap on the second tab left the shop at '${game.shopTab}'`);
   game.shop = false;
   game.save();
   const loaded = await makeGame(7); await loaded.restore();
@@ -255,6 +255,50 @@ for (const coil of [0, 1]) {
   const { overload } = await import('../../js/game.js');
   const total = n => n * overload(n, 0);
   check(overload(150, 0) === 1 && total(60000) < total(150) * 8 && total(60000) > total(6000) && total(6000) > total(600), `a piece of 60,000 cells on the first winch pays as ${Math.round(total(60000))} cells at full pay, one of 600 as ${Math.round(total(600))}`);
+}
+
+// ---- the fourth tab: what the station is built up with late, at many times the other tabs' prices
+{
+  const of = id => CORE.find(u => u.id === id), dearest = Math.max(...[...UPGRADES, ...WORKS, ...MAPS].flatMap(u => u.grit));
+  check(CORE.map(u => u.id).join() === 'refinery,cutter,lamp,blackbox', `the fourth tab's rows are ${CORE.map(u => u.id)}`);
+  check(CORE.every(u => u.grit.every((g, l) => l === 0 || g > u.grit[l - 1]) && u.gems.every((g, l) => l === 0 || g > u.gems[l - 1]) && u.needs[1].length === u.grit.length), 'a row of the fourth tab does not cost more at each level, in grit and in gems, or asks nothing found');
+  check(of('refinery').grit.at(-1) > dearest * 4 && of('cutter').grit.at(-1) > dearest * 4 && of('refinery').gems.at(-1) >= 25000, `the dearest level of the other tabs is ${dearest}; the refinery's last is ${of('refinery').grit.at(-1)} and ${of('refinery').gems.at(-1)} gems`);
+  const game = await makeGame(7, {}, { hull: true }), w = game.world;
+  // A block of rich ore in the north's own ground, 200 cells out: what a haul of it pays, plain, refined and cut.
+  const cells = []; for (let y = 0; y < 5; y++) for (let x = 0; x < 6; x++) { const i = (C - 200 + y) * N + C + x; w.setK(i, K.ORE_B); cells.push(i); }
+  const plain = game.payOf(cells), frost = plain.gems[B.FROST];
+  check(plain.grit > 0 && frost > 0, `a block of the north's rich ore pays ${plain.grit} grit and ${frost} gems`);
+  game.S.lv.refinery = 3; game.S.lv.cutter = 2;
+  const built = game.payOf(cells);
+  check(Math.abs(built.grit - plain.grit * 1.5) <= 1 && Math.abs(built.gems[B.FROST] - frost * 1.4) <= 1, `with the refinery at x1.5 and the cutter at x1.4 it pays ${built.grit} grit and ${built.gems[B.FROST]} gems`);
+  game.S.lv.refinery = 0; game.S.lv.cutter = 0;
+  // Bought with what is asked, refused without what must be found.
+  game.S.grit = 1e12; game.S.gems = game.S.gems.map(() => 1e6);
+  game.buy(of('lamp'));
+  check(game.S.lv.lamp === 0 && game.shopNote?.text === 'NEEDS 0/1 WRECK PARTS', `the lamp with no wreck part ${game.S.lv.lamp ? 'was bought' : 'was refused'}: '${game.shopNote?.text}'`);
+  game.S.wrecks[0] = 1; game.buy(of('lamp'));
+  check(game.S.lv.lamp === 1 && game.val('lamp') === 10, `with a wreck part the lamp reaches ${game.val('lamp')} cells`);
+  // The lamp: with it the light reaches a cell eleven off down an open tunnel, where without it that cell is dark.
+  const lit = async level => {
+    const g = await makeGame(7), gw = g.world; g.S.lv.lamp = level; g.resize(360, 640, 1);
+    for (let x = 2; x <= 30; x++) { for (let y = -1; y <= 1; y++) gw.setK((C + y) * N + C + x, K.EMPTY); gw.see(C + x, C, 2); }
+    g.drill.x = g.drill.px = C + 6.5; g.drill.home = false; g.band = [[g.drill.x, g.drill.y], [C + 0.5, C + 0.5]]; g.changed(); g.version++;
+    for (let f = 0; f < 90; f++) { g.update(1 / 60); g.render(); }
+    const L = g.lightMap; return L.lit[(C - L.y0) * L.cols + C + 6 + 11 - L.x0];
+  };
+  const dim = await lit(0), bright = await lit(3);
+  check(dim < 0.05 && bright > 0.25, `eleven cells down the tunnel the light is ${dim.toFixed(2)} with the first lamp and ${bright.toFixed(2)} with the last`);
+  // The black box: half of what the trip earned is kept when the drill is lost.
+  const box = await makeGame(7, { drill: 4, blackbox: 2 }, { hull: true });
+  box.S.grit = 1000; box.input.auto = [1, 0, 1]; for (let f = 0; f < 180; f++) box.update(1 / 60); box.input.auto = null;
+  const earned = box.S.grit - 1000 + 400; box.S.grit += 400;
+  box.dents = box.val('hull') - 1; box.shield = 0; box.hit(0.3);
+  for (let f = 0; f < (DEATH + 0.2) * 60; f++) box.update(1 / 60);
+  check(box.drill.mode === 'free' && Math.abs(box.S.grit - (1000 + Math.round(earned * 0.5))) <= 1 && /KEPT$/.test(box.notice?.sub ?? ''), `with the black box at a half, a trip that had earned ${earned} left grit at ${box.S.grit}; the screen says '${box.notice?.sub}'`);
+  // The fourth tab draws, on the narrowest phone, and the stats name what is built.
+  game.S.lv.refinery = 2; game.resize(320, 568, 1); game.shop = true; game.shopRise = 1; game.shopTab = 'core'; game.render(); game.shop = false;
+  const said = Object.fromEntries(game.stats().map(([name, value]) => [name, value]));
+  check(said.REFINERY === 'GRIT x1.3, GEMS x1' && said.LAMP === '10 CELLS' && said['BLACK BOX'] === 'NONE', `the stats say ${said.REFINERY} / ${said.LAMP} / ${said['BLACK BOX']}`);
 }
 
 console.log(fails.length ? `DEFECT:\n  ${fails.join('\n  ')}` : 'no defect: the second tab sells four things for specimens, each turns a hazard, and the stats say what the drill is');
