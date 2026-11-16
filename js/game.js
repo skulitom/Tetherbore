@@ -301,6 +301,11 @@ const ROUND = 3.5, BRAID = 4;                    // on the fine canvas: how wide
 const FLY = 9, BODY = 0.34;                     // cells a second in open ground; the drill's half-width in cells
 const SIDE = [1, N, -1, -N];                    // the cells beside a cell, as steps of its number: east, south, west, north
 const LIGHT_STEP = [[1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, -1, 1], [1, 1, 1.41], [-1, 1, 1.41], [1, -1, 1.41], [-1, -1, 1.41]];
+// How far light goes to each of those neighbours, in a flat array: the flood of light reads it eight times for
+// every cell it lights, many times a frame, and taking each step apart as an array cost most of the flood's time.
+// The steps themselves, as offsets in the light's window, are kept on the window (lightMap.step), which alone
+// knows how many cells it is across.
+const LIGHT_FAR = Float64Array.from(LIGHT_STEP, s => s[2]);
 
 const compact = n => n < 1000 ? `${Math.floor(n)}` : n < 10000 ? `${(Math.floor(n / 100) / 10).toFixed(1)}K` : n < 1e6 ? `${Math.floor(n / 1000)}K`
   : n < 1e9 ? `${(Math.floor(n / 1e5) / 10).toFixed(1)}M` : `${(Math.floor(n / 1e8) / 10).toFixed(1)}B`;
@@ -3025,20 +3030,20 @@ export class Game {
   // the rock it meets: so it takes the shape of the tunnels and lights the faces of their walls. It is worked out
   // in a window of cells round the view; `want` holds the brightest light to reach each cell this frame.
   shine(cx, cy, power, reach) {
-    const L = this.lightMap, w = this.world, x = cx - L.x0, y = cy - L.y0;
-    if (x < 1 || y < 1 || x >= L.cols - 1 || y >= L.rows - 1 || L.want[y * L.cols + x] >= power) return;
-    const queue = L.queue, fade = power / reach;
+    const L = this.lightMap, { want, solid: sol, cols, rows, queue, step } = L, x = cx - L.x0, y = cy - L.y0;
+    if (x < 1 || y < 1 || x >= cols - 1 || y >= rows - 1 || want[y * cols + x] >= power) return;
+    const qlen = queue.length, fade = power / reach;
     let head = 0, tail = 0;
-    L.want[y * L.cols + x] = power; queue[tail++] = y * L.cols + x;
+    want[y * cols + x] = power; queue[tail++] = y * cols + x;
     while (head < tail) {
-      const at = queue[head++], here = L.want[at], qx = at % L.cols, qy = (at / L.cols) | 0;
-      if (qx < 1 || qy < 1 || qx >= L.cols - 1 || qy >= L.rows - 1) continue;
-      const solid = L.solid[at];
-      for (const [u, v, far] of LIGHT_STEP) {
-        const j = at + v * L.cols + u;
+      const at = queue[head++], here = want[at], qx = at % cols, qy = (at / cols) | 0;
+      if (qx < 1 || qy < 1 || qx >= cols - 1 || qy >= rows - 1) continue;
+      const solid = sol[at];
+      for (let s = 0; s < 8; s++) {
+        const j = at + step[s];
         // Rock drinks light fast: a face is lit, the cell behind it barely.
-        const next = here - fade * far * (solid || L.solid[j] ? 2.6 : 1);
-        if (next > L.want[j] + 0.01 && tail < queue.length) { L.want[j] = next; queue[tail++] = j; }
+        const next = here - fade * LIGHT_FAR[s] * (solid || sol[j] ? 2.6 : 1);
+        if (next > want[j] + 0.01 && tail < qlen) { want[j] = next; queue[tail++] = j; }
       }
     }
   }
@@ -3052,7 +3057,7 @@ export class Game {
     const vx0 = Math.floor(ox / T) - 1, vy0 = Math.floor(oy / T) - 1, vx1 = vx0 + Math.ceil(W / T) + 2, vy1 = vy0 + Math.ceil(H / T) + 2;
     const x0 = vx0 - pad, y0 = vy0 - pad, cols = vx1 - vx0 + 1 + pad * 2, rows = vy1 - vy0 + 1 + pad * 2;
     let L = this.lightMap;
-    if (!L || L.cols !== cols || L.rows !== rows) L = this.lightMap = { x0, y0, cols, rows, want: new Float32Array(cols * rows), lit: new Float32Array(cols * rows), next: new Float32Array(cols * rows), solid: new Uint8Array(cols * rows), queue: new Int32Array(4096) };
+    if (!L || L.cols !== cols || L.rows !== rows) L = this.lightMap = { x0, y0, cols, rows, want: new Float32Array(cols * rows), lit: new Float32Array(cols * rows), next: new Float32Array(cols * rows), solid: new Uint8Array(cols * rows), queue: new Int32Array(4096), step: Int32Array.from(LIGHT_STEP, ([u, v]) => v * cols + u) };
     // The window follows the view: what was lit keeps its place in the world.
     if (L.x0 !== x0 || L.y0 !== y0) {
       const sx = x0 - L.x0, sy = y0 - L.y0;
