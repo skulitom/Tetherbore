@@ -341,5 +341,22 @@ for (const coil of [0, 1]) {
   localStorage.removeItem('tetherbore-stalls');
 }
 
+// ---- many hauls at once share one budget of rubble: a dozen pieces coming loose together are not a dozen full hauls
+{
+  const { RUBBLE } = await import('../../js/game.js');
+  const game = await makeGame(7, { tether: 7 }), w = game.world;
+  for (let x = C + 1; x < C + 60; x++) for (let y = -2; y <= 2; y++) w.setK((C + y) * N + x, K.EMPTY);
+  game.changed();
+  const piece = m => { const cells = []; for (let y = 0; y < 40; y++) for (let x = 0; x < 40; x++) { const i = (C + 20 + m * 3 + y) * N + C + 62 + x; w.setK(i, K.SOFT); cells.push(i); } return cells; };
+  const paid = [];
+  for (let m = 0; m < 12; m++) { const before = game.S.grit; game.haul(piece(m)); paid.push(game.S.grit - before); }
+  const planned = game.hauls.map(h => h.total);
+  check(game.hauls.length === 12 && planned[0] === RUBBLE && planned.slice(1).every(n => n >= 12 && n <= 24) && planned.reduce((a, b) => a + b, 0) <= RUBBLE + 11 * 24, `twelve hauls of 1,600 cells at once are to be ${planned} bits of rubble`);
+  check(paid.every(g => g > 0) && paid.slice(1).every(g => Math.abs(g - paid[1]) <= paid[1] * 0.5), `they paid ${paid}`);
+  let most = 0, frames = 0;
+  while (game.hauls.length && frames < 1800) { game.update(1 / 60); frames++; most = Math.max(most, game.hauls.reduce((sum, h) => sum + h.bits.filter(b => !b.st).length, 0)); }
+  check(!game.hauls.length && most <= RUBBLE + 11 * 24 && game.pending.grit === 0, `all twelve came home in ${frames} frames, with ${most} bits on their way at the most and ${game.pending.grit} grit still to bank`);
+}
+
 console.log(fails.length ? `DEFECT:\n  ${fails.join('\n  ')}` : 'no defect: the second tab sells four things for specimens, each turns a hazard, and the stats say what the drill is');
 process.exit(fails.length ? 1 : 0);

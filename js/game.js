@@ -42,6 +42,8 @@ const round2 = n => { const unit = 10 ** Math.max(0, Math.floor(Math.log10(n)) -
 // A haul of fewer cells than LIGHT, with nothing in it to make a show of, is a light one: it stops nothing and
 // says what it paid where it lay. A haul made within CHAIN seconds of the one before is a link in a chain.
 const LIGHT = 12, CHAIN = 6;
+// How many bits of rubble may be on their way home at once, over every haul there is.
+export const RUBBLE = 400;
 // What the step up from each level of reach costs: the first is within the first haul, then 3 minutes of the
 // model's income rising to 15. (It was half that. A whole game played by a pilot earned two to three times what
 // the model says, and the owner had the shop nearly bought out before leaving the ground about the core: every
@@ -1416,8 +1418,14 @@ export class Game {
     const w = this.world, S = this.S, n = cells.length, pay = this.payOf(cells), { grit, gems, relic, caches, parts, mult, over } = pay;
     S.wrecks ??= [0, 0, 0, 0, 0, 0, 0, 0];
     for (const which of pay.wrecks) S.wrecks[which] = 1;
-    // A very large piece is shown by a share of its cells.
-    const sprites = [], show = Math.max(1, Math.ceil(n / 400));
+    // A very large piece is shown by a share of its cells: by no more blocks than there is room for among the
+    // rubble already on its way home. RUBBLE bits of ground are on their way at the most, whatever number of hauls
+    // they belong to, each new haul getting what the hauls before it have left (never fewer than a dozen blocks,
+    // half that once two dozen hauls are out). The limit was 400 to a haul: a great piece of natural ground comes
+    // loose as a dozen pieces or more at once, the caves in it parting them, and that was thousands of bits to
+    // push about and tens of thousands of things to draw in every frame, for seven seconds: a phone stood still.
+    const afloat = this.hauls.reduce((sum, h) => sum + Math.max(0, h.total - h.paid), 0), room = Math.max(this.hauls.length >= 24 ? 6 : 12, RUBBLE - afloat);
+    const sprites = [], show = Math.max(1, Math.ceil(n / room));
     let cx = 0, cy = 0;
     for (let at = 0; at < n; at++) {
       const i = cells[at], x = i % N, y = Math.floor(i / N);
@@ -1460,7 +1468,7 @@ export class Game {
     const length = cum[cum.length - 1];
     // Small pieces break fine, big ones coarse, so there are never too many bits of ground to push about; and
     // in a chain, where one heap of rubble follows another, none break fine.
-    const per = count <= 24 && !linked ? 4 : count <= 140 ? 2 : 1, size = T / per, h = { sprites, t: 0, n, count, grit, gems, left: grit, paid: 0, lift, relic, route, cum, length,
+    const per = count <= 24 && !linked && count * 16 <= room ? 4 : count <= 140 && count * 4 <= room ? 2 : 1, size = T / per, h = { sprites, t: 0, n, count, grit, gems, left: grit, paid: 0, lift, relic, route, cum, length,
       bits: [], total: count * per * per, size, v: 0, hole: 0, gathered: lift + spread + 0.3, light };
     let at = 0;
     sprites.forEach((s, i) => {

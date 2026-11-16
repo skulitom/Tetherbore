@@ -28,7 +28,9 @@ check(sizes.length === 15 && cells > 90, `the drift at ${at.cx - C},${at.cy - C}
 for (const gap of [0.3, 0.1]) {
   const r = await burst(7, 25, gap), game = r.game;
   check(r.boulders === 15 && r.cells === cells, `one every ${gap} s: ${r.boulders} boulders of ${r.cells} cells were hauled`);
-  check(r.fine === 1 && r.made === bits, `one every ${gap} s: ${r.fine} hauls broke fine and ${r.made} bits were made, not one and ${bits}`);
+  // (No more than sixteen to a cell of the first and four to a cell of the rest; fewer where the rubble already on
+  // its way leaves a haul less room, `RUBBLE` in js/game.js: a late haul of a run breaks coarser.)
+  check(r.fine === 1 && r.made <= bits && r.made >= 300, `one every ${gap} s: ${r.fine} hauls broke fine and ${r.made} bits were made, where one and no more than ${bits} were to be`);
   check(r.hauls >= (gap < 0.2 ? 15 : 10) && r.bits <= bits && r.bits > bits * 0.6, `one every ${gap} s: at the most ${r.hauls} hauls and ${r.bits} bits were on their way at once`);
   check(r.moves <= 4 * bits && r.moves < 2400, `one every ${gap} s: a frame moved bits ${r.moves} times`);
   check(game.hauls.length === 0 && game.pending.grit === 0 && game.S.stats.hauls === 15 && r.frames < 60 * 30, `one every ${gap} s: ${game.hauls.length} hauls are still on their way after ${r.frames} frames, ${game.pending.grit} grit not yet banked`);
