@@ -11,7 +11,10 @@
 //   cut through, pushing into it, so that stepped half a second the cut's glow holds the whole slab and stepped two
 //   the slab hangs loose and the drill has let go; `pocket` stands the drill inside the pocket nearest, in the lane
 //   beside the nugget at a hive's middle, with no room carved and the hive's amber left standing, and `haul` brings
-//   that many nuggets home from there, which banks their specimens; and stepped for three seconds, nothing
+//   that many nuggets home from there, which banks their specimens; `lv` sets levels (`max`, `late`, `id.n`),
+//   `shop` opens the shop, `buy` buys a row's next level (the shop's moment with `shop`, the fitting at the core
+//   without), `steer` holds the thumb, `fire` makes a power of what WORKS fits act, and `ladder` draws every level
+//   of every row and no world, and none of them sets anything unasked; and stepped for three seconds, nothing
 //   has moved the drill, nothing is wrong with the tether, and the saved game is as it was.
 import { makeGame, tetherFaults, sight, world, C, N, K } from '../harness.mjs';
 
@@ -235,6 +238,33 @@ check(await open('', 'example.org') === undefined, 'away from localhost an ordin
   check(open3 <= 3 && tetherFaults(ash.game).length === 0, `${open3} of the nine cells round the drill are open in the ash; the tether: ${tetherFaults(ash.game).join('; ')}`);
   ash.advance(500);
   check(ash.game.place && ash.game.place.title === 'ASH FLATS' && ash.game.place.mineral === 'tektite', `half a second on in the ash: ${JSON.stringify(ash.game.place)}`);
+}
+
+// What the upgrades show (js/fit.js): levels set, the shop open, a purchase, the thumb held, a power acting, and the
+// page of every level. Without them nothing is set; with them the saved game is left alone.
+{
+  const bare = await open('?shot&seed=7');
+  check(Object.values(bare.game.S.lv).every(l => l === 0) && !bare.game.shop && bare.game.fitter.queued === 0 && bare.game.input.auto === null, 'a view staged with none of lv, shop, buy, steer and fire set something');
+  const max = await open('?shot&seed=7&lv=max,drill.6'), lv = max.game.S.lv;
+  check(lv.winch === 8 && lv.drill === 6 && lv.lamp === 5 && max.game.S.stats.buys > 0, `lv=max,drill.6 left the levels ${JSON.stringify(lv)}`);
+  const late = await open('?shot&seed=7&lv=late');
+  check(late.game.S.lv.drill === 4 && late.game.S.lv.winch === 5 && late.game.S.lv.lavaskin === 1, `lv=late left the levels ${JSON.stringify(late.game.S.lv)}`);
+  const shop = await open('?shot&seed=7&lv=drill.2&shop=rig&buy=drill');
+  check(shop.game.shop && shop.game.S.lv.drill === 3 && shop.game.fitter.queued === 1 && shop.game.fitter.moment.t > 0, `shop=rig&buy=drill: the shop ${shop.game.shop ? 'open' : 'shut'}, the bit at ${shop.game.S.lv.drill}, ${shop.game.fitter.queued} queued`);
+  const fit = await open('?shot&seed=7&buy=refinery');
+  fit.advance(100);
+  check(!fit.game.shop && fit.game.S.lv.refinery === 1 && fit.game.fitter.playing.some(f => f.on && f.grand), 'buy=refinery with the shop shut is not fitted at the core, a show');
+  const steer = await open('?shot&seed=7&at=0,-300&steer=1,0');
+  check(JSON.stringify(steer.game.input.auto) === '[1,0,1]', `steer=1,0 holds the thumb at ${JSON.stringify(steer.game.input.auto)}`);
+  const arc = await open('?shot&seed=7&at=0,-300&fire=arccoil');
+  check(arc.game.S.lv.arccoil === 1 && arc.game.fitter.crackle > 0 && arc.game.hull === arc.game.val('hull'), 'fire=arccoil took no arc in');
+  const box = await open('?shot&seed=7&at=0,-300&fire=blackbox');
+  check(box.game.drill.mode === 'dead' && box.game.S.lv.blackbox === 1, 'fire=blackbox did not wreck the drill');
+  const ladder = await open('?shot&seed=7&ladder');
+  let threw = null;
+  try { ladder.advance(500); } catch (error) { threw = error.message; }
+  check(!threw, `the ladder threw: ${threw}`);
+  check(localStorage.getItem(SAVE) === saved, 'a view staged with levels, the shop and a purchase wrote over the saved game');
 }
 
 if (fails.length) { console.log(`FAIL: ${fails.join('\n      ')}`); process.exit(1); }

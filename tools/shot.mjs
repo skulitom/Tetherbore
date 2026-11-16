@@ -1,6 +1,7 @@
 // Photographs the game, so that ground and art can be judged by eye with no hand on a browser:
 //   node tools/shot.mjs <out.png> [--seed 7] [--at dx,dy] [--reach level] [--size 360x640] [--zoom n] [--frames n] [--lit] [--met] [--wake [type]]
-//                                 [--key] [--pocket] [--haul n] [--cave] [--feel event]
+//                                 [--key] [--pocket] [--haul n] [--cave] [--feel event] [--lv list] [--shop tab] [--buy id] [--steer x,y]
+//                                 [--fire id] [--ladder]
 //
 //   --at dx,dy    where the drill stands, in cells from the core: east and south are counted up, so 300 cells north
 //                 is `--at 0,-300`. Away from the core it stands in a small room at the end of a tunnel carved from
@@ -43,6 +44,19 @@
 //                 round the drill), icicle (one falls near the drill) or rime (the corners frosted over).
 //                 `--feel quake --frames 20` catches the view shaking and grit falling; `--feel gust --frames 60`
 //                 the wind; `--feel flies --frames 600` the fireflies come round the lamp.
+//   --lv list     levels set before the picture: `max` (every row at its last), `late` (every row at its last
+//                 before the late game's) or `id.n` (that row at level n), in a list read left to right:
+//                 `--lv max,drill.6`.
+//   --shop tab    the shop open at its tab: rig, works, map or core (with the drill at the core).
+//   --buy id      that row's next level bought as a purchase is, with nothing asked for it and nothing saved. With
+//                 --shop, the shop's moment (`--frames 8`); without, the shop is opened, bought from and shut at
+//                 once, and the part is fitted at the core: `--frames 25` the motes flying in, 45 the part seated,
+//                 70 its name. The first purchase of a game, a row's last level, anything WORKS fits and anything
+//                 CORE builds are made a show of (a picture with --lv has bought before).
+//   --steer x,y   the thumb held that way for every frame: flight, cutting, the flame and the sparks.
+//   --fire id     a power of what WORKS fits acts at once: mender, arccoil, sporedrive, lavaskin, diamond (steel
+//                 ahead, to cut) or blackbox (the drill wrecked).
+//   --ladder      no world: every level of every row drawn in rows, labelled (`--size 960x720`).
 //   --browser p   the Edge or Chrome to use, if the installed one is not to be.
 //
 // It serves this checkout on a free loopback port (static files, read only), opens `index.html?shot&...` in an
@@ -64,11 +78,11 @@ import { WORLD_R, HAZARDS } from '../js/world.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
-const usage = 'node tools/shot.mjs <out.png> [--seed 7] [--at dx,dy] [--reach level] [--size 360x640] [--zoom n] [--frames n] [--lit] [--met] [--wake [type]] [--key] [--pocket] [--haul n] [--cave] [--feel event] [--browser path]';
+const usage = 'node tools/shot.mjs <out.png> [--seed 7] [--at dx,dy] [--reach level] [--size 360x640] [--zoom n] [--frames n] [--lit] [--met] [--wake [type]] [--key] [--pocket] [--haul n] [--cave] [--feel event] [--lv list] [--shop tab] [--buy id] [--steer x,y] [--fire id] [--ladder] [--browser path]';
 const wrong = why => { console.error(`${why}\n  ${usage}`); process.exit(2); };
 
 // ---------------------------------------------------------------- what was asked for
-const options = { seed: '7', at: '0,0', reach: '', size: '360x640', zoom: '1', frames: '180', lit: false, met: false, wake: '', key: false, pocket: false, haul: '0', cave: false, feel: '', browser: '' };
+const options = { seed: '7', at: '0,0', reach: '', size: '360x640', zoom: '1', frames: '180', lit: false, met: false, wake: '', key: false, pocket: false, haul: '0', cave: false, feel: '', lv: '', shop: '', buy: '', steer: '', fire: '', ladder: false, browser: '' };
 let out = null;
 for (let args = process.argv.slice(2), i = 0; i < args.length; i++) {
   const arg = args[i];
@@ -100,6 +114,8 @@ const zoom = Number(options.zoom), haul = whole('haul', 0, 9);
 if (haul && !options.pocket) wrong('--haul brings home nuggets of the pocket the drill stands in: say --pocket too.');
 const FEELS = ['quake', 'gust', 'drip', 'creak', 'bubble', 'steam', 'trickle', 'stars', 'worm', 'crackle', 'flies', 'icicle', 'rime'];
 if (options.feel && !FEELS.includes(options.feel)) wrong(`--feel is one of ${FEELS.join(', ')}, not ${options.feel}.`);
+if (options.shop && !['rig', 'works', 'map', 'core'].includes(options.shop)) wrong(`--shop is one of rig, works, map, core, not ${options.shop}.`);
+if (options.fire && !['mender', 'arccoil', 'sporedrive', 'lavaskin', 'diamond', 'blackbox'].includes(options.fire)) wrong(`--fire is one of mender, arccoil, sporedrive, lavaskin, diamond, blackbox, not ${options.fire}.`);
 if (!(zoom >= 1 && zoom <= 64)) wrong(`--zoom is a number from 1 to 64, not ${options.zoom}.`);
 const at = options.at.split(',').map(Number), size = options.size.toLowerCase().split('x').map(Number);
 if (at.length !== 2 || !at.every(Number.isInteger)) wrong(`--at is two whole numbers of cells, dx,dy, not ${options.at}.`);
@@ -246,6 +262,8 @@ async function take() {
   if (options.cave) query.set('cave', '1');
   if (haul) query.set('haul', String(haul));
   if (options.feel) query.set('feel', options.feel);
+  for (const name of ['lv', 'shop', 'buy', 'steer', 'fire']) if (options[name]) query.set(name, options[name]);
+  if (options.ladder) query.set('ladder', '1');
   await page('Page.navigate', { url: `${origin}/index.html?${query}` });
   await processes();
   // The page says when the view is staged; if its scripts failed it never will, and what it said instead is told.

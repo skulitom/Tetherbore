@@ -6,6 +6,7 @@ import { sfx, unlock, setAmbience } from './audio.js';
 import { richness, haulBonus, overload, income, round2, NEEDS, UPGRADES, LAB, LAB_OF, labLevel, labNext, CORE, ROWS, REACH } from './shop.js';
 import { Drawing, T, DIR_BIOME, GEM_ICON, GEM_COLOR, GEM_WHERE, SPOT, bright, compact, DEBRIS } from './drawing.js';
 import { Feel } from './feel.js';
+import { Fitter } from './fit.js';
 export { richness, haulBonus, overload, income, UPGRADES, LAB, labLevel, labNext, WORKS, MAPS, CORE } from './shop.js';
 
 export { T };
@@ -244,6 +245,7 @@ export class Game {
     this.smokeIn = 0; this.wrecks = 0; this.knocks = 0;               // until a hull in trouble next smokes; wrecks and knocks since the game began (for tests and tools)
     this.feel = new Feel();                                           // the feel of the ground the drill is in: what only shows and sounds (js/feel.js)
     this.fallen = this.feel.fallen;                                   // the cells whose icicle has fallen: the feel's, which it keeps and gives back
+    this.fitter = new Fitter(FLY, BOOST.by);                          // what the upgrades show, and the moment of buying (js/fit.js)
     // (The parts of a frame whose time is added up by name, for `frameTook`.)
     for (const name of ['save', 'changed', 'haul', 'revert', 'updateHazards', 'updateHauls', 'homecoming', 'sweepHome', 'look']) {
       const part = this[name];
@@ -291,6 +293,7 @@ export class Game {
     this.changed([C * N + C + 3]);
     this.shop = false; this.lab = false; this.labSel = null; this.labPage = 0; this.labFlash = 0;
     this.feel.reset(this.S.seed);
+    this.fitter.reset();
     this.dockMark();
   }
   val(id) { const u = ROWS.find(u => u.id === id); return u.values[this.S.lv[id] ?? 0]; }
@@ -2047,7 +2050,7 @@ export class Game {
     sfx.zap();
     if (Math.max(Math.abs(d.x - x - 0.5), Math.abs(d.y - y - 0.5)) <= ARC) {
       // (Fitted with the arc coil, the arc is taken in: it mends a pip where it would have taken one.)
-      if (this.val('arccoil')) { if (this.dents) { this.dents--; this.mended = 0.5; } this.popup(d.x - 0.5, d.y - 1, 'CHARGED', '#d8b8ff'); sfx.gem(4); }
+      if (this.val('arccoil')) { if (this.dents) { this.dents--; this.mended = 0.5; } this.popup(d.x - 0.5, d.y - 1, 'CHARGED', '#d8b8ff'); sfx.gem(4); this.fitter.fire('arccoil'); }
       else this.hit(JOLT.arc);
       this.shake = Math.max(this.shake, 5); this.twang = 0.3;
     }
@@ -2469,6 +2472,7 @@ export class Game {
     this.ring(HX * T, HY * T, '#8ce060', 70); this.sparkle(HX * T, HY * T, 16, '#c8f4a0'); this.flash = 0.15;
     if (u.id === 'scanner') { this.world.see(Math.floor(this.drill.x), Math.floor(this.drill.y), this.val('scanner')); this.version++; }
     this.bought = { id: u.id, t: 0.5 };
+    this.fitter.bought(this, u, this.S.lv[u.id]);
     this.save();
   }
 
@@ -2578,7 +2582,7 @@ export class Game {
     // The mender gives a pip back every so many seconds out in the ground, counted from the last knock or mend.
     if (this.val('mender') && this.dents > 0 && d.mode !== 'dead') {
       this.mendIn += dt;
-      if (this.mendIn >= this.val('mender')) { this.mendIn = 0; this.dents--; this.mended = 0.5; this.sparkle(d.x * T, d.y * T, 5, '#8ce060'); sfx.tick(0); }
+      if (this.mendIn >= this.val('mender')) { this.mendIn = 0; this.dents--; this.mended = 0.5; this.sparkle(d.x * T, d.y * T, 5, '#8ce060'); sfx.tick(0); if (this.S.lv.mender > 0) this.fitter.fire('mender'); }
     } else this.mendIn = 0;
     this.shield = Math.max(0, this.shield - dt); this.knocked = Math.max(0, this.knocked - dt); this.mended = Math.max(0, this.mended - dt);
     if (this.notice) { this.notice.t += dt; if (this.notice.t > this.notice.life) this.notice = null; }
@@ -2622,6 +2626,7 @@ export class Game {
     this.updateHauls(dt);
     this.ambient(dt);
     this.feel.step(this, dt);
+    this.fitter.step(this, dt);
     for (const e of this.effects) e.t += dt * 1000;
     this.effects = this.effects.filter(e => e.t < duration(e.sheet, e.animation));
     for (const p of this.popups) p.t += dt;

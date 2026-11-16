@@ -164,7 +164,8 @@ export const ROWS = [...UPGRADES, ...WORKS, ...MAPS, ...CORE];
 // thousand million in all, and gems by the thousand of the direction each row takes them from; and they ask that
 // the drill has been further out than any level above asks (900 to 1,800 cells), that the far wrecks' parts have
 // come home (the last lie 1,200 and 1,700 out), and, the station's last, that relics have. (No level of reach: the
-// tether already goes past the relics.) The drill and the core are drawn as at the last level above.
+// tether already goes past the relics.) Each of them is drawn as a step up on the drill, the tether or the station,
+// as every level above is (js/fit.js). `EARLY` is each row's last level before these, for a picture of a game there.
 const LATE = {
   drill: [[6, 25e6, 4000, 900], [7, 80e6, 10000, 1300], [8, 250e6, 25000, 1700]],
   winch: [[3.5, 25e6, 5000, 1000], [4, 80e6, 12000, 1400], [5, 250e6, 30000, 1800]],
@@ -178,6 +179,7 @@ const LATE = {
   lamp: [[16, 30e6, 10000, 7], [18, 90e6, 25000, 8]],
   blackbox: [[0.9, 50e6, 15000, ['out', 1600]]],
 };
+export const EARLY = Object.fromEntries(ROWS.map(u => [u.id, u.values.length - 1]));
 for (const u of ROWS) for (const [value, grit, gems, need, spec] of LATE[u.id] ?? []) {
   // (A row that asked for nothing asks nothing for the levels it had.)
   if (need && !u.needs) u.needs = ['out', u.grit.map(() => 0)];

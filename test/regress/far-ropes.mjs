@@ -2,8 +2,8 @@
 // every haul on its way home, was traced whole in every frame, three times each: a thousand cells out, with a dozen
 // hauls under way, that was a dozen ropes twenty thousand pixels long, nearly all of every one off the screen, and
 // drawing them took four times as long as the same hauls beside the core. Only the part of a rope that crosses the
-// view is traced now, its braid begun where the whole rope would have it; and the map walks only the spans of
-// tether that lie on it.
+// view is traced now, its braid begun where the whole rope would have it (and the light that runs along a long
+// reach's tether, where the whole tether would have it); and the map walks only the spans of tether that lie on it.
 import { makeGame, C, N, K } from '../harness.mjs';
 import { fly } from '../../tools/fly.mjs';
 
@@ -47,9 +47,10 @@ const near = (a, b) => Math.abs(a - b) < 1e-6;
 const traced = async far => {
   const game = await makeGame(7, { tether: 9, drill: 4, momentum: 4, winch: 4, maprange: 1 }), w = game.world;
   // A fine canvas that counts what is traced on it.
-  const count = { path: 0, strokes: 0, offsets: [] }, own = { lineDashOffset: 0 };
+  const count = { path: 0, strokes: 0, offsets: [] }, own = { lineDashOffset: 0, dash: [] };
   game.over = {}; game.overCtx = new Proxy(own, {
-    get: (target, key) => key === 'lineTo' || key === 'arcTo' || key === 'quadraticCurveTo' || key === 'moveTo' ? () => { count.path++; } : key === 'stroke' ? () => { count.strokes++; count.offsets.push(target.lineDashOffset); } : key in target ? target[key] : () => {},
+    get: (target, key) => key === 'lineTo' || key === 'arcTo' || key === 'quadraticCurveTo' || key === 'moveTo' ? () => { count.path++; } : key === 'stroke' ? () => { count.strokes++; count.offsets.push([target.lineDashOffset, target.dash.reduce((a, b) => a + b, 0)]); }
+      : key === 'setLineDash' ? pattern => { target.dash = pattern; } : key in target ? target[key] : () => {},
     set: (target, key, value) => { target[key] = value; return true; },
   });
   game.resize(360, 640, 3);
@@ -81,7 +82,9 @@ check(out.out > 1200 && out.band > 60 && beside.band < 12, `the far flight came 
 check(out.ropes >= 13 && beside.ropes >= 13, `with a dozen hauls on their way there are ${out.ropes} ropes far out and ${beside.ropes} beside the core`);
 // (Traced whole, the far frame was some three thousand steps of path; in view there is the same to draw as beside the core.)
 check(out.path <= beside.path * 1.5 + 60, `a frame's ropes are ${out.path} steps of path ${out.out} cells out and ${beside.path} beside the core`);
-check(out.offsets.every(o => Number.isFinite(o) && o >= 0 && o < 4), `the braid of a rope far out begins at ${out.offsets.filter(o => !(o >= 0 && o < 4)).slice(0, 4)}`);
+// (Each dashed stroke begins within its own pattern: a braid's four pixels, the tether's lights their own.)
+const within = ([o, period]) => Number.isFinite(o) && o >= 0 && (o === 0 || o < period);
+check(out.offsets.every(within), `the braid of a rope far out begins at ${out.offsets.filter(o => !within(o)).slice(0, 4).map(o => o.join(' of '))}`);
 check(out.rects <= beside.rects + 120, `the map in the corner draws ${out.rects} marks ${out.out} cells out and ${beside.rects} beside the core`);
 
 console.log(fails.length ? `DEFECT:\n  ${fails.join('\n  ')}` : `no defect: ${out.out} cells out with a dozen hauls on their way, a frame's ropes are ${out.path} steps of path (${beside.path} beside the core) and the map draws ${out.rects} marks (${beside.rects}); a part of a rope begins its braid where the whole rope has it`);
