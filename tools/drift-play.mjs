@@ -3,7 +3,7 @@
 // it, and the boulder is reeled in when the tether is round it; then the nearest boulder left. What it took, what
 // each haul paid and how the chain of hauls ran is printed. And the rubble of a whole drift on its way home at
 // once, counted (`--burst`).
-//   node tools/drift-play.mjs [--seed 7] [--drift n] [--boulders n] [--tether level] [--burst seconds]
+//   node tools/drift-play.mjs [--seed 7] [--drift n] [--boulders n] [--tether level] [--burst seconds [--hash]]
 //
 //   --seed n       the world (7)
 //   --drift n      which of the world's drifts, counted from the nearest the core (0, the default; `node
@@ -23,7 +23,7 @@
 // `play` and `burst` return what happened; test/regress/c7-drift-play.mjs and c7-drift-rubble.mjs hold drifts of
 // world 7 to it.
 import { fileURLToPath } from 'node:url';
-import { makeGame, random, tetherFaults, UPGRADES, income, C, N, K, world } from '../test/harness.mjs';
+import { makeGame, random, rubbleHash, tetherFaults, UPGRADES, income, C, N, K, world } from '../test/harness.mjs';
 import { holds } from './slab-play.mjs';
 
 const { rowOf } = world, HX = C + 0.5, HY = C + 0.5;
@@ -181,7 +181,8 @@ export async function play(seed = 7, pick = 0, most = Infinity, lv = {}) {
 //     moved once for each small step the frame takes), meanMs, worstMs (how long game.update took: the machine's
 //     own, to be read beside test/frame-time.mjs), over16 (frames over 16 ms), fine (how many hauls broke fine,
 //     sixteen bits to a cell), game }
-export async function burst(seed = 7, pick = 0, gap = 0.3, lv = {}) {
+// A `digest` (test/harness.mjs: rubbleHash) is given every frame once it has been timed.
+export async function burst(seed = 7, pick = 0, gap = 0.3, lv = {}, digest = null) {
   Math.random = random(seed + 5);
   const { game, Z } = await stage(seed, pick, lv), w = game.world;
   game.update(1 / 60);
@@ -203,6 +204,7 @@ export async function burst(seed = 7, pick = 0, gap = 0.3, lv = {}) {
     total += ms; out.frames++;
     if (ms > out.worstMs) out.worstMs = ms;
     if (ms > 16) out.over16++;
+    digest?.add(game);
     // What is on its way: hauls not yet home, and their bits. A frame moves each such bit once for every small
     // step it takes (`updateHauls`: one to four, by how fast the rope is drawing).
     let hauls = 0, bits = 0, moves = 0;
@@ -226,9 +228,10 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const arg = (name, fallback) => { const n = process.argv.indexOf(`--${name}`); return n < 0 ? fallback : process.argv[n + 1]; };
   const lv = arg('tether') === undefined ? {} : { tether: Number(arg('tether')) }, seed = Number(arg('seed', 7)), pick = Number(arg('drift', 0));
   if (arg('burst') !== undefined) {
-    const r = await burst(seed, pick, Number(arg('burst')) || 0.3, lv), Z = r.drift;
+    const digest = process.argv.includes('--hash') ? rubbleHash() : null, r = await burst(seed, pick, Number(arg('burst')) || 0.3, lv, digest), Z = r.drift;
     console.log(`seed ${seed}: the drift at ${Z.cx - C},${Z.cy - C} (${Math.round(Math.hypot(Z.cx - C, Z.cy - C))} out), radius ${Z.rho.toFixed(1)}: ${r.boulders} boulders, ${r.cells} cells, hauled one every ${Number(arg('burst')) || 0.3} s`);
     console.log(`  ${r.frames} frames until the last bit was home: at the most ${r.hauls} hauls and ${r.bits} bits of rubble on their way at once (${r.made} bits made in all, ${r.fine} haul${r.fine === 1 ? '' : 's'} broken fine), ${r.moves} moves of a bit in a frame; game.update took ${r.meanMs.toFixed(2)} ms in the mean, ${r.worstMs.toFixed(1)} at the worst, ${r.over16} frames over 16 ms`);
+    if (digest) console.log(`  rubble hash ${digest.hex}`);
   } else {
     const r = await play(seed, pick, Number(arg('boulders', Infinity)), lv), Z = r.drift;
     console.log(`seed ${seed}: the drift at ${Z.cx - C},${Z.cy - C} (${Math.round(Math.hypot(Z.cx - C, Z.cy - C))} out), radius ${Z.rho.toFixed(1)}${Z.herald ? ', a herald' : ''}: ${r.boulders} boulders, ${r.aerolite} cells of aerolite, ${r.books} loose pieces in the books on coming in; reach ${UPGRADES[0].values[r.levels.tether]}, bit ${r.levels.drill}, ram ${r.levels.momentum}`);

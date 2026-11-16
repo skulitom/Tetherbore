@@ -62,6 +62,27 @@ export function random(seed) {
   return () => (s = (Math.imul(s, 1103515245) + 12345) >>> 0) / 4294967296;
 }
 
+// A running hash of where the rubble is, frame by frame: `add(game)` after each frame folds in every bit of every
+// haul on its way (where it is, how fast it is going, whether it is home), the grit banked and still to come, and
+// where the drill is; `hex` is the hash so far. It is there so that a change to how the rubble is drawn home
+// (updateHauls) can be shown not to move a single bit by so much as the last binary place: it reads the numbers'
+// own bits, not their printed digits, so the same game gives the same hash and any other game almost surely does not.
+export function rubbleHash() {
+  const f = new Float64Array(1), u = new Uint32Array(f.buffer);
+  let a = 0x811c9dc5, b = 0x9e3779b9;
+  const fold = value => {
+    f[0] = value;
+    for (let n = 0; n < 2; n++) { a = Math.imul(a ^ u[n], 0x01000193); b = Math.imul(b ^ u[n] ^ (a >>> 15), 0x5bd1e995); }
+  };
+  return {
+    add(game) {
+      for (const h of game.hauls) for (const bit of h.bits) { fold(bit.x); fold(bit.y); fold(bit.vx); fold(bit.vy); fold(bit.st); }
+      fold(game.S.grit); fold(game.pending.grit); fold(game.drill.x); fold(game.drill.y);
+    },
+    get hex() { return (a >>> 0).toString(16).padStart(8, '0') + (b >>> 0).toString(16).padStart(8, '0'); },
+  };
+}
+
 // Everything wrong with the tether as it lies now, as a list of strings (empty when it is sound):
 //   a span that goes through rock, or that runs in the seam between two cells of rock (rock on both sides of it);
 //   a bend whose corner is gone, or that the string no longer turns round (it should have been let go);

@@ -1,9 +1,12 @@
 // Where a frame's time goes: wraps the game's larger methods and totals the time inside each over the rope fuzz's flight.
 //   node test/frame-parts.mjs [seed] [turns] [reach level] [start x] [start y]
 // A method called from inside another is counted in both (changed inside fly, retighten inside changed, and so on).
+// Math.random, which throws the rubble about, is seeded from the seed as test/frame-time.mjs seeds it, so the parts
+// are of the same flight and the same rubble that it times.
 import { makeGame, random, C, N, K } from './harness.mjs';
 
 const [seed = 11, turns = 600, reach = 5, sx = 0, sy = 0] = process.argv.slice(2).map(Number);
+Math.random = random(seed + 5);
 const game = await makeGame(seed, { tether: reach, drill: 4 });
 const d = game.drill, w = game.world, rnd = random(seed);
 if (sx || sy) {

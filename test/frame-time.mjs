@@ -5,9 +5,15 @@
 //   node test/frame-time.mjs [seed] [turns] [reach level] [start x] [start y]
 // The flight is the one test/rope-fuzz.mjs flies (same steering from the same seed), with no checks between frames,
 // so what is timed is the game alone. Run it by itself: another busy process makes the worst frame meaningless.
-import { makeGame, random, C, N, K } from './harness.mjs';
+// The rubble's own throws and dust are drawn from Math.random, so that is seeded too (from the seed, as
+// tools/long-play.mjs seeds it): the same arguments time the same heap of rubble every run.
+//   --hash   also print a hash of where every bit of rubble was after every frame (harness.mjs: rubbleHash), taken
+//            outside the timing: a change to updateHauls that gives the same hash on these flights moved no bit.
+import { makeGame, random, rubbleHash, C, N, K } from './harness.mjs';
 
-const [seed = 11, turns = 600, reach = 5, sx = 0, sy = 0] = process.argv.slice(2).map(Number);
+const args = process.argv.slice(2), digest = args.includes('--hash') ? rubbleHash() : null;
+const [seed = 11, turns = 600, reach = 5, sx = 0, sy = 0] = args.filter(a => a !== '--hash').map(Number);
+Math.random = random(seed + 5);
 const game = await makeGame(seed, { tether: reach, drill: 4 });
 const d = game.drill, w = game.world, rnd = random(seed);
 if (sx || sy) {
@@ -34,7 +40,8 @@ for (let turn = 0; turn < turns; turn++) {
     if (rest > 16) bareOver++;
     if (ms > worst) { worst = ms; worstAt = frames; }
     if (ms > 16) over++;
+    digest?.add(game);
   }
 }
 console.log(JSON.stringify({ seed, reach, start: [sx, sy], frames, meanMs: +(total / frames).toFixed(4), worstMs: +worst.toFixed(2), worstAt, over16: over,
-  withoutRubble: { meanMs: +(bare / frames).toFixed(4), worstMs: +bareWorst.toFixed(2), worstAt: bareWorstAt, over16: bareOver }, hauls: game.S.stats.hauls, bends: game.band.length }));
+  withoutRubble: { meanMs: +(bare / frames).toFixed(4), worstMs: +bareWorst.toFixed(2), worstAt: bareWorstAt, over16: bareOver }, hauls: game.S.stats.hauls, bends: game.band.length, ...digest && { hash: digest.hex } }));
