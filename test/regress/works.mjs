@@ -290,7 +290,9 @@ for (const coil of [0, 1]) {
   const of = id => CORE.find(u => u.id === id), dearest = Math.max(...[...UPGRADES, ...WORKS, ...MAPS].flatMap(u => u.grit));
   check(CORE.map(u => u.id).join() === 'refinery,cutter,lamp,blackbox', `the fourth tab's rows are ${CORE.map(u => u.id)}`);
   check(CORE.every(u => u.grit.every((g, l) => l === 0 || g > u.grit[l - 1]) && u.gems.every((g, l) => l === 0 || g > u.gems[l - 1]) && u.needs[1].length === u.grit.length), 'a row of the fourth tab does not cost more at each level, in grit and in gems, or asks nothing found');
-  check(of('refinery').grit.at(-1) > dearest * 4 && of('cutter').grit.at(-1) > dearest * 4 && of('refinery').gems.at(-1) >= 25000, `the dearest level of the other tabs is ${dearest}; the refinery's last is ${of('refinery').grit.at(-1)} and ${of('refinery').gems.at(-1)} gems`);
+  // (Of the levels a game comes to first: those of the late game are dear in every tab, further down.)
+  const early = Math.max(...[...UPGRADES, ...WORKS, ...MAPS].flatMap(u => u.grit.filter(g => g < 1e7)));
+  check(of('refinery').grit[4] > early * 4 && of('cutter').grit[3] > early * 4 && of('refinery').gems[4] >= 25000, `the dearest early level of the other tabs is ${early}; the refinery's fifth is ${of('refinery').grit[4]} and ${of('refinery').gems[4]} gems`);
   const game = await makeGame(7, {}, { hull: true }), w = game.world;
   // A block of rich ore in the north's own ground, 200 cells out: what a haul of it pays, plain, refined and cut.
   const cells = []; for (let y = 0; y < 5; y++) for (let x = 0; x < 6; x++) { const i = (C - 200 + y) * N + C + x; w.setK(i, K.ORE_B); cells.push(i); }
@@ -361,6 +363,47 @@ for (const coil of [0, 1]) {
   let most = 0, frames = 0;
   while (game.hauls.length && frames < 1800) { game.update(1 / 60); frames++; most = Math.max(most, game.hauls.reduce((sum, h) => sum + h.bits.filter(b => !b.st).length, 0)); }
   check(!game.hauls.length && most <= RUBBLE + 11 * 24 && game.pending.grit === 0, `all twelve came home in ${frames} frames, with ${most} bits on their way at the most and ${game.pending.grit} grit still to bank`);
+}
+
+// ---- the late game: levels past the first ladders, for the ground that lies beyond a thousand cells out
+{
+  const all = [...UPGRADES, ...WORKS, ...MAPS, ...CORE], by = id => all.find(u => u.id === id);
+  // (How many levels each row had before the late game's were added.)
+  const had = { drill: 4, winch: 5, scanner: 4, momentum: 4, hull: 4, mender: 3, maprange: 3, refinery: 5, cutter: 4, lamp: 3, blackbox: 3 };
+  const late = all.flatMap(u => u.grit.map((g, l) => ({ u, l, g })).filter(e => e.l >= (had[u.id] ?? 99)));
+  // Each costs ten million grit or more, more than the level before it, and asks something that lies far out:
+  // more cells out than nine hundred, the parts of the far wrecks, relics, or specimens by the score.
+  const asks = ({ u, l }) => { const a = u.needs?.[1][l], [what, n] = Array.isArray(a) ? a : [u.needs?.[0], a]; return what === 'out' ? n >= 900 : what === 'parts' ? n >= 6 : what === 'relics' ? n >= 1 : (u.spec?.[l] ?? 0) >= 60; };
+  check(late.length === 24 && late.every(e => e.g >= 1e7 && e.g > e.u.grit[e.l - 1]) && late.every(asks), `the late game has ${late.length} levels; one that asks nothing far out: ${late.find(e => !asks(e))?.u.id}`);
+  check(all.every(u => u.values.length === u.grit.length + 1 && u.gems.length === u.grit.length && (!u.needs || u.needs[1].length === u.grit.length) && (!u.spec || u.spec.length === u.grit.length)), `a row's prices and its levels are not of a length: ${all.find(u => u.values.length !== u.grit.length + 1)?.id}`);
+  const whole = all.reduce((sum, u) => sum + u.grit.reduce((a, b) => a + b, 0), 0), first = whole - late.reduce((sum, e) => sum + e.g, 0);
+  check(whole > 2e9 && whole > first * 20, `the whole shop costs ${whole} grit, the levels before the late game ${first}`);
+  check(by('tether').values.at(-1) === 2300, `the reach goes to ${by('tether').values.at(-1)}`);
+  // A game that has everything of the first ladders, has been 800 cells out, and has grit and gems beyond counting:
+  // nothing of the late game can be bought, and each row says what it wants. Having been everywhere, with every
+  // part and two relics home, every level can.
+  const game = await makeGame(7);
+  game.S.grit = 1e12; game.S.gems = game.S.gems.map(() => 1e9); game.S.spec = game.S.spec.map(() => 1e6); game.S.out = 800;
+  game.S.wrecks = [1, 1, 1, 1, 1, 0, 0, 0]; game.S.lab = Object.fromEntries((await import('../../js/game.js')).LAB.map(e => [e.key, 1]));
+  for (let n = 0; n < 30; n++) game.S.met[`place-${n}`] = 1;
+  for (let pass = 0; pass < 12; pass++) for (const u of all) game.buy(u);
+  const stuck = all.filter(u => game.cost(u)).map(u => `${u.id} ${game.lacks(u)}`);
+  check(game.val('drill') === 5 && game.val('winch') === 3 && game.val('momentum') === 2.2 && game.val('hull') === 8 && game.val('scanner') === 9 && game.val('refinery') === 2 && game.val('lamp') === 14 && game.val('maprange') === 5,
+    `800 cells out with five parts and no relic, the rig is at bit ${game.val('drill')}, winch ${game.val('winch')}, ram ${game.val('momentum')}, hull ${game.val('hull')}, scan ${game.val('scanner')}, refinery ${game.val('refinery')}, lamp ${game.val('lamp')}, range ${game.val('maprange')}`);
+  check(stuck.includes('drill NEEDS 800/900 CELLS OUT') && stuck.includes('scanner NEEDS 5/6 WRECK PARTS') && stuck.includes('refinery NEEDS 0/1 RELICS HOME') && stuck.includes('maprange NEEDS 800/1000 CELLS OUT'), `what the rows of the late game ask: ${stuck.join('; ')}`);
+  game.shop = true; game.shopRise = 1; game.resize(320, 568, 1);
+  for (const tab of ['rig', 'works', 'map', 'core']) { game.shopTab = tab; game.render(); }
+  game.S.out = 2000; game.S.wrecks = game.S.wrecks.map(() => 1); game.S.relics = [1, 1, 0, 0];
+  for (let pass = 0; pass < 12; pass++) for (const u of all) game.buy(u);
+  check(all.every(u => !game.cost(u)) && game.val('drill') === 8 && game.val('winch') === 5 && game.val('momentum') === 2.8 && game.val('hull') === 12 && game.val('mender') === 2 && game.val('refinery') === 3 && game.val('blackbox') === 0.9,
+    `having been everywhere, still to buy: ${all.filter(u => game.cost(u)).map(u => `${u.id} ${game.lacks(u) ?? ''}`).join('; ')}`);
+  // And the drill of the late game plays: it cuts, flies and is drawn, with the pictures of the last levels that have them.
+  game.shop = false;
+  game.input.auto = [1, 0, 1];
+  for (let f = 0; f < 240; f++) { game.update(1 / 60); if (f % 10 === 0) game.render(); }
+  game.input.auto = null;
+  check(game.far > 8 && game.drill.mode !== 'dead', `the drill of the late game flew ${game.far.toFixed(0)} cells east in four seconds`);
+  game.openLab(true, 'stats'); game.render(); game.openLab(false);
 }
 
 console.log(fails.length ? `DEFECT:\n  ${fails.join('\n  ')}` : 'no defect: the second tab sells four things for specimens, each turns a hazard, and the stats say what the drill is');

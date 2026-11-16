@@ -97,7 +97,7 @@ for (const seed of [7, 19, 23]) {
 // ---- the row, and a game saved before there was a hull
 {
   const row = UPGRADES[5];
-  check(row.id === 'hull' && row.name === 'HULL' && row.values.join() === '5,6,7,8,9' && row.gem === B.EMBER, `the shop's sixth row is ${row?.id} with values ${row?.values}`);
+  check(row.id === 'hull' && row.name === 'HULL' && row.values.join() === '5,6,7,8,9,10,11,12' && row.gem === B.EMBER, `the shop's sixth row is ${row?.id} with values ${row?.values}`);
   check(row.gems[0] === 0 && row.grit.every((g, l) => l === 0 || g > row.grit[l - 1]), `the hull's prices are ${row.grit} grit and ${row.gems} gems`);
   const game = await makeGame(7, {}, { hull: true });
   game.S.grit = 1e9; game.S.gems[B.EMBER] = 1e6;
@@ -106,7 +106,14 @@ for (const seed of [7, 19, 23]) {
   check(game.S.lv.hull === 0 && game.shopNote?.text === 'NEEDS 0/150 CELLS OUT' && game.lacks(row) === 'NEEDS 0/150 CELLS OUT', `with grit and a drill that has been nowhere the tap ${game.S.lv.hull ? 'bought' : 'was refused'} and said '${game.shopNote?.text}'`);
   game.S.out = 1000;
   for (let l = 0; l < 4; l++) game.buy(row);
-  check(game.S.lv.hull === 4 && game.val('hull') === 9 && game.hull === 9 && game.cost(row) === null, `four levels bought: level ${game.S.lv.hull}, ${game.hull} pips`);
+  for (let l = 0; l < 3; l++) game.buy(row);
+  check(game.S.lv.hull === 4 && game.val('hull') === 9 && game.hull === 9 && game.lacks(row) === 'NEEDS 1000/1200 CELLS OUT', `having been 1,000 cells out: level ${game.S.lv.hull}, ${game.hull} pips, and the next says '${game.lacks(row)}'`);
+  // The three levels of the late game ask for 1,200, 1,500 and 1,800 cells out; the last makes twelve pips, drawn with the last plates there are.
+  game.S.out = 1800;
+  for (let l = 0; l < 4; l++) game.buy(row);
+  check(game.S.lv.hull === 7 && game.val('hull') === 12 && game.hull === 12 && game.cost(row) === null, `having been 1,800 cells out: level ${game.S.lv.hull}, ${game.hull} pips`);
+  game.resize(320, 568, 1); game.render();
+  game.S.lv.hull = 4;
   game.shop = true; game.shopRise = 1; game.render(); game.shop = false; game.render();
   game.save();
   const loaded = await makeGame(7, {}, { hull: true }); await loaded.restore();

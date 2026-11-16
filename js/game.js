@@ -35,7 +35,7 @@ export const haulBonus = (n, winch = 1) => 1 + winch * Math.log2(Math.max(1, n))
 // gems alike: so the biggest loop a player can cut is a little better than one of the winch's load, and not many
 // times better. (It was (load / n) ** 0.35 a cell, and on grit alone: a tunnel that cut a whole quarter of the
 // ground off paid for half the shop in one haul, and its gems were not thinned at all.)
-const WINCH_LOAD = [150, 400, 1000, 2300, 5000, 12000];
+const WINCH_LOAD = [150, 400, 1000, 2300, 5000, 12000, 25000, 50000, 100000];
 export const overload = (n, level) => n <= WINCH_LOAD[level] ? 1 : WINCH_LOAD[level] * (1 + Math.log(n / WINCH_LOAD[level])) / n;
 export const income = R => { const side = Math.max(4, Math.min(48, R / 3)); return side * PACE / 4 * WORTH * richness(R * 0.7) * haulBonus(side * side); };
 const round2 = n => { const unit = 10 ** Math.max(0, Math.floor(Math.log10(n)) - 1); return Math.round(n / unit) * unit; };
@@ -68,7 +68,7 @@ const levels = (beside, share) => ({ beside, grit: beside.map(at => priced(at, s
 // of the first tab ask it, so the rig cannot be bought up from the ground about the core. (Kinds analysed and
 // places met were asked first, and both are to be had within two hundred cells: a game had the bit and the ram at
 // their last levels and a reach of 1,350 with nothing explored past a tenth of it.)
-const NEEDS = { parts: 'WRECK PARTS', kinds: 'KINDS ANALYSED', places: 'PLACES MET', out: 'CELLS OUT' };
+const NEEDS = { parts: 'WRECK PARTS', kinds: 'KINDS ANALYSED', places: 'PLACES MET', out: 'CELLS OUT', relics: 'RELICS HOME' };
 // `values` is what each level gives; `grit` and `gems` what the next level costs; `gem` whose gems it takes.
 export const UPGRADES = [
   // The tether's reach: how far from the core the drill may go, by any road. Each level nearly doubles it. It is
@@ -143,7 +143,7 @@ export const MAPS = [
   { id: 'maprange', icon: 'scanner', name: 'RANGE', what: 'MAP SHOWS FURTHER', values: [1.5, 2.25, 3.5, 5], gem: B.FROST, ...levels([2, 4, 6], 0.25), show: v => `${Math.round(v * 46)}` },
   { id: 'maplens', icon: 'scanner', name: 'LENS', what: 'MAP TELLS MORE APART', values: [0, 1, 2, 3], gem: B.LODE, ...levels([1.5, 3.5, 5.5], 0.25), show: v => ['ROCK', 'ORE', 'HARD', 'ALL'][v] },
   { id: 'mapfinder', icon: 'scanner', name: 'FINDER', what: 'MARKS FINDS NEAR THE DRILL', values: [0, 1, 2, 3], gem: B.MIRE, ...levels([2.5, 4.5, 6.5], 0.25), show: v => ['OFF', 'CACHE', 'GEODE', 'PRISM'][v] },
-  { id: 'chart', icon: 'scanner', name: 'CHART', what: 'TAP MAP FOR THE WHOLE REACH', values: [0, 1], gem: B.EMBER, ...levels([3], 0.3), show: v => v ? 'ON' : 'OFF' },
+  { id: 'chart', icon: 'scanner', name: 'CHART', what: 'MAP OF THE WHOLE REACH', values: [0, 1], gem: B.EMBER, ...levels([3], 0.3), show: v => v ? 'ON' : 'OFF' },
 ];
 // What the lens shows a kind of ground as, and from which level of it: [level, red, green, blue].
 const LENS = [];
@@ -169,6 +169,36 @@ export const CORE = [
   { id: 'blackbox', pic: 'lock', name: 'BLACK BOX', what: 'KEEPS GRIT WHEN LOST', values: [0, 0.25, 0.5, 0.75], gem: B.MIRE, needs: ['places', [5, 10, 15]], ...deep([[5, 1], [6.5, 2], [8, 3]], [400, 2000, 9000]), show: v => `${Math.round(v * 100)}%` },
 ];
 const ROWS = [...UPGRADES, ...WORKS, ...MAPS, ...CORE];
+// The late game: levels past the ones above, for the two thirds of the ground that lie beyond them. Everything
+// above is bought, at 85 million grit in all, by a drill that has been a thousand cells out along one road, while
+// the relics lie two thousand out in each of four directions: a game had the whole shop at its last levels, and
+// 64 million grit over, with a twentieth of the ground inside its reach explored. Each row here is the levels
+// added to a row above: [what the level gives, grit, gems, what must have been found (as `needs`: a count of the
+// row's own kind, or [kind, count]), specimens]. They cost from ten million to three hundred million grit, 2.4
+// thousand million in all, and gems by the thousand of the direction each row takes them from; and they ask that
+// the drill has been further out than any level above asks (900 to 1,800 cells), that the far wrecks' parts have
+// come home (the last lie 1,200 and 1,700 out), and, the station's last, that relics have. (No level of reach: the
+// tether already goes past the relics.) The drill and the core are drawn as at the last level above.
+const LATE = {
+  drill: [[6, 25e6, 4000, 900], [7, 80e6, 10000, 1300], [8, 250e6, 25000, 1700]],
+  winch: [[3.5, 25e6, 5000, 1000], [4, 80e6, 12000, 1400], [5, 250e6, 30000, 1800]],
+  scanner: [[11, 20e6, 3000, 6], [13, 70e6, 8000, 8]],
+  momentum: [[2.5, 30e6, 5000, 1100], [2.8, 100e6, 14000, 1500]],
+  hull: [[10, 25e6, 3000, 1200], [11, 80e6, 8000, 1500], [12, 250e6, 20000, 1800]],
+  mender: [[3, 30e6, 0, 0, 60], [2, 100e6, 0, 0, 120]],
+  maprange: [[7, 10e6, 2000, ['out', 1000]], [10, 40e6, 6000, ['out', 1600]]],
+  refinery: [[2.5, 80e6, 30000, ['relics', 1]], [3, 300e6, 45000, ['relics', 2]]],
+  cutter: [[2.5, 60e6, 22000, ['out', 1500]], [3, 220e6, 35000, ['relics', 1]]],
+  lamp: [[16, 30e6, 10000, 7], [18, 90e6, 25000, 8]],
+  blackbox: [[0.9, 50e6, 15000, ['out', 1600]]],
+};
+for (const u of ROWS) for (const [value, grit, gems, need, spec] of LATE[u.id] ?? []) {
+  // (A row that asked for nothing asks nothing for the levels it had.)
+  if (need && !u.needs) u.needs = ['out', u.grit.map(() => 0)];
+  u.values.push(value); u.grit.push(grit); u.gems.push(gems);
+  if (u.needs) u.needs[1].push(need);
+  if (u.spec) u.spec.push(spec);
+}
 const TABS = [{ id: 'rig', name: 'RIG', rows: UPGRADES }, { id: 'works', name: 'WORKS', rows: WORKS }, { id: 'map', name: 'MAP', rows: MAPS }, { id: 'core', name: 'CORE', rows: CORE }];
 // How long a spore pod's burst drives a drill fitted with the spore drive, and how much faster.
 const BOOST = { time: 3, by: 1.5 };
@@ -244,7 +274,7 @@ const TETHERS = [
 ];
 // Nothing is too hard to cut: tougher ground only takes longer (js/world.js: `digTime`), and a better bit cuts all
 // of it faster.
-const SPEED = [1, 1.6, 2.4, 3.6, 5];
+const SPEED = [1, 1.6, 2.4, 3.6, 5, 6.5, 8.5, 11];
 const ROUND = 3.5, BRAID = 4;                    // on the fine canvas: how wide a rope rounds a corner, and the length of one turn of its braid, in the game's pixels
 const FLY = 9, BODY = 0.34;                     // cells a second in open ground; the drill's half-width in cells
 const SIDE = [1, N, -1, -N];                    // the cells beside a cell, as steps of its number: east, south, west, north
@@ -1997,14 +2027,16 @@ export class Game {
   need(u) {
     const l = this.S.lv[u.id];
     if (!u.needs || l >= u.values.length - 1) return null;
-    const [what, counts] = u.needs, S = this.S, w = this.world;
-    let need = counts[l], have = 0;
+    // (A level may ask for something of another kind than its row does: [kind, count].)
+    const asked = u.needs[1][l], [what, count] = Array.isArray(asked) ? asked : [u.needs[0], asked], S = this.S, w = this.world;
+    let need = count, have = 0;
     if (what === 'parts') {
       const held = S.wrecks ?? [];
       have = held.filter(Boolean).length;
-      for (let n = 0; n < counts[l] && n < w.wrecks.length; n++) { const [x, y] = w.wrecks[n]; if (!held[n] && w.kindAt(x, y, w.biomeAt(x, y)) !== K.WRECK) need--; }
+      for (let n = 0; n < count && n < w.wrecks.length; n++) { const [x, y] = w.wrecks[n]; if (!held[n] && w.kindAt(x, y, w.biomeAt(x, y)) !== K.WRECK) need--; }
     } else if (what === 'kinds') have = LAB.filter(e => S.lab[e.key]).length;
     else if (what === 'out') have = Math.floor(S.out ?? 0);
+    else if (what === 'relics') have = S.relics.filter(Boolean).length;
     else have = Object.keys(S.met).length;
     return need > 0 ? { what, have, need } : null;
   }
@@ -2265,9 +2297,9 @@ export class Game {
     // The core, as the winch upgrades have built it, with the scanner's dish on its shoulder.
     const coreX = (C - 1) * T - ox, coreY = (C - 1) * T - oy;
     if (coreX > -80 && coreY > -80 && coreX < W + 40 && coreY < H + 40) {
-      const hull = this.S.lv.winch;
+      const hull = Math.min(5, this.S.lv.winch);
       draw(ctx, 'core', this.coreFlash > 0 ? `core-flash-${hull}` : this.S.won ? `core-c-${hull}` : frameAt('core', `idle-${hull}`, now), coreX, coreY);
-      draw(ctx, 'dish', frameAt('dish', `dish-${this.S.lv.scanner}`, now), coreX + 34, coreY - 6);
+      draw(ctx, 'dish', frameAt('dish', `dish-${Math.min(4, this.S.lv.scanner)}`, now), coreX + 34, coreY - 6);
       [[39, 20], [20, 39], [1, 20], [20, 1]].forEach(([u, v], dir) => {
         if (this.S.relics[dir]) drawScaled(ctx, BIOMES[DIR_BIOME[dir]].items, 'relic', coreX + u, coreY + v, 8, 8);
       });
@@ -2455,6 +2487,8 @@ export class Game {
   // The drill as its upgrades have made it (the bit's metal, whatever the ram has bolted on), drawn about its
   // middle at any heading, `along` and `across` times its size.
   drawDrill(x, y, ang, bit, ram, now, along = 1, across = 1, ctx = this.ctx, plates = this.S.lv.hull, fitted = null) {
+    // (The levels of the late game have no pictures of their own yet: bit, ram and plates are drawn as at the last that has.)
+    bit = Math.min(bit, 4); ram = Math.min(ram, 4); plates = Math.min(plates, 4);
     const body = now >= 0 ? frameAt('drill', `right-${bit}`, now) : `right-a-${bit}`, s = sheets.drill;
     ctx.save();
     // (On the game's own canvas it stands on a whole pixel; on a finer one, exactly where it is.)
@@ -3377,8 +3411,8 @@ export class Game {
       if (u.id === 'drill') this.drawDrill(vx + 8, vy + 8, 0, next, S.lv.momentum, this.time * 1000);
       else if (u.id === 'momentum') this.drawDrill(vx + 8, vy + 8, 0, S.lv.drill, next, -1);
       else if (u.id === 'tether') { for (const pass of TETHERS[next].thick ? [1, 0] : [0]) this.drawSpan(vx + 1, vy + 12 + pass, vx + 14, vy + 3 + pass, TETHERS[next]); }
-      else if (u.id === 'winch') drawScaled(ctx, 'core', `core-a-${next}`, vx, vy, 16, 16);
-      else if (u.id === 'scanner') draw(ctx, 'dish', `dish-${next}`, vx, vy);
+      else if (u.id === 'winch') drawScaled(ctx, 'core', `core-a-${Math.min(5, next)}`, vx, vy, 16, 16);
+      else if (u.id === 'scanner') draw(ctx, 'dish', `dish-${Math.min(4, next)}`, vx, vy);
       else if (u.id === 'hull') this.drawDrill(vx + 8, vy + 8, 0, S.lv.drill, S.lv.momentum, -1, 1, 1, ctx, next);
       else if (u.kin !== undefined && u.spec) this.drawDrill(vx + 8, vy + 8, 0, S.lv.drill, S.lv.momentum, -1, 1, 1, ctx, S.lv.hull, u.id);
       else if (MAPS.includes(u)) draw(ctx, 'upgrades', u.icon, vx + 2, vy + 2);
