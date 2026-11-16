@@ -9,7 +9,7 @@
 import { makeGame, tetherFaults, K, at, rect, arena, fixRandom, flyTo, where } from './lib/lasso.mjs';
 
 fixRandom(5);
-const game = await makeGame(7, { tether: 6, drill: 4, momentum: 2 });
+const game = await makeGame(7, { tether: 6, drill: 4, momentum: 2, winch: 2 });   // (a winch that draws in a block of 22,500 cells)
 const w = game.world, x0 = 20, x1 = 169, y0 = -75, y1 = 74;
 arena(game, 200);
 rect(game, 3, -1, x0 - 2, 1, K.EMPTY);                                   // a way out from the core

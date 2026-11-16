@@ -36,6 +36,15 @@ export const haulBonus = (n, winch = 1) => 1 + winch * Math.log2(Math.max(1, n))
 // times better. (It was (load / n) ** 0.35 a cell, and on grit alone: a tunnel that cut a whole quarter of the
 // ground off paid for half the shop in one haul, and its gems were not thinned at all.)
 const WINCH_LOAD = [150, 400, 1000, 2300, 5000, 12000, 25000, 50000, 100000];
+// And it draws in no more than HAUL_MOST times its load at once: a piece larger than that stays where it hangs,
+// and the game says so (`reelIfRound`). Over its load a haul pays less a cell, so a piece many times the load was
+// ground thrown away: a game cut one tunnel round the whole of a reach of 230, the winch drew in a hundred and
+// sixty thousand cells for the pay of six thousand, nothing was left within reach, and the next reach cost four
+// times the grit there was. A piece too big for the winch is cut smaller, or left for a better winch.
+// (Forty times: four was tried, and a drill flown at random with the first winch was refused pieces of one to three
+// thousand cells in every flight. Forty leaves every such haul alone and stops only the enormous one: with the
+// winches a game has by then, the whole of a reach at once is refused at every reach from the second on.)
+export const HAUL_MOST = 40;
 export const overload = (n, level) => n <= WINCH_LOAD[level] ? 1 : WINCH_LOAD[level] * (1 + Math.log(n / WINCH_LOAD[level])) / n;
 export const income = R => { const side = Math.max(4, Math.min(48, R / 3)); return side * PACE / 4 * WORTH * richness(R * 0.7) * haulBonus(side * side); };
 const round2 = n => { const unit = 10 ** Math.max(0, Math.floor(Math.log10(n)) - 1); return Math.round(n / unit) * unit; };
@@ -956,8 +965,20 @@ export class Game {
       }
       return true;
     });
+    // The winch draws in so much at once and no more (`HAUL_MOST` times its load): of what the tether is round,
+    // the smallest pieces first, as many as it can take together. What is left hangs where it is, loose still, and
+    // the game says why, once every few seconds at the most.
+    const most = HAUL_MOST * WINCH_LOAD[this.S.lv.winch], take = [];
+    let n = 0, left = 0;
+    for (const piece of round.sort((a, b) => a.length - b.length)) { if (n + piece.length <= most) { take.push(piece); n += piece.length; } else left = Math.max(left, piece.length); }
+    if (left && this.time - (this.tooBigAt ?? -9) > 4) {
+      this.tooBigAt = this.time; this.tooBig = left;
+      // (The words are large: a short one, and the figures under it.)
+      this.notice = { title: 'TOO BIG', sub: `${compact(left)} CELLS. WINCH DRAWS ${compact(most)}`, colour: '#ff9a6a', t: 0, life: 3 };
+      sfx.deny(); this.twang = Math.max(this.twang, 0.3);
+    }
     // No cell is ever handed over twice, and never a haul of nothing.
-    const cells = [...new Set(round.flat())];
+    const cells = [...new Set(take.flat())];
     if (!cells.length) return;
     this.haul(cells);
     this.changed(cells);
@@ -2103,7 +2124,31 @@ export class Game {
   }
 
   // ------------------------------------------------------------ shop
-  cost(u) { const l = this.S.lv[u.id]; return l >= u.values.length - 1 ? null : { grit: u.grit[l], gems: u.gems[l], spec: u.spec ? u.spec[l] : 0 }; }
+  cost(u) {
+    const l = this.S.lv[u.id];
+    if (l >= u.values.length - 1) return null;
+    // (The next reach costs less where little is left of the ground this one reaches: `groundLeft`.)
+    return { grit: u.id === 'tether' ? round2(Math.max(1, u.grit[l] * this.groundLeft())) : u.grit[l], gems: u.gems[l], spec: u.spec ? u.spec[l] : 0 };
+  }
+  // What the next reach costs, as a share of its price, for the ground that is left within this one: the whole
+  // price while three cells in ten of the reach still stand (ground as the seed lays it is two thirds rock or
+  // more), and from there down with the square of what stands, to next to nothing. So a game can never be left
+  // with nothing to cut and a rope it cannot pay for. Counted on a grid of some two thousand cells across the
+  // reach, of the ground as it is known (ground nobody has looked at stands), once for each change to the ground.
+  groundLeft() {
+    const R = this.val('tether'), key = `${this.version}:${R}`;
+    if (this.leftFor === key) return this.leftIs;
+    const w = this.world, step = Math.max(2, Math.floor(R / 25));
+    let all = 0, stands = 0;
+    for (let y = -R; y <= R; y += step) for (let x = -R; x <= R; x += step) {
+      if (x * x + y * y > R * R || (Math.abs(x) < 3 && Math.abs(y) < 3)) continue;
+      all++;
+      if (w.laid((C + y) * N + C + x) !== K.EMPTY) stands++;
+    }
+    const share = all ? stands / all : 1, by = Math.min(1, share / 0.3);
+    this.leftFor = key; this.leftIs = by * by;
+    return this.leftIs;
+  }
   // What a row's next level asks to have been found, and what is held of it: { what, have, need }, or null where
   // it asks nothing (or there is no next level). A wreck the seed did not lay whole (another thing lies where it
   // should) is not asked for: nothing that cannot be found is ever needed.
@@ -3528,7 +3573,9 @@ export class Game {
       // What must be found first is said on the second line, and no price is shown until it has been.
       // (A row tall enough for three lines keeps what the thing does on its second, whatever is on the third.)
       const tall = rh >= 30;
-      if (lack) { if (tall) text(ctx, u.what, px + 25, y + 11, '#c8c2d4'); text(ctx, lack, px + 25, y + rh - (tall ? 11 : 12), '#ff9a6a'); }
+      // (The reach's row says so where its price is cut for ground that is spent.)
+      const what = u.id === 'tether' && c && this.groundLeft() < 1 ? 'GROUND SPENT: PRICE CUT' : u.what;
+      if (lack) { if (tall) text(ctx, what, px + 25, y + 11, '#c8c2d4'); text(ctx, lack, px + 25, y + rh - (tall ? 11 : 12), '#ff9a6a'); }
       else if (c) {
         // The cost sits on the second line when the first is full. It is lit by what has come home (`banked`), as
         // the purchase itself is judged: never shown as enough while the tap would be refused.
@@ -3549,7 +3596,7 @@ export class Game {
           text(ctx, asks, cx - 2, cy, have >= c.spec ? GEM_COLOR[u.kin] : '#ff7a5a', 1);
         }
         const short = c.gems > 0 && this.banked(u.gem) < c.gems;
-        if (!wide || tall) text(ctx, short ? `${GEM_WHERE[u.gem]}, PAST ${HOME_R}` : u.what, px + 25, wide ? y + 11 : y + rh - 12, short ? GEM_COLOR[u.gem] : '#c8c2d4');
+        if (!wide || tall) text(ctx, short ? `${GEM_WHERE[u.gem]}, PAST ${HOME_R}` : what, px + 25, wide ? y + 11 : y + rh - 12, short ? GEM_COLOR[u.gem] : what === u.what ? '#c8c2d4' : '#8ce060');
       } else text(ctx, u.what, px + 25, y + rh - 12, '#e8c070');
       this.buttons.unshift({ x: px + 4, y, w: pw - 8, h: rh - 1, act: () => this.buy(u) });
     });
