@@ -5,6 +5,7 @@ import { sheets, frameAt, duration } from './atlas.js';
 import { sfx, unlock, setAmbience } from './audio.js';
 import { richness, haulBonus, overload, income, round2, NEEDS, UPGRADES, LAB, LAB_OF, labLevel, labNext, CORE, ROWS, REACH } from './shop.js';
 import { Drawing, T, DIR_BIOME, GEM_ICON, GEM_COLOR, GEM_WHERE, SPOT, bright, compact, DEBRIS } from './drawing.js';
+import { Feel } from './feel.js';
 export { richness, haulBonus, overload, income, UPGRADES, LAB, labLevel, labNext, WORKS, MAPS, CORE } from './shop.js';
 
 export { T };
@@ -200,6 +201,7 @@ export class Game {
     this.docked = null;                                               // what was banked and bought at the last docking, to go back to (`dockMark`)
     this.knocked = 0; this.mended = 0; this.notice = null;            // a pip just lost and the hull just mended (seconds left to show it), and the word across the screen
     this.smokeIn = 0; this.wrecks = 0; this.knocks = 0;               // until a hull in trouble next smokes; wrecks and knocks since the game began (for tests and tools)
+    this.feel = new Feel();                                           // the feel of the ground the drill is in: what only shows and sounds (js/feel.js)
     // (The parts of a frame whose time is added up by name, for `frameTook`.)
     for (const name of ['save', 'changed', 'haul', 'revert', 'updateHazards', 'updateHauls', 'homecoming', 'sweepHome', 'look']) {
       const part = this[name];
@@ -245,6 +247,7 @@ export class Game {
     // The first piece, beside the core, lies loose from the start: the open cell between them tells of it.
     this.changed([C * N + C + 3]);
     this.shop = false; this.lab = false; this.labSel = null; this.labPage = 0; this.labFlash = 0;
+    this.feel.reset(this.S.seed);
     this.dockMark();
   }
   val(id) { const u = ROWS.find(u => u.id === id); return u.values[this.S.lv[id] ?? 0]; }
@@ -2289,6 +2292,7 @@ export class Game {
     // Rubble on its way home keeps coming with the shop open: what it pays is banked as it lands.
     this.updateHauls(dt);
     this.ambient(dt);
+    this.feel.step(this, dt);
     for (const e of this.effects) e.t += dt * 1000;
     this.effects = this.effects.filter(e => e.t < duration(e.sheet, e.animation));
     for (const p of this.popups) p.t += dt;

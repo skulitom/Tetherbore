@@ -78,6 +78,10 @@ const said = ask => `${ask[0]}(${ask.slice(1).map(a => JSON.stringify(a)).join('
 const ask = ([name, ...args]) => { const from = made.length; draws = 0; sfx[name](...args); return made.slice(from); };
 // (A giant haul's sound, at every size of giant and at HALF.)
 ASKS.push(['vast', 1], ['vast', 3], ['vast', 6], ['vast', 7], ['vast', 0], ['vast', NaN]);
+// (The sounds of the ground, js/feel.js's: each as it asks, and with nothing, or with what is no number.)
+ASKS.push(['creak'], ['creak', 0, 1.5], ['creak', NaN, NaN], ['shatter', 1], ['shatter', 0], ['shatter'], ['drip', 1, 0], ['drip', 0, 4], ['drip', 0.5, -2], ['drip', NaN, NaN], ['drip'],
+  ['blub', 0.5], ['blub'], ['quake', 1], ['quake', 2], ['quake', NaN], ['quake'], ['gust', 1], ['gust', 0.5], ['gust'], ['trickle', 0.5], ['trickle'], ['crackle', 1], ['crackle']);
+for (const name of ['creak', 'shatter', 'drip', 'blub', 'quake', 'gust', 'trickle', 'crackle']) if (typeof sfx[name] !== 'function') fails.push(`the ground's feel asks for sfx.${name}, and there is none`);
 for (const name of ['tap', 'gem', 'relic', 'dig', 'tick', 'slide', 'hiss', 'dock', 'clink', 'zap', 'wreck', 'twang', 'thud', 'spot', 'puff', 'place', 'ping', 'mend', 'knock', 'grind', 'freeze', 'deny', 'crack', 'chime', 'buy', 'banked', 'arrive']) {
   if (typeof sfx[name] !== 'function') fails.push(`the game asks for sfx.${name}, and there is none`);
 }
@@ -154,6 +158,8 @@ if (!(digs >= 12 && digs <= 26)) fails.push(`sixty cuts asked for in a second we
 if (!(grinds >= 8 && grinds <= 11)) fails.push(`thirty grinds asked for in a second were ${grinds} sounds`);
 if (!(ticks >= 12 && ticks <= 26)) fails.push(`sixty ticks asked for in a second were ${ticks} sounds`);
 if (!(breaks >= 10 && breaks <= 19)) fails.push(`sixty breaks asked for in a second were ${breaks} sounds`);
+const shatters = burst('shatter', 30, [1]);
+if (!(shatters >= 4 && shatters <= 9)) fails.push(`thirty icicles shattering in a second were ${shatters} sounds`);
 clock += 10;
 if (ask(['relic']).length && ask(['relic']).length) fails.push('a relic asked for twice in one frame sounds twice');
 // Many layers sounding (none has ended): the small sounds give way, the large still play.

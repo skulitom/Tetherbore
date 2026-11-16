@@ -171,7 +171,9 @@ export class Drawing {
 
   render() {
     const { ctx, W, H, world: w } = this, d = this.drill, now = this.time * 1000;
-    const sx = this.shake ? (cellHash((now / 16) | 0, 1, 5) - 0.5) * this.shake : 0, sy = this.shake ? (cellHash((now / 16) | 0, 2, 5) - 0.5) * this.shake : 0;
+    // (The ground's own quake shakes the view too, and nothing else: js/feel.js.)
+    const shook = this.shake + this.feel.quake;
+    const sx = shook ? (cellHash((now / 16) | 0, 1, 5) - 0.5) * shook : 0, sy = shook ? (cellHash((now / 16) | 0, 2, 5) - 0.5) * shook : 0;
     // (The drill is kept in the middle of the screen above the bar, not of the whole screen.)
     const ox = Math.round(this.cam.x - W / 2 + sx), oy = Math.round(this.cam.y - (H - 44) / 2 + sy);
     ctx.fillStyle = '#07060b';
@@ -372,6 +374,8 @@ export class Drawing {
       ctx.globalAlpha = 1;
       if (hurt) { ctx.globalAlpha = 0.5; ctx.fillStyle = '#ff5a4a'; ctx.fillRect(Math.round(dx) - 5, Math.round(dy) - 5, 10, 10); ctx.globalAlpha = 1; }
     }
+    // What the ground's feel lets fall and drift, under the dark.
+    this.feel.dust(this, ctx, ox, oy);
     for (const e of this.effects) {
       const f = frameAt(e.sheet, e.animation, e.t);
       if (f) draw(ctx, e.sheet, f, e.x - ox - f[2] / 2, e.y - oy - f[3] / 2);
@@ -390,6 +394,8 @@ export class Drawing {
     }
     ctx.globalAlpha = 1;
     { const t0 = performance.now(); this.light(ox, oy); this.timed('light', t0); }
+    // What the ground's feel lights over the dark, and the layers over the whole view.
+    { const t0 = performance.now(); this.feel.glow(this, ctx, ox, oy); this.timed('feel', t0); }
     // Ground lying loose: cut off from the world, waiting for the tether to be drawn round it. It shows through the
     // dark, with a dotted edge that crawls round it.
     if (this.pieceOf.size) {
@@ -736,6 +742,7 @@ export class Drawing {
     for (const e of this.effects) if (e.sheet === 'zap' || e.sheet === 'haul' || e.sheet === 'bank') this.shine(Math.floor(e.x / T), Math.floor(e.y / T), 1, 6);
     for (const [i, sp] of this.sparks) if (sp.fuse > 0) this.shine(i % N, Math.floor(i / N), 0.9, 3);
     for (const i of this.quenched.keys()) this.shine(i % N, Math.floor(i / N), 0.8, 2.5);
+    this.feel.lights(this);
     // Keystones that have been seen glint, so that they read from across the screen: the nearest dozen.
     if (keys.length > KEY_GLINTS) {
       const far = i => ((i % N) + 0.5 - d.x) ** 2 + (Math.floor(i / N) + 0.5 - d.y) ** 2;

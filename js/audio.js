@@ -391,6 +391,80 @@ const sound = (name, build) => (...args) => {
 export const sfx = {};
 for (const name of Object.keys(make)) sfx[name] = sound(name, make[name]);
 
+// ---------------------------------------------------------------- the sounds of the ground
+// What a ground does by itself now and then, and what the drill sets off in it (js/feel.js asks for them): ice that
+// groans and then sings as a frozen lake does, an icicle shattering, a drop of water that plinks, gas that blubs out
+// of the mud, the ground shaking, the wind, sand pouring, sparks. They are soft beside the game's own sounds, and
+// none but the shatter is made when many layers are sounding already. `near` is 0 at the edge of hearing and 1
+// beside the drill; whatever a sound is asked with (nothing, or a number that is no number), it makes its sound:
+// what is not a number is taken as beside the drill, and every other figure has a plain value of its own. The low
+// sounds are pitched where a phone's speaker still plays them, a hundred cycles and up.
+// The notes a drop is struck on (a step of `scale` over `base`): the music may point these at the ground's own scale.
+export const PLINK = { base: 880, scale: [0, 2, 4, 7, 9] };
+const loud = near => Number.isFinite(near) ? 0.35 + 0.65 * Math.min(1, Math.max(0, near)) : 1;
+const figure = (value, plain, least, most) => Number.isFinite(value) ? Math.min(most, Math.max(least, value)) : plain;
+const quirks = {
+  // A groan in the ice, and the long falling note a frozen lake sings after it. `pitch` is the ice's (1 the north's).
+  creak(near, pitch) {
+    if (crowded()) return;
+    const a = loud(near), p = figure(pitch, 1, 0.4, 2.5), f = vary(170, 0.12) * p;
+    tone(f, 0.6, { type: 'sawtooth', gain: 0.05 * a, to: f * 0.8, lp: 900, lpTo: 480, attack: 0.12, out: room });
+    tone(vary(1900, 0.1) * p, 0.42, { type: 'sine', gain: 0.03 * a, to: 420 * p, delay: 0.16, attack: 0.01, out: space });
+  },
+  // An icicle hits the floor: glass breaking, and two bright notes.
+  shatter(near) {
+    const a = loud(near);
+    grains(5, 0.16, { first: 0.09 * a, gain: 0.06 * a, freq: 4200, out: room });
+    tone(vary(2600, 0.06), 0.12, { type: 'sine', gain: 0.05 * a, to: 3400, out: room });
+    tone(3900, 0.08, { type: 'sine', gain: 0.025 * a, delay: 0.03, out: space });
+  },
+  // A drop lands: a note that rises as it dies (`step` is its place in PLINK), and a soft knock under it.
+  drip(near, step) {
+    if (crowded()) return;
+    const a = loud(near), s = Math.round(figure(step, 0, -10, 10)), n = PLINK.scale.length;
+    const f = fold(PLINK.base * 2 ** ((PLINK.scale[((s % n) + n) % n] + 12 * Math.floor(s / n)) / 12));
+    tone(f, 0.09, { type: 'sine', gain: 0.05 * a, to: f * 1.5, attack: 0.003, out: space });
+    tone(f / 2, 0.05, { gain: 0.02 * a, attack: 0.002 });
+  },
+  // Gas out of the mud: a bubble's note rising, and the pop.
+  blub(near) {
+    if (crowded()) return;
+    const a = loud(near);
+    tone(vary(150, 0.1), 0.12, { type: 'sine', gain: 0.06 * a, to: 420, lp: 900, attack: 0.01 });
+    noise(0.03, { type: 'lowpass', freq: 700, gain: 0.03 * a, delay: 0.1 });
+  },
+  // The ground shakes: a rumble, a low note under it falling, and grit coming down. `power` 0.3 to 2.
+  quake(power) {
+    if (crowded()) return;
+    const p = figure(power, 1, 0.3, 2), length = 1.2 + 0.4 * p;
+    noise(length, { type: 'lowpass', freq: 400, to: 200, q: 0.8, gain: 0.08 + 0.03 * p, attack: 0.15, out: room });
+    tone(vary(105, 0.05), length * 0.9, { type: 'triangle', gain: 0.07 + 0.03 * p, to: 72, attack: 0.12, out: room });
+    grains(4 + Math.round(2 * p), 0.9, { first: 0.03, gain: 0.03, freq: 900, type: 'bandpass', delay: 0.2 });
+  },
+  // The wind gets up and drops: it rises in pitch as it comes. `strength` 0.2 to 2.
+  gust(strength) {
+    if (crowded()) return;
+    const s = figure(strength, 1, 0.2, 2);
+    noise(2.4, { freq: 380, to: 1300, q: 1.2, gain: 0.035 + 0.02 * s, attack: 0.9 });
+    noise(1.8, { type: 'highpass', freq: 3000, to: 1800, q: 0.7, gain: 0.012 + 0.008 * s, delay: 0.3, attack: 0.6 });
+  },
+  // Sand pouring from the roof.
+  trickle(near) {
+    if (crowded()) return;
+    const a = loud(near);
+    grains(12, 0.9, { first: 0.02 * a, gain: 0.035 * a, freq: 3400, type: 'bandpass', q: 1.2 });
+    noise(0.8, { type: 'highpass', freq: 5000, to: 3000, gain: 0.018 * a, attack: 0.2 });
+  },
+  // Sparks spitting: a vent, a crystal woken.
+  crackle(near) {
+    if (crowded()) return;
+    const a = loud(near);
+    grains(6, 0.35, { first: 0.04 * a, gain: 0.04 * a, freq: 2400 });
+  },
+};
+Object.assign(GAP, { creak: 1.2, shatter: 0.12, drip: 0.1, blub: 0.15, quake: 1.5, gust: 2, trickle: 0.4, crackle: 0.2 });
+for (const name of Object.keys(quirks)) sfx[name] = sound(name, quirks[name]);
+
 // ---------------------------------------------------------------- the sound of the place
 // A bed of filtered noise and a low drone that change with the ground the drill is in, and now and then a single
 // soft note from that ground's own scale.
