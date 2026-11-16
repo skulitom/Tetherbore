@@ -82,7 +82,9 @@ const UNDER = 4;                                // how many cells over the drill
 //   rime     { color, build }                                          frost growing in at the corners of the view
 //                                                                       over `build` seconds, gone at the core
 const FROST_WAKE = { kind: 'frost', color: '#dff4ff' }, DRIP_WAKE = { kind: 'drip', color: '#7ab89a' }, DUST_WAKE = { kind: 'dust', color: '#c8a070' };
-const EMBER_VENT = { p: 0.05, colors: ['#ff6a2a', '#ff9a3a', '#ffd070'], rate: 1 };
+// (A vent's crack burns the sulphur blue of the south's fumaroles in its art, js/decor.js, never lava's orange:
+// only the sparks it spits are warm, and they are gone in a moment.)
+const EMBER_VENT = { p: 0.05, colors: ['#3e64ff', '#dce8ff', '#ffd070'], rate: 1 };
 export const FEELS = {
   crust: { drip: { every: [5, 10], color: '#8a98a6', step: -5 }, worm: { every: [14, 28] }, settle: { cut: 0.6 }, edge: { color: [20, 14, 8], alpha: 0.45 } },
   frost: { creak: { every: [10, 22], pitch: 1 }, drip: { every: [9, 16], color: '#bcd8ee', step: 3 }, wake: FROST_WAKE,
