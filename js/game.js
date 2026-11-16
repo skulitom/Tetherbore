@@ -295,11 +295,15 @@ const LIGHT_STEP = [[1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, -1, 1], [1, 1, 1.41], 
 
 const compact = n => n < 1000 ? `${Math.floor(n)}` : n < 10000 ? `${(Math.floor(n / 100) / 10).toFixed(1)}K` : n < 1e6 ? `${Math.floor(n / 1000)}K`
   : n < 1e9 ? `${(Math.floor(n / 1e5) / 10).toFixed(1)}M` : `${(Math.floor(n / 1e8) / 10).toFixed(1)}B`;
-const store = () => new Promise((resolve, reject) => {
+// One connection to the browser's database, opened at the first asking and kept. (Every save opened another and
+// none was ever closed: a long sitting held thousands of them.) Should it be lost, or fail to open, the next asking
+// opens it again.
+let opened = null;
+const store = () => opened ??= new Promise((resolve, reject) => {
   const open = indexedDB.open('tetherbore', 1);
   open.onupgradeneeded = () => open.result.createObjectStore('pieces');
-  open.onsuccess = () => resolve(open.result);
-  open.onerror = () => reject(open.error);
+  open.onsuccess = () => { const db = open.result; db.onclose = () => { opened = null; }; db.onversionchange = () => { opened = null; db.close?.(); }; resolve(db); };
+  open.onerror = () => { opened = null; reject(open.error); };
 });
 
 export class Game {
@@ -354,7 +358,15 @@ export class Game {
       stats: { hauls: 0, best: 0, buys: 0, moves: 0, time: 0 }, won: false, met: {}, marks: [], visited: {}, spec: [0, 0, 0, 0, 0], lab: {}, out: 0 };
     this.world.reset(seed);
     this.begin();
-    if (!quiet) store().then(db => db.transaction('pieces', 'readwrite').objectStore('pieces').clear()).catch(() => {});
+    if (!quiet) this.claim();
+  }
+  // The ground kept in the browser's database is this world's from now on: whatever was kept of any other world is
+  // thrown out, and the store is marked with this world's seed. (Every piece saved says whose it is as well, and
+  // `restore` takes none that is another world's: a game once began a new world over the old one's saved ground,
+  // and found everything about the core mined out to far beyond where its tether reached.)
+  claim() {
+    const seed = this.S.seed;
+    store().then(db => { const pieces = db.transaction('pieces', 'readwrite').objectStore('pieces'); pieces.clear(); pieces.put({ seed }, 'meta'); }).catch(() => {});
   }
   begin() {
     const w = this.world;
@@ -391,17 +403,20 @@ export class Game {
   // What was bought and banked goes in local storage; the ground, a piece at a time, in the browser's database.
   save() {
     try { localStorage.setItem(SAVE_KEY, JSON.stringify({ v: 3, ...this.S })); } catch { /* the game goes on without saving */ }
-    const w = this.world, ids = [...w.touched];
-    if (!ids.length) return;
+    // (The pieces are taken now, as this world's: by the time the database answers, the game may be in another.)
+    const w = this.world, seed = this.S.seed, kept = [...w.touched].map(id => [id, w.chunks[id]]).filter(([, p]) => p);
+    if (!kept.length) return;
     w.touched.clear();
     store().then(db => {
       const pieces = db.transaction('pieces', 'readwrite').objectStore('pieces');
-      for (const id of ids) { const p = w.chunks[id]; if (p) pieces.put({ kind: p.kind, biome: p.biome, seen: p.seen }, id); }
+      for (const [id, p] of kept) pieces.put({ kind: p.kind, biome: p.biome, seen: p.seen, seed }, id);
     }).catch(() => {});
   }
   async restore() {
+    let raw = null;
     try {
-      const data = JSON.parse(localStorage.getItem(SAVE_KEY));
+      raw = localStorage.getItem(SAVE_KEY);
+      const data = JSON.parse(raw);
       if (!data || data.v !== 3) return false;
       const { v, ...S } = data;
       // What was bought and banked does not wait on the database: where that cannot be opened or read (a private
@@ -421,10 +436,38 @@ export class Game {
       S.wrecks ??= [0, 0, 0, 0, 0, 0, 0, 0]; S.met ??= {}; S.marks ??= []; S.visited ??= {}; S.spec ??= [0, 0, 0, 0, 0]; S.lab ??= {}; S.out ??= 0;
       for (const u of ROWS) this.S.lv[u.id] = Math.min(this.S.lv[u.id] ?? 0, u.values.length - 1);
       this.world.reset(S.seed);
-      for (const [id, p] of rows) this.world.chunks[id] = p;
+      // Only this world's ground is taken. A piece says whose it is; one that does not (saved before pieces said)
+      // is this world's if the store is marked as this world's. In a store with no mark at all each such piece is
+      // looked at (`World.strange`): another world's ground does not lie as this seed lays it. And where a fifth
+      // of them or more are another's, the pieces with nothing left in them to judge by go too. What is not this
+      // world's is thrown out of the store, and the store is marked.
+      const w = this.world, meta = rows.find(([key]) => key === 'meta')?.[1], pieces = rows.filter(([key]) => key !== 'meta'), gone = [], unsure = [];
+      let judged = 0, strange = 0;
+      for (const [id, p] of pieces) {
+        let own = p.seed === S.seed;
+        if (p.seed === undefined) {
+          if (meta) own = meta.seed === S.seed;
+          else { const how = w.strange(id, p); judged++; own = how < 1; if (how === 1) strange++; else if (how > 0) unsure.push(id); }
+        }
+        if (own) w.chunks[id] = { kind: p.kind, biome: p.biome, seen: p.seen }; else gone.push(id);
+      }
+      if (strange >= judged * 0.2 && strange > 0) for (const id of unsure) { w.chunks[id] = undefined; gone.push(id); }
+      this.thrownOut = gone.length;
+      if (gone.length || meta?.seed !== S.seed) {
+        const seed = S.seed;
+        store().then(db => { const kept = db.transaction('pieces', 'readwrite').objectStore('pieces'); for (const id of gone) kept.delete?.(id); kept.put({ seed }, 'meta'); }).catch(() => {});
+      }
       this.begin();
+      if (gone.length) this.notice = { title: 'GROUND MENDED', sub: `${gone.length} PIECES OF AN OLD WORLD`, colour: '#8ce060', t: 0, life: 5 };
       return true;
-    } catch { return false; }
+    } catch (error) {
+      // A save that is there and cannot be begun is kept aside before a new game is written over it, and the
+      // game says what went wrong (MENU); the new game begins clean.
+      try { if (raw) localStorage.setItem(`${SAVE_KEY}-kept`, raw); } catch { /* not kept */ }
+      this.fresh((Math.random() * 1e9) | 0, true);
+      this.failed(error);
+      return false;
+    }
   }
 
   // ------------------------------------------------------------ view

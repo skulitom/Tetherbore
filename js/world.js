@@ -1273,6 +1273,26 @@ export class World {
     if (this.kept !== null) this.kept.set(id, { kind: p.kind.slice(), biome: p.biome.slice(), seen: p.seen.slice() });
     return p;
   }
+  // Whether a saved piece of ground (`p`: { kind, biome, seen }, its number `id`) is some other world's: 1 where it
+  // plainly is, 0 where it is this one's, and a half where there is too little left in it to say. Looked at on a
+  // grid of 256 of its cells: in another world's piece the grounds do not lie where this seed lays them (but
+  // within the home ground, which is the same in every world), and the cells that still stand are not the kinds
+  // this seed lays there. A piece of this world differs from the seed only where the game changed it, and a cut
+  // cell is judged by its ground alone.
+  strange(id, p) {
+    const x0 = (id % CW) * CH, y0 = ((id / CW) | 0) * CH, was = this.slabHere;
+    if (was === undefined) this.slabHere = this.slabOver(x0, y0, x0 + CH - 1, y0 + CH - 1);
+    let n = 0, stand = 0, kinds = 0, grounds = 0;
+    for (let v = 2; v < CH; v += 4) for (let u = 2; u < CH; u += 4) {
+      const at = v * CH + u, b = this.biomeAt(x0 + u, y0 + v);
+      n++;
+      if (p.biome[at] !== b) grounds++;
+      if (p.kind[at] !== K.EMPTY) { stand++; if (p.kind[at] !== this.kindAt(x0 + u, y0 + v, b)) kinds++; }
+    }
+    this.slabHere = was;
+    if (grounds > n * 0.4 || (stand >= 8 && kinds > stand * 0.4)) return 1;
+    return stand < 8 ? 0.5 : 0;
+  }
   // The mark: from now on, the first time a piece is changed (a cell cut, grown back or seen) it is copied as it
   // was, and `back` puts every such piece back, so the ground is again what it was when the mark was made. The
   // pieces put back are saved again. (Lava and what is icing over are of the moment, and go.)

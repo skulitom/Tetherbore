@@ -9,7 +9,8 @@ const game = new Game(canvas, document.getElementById('rope'));
 // which is then neither read nor written (js/shot.js, fetched only then). Without it none of this runs.
 const query = new URLSearchParams(location.search);
 const shot = query.has('shot') ? (await import('./shot.js')).stage(game, query) : null;
-if (!shot) await game.restore();
+// (With no saved game to go on with, the game begun is a new one, and the saved ground is made its own.)
+if (!shot && !(await game.restore())) game.claim();
 
 function resize() {
   const w = window.innerWidth || 360, h = window.innerHeight || 640;
