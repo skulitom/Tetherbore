@@ -34,14 +34,15 @@ export function unlock() {
   const c = new AC(), rate = c.sampleRate;
   master = c.createGain();
   master.gain.value = muted ? 0 : LEVEL;
-  const squash = c.createDynamicsCompressor(), ceiling = c.createWaveShaper(), curve = new Float32Array(1025);
+  const squash = c.createDynamicsCompressor(), curve = new Float32Array(1025);
   squash.threshold.value = -16; squash.knee.value = 10; squash.ratio.value = 3.5; squash.attack.value = 0.004; squash.release.value = 0.16;
   for (let i = 0; i < curve.length; i++) {
     const x = i / 512 - 1, a = Math.abs(x);
     curve[i] = a <= 0.5 ? x : Math.sign(x) * (0.5 + 0.42 * Math.tanh((a - 0.5) / 0.42));
   }
-  ceiling.curve = curve;
-  master.connect(squash); squash.connect(ceiling); ceiling.connect(c.destination);
+  master.connect(squash);
+  // (Whatever the browser cannot make, the ceiling, the echo or the music box, is done without.)
+  try { const ceiling = c.createWaveShaper(); ceiling.curve = curve; squash.connect(ceiling); ceiling.connect(c.destination); } catch { squash.connect(c.destination); }
   noiseBuffer = c.createBuffer(1, rate, rate);
   const data = noiseBuffer.getChannelData(0);
   let s = 12345;
@@ -116,18 +117,20 @@ function play(source, gain, t, end, out, offset) {
 }
 const voice = (osc, type) => { if (type !== 'keys') osc.type = type; else if (keys) osc.setPeriodicWave(keys); else osc.type = 'triangle'; };
 const sweep = (param, from, to, t, end) => {
-  param.automationRate = 'k-rate';      // a filter that moves is worked out once a block, not once a sample
+  try { param.automationRate = 'k-rate'; } catch { /* an old browser */ }      // a filter that moves is worked out once a block, not once a sample
   param.setValueAtTime(from, t);
   if (to !== from) param.exponentialRampToValueAtTime(Math.max(30, to), end);
 };
 
 // A note: `freq` falling or rising to `to` over its length. `lp` puts a lowpass on it (closing to `lpTo`), which
-// takes the edge off a sawtooth.
-function tone(freq, length, { type = 'triangle', gain = 0.2, to = freq, delay = 0, attack = 0.004, out = master, lp = 0, lpTo = lp } = {}) {
-  if (!(freq > 0 && to > 0 && length > 0)) return;
+// takes the edge off a sawtooth. `kick` is a pitch it starts at and drops from in a hundredth of a second: the
+// knock at the front of a blow, for no node more.
+function tone(freq, length, { type = 'triangle', gain = 0.2, to = freq, delay = 0, attack = 0.004, out = master, lp = 0, lpTo = lp, kick = 0 } = {}) {
+  if (!(freq > 0 && to > 0 && length > 0 && kick >= 0)) return;
   const t = ctx.currentTime + delay, end = t + length, o = ctx.createOscillator(), g = ctx.createGain();
   voice(o, type);
-  o.frequency.setValueAtTime(freq, t);
+  if (kick) { o.frequency.setValueAtTime(kick, t); o.frequency.exponentialRampToValueAtTime(freq, t + Math.min(0.012, length / 3)); }
+  else o.frequency.setValueAtTime(freq, t);
   if (to !== freq) o.frequency.exponentialRampToValueAtTime(Math.max(20, to), end);
   fade(g.gain, t, gain, attack, end);
   if (lp) { const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.Q.value = 0.7; sweep(f.frequency, lp, lpTo, t, end); o.connect(f); f.connect(g); } else o.connect(g);
@@ -189,12 +192,13 @@ const fold = freq => { while (freq > 3600) freq /= 2; return freq; };   // nothi
 
 // ---------------------------------------------------------------- the sounds
 // Cutting, by how hard the ground is (1 soft, 2 dense, 3 slate, 4 a vault's wall): the crunch [from Hz, to Hz, Q,
-// seconds, gain], the body under it [Hz, gain], the crack on top [gain] and what the stone rings at [Hz].
+// seconds, gain], the body under it [Hz, gain, the pitch its knock starts at], what the stone rings at [Hz] and
+// the crack on top [gain]. Soft ground crumbles; hard ground knocks, slate rings, a vault cracks as well.
 const ROCK = [null,
-  [1500, 450, 0.9, 0.085, 0.27, 175, 0.19, 0, 0],
-  [1250, 380, 1.1, 0.1, 0.28, 150, 0.23, 0.12, 0],
-  [2100, 700, 1.4, 0.12, 0.23, 135, 0.23, 0.17, 1250],
-  [1700, 500, 1.6, 0.14, 0.24, 112, 0.27, 0.19, 820]];
+  [1500, 450, 0.9, 0.085, 0.27, 175, 0.19, 0, 0, 0],
+  [1250, 380, 1.1, 0.1, 0.28, 150, 0.25, 700, 0, 0],
+  [2100, 700, 1.4, 0.12, 0.23, 135, 0.25, 900, 1250, 0],
+  [1700, 500, 1.6, 0.14, 0.24, 112, 0.28, 800, 820, 0.19]];
 // A haul that is banked within RUN seconds of the last is one more of a run, and everything it plays is a step up.
 const RUN = 8;
 let digAt = -9, strong = true, grindAt = -9, beat = 0, bankedAt = -9, run = 0, trill = false;
@@ -204,13 +208,13 @@ const make = {
   // so a seam plays a little tune) or 'ice' (glass), or nothing.
   dig(hard = 1, kind = '') {
     if (hard < 1) { make.crumble(); return; }
-    const t = ctx.currentTime, [from, to, q, length, crunch, low, body, crack, ring] = ROCK[Math.min(4, Math.round(hard))] ?? ROCK[1];
+    const t = ctx.currentTime, [from, to, q, length, crunch, low, body, kick, ring, crack] = ROCK[Math.min(4, Math.round(hard))] ?? ROCK[1];
     // One cut soon after another is the weaker and higher of a pair: a held cut is a rhythm.
     strong = t - digAt > 0.22 || !strong; digAt = t;
     const a = strong ? 1 : 0.68, up = strong ? 1 : 1.12, thin = crowded();
     noise(length, { freq: vary(from, 0.1) * up, to, q, gain: crunch * a });
     if (thin) return;
-    tone(vary(low, 0.07) * up, length * 0.85, { gain: body * a, to: 62 });
+    tone(vary(low, 0.07) * up, length * 0.85, { gain: body * a, to: 62, kick: kick * up });
     if (crack) noise(0.022, { type: 'highpass', freq: 3200, gain: crack * a, attack: 0.001 });
     if (ring) tone(vary(ring, 0.05), 0.1, { type: 'sine', gain: 0.06 * a, delay: 0.004, out: room });
     if (kind === 'ore') tone(note(10 + ((rnd() * 5) | 0)), 0.18, { type: 'keys', gain: 0.09, delay: 0.012, out: space });
@@ -252,15 +256,15 @@ const make = {
     noise(0.014, { type: 'highpass', freq: 2500, gain: 0.07, attack: 0.001 });
   },
   // The tether closes round a piece. The tether snaps taut (a crack), the ground lets go (a drop, lower and longer
-  // the bigger the piece), rubble falls, the rope takes it up (a rush that rises), and two notes say it is caught:
-  // `link` is how many hauls came just before it, and the notes are a step higher for each.
+  // the bigger the piece), rubble falls, the rope takes up a big piece (a rush that rises), and two notes say it is
+  // caught: `link` is how many hauls came just before it, and the notes are a step higher for each.
   crack(size = 1, link = 0) {
     const big = Math.min(1, Math.log2(1 + Math.max(0, size)) / 7.6), step = 5 + Math.min(8, Math.max(0, link | 0));
     if (size >= 30) hush(0.45, 0.5);
     grains(size >= 6 ? 2 + Math.round(big * 4) : 0, 0.18 + big * 0.3, { first: 0.15 + big * 0.1, gain: 0.07 + big * 0.05, delay: 0, out: room });
     tone(vary(200 - big * 60, 0.05), 0.2 + big * 0.36, { gain: 0.3 + big * 0.18, to: 42, out: room });
     noise(0.2 + big * 0.45, { type: 'lowpass', freq: 1000, to: 110, q: 0.6, gain: 0.2 + big * 0.2, attack: 0.004, out: room });
-    if (size >= 10) noise(0.45, { freq: 500, to: 2200, q: 2, gain: 0.05 + big * 0.04, delay: 0.1, attack: 0.16 });
+    if (size >= 30) noise(0.45, { freq: 500, to: 2200, q: 2, gain: 0.05 + big * 0.04, delay: 0.1, attack: 0.16 });
     line([note(step), note(step + 2)], 0.07, { gain: 0.1 + big * 0.03, ring: 0.3 + big * 0.2, delay: 0.045 });
   },
   // A bit of a haul comes home. `step` climbs as the haul is paid out; one tick in two is the octave above; and the
@@ -433,7 +437,7 @@ sfx.ping = sound('ping', (near = 0) => tone(620 + 260 * near, 0.08, { type: 'sin
 // next is drawn from the generator the sounds use, so it never comes round again.
 const MODE = [[0, 2, 4, 7, 9], [0, 2, 5, 7, 9], [0, 3, 5, 7, 10], [0, 2, 4, 7, 9], [0, 2, 4, 7, 11]];
 const EVERY = 1500, AHEAD = 2;          // the timer's period in milliseconds, and how far ahead it posts, in seconds
-const MUSIC = 0.65;                      // the music's level against the sounds'
+const MUSIC = 0.5;                      // the music's level against the sounds'
 const degree = (base, mode, k) => base * 2 ** ((mode[((k % 5) + 5) % 5] + 12 * Math.floor(k / 5)) / 12);
 function hush(to, hold) {
   if (!band) return;
@@ -462,6 +466,7 @@ function tune() {
     });
     band = { soft, duck, out, voices, bright: 0 };
     conductor = setInterval(conduct, EVERY);
+    conductor.unref?.();                // (in Node, where the tests run, a timer would keep a finished test from ending)
     conduct();
   } else if (!want && band) {
     clearInterval(conductor);
