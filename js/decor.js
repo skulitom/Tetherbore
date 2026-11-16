@@ -4,7 +4,7 @@
 // the ground's back wall instead, so a tunnel through a ground looks like that ground's. Nothing here draws or keeps
 // anything: what a cell has is worked out from the cell, the cells beside it and seedless hashes of where it is, so
 // the same ground always has the same pieces, and a piece goes as soon as the rock it hangs from is cut away. No
-// Math.random is drawn (the hashes' salts 21 to 26 are drawing's own, as 1 to 5 are).
+// Math.random is drawn (the hashes' salts 21 to 27 are drawing's own, as 1 to 5 are: 27 is a glow's waver).
 //
 // How another part of the game asks about a cell: `game.decorOf(i)` (js/drawing.js) is the name of the frame that
 // cell shows, `<set>-<place>-<n>`, or null; `placeOf(name)` is 'top', 'bottom', 'left', 'right' or 'floor', and
