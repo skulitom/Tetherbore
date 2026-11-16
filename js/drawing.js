@@ -12,7 +12,7 @@ import { WORKS, MAPS, TABS, LAB, LAB_OF, labLevel, labNext, ROWS } from './shop.
 // once both modules have: js/game.js is the module a page, a test or a tool loads, and this one runs before it,
 // reading nothing of it as it runs. Loaded first on its own, this module would have js/game.js run first, and
 // that copies the methods from here before there are any: so nothing loads it but js/game.js.)
-import { HX, HY, BOOST, DEATH } from './game.js';
+import { HX, HY, BOOST, DEATH, GIANTS } from './game.js';
 
 export const T = 16;                            // pixels in a cell
 export const DIR_BIOME = [B.LODE, B.EMBER, B.MIRE, B.FROST];
@@ -413,8 +413,9 @@ export class Drawing {
       ctx.globalAlpha = 1;
     }
     for (const r of this.rings) {
-      // A ring of whole pixels spreading from a point.
-      const u = r.t / 0.5, rad = r.reach * (1 - (1 - u) * (1 - u)), n = Math.max(12, (rad * 1.6) | 0);
+      // A ring of whole pixels spreading from a point (once its delay is over: `Game.ring`).
+      if (r.t < 0) continue;
+      const u = r.t / (r.life ?? 0.5), rad = r.reach * (1 - (1 - u) * (1 - u)), n = Math.max(12, (rad * 1.6) | 0);
       ctx.globalAlpha = (1 - u) * 0.9; ctx.fillStyle = r.color;
       for (let a = 0; a < n; a++) ctx.fillRect(Math.round(r.x - ox + Math.cos(a / n * 6.283) * rad), Math.round(r.y - oy + Math.sin(a / n * 6.283) * rad), 1, 1);
     }
@@ -859,8 +860,13 @@ export class Drawing {
     if (this.banner) {
       const b = this.banner, pop = Math.min(1, b.t / 0.12), y = Math.round(head - (1 - pop) * 8);
       ctx.globalAlpha = Math.min(1, (b.life - b.t) * 3);
-      const big = (b.n >= 10 ? 2 : 1) + (b.t < 0.07 ? 1 : 0);
-      text(ctx, b.title, W / 2, y, b.n >= 30 ? '#ffe14a' : '#ffffff', 0.5, big);
+      // (A title too wide for the screen at its size is set a size smaller. A haul named by its place is in its
+      // colour; a giant's title is gold and white by turns, faster the bigger it is, and HALF's runs through the gems'.)
+      let big = (b.n >= 10 ? 2 : 1) + (b.t < 0.07 || (b.giant > 3 && b.t < 0.3) ? 1 : 0);
+      while (big > 1 && textWidth(b.title, big) > W - 8) big--;
+      const giant = b.giant ?? 0, beat = (now / Math.max(60, 260 - giant * 30)) | 0;
+      const colour = giant > GIANTS.length ? GEM_COLOR[1 + beat % 4] : giant ? (beat % 2 ? '#ffffff' : '#ffe14a') : b.colour ?? (b.n >= 30 ? '#ffe14a' : '#ffffff');
+      text(ctx, b.title, W / 2, y, colour, 0.5, big);
       const [size, prism, spec] = this.bannerSays(b);
       text(ctx, size, W / 2, y + 11 * big + 2, b.over < 1 ? '#ffb060' : '#bfe6ff', 0.5);
       let line = `+${compact(b.grit)}`, lw = textWidth(line) + 11;
@@ -874,6 +880,8 @@ export class Drawing {
       if (spec) { if (b.mineral) this.drawMineral(ctx, b.mineral, lx - 1, ly - 3); else draw(ctx, 'icons', `spec-${GEM_ICON[b.specOf]}`, lx, ly - 1); text(ctx, spec, lx + 13, ly, GEM_COLOR[b.specOf]); }
       // A prism among the cells: what it multiplied the gems by, in the gems' colours by turns.
       if (prism) text(ctx, prism, W / 2, ly + 12, GEM_COLOR[1 + ((now / 240) | 0) % 4], 0.5);
+      // A word more under the rest, where the haul has one (HALF's).
+      if (b.sub) text(ctx, b.sub, W / 2, ly + (prism ? 24 : 12), '#fff6c8', 0.5);
       ctx.globalAlpha = 1;
     }
     // Over a dead drill the screen goes dark.
@@ -900,7 +908,7 @@ export class Drawing {
         }
         if (best) lines = [best[0], best[1]]; else big = 1;
       }
-      const under = this.banner ? Math.round(head) + 11 * (this.banner.n >= 10 ? 2 : 1) + (this.banner.shine > 1 ? 42 : 30) : 0, y = Math.max(under, Math.round(Math.max(head + 14, H * 0.3) - (1 - pop) * 8));
+      const under = this.banner ? Math.round(head) + 11 * (this.banner.n >= 10 ? 2 : 1) + (this.banner.shine > 1 ? 42 : 30) + (this.banner.sub ? 12 : 0) : 0, y = Math.max(under, Math.round(Math.max(head + 14, H * 0.3) - (1 - pop) * 8));
       ctx.globalAlpha = Math.min(1, (place.life - place.t) * 3);
       lines.forEach((line, n) => text(ctx, line, W / 2, y + n * 11 * big, place.colour, 0.5, big + (n === 0 && lines.length === 1 && place.t < 0.07 ? 1 : 0)));
       ctx.globalAlpha = 1;

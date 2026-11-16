@@ -308,6 +308,20 @@ const make = {
     if (tier) tone(fold(chord[chord.length - 1] * 2), 0.45 + tier * 0.15, { type: 'sine', gain: 0.035 + tier * 0.008, delay: last + 0.03, attack: 0.012, out: space });
     if (tier >= 2) noise(0.3 + tier * 0.05, { type: 'highpass', freq: 6500, gain: 0.014 + tier * 0.004, attack: 0.06, delay: last, out: space });
   },
+  // A giant haul (`giant` 1 to 6 by its size; 7 is half of all the ground the longest tether reaches round). The
+  // ground falls in, a boom and a long rumble, and a run of bells climbs, a note longer for each step up, doubled an
+  // octave down and with a shimmer over the big ones; half of everything ends on two bells held a long while.
+  vast(giant = 1) {
+    const g = Math.max(1, Math.min(7, giant | 0)), half = g === 7;
+    hush(0.2, 1 + g * 0.3);
+    tone(vary(96, 0.03), 0.6 + g * 0.1, { gain: 0.2, to: 38, out: room });
+    noise(0.8 + g * 0.15, { type: 'lowpass', freq: 520, to: 90, q: 0.7, gain: 0.1 + g * 0.01, attack: 0.03, out: room });
+    const run = [5, 7, 8, 10, 12, 13, 15, 17, 18, 20].slice(0, 3 + g).map(note), last = (run.length - 1) * 0.07;
+    line(run, 0.07, { gain: 0.15, ring: 0.6 + g * 0.08, delay: 0.12 });
+    if (g >= 2 && !half) line(run.map(f => f / 2), 0.07, { type: 'triangle', gain: 0.07, ring: 0.5 + g * 0.06, delay: 0.12 });
+    if (g >= 3) noise(0.5 + g * 0.08, { type: 'highpass', freq: 6500, gain: 0.02, attack: 0.08, delay: 0.12 + last, out: space });
+    if (half) for (const [step, gain] of [[20, 0.07], [22, 0.05]]) tone(fold(note(step)), 3, { type: 'keys', gain, attack: 0.25, delay: 0.2 + last, out: space });
+  },
   recall() { noise(0.4, { freq: 300, to: 3200, gain: 0.12, q: 2, attack: 0.1 }); tone(200, 0.4, { gain: 0.07, to: 900, attack: 0.08 }); },
   // The drill rides on to the core: the latch, and two notes a fifth apart.
   dock() {

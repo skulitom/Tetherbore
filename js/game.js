@@ -3,7 +3,7 @@
 import { World, N, C, K, B, HARD, GRIT, GEMS, DX, DY, HAZARDS, ZONE, FIND, rowOf, hazOf, gemKin, digTime, cellHash, sight, cellsAlong, HOME_R } from './world.js';
 import { sheets, frameAt, duration } from './atlas.js';
 import { sfx, unlock, setAmbience } from './audio.js';
-import { richness, haulBonus, WINCH_LOAD, HAUL_MOST, overload, income, round2, NEEDS, UPGRADES, LAB, LAB_OF, labLevel, labNext, CORE, ROWS } from './shop.js';
+import { richness, haulBonus, WINCH_LOAD, HAUL_MOST, overload, income, round2, NEEDS, UPGRADES, LAB, LAB_OF, labLevel, labNext, CORE, ROWS, REACH } from './shop.js';
 import { Drawing, T, DIR_BIOME, GEM_ICON, GEM_COLOR, GEM_WHERE, SPOT, bright, compact, DEBRIS } from './drawing.js';
 export { richness, haulBonus, HAUL_MOST, overload, income, UPGRADES, LAB, labLevel, labNext, WORKS, MAPS, CORE } from './shop.js';
 
@@ -19,6 +19,39 @@ const SAVE_KEY = 'tetherbore-save-v3';
 const LIGHT = 12, CHAIN = 6;
 // How many bits of rubble may be on their way home at once, over every haul there is.
 export const RUBBLE = 400;
+// What a haul is called (`haulTitle`). Up to a COLOSSAL one, by its size; a haul of BIG or more that lies mostly in
+// a place of its own (a pocket, a deep ground, a strain or a cross: `placeHaul`) by that place, in its colour; and a
+// giant, from a thousand cells, by GIANTS, louder and brighter at each step. The last word is kept for a haul of half
+// of all the ground the longest tether reaches round (HALF: the disc of the last reach, halved, eight million cells
+// and more). The winch cannot draw in so much yet (`HAUL_MOST`), so nothing can earn it until that cap goes.
+const SIZES = [[200, 'COLOSSAL!'], [80, 'HUGE HAUL!'], [30, 'BIG HAUL!'], [10, 'NICE CUT!']];
+export const GIANTS = [[1000, 'MOUNTAINOUS!'], [4000, 'TITANIC!'], [15000, 'AVALANCHE!'], [50000, 'CATACLYSM!'], [150000, 'CONTINENTAL!'], [400000, 'WORLD EATER!']];
+export const HALF = Math.round(Math.PI * REACH[REACH.length - 1] ** 2 / 2);
+// The places with words of their own, by the name of their ground; a cross is its noun's haul, and any other place
+// of its own its title's.
+const PLACE_HAULS = {
+  hive: 'HONEYCOMB!', drift: 'SKYFALL!', ash: 'ASHFALL!', grotto: 'LANTERN HAUL!', tinder: 'KINDLED!', glaze: 'SHATTERED!', shale: 'STACKED!',
+  rime: 'DEEP FREEZE!', magma: 'MOLTEN HAUL!', bloom: 'FULL BLOOM!', gilt: 'GILDED!',
+  firn: 'FROZEN RIVER!', serac: 'ICEFALL!', scoria: 'FROTHING!', forge: 'FORGED!', tangle: 'TANGLED UP!', sporefall: 'SPORE STORM!', redrock: 'RED LETTER!', loess: 'SILTSLIDE!',
+};
+export const placeHaul = row => !row || !(row.pocket || row.cross || (row.id >= 5 && row.id <= 31)) ? null
+  : PLACE_HAULS[row.name] ?? `${row.cross ? row.title.split(' ').pop() : row.title} HAUL!`;
+// Which giant a haul of `n` cells is: 0 none, 1 to GIANTS.length, and one more for HALF.
+export const giantOf = n => n >= HALF ? GIANTS.length + 1 : GIANTS.findLastIndex(([at]) => n >= at) + 1;
+// The title of a haul of `n` cells with what was found in it, lying mostly in ground `row` (null: no one ground):
+// [title, giant, whether the place named it]. Half of everything outshouts anything; a relic and a wreck's part are
+// told before any size, as they are rarer than any; a cache and a rare hazard are told before any but a giant's.
+export function haulTitle(n, { relic = -1, parts = 0, caches = 0, rare = null } = {}, row = null) {
+  const giant = giantOf(n), place = n >= 30 ? placeHaul(row) : null;
+  if (giant > GIANTS.length) return ['HALF THE WORLD!', giant, false];
+  if (relic >= 0) return ['RELIC!', giant, false];
+  if (parts) return ['WRECK PART! PAY +10%', giant, false];
+  if (giant) return [GIANTS[giant - 1][1], giant, false];
+  if (caches) return ['CACHE!', 0, false];
+  if (rare) return [`${SPOT[rare][0]}!`, 0, false];
+  if (place) return [place, 0, true];
+  return [SIZES.find(([at]) => n >= at)?.[1] ?? 'HAUL', 0, false];
+}
 // Which bits of rubble are in which cell, to find the bits near each (`jostle`): a table of chains, each cell hashed
 // to one chain, which holds the bits by their place in the list being jostled, in that order. The rubble is sorted
 // into cells up to eight times a frame, so the arrays are kept and grown, not made anew. (It was a Map of arrays made
@@ -1459,6 +1492,12 @@ export class Game {
       const k = w.k(i), b = w.b(i), row = rowOf(b), gem = GEMS[k] * row.gemx * pay.shine, kin = gemKin(k, row);
       sprites.push({ x, y, tile: this.rockRect(x, y, k, b), over: this.overlay(k, row, i), debris: this.debris(k, b), gem: gem ? kin : 0, gems: gem * show, far: Math.hypot(x - C, y - C) });
     }
+    // The ground the haul lies in, where more than half of it lies in one (`haulTitle`): a few hundred of its cells
+    // are asked, however many there are.
+    const tally = new Map(), every = Math.max(1, Math.floor(n / 256));
+    let asked = 0, ground = null;
+    for (let at = 0; at < n; at += every, asked++) { const b = w.b(cells[at]); tally.set(b, (tally.get(b) ?? 0) + 1); }
+    for (const [b, count] of tally) if (count * 2 > asked) ground = rowOf(b);
     for (const i of cells) w.setK(i, K.EMPTY);
     // (It is plainly gone, wherever it was: the map shows it open without the drill going to look.)
     w.show(cells);
@@ -1511,11 +1550,13 @@ export class Game {
     this.effect('haul', 'impact', cx, cy);
     sfx.crack(n, linked);
     for (const sp of sprites) if (count < 60 || cellHash(sp.x, sp.y, 9) < 0.4) this.chips(sp.x, sp.y, sp.debris, 2, null, 0.7);
-    const title = relic >= 0 ? 'RELIC!' : parts ? 'WRECK PART! PAY +10%' : caches ? 'CACHE!' : n >= 200 ? 'COLOSSAL!' : n >= 80 ? 'HUGE HAUL!' : n >= 30 ? 'BIG HAUL!' : n >= 10 ? 'NICE CUT!' : 'HAUL';
+    const [title, giant, named] = haulTitle(n, { relic, parts, caches, rare: pay.rare }, ground), half = giant > GIANTS.length;
     // What the last haul was and paid (`hauled`). Any but a light one says so across the screen, with a flash and
     // a beat of stillness. A light one says what it paid where it lay, and leaves the banner of a bigger haul up.
+    // (A haul named by its place has its title in the place's colour; a giant's stays up longer, and HALF's longest.)
     const mineral = pay.mineral && sheets.minerals?.frames[pay.mineral] ? pay.mineral : null;
-    this.hauled = { title, n, mult, over, grit, gems, light, shine: pay.shine, minerals: pay.minerals, mineral, spec: specUp, specOf, chain: pay.chain, t: 0, life: 2.2 + Math.min(1.2, n * 0.01) };
+    this.hauled = { title, n, mult, over, grit, gems, light, shine: pay.shine, minerals: pay.minerals, mineral, spec: specUp, specOf, chain: pay.chain, t: 0,
+      life: half ? 7 : 2.2 + Math.min(1.2, n * 0.01) + giant * 0.4, giant, colour: named ? bright(ground.map) : null, sub: half ? 'HALF THE REACH IN ONE HAUL' : null };
     if (light) {
       this.shake = Math.max(this.shake, Math.min(1.5, 0.7 + n * 0.08));
       this.ring(cx, cy, '#fff6c8', 12 + n);
@@ -1531,6 +1572,16 @@ export class Game {
       this.flash = Math.min(0.5, 0.12 + n * 0.006);
       this.ring(cx, cy, '#fff6c8', 30 + Math.min(60, n * 1.5));
       this.banner = this.hauled;
+      // A place's own haul: a burst of its colours, and its two notes.
+      if (named) {
+        const chips = ground.pocket?.chips ?? ground.debris;
+        for (const colour of chips) this.sparkle(cx, cy, 8, colour);
+        this.ring(cx, cy, bright(ground.map), 110, 0.12);
+        sfx.place(ground.kin);
+      }
+      // A giant: rings after rings, gold and the gems' colours, a longer beat of stillness and a brighter flash, and
+      // a sound that grows with it (`sfx.vast`).
+      if (giant) this.grand(cx, cy, giant);
     }
     if (parts || caches) sfx.relic();
     if (relic >= 0) { S.relics[relic] = 1; sfx.relic(); if (S.relics.every(Boolean) && !S.won) { S.won = true; this.wonAt = this.time; } }
@@ -2100,7 +2151,24 @@ export class Game {
       this.parts.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, t: 0, life: 0.3 + Math.random() * 0.5, color, size: 1, star: Math.random() < 0.4 });
     }
   }
-  ring(x, y, color, reach) { this.rings.push({ x, y, color, reach, t: 0 }); }
+  // A ring of whole pixels spreading from a point: begun `delay` seconds from now, and spreading for `life`.
+  ring(x, y, color, reach, delay = 0, life = 0.5) { this.rings.push({ x, y, color, reach, t: -delay, life }); }
+  // The show a giant haul makes about (cx, cy), in pixels: `giant` is which (`giantOf`), the last being HALF, which
+  // also sets the core blazing and sends rings out from it.
+  grand(cx, cy, giant) {
+    const half = giant > GIANTS.length, colours = ['#ffe14a', '#fff6c8', ...GEM_COLOR.slice(1)];
+    for (let k = 0; k < 2 + giant; k++) this.ring(cx, cy, colours[k % colours.length], 120 + 50 * k, 0.09 * k, 0.6 + 0.08 * k);
+    for (let k = 0; k < colours.length; k++) this.sparkle(cx, cy, 6 + giant * 3, colours[k]);
+    this.hitstop = Math.max(this.hitstop, Math.min(0.4, 0.18 + giant * 0.03));
+    this.flash = Math.max(this.flash, half ? 1.2 : Math.min(0.8, 0.45 + giant * 0.06));
+    this.shake = Math.max(this.shake, Math.min(16, 9 + giant));
+    if (half) {
+      this.coreFlash = 3;
+      for (let k = 0; k < 6; k++) this.ring(HX * T, HY * T, colours[k % colours.length], 160 + 90 * k, 0.4 + 0.15 * k, 1.2);
+      this.sparkle(HX * T, HY * T, 60, '#ffe14a');
+    }
+    sfx.vast(giant);
+  }
   // The drill fetches up against ground at the end of a throw.
   land() {
     const d = this.drill, x = Math.floor(d.x + Math.cos(d.ang) * 0.8), y = Math.floor(d.y + Math.sin(d.ang) * 0.8), k = this.world.at(x, y);
@@ -2115,7 +2183,7 @@ export class Game {
     for (const p of this.parts) { p.t += dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= 1 - 3.5 * dt; p.vy *= 1 - 3.5 * dt; }
     this.parts = this.parts.filter(p => p.t < p.life);
     for (const r of this.rings) r.t += dt;
-    this.rings = this.rings.filter(r => r.t < 0.5);
+    this.rings = this.rings.filter(r => r.t < (r.life ?? 0.5));
     this.flash = Math.max(0, this.flash - dt); this.counted = Math.max(0, this.counted - dt);
     // The dark eases to the colour and the depth of the ground the drill is in.
     const here = w.row(this.di), want = here.gloom, k = 1 - Math.exp(-dt * 1.5);
