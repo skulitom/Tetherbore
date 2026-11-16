@@ -1,8 +1,9 @@
 // When the tether has more than about 600 bends, retighten stops before it reaches the far ones: a bend whose
 // ground is then removed is left standing in open space.
 // The drill winds through a field of pillars until the band is long; then the cell under one far bend, and for
-// comparison under one near bend, is opened (as a cut or a haul would) and the game told with changed().
-//   node test/hunt/geometry/long-band.mjs
+// comparison under one near bend, is opened (as a cut or a haul would) and the game told with changed(). The
+// tether is looked at after every frame of the winding as well, and a frame with a fault in it fails the test too.
+//   node test/regress/c-long-band.mjs
 import { makeGame, tetherFaults, C, N, K, HX, HY, idx, arena, rocks, place, showBand } from './lib/rig.mjs';
 import { random } from '../harness.mjs';
 const game = await makeGame(1, { tether: 9, momentum: 2 });
@@ -38,4 +39,4 @@ const open = at => {
   return left;
 };
 const near = open(100), far = open(game.band.length - 40);
-process.exit(far ? 1 : 0);
+process.exit(far || faulty ? 1 : 0);

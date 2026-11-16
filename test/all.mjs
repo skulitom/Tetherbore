@@ -134,7 +134,8 @@ const one = test => new Promise(resolve => {
   let out = '';
   child.stdout.on('data', data => { out += data; });
   child.stderr.on('data', data => { out += data; });
-  // A test that hangs is a failed test: the longest takes two minutes.
+  // A test that hangs is a failed test: the longest (c-long-band) takes about a minute alone, and two or three when
+  // every core is busy.
   const timer = setTimeout(() => { out += '\ntook over 420 s: stopped'; child.kill(); }, 420000);
   child.on('close', code => {
     clearTimeout(timer);

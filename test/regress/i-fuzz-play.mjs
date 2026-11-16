@@ -167,21 +167,24 @@ function books() {
 const woundSince = new Map();
 function islands() {
   stats.islandChecks++;
-  const big = new Set(), seen = new Set(), out = [];
+  // One book of the cells met, not two: 1 for a cell met, 2 for one that is held (bedrock, or ground joined to it
+  // or too big to be loose). Every held cell was met first, so this says all that a set of each said.
+  const met = new Map(), out = [];
   const flood = start => {
-    const cells = [start]; seen.add(start);
+    const cells = [start]; met.set(start, 1);
     let held = false;
     for (let h = 0; h < cells.length && !held; h++) {
       for (const j of [cells[h] + 1, cells[h] - 1, cells[h] + N, cells[h] - N]) {
-        if (seen.has(j)) { if (big.has(j)) held = true; continue; }
+        const m = met.get(j);
+        if (m !== undefined) { if (m === 2) held = true; continue; }
         const k = w.k(j);
         if (k === K.EMPTY) continue;
         if (k === K.BEDROCK) { held = true; continue; }
-        seen.add(j); cells.push(j);
+        met.set(j, 1); cells.push(j);
         if (cells.length >= 3000) { held = true; break; }
       }
     }
-    if (held) { for (const c of cells) big.add(c); return null; }
+    if (held) { for (const c of cells) met.set(c, 2); return null; }
     return cells;
   };
   const starts = [];
@@ -189,7 +192,7 @@ function islands() {
   for (let y = dy - R; y <= dy + R; y++) for (let x = dx - R; x <= dx + R; x++) starts.push(y * N + x);
   const P = game.band;
   for (let n = 1; n + 1 < P.length && n < 300; n++) if (P[n][3] !== undefined) starts.push(P[n][3]);
-  for (const i of starts) { if (seen.has(i) || w.k(i) === K.EMPTY) continue; if (w.k(i) === K.BEDROCK) { seen.add(i); big.add(i); continue; } const cells = flood(i); if (cells) out.push(cells); }
+  for (const i of starts) { if (met.has(i) || w.k(i) === K.EMPTY) continue; if (w.k(i) === K.BEDROCK) { met.set(i, 2); continue; } const cells = flood(i); if (cells) out.push(cells); }
   return out;
 }
 let islandClock = 0;

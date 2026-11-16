@@ -93,17 +93,30 @@ export function rubbleHash() {
 // rock is asked exactly, of every cell it crosses, however long it is: a cell that lies on both of two lines a
 // ten-thousandth of a cell to either side of the span is one the span goes through, and it must be open. (A span
 // was once looked at only at points along it, 4,000 at the most, which on a span of 1,500 cells stepped over rock
-// that it cut a fifth of a cell deep.) The seam is looked for at points no more than a fifth of a cell apart.
+// that it cut a fifth of a cell deep.) The seam is looked for at points no more than a fifth of a cell apart, and
+// the cell last asked on each side of it is remembered: up to twenty points fall in each cell, and asking the world
+// at every one of them made this check most of the time of the longest tests. The ground cannot change while it is
+// looked at, so a remembered answer is the answer the world would give.
 export function tetherFaults(game) {
   const w = game.world, P = game.band, faults = [], rel = p => `(${(p[0] - C - 0.5).toFixed(2)},${(p[1] - C - 0.5).toFixed(2)})`;
   const rock = (x, y) => w.k(Math.floor(y) * N + Math.floor(x)) !== K.EMPTY;
+  let cellA = -1, rockA = false, cellB = -1, rockB = false;
   for (let n = 0; n + 1 < P.length; n++) {
     const a = P[n], b = P[n + 1], len = Math.hypot(b[0] - a[0], b[1] - a[1]), steps = Math.ceil(len / (len > 200 ? 0.2 : 0.05));
     const nx = len ? -(b[1] - a[1]) / len * 1e-3 : 0, ny = len ? (b[0] - a[0]) / len * 1e-3 : 0;
     for (let k = 1; k < steps; k++) {
       const x = a[0] + (b[0] - a[0]) * k / steps, y = a[1] + (b[1] - a[1]) * k / steps;
-      // Rock a hair to both sides of the line at once, away from the grid's own points where four cells meet.
-      if (Math.hypot(x - Math.round(x), y - Math.round(y)) >= 0.1 && rock(x + nx, y + ny) && rock(x - nx, y - ny)) {
+      // Rock a hair to both sides of the line at once, away from the grid's own points where four cells meet. The
+      // distance is weighed on its square, and Math.hypot asked only within a hair of the tenth of a cell, where the
+      // square alone might round the other way from it; a point that is not a number is passed over, as it was.
+      const ex = x - Math.round(x), ey = y - Math.round(y), sq = ex * ex + ey * ey;
+      if (!(sq >= 0.0099) || (sq <= 0.0101 && Math.hypot(ex, ey) < 0.1)) continue;
+      const ia = Math.floor(y + ny) * N + Math.floor(x + nx);
+      if (ia !== cellA) { cellA = ia; rockA = w.k(ia) !== K.EMPTY; }
+      if (!rockA) continue;
+      const ib = Math.floor(y - ny) * N + Math.floor(x - nx);
+      if (ib !== cellB) { cellB = ib; rockB = w.k(ib) !== K.EMPTY; }
+      if (rockB) {
         faults.push(`span ${n} ${rel(a)}-${rel(b)} runs in a seam with rock on both sides at ${rel([x, y])}`);
         break;
       }
