@@ -7,7 +7,7 @@
 import { makeGame, random, C, N, K } from '../harness.mjs';
 
 const fails = [], check = (ok, what) => { if (!ok) fails.push(what); };
-let made = 0;
+let made = 0, clock = 1;          // parts of sounds made; and the audio's own clock, which the tests below move on with the game's
 const finite = (v, what) => { if (typeof v !== 'number' || !Number.isFinite(v)) throw new TypeError(`${what}: the provided value (${v}) is non-finite`); };
 const param = name => {
   let value = 1;
@@ -21,23 +21,28 @@ const param = name => {
   };
 };
 const node = kind => {
-  const params = {}, own = { type: '', loop: false, buffer: null };
+  const params = {}, own = { type: '', loop: false, buffer: null, onended: null, curve: null };
   made++;
   return new Proxy(own, {
     get(target, key) {
-      if (key === 'connect' || key === 'disconnect') return () => {};
+      if (key === 'connect' || key === 'disconnect' || key === 'setPeriodicWave' || key === 'addEventListener') return () => {};
       if (key === 'start' || key === 'stop') return (t = 0, offset = 0) => { finite(t, `${kind}.${key}`); finite(offset, `${kind}.${key} offset`); if (t < 0 || offset < 0) throw new RangeError(`${kind}.${key}: before the beginning`); };
       if (key in target) return target[key];
       return params[key] ??= param(`${kind}.${String(key)}`);
     },
-    set(target, key, value) { if (key in target) target[key] = value; else { finite(value, `${kind}.${String(key)}`); } return true; },
+    set(target, key, value) { if (key in target || typeof value !== 'number') target[key] = value; else finite(value, `${kind}.${String(key)}`); return true; },
   });
 };
 globalThis.AudioContext = class {
-  constructor() { this.currentTime = 1; this.sampleRate = 8000; this.state = 'running'; this.destination = node('destination'); }
+  constructor() { this.sampleRate = 8000; this.state = 'running'; this.destination = node('destination'); }
+  get currentTime() { return clock; }
   resume() {}
   createBuffer(channels, length) { const data = new Float32Array(length); return { getChannelData: () => data }; }
+  createPeriodicWave() { return {}; }
 };
+// (A sound that goes wrong is dropped with a warning, and the frame goes on: here that warning is a defect.)
+const warned = [], warn = console.warn;
+console.warn = (...said) => { warned.push(said.map(String).join(' ')); };
 for (const kind of ['Gain', 'Oscillator', 'BiquadFilter', 'BufferSource', 'DynamicsCompressor', 'ConstantSource', 'StereoPanner', 'Delay', 'WaveShaper', 'Convolver'])
   globalThis.AudioContext.prototype[`create${kind}`] = () => node(kind);
 const audio = await import(new URL('../../js/audio.js', import.meta.url));
@@ -58,7 +63,7 @@ audio.setMuted(false); audio.unlock();
   game.changed();
   game.dents = 1;
   let threw = null, frames = 0;
-  try { for (; frames < 60 * (game.val('mender') + 2) && game.dents > 0; frames++) game.update(1 / 60); } catch (error) { threw = error; }
+  try { for (; frames < 60 * (game.val('mender') + 2) && game.dents > 0; frames++) { game.update(1 / 60); clock += 1 / 60; } } catch (error) { threw = error; }
   check(!threw && game.dents === 0, threw ? `the step in which the hull mended threw: ${threw.message}` : `after ${(frames / 60).toFixed(0)} s the hull has ${game.dents} dents still`);
   check(made > before, 'the mend made no sound at all: nothing here was heard, so nothing was tested');
 }
@@ -73,7 +78,7 @@ for (const [name, ux, uy] of [['north', 0, -1], ['south', 0, 1], ['west', -1, 0]
     for (; f < 60 * 45; f++) {
       if (f % 40 === 0) heading += (rnd() - 0.5) * 2.2;
       game.input.auto = [Math.cos(heading), Math.sin(heading), 1];
-      game.update(1 / 60);
+      game.update(1 / 60); clock += 1 / 60;
       if (f % 20 === 0) game.render();
       if (game.drill.mode === 'dead') { for (let n = 0; n < 300 && game.drill.mode === 'dead'; n++) game.update(1 / 60); game.input.auto = null; game.update(1 / 60); set(); }
     }
@@ -96,6 +101,9 @@ for (const [name, ux, uy] of [['north', 0, -1], ['south', 0, 1], ['west', -1, 0]
   game.resize(320, 568, 1); game.openLab(true, 'menu'); game.render(); game.openLab(false);
   localStorage.removeItem('tetherbore-stalls');
 }
+
+console.warn = warn;
+check(warned.length === 0, `a sound was dropped with a warning: ${warned[0]}`);
 
 console.log(fails.length ? `DEFECT:\n  ${fails.join('\n  ')}` : `no defect: with audio as strict as a browser's (${made} sounds' worth of parts made), the hull mends itself and the drill flies every direction's ground without a step throwing; and a frame that throws is written down`);
 process.exit(fails.length ? 1 : 0);

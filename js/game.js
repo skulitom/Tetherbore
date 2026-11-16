@@ -2,7 +2,7 @@
 // and reels in any piece of ground it has drawn the tether round.
 import { World, N, C, K, B, HARD, GRIT, GEMS, DX, DY, BIOMES, HAZARDS, ZONE, FIND, WRECK_R, rowOf, hazOf, gemKin, digTime, cellHash, sight, cellsAlong, RELIC_R, HOME_R } from './world.js';
 import { sheets, draw, drawScaled, frameAt, duration, slice9, text, textWidth } from './atlas.js';
-import { sfx, unlock, isMuted, setMuted, setAmbience } from './audio.js';
+import { sfx, unlock, isMuted, setMuted, isMusic, setMusic, setAmbience } from './audio.js';
 
 export const T = 16;                            // pixels in a cell
 const HX = C + 0.5, HY = C + 0.5;               // the middle of the core, in cells
@@ -3247,9 +3247,15 @@ export class Game {
     text(ctx, 'SOUND', px + 14, y0 + 10, '#ffffff');
     text(ctx, isMuted() ? 'OFF' : 'ON', px + pw - 14, y0 + 10, isMuted() ? '#ff7a5a' : '#8cf2c4', 1);
     this.buttons.unshift({ x: px + 6, y: y0 + 4, w: pw - 12, h: 20, act: () => { setMuted(!isMuted()); sfx.tap(); } });
-    slice9(ctx, 'ui', sure ? 'button-off' : 'button', px + 6, y0 + 28, pw - 12, 20);
-    text(ctx, sure ? 'TAP AGAIN: NEW WORLD' : 'NEW WORLD', px + pw / 2, y0 + 34, sure ? '#ff7a5a' : '#ffffff', 0.5);
-    this.buttons.unshift({ x: px + 6, y: y0 + 28, w: pw - 12, h: 20, act: () => {
+    // The music has a switch of its own (with the sound off there is none, whatever it says).
+    const playing = isMusic() && !isMuted();
+    slice9(ctx, 'ui', 'button', px + 6, y0 + 28, pw - 12, 20);
+    text(ctx, 'MUSIC', px + 14, y0 + 34, isMuted() ? '#8a84a0' : '#ffffff');
+    text(ctx, isMusic() ? 'ON' : 'OFF', px + pw - 14, y0 + 34, playing ? '#8cf2c4' : isMusic() ? '#8a84a0' : '#ff7a5a', 1);
+    this.buttons.unshift({ x: px + 6, y: y0 + 28, w: pw - 12, h: 20, act: () => { setMusic(!isMusic()); sfx.tap(); } });
+    slice9(ctx, 'ui', sure ? 'button-off' : 'button', px + 6, y0 + 52, pw - 12, 20);
+    text(ctx, sure ? 'TAP AGAIN: NEW WORLD' : 'NEW WORLD', px + pw / 2, y0 + 58, sure ? '#ff7a5a' : '#ffffff', 0.5);
+    this.buttons.unshift({ x: px + 6, y: y0 + 52, w: pw - 12, h: 20, act: () => {
       if (this.confirmReset > 0) { this.confirmReset = 0; this.fresh((Math.random() * 1e9) | 0); this.save(); sfx.relic(); } else { this.confirmReset = 2.5; sfx.tap(); }
     } });
   }
@@ -3286,14 +3292,14 @@ export class Game {
     if (this.labPage < 0 || this.labPage >= pages) this.labPage = Math.floor(LAB.indexOf(sel) / rows);
     if (this.labTab === 'chart' && !this.charted) this.labTab = 'stats';
     const chart = Math.min(pw - 12, H - 52 - HEAD - 10);
-    const rise = 1 - this.labRise, ph = this.labTab === 'menu' ? HEAD + 56 + (this.stalls.length ? 14 + this.stalls.length * 10 : 0) : this.labTab === 'chart' ? HEAD + chart + 10 : this.labTab === 'stats' ? HEAD + this.stats().length * 11 + 8 : HEAD + rows * RH + NOTE + (paged ? 14 : 0) + 4, py = Math.max(2, Math.round((H - 44 - ph) / 2)) + Math.round(rise * rise * 60);
+    const rise = 1 - this.labRise, ph = this.labTab === 'menu' ? HEAD + 80 + (this.stalls.length ? 14 + this.stalls.length * 10 : 0) : this.labTab === 'chart' ? HEAD + chart + 10 : this.labTab === 'stats' ? HEAD + this.stats().length * 11 + 8 : HEAD + rows * RH + NOTE + (paged ? 14 : 0) + 4, py = Math.max(2, Math.round((H - 44 - ph) / 2)) + Math.round(rise * rise * 60);
     slice9(ctx, 'ui', 'panel', px, py, pw, ph);
     this.button(px, py, pw, ph, () => {});
     this.buttons.at(-1).swallow = true;
     this.chartRect = null;
     this.panelTabs(px, py, pw, HEAD);
     if (this.labTab === 'stats') { this.drawStats(px, py + HEAD, pw); return; }
-    if (this.labTab === 'menu') { this.drawMenu(px, py + HEAD, pw); if (this.stalls.length) this.drawStalls(px, py + HEAD + 54, pw); return; }
+    if (this.labTab === 'menu') { this.drawMenu(px, py + HEAD, pw); if (this.stalls.length) this.drawStalls(px, py + HEAD + 78, pw); return; }
     if (this.labTab === 'chart') {
       // The chart is dragged to look about it and pinched (or wheeled, or stepped by its two buttons) to look closer:
       // from the whole reach down to four pixels a cell, never past the edge of the whole reach's own view.
