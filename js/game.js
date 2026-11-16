@@ -103,6 +103,10 @@ export const LAB = [
   { key: 'minerals:amber', name: 'AMBER', where: 'AMBER HIVES', note: 'HONEY OF THE HIVE GONE TO STONE. EACH NUGGET HANGS BY ONE STALK.' },
   { key: 'minerals:aerolite', name: 'AEROLITE', where: 'PUMICE DRIFTS', note: 'A STAR THAT FELL INTO PUMICE AND STAYED. LIGHT ENOUGH TO FLOAT.' },
   { key: 'minerals:tektite', name: 'TEKTITE', where: 'ASH FLATS', note: 'BLACK GLASS FROM AN OLD IMPACT, LEFT LYING IN THE ASH.' },
+  { key: 'minerals:starglass', name: 'STARGLASS', where: 'GLAZE, FAR NORTH', note: 'A STAR OF CLEAR ICE THAT NEVER MELTS. ONE TO A PANE, AND THE PANE BREAKS AT A TOUCH.' },
+  { key: 'minerals:opal', name: 'FIRE OPAL', where: 'TINDERWORKS, FAR SOUTH', note: 'A COAL THAT TURNED TO GEM INSIDE A RING OF FUSE. BURN THE FUSE AND IT FALLS OUT.' },
+  { key: 'minerals:lantern', name: 'LANTERN CAP', where: 'GROTTOS, FAR WEST', note: 'A MUSHROOM THAT LIGHTS WHEN SOMETHING FLIES BY. ONLY A LIT ONE IS WORTH THE HAUL.' },
+  { key: 'minerals:agate', name: 'AGATE', where: 'SHALE STACKS, FAR EAST', note: 'BANDED RED STONE, A LAYER A YEAR. IT LIES ALONG THE GRAIN OF THE SHALE.' },
 ];
 const LAB_OF = Object.fromEntries(LAB.map(e => [e.key, e]));
 // The levels a count of samples has earned (0 for none; 1 for the first; one more at 2, 4, 8 ...), and the count
@@ -348,6 +352,7 @@ export class Game {
     this.pending = { grit: 0, gems: [0, 0, 0, 0, 0] };
     this.parts.length = 0; this.rings.length = 0; this.effects.length = 0; this.popups.length = 0; this.hauls.length = 0; this.clouds.length = 0;
     this.sparks.clear(); this.lavaVol.clear(); this.quenched.clear(); this.frostOpen.length = 0; w.lava.clear(); w.dug.clear();
+    this.fuses = []; this.glowRun = 0; this.glowAt = -9;      // rings of fuse that are burning; and the caps lit one after another, and when the last was
     this.drill = { x: HX, y: HY, px: HX, py: HY, vx: 0, vy: 0, ang: 0, mode: 'free', tx: 0, ty: 0, speed: 0, dig: -1, digT: 0, digDur: 1, stun: 0, squash: 0, run: 0, armed: true, cell: -1, home: true };
     this.cam = { x: HX * T, y: HY * T };
     this.band = [[HX, HY], [HX, HY]];
@@ -1104,7 +1109,7 @@ export class Game {
           d.dig = -1;
         } else if (!this.within((i % N) + 0.5, Math.floor(i / N) + 0.5)) { if (this.edge <= 0) this.refuse(); d.dig = -1; }
         else {
-          if (d.dig !== i) { d.dig = i; d.digT = 0; d.digDur = digTime(k, w.row(i)) / SPEED[this.S.lv.drill]; d.digX = ix; d.digY = iy; this.foresee(i); }
+          if (d.dig !== i) { d.dig = i; d.digT = 0; d.digDur = digTime(k, w.row(i)) / SPEED[this.S.lv.drill]; d.digX = ix; d.digY = iy; this.foresee(i, this.alsoOpens(i)); }
           const before = d.digT;
           d.digT += dt;
           if (((d.digT * 30) | 0) !== ((before * 30) | 0) && d.digDur > 0.15) { sfx.grind(); if (d.digDur > 0.4) this.shake = Math.max(this.shake, 1.2); }
@@ -1301,6 +1306,74 @@ export class Game {
     this.twang = 0.45; this.edge = 1.2; sfx.twang(); d.squash = 0.14;
     this.popup(d.x - 0.5, d.y - 1, 'REACH', '#ff7a5a', 'tether');
   }
+  // What a cut into cell `i` opens besides the cell itself, by the rule of the pocket it lies in (its row's
+  // `twist`), as a list of cells:
+  //   'pane'   a glaze's ice: the rest of the pane the cell is of, all but its mineral, which is left standing
+  //   'plank'  a shale stack's rock, cut along the grain (the drill pushing level): up to three cells more of the
+  //            same bed, as far as a seam of its mineral, the pocket's edge or the end of the reach
+  // Never a cell past the tether's reach, and never one of another ground.
+  alsoOpens(i) {
+    const w = this.world, row = w.row(i), P = row.pocket;
+    if (!P || (P.twist !== 'pane' && P.twist !== 'plank') || w.k(i) !== K.SOFT) return [];
+    const x = i % N, y = Math.floor(i / N), mine = j => w.k(j) === K.SOFT && w.b(j) === row.id && this.within(j % N + 0.5, Math.floor(j / N) + 0.5);
+    if (P.twist === 'pane') {
+      const Z = w.pocketOf(x, y);
+      return Z !== null && Z.row === row.id ? w.paneOf(Z, x, y).filter(j => j !== i && mine(j)) : [];
+    }
+    const d = this.drill, out = [];
+    if (d.digX && !d.digY) for (let n = 1; n <= 3 && mine(i + d.digX * n); n++) out.push(i + d.digX * n);
+    return out;
+  }
+  // A ring of fuse cut into burns: every cell of fuse joined to the cut (side to side or corner to corner) that the
+  // tether can reach, nearest first, a few cells every twenty-fifth of a second (`burnFuses`), each going to
+  // nothing with a spark. What the ring held then hangs on nothing.
+  burn(i) {
+    const w = this.world, b = w.b(i), seen = new Set([i]), cells = [];
+    for (let head = -1, at = i; ; at = cells[head]) {
+      for (let v = -1; v <= 1; v++) for (let u = -1; u <= 1; u++) {
+        const j = at + v * N + u;
+        if (seen.has(j) || w.k(j) !== K.NODE || w.b(j) !== b || !this.within(j % N + 0.5, Math.floor(j / N) + 0.5)) continue;
+        seen.add(j); cells.push(j);
+      }
+      if (++head >= cells.length || cells.length > 400) break;
+    }
+    if (cells.length) this.fuses.push({ cells, at: 0, t: 0 });
+  }
+  burnFuses(dt) {
+    if (!this.fuses.length) return;
+    const w = this.world, gone = [];
+    for (const f of this.fuses) {
+      f.t += dt;
+      for (; f.t >= 0.04 && f.at < f.cells.length; f.t -= 0.04) for (let n = 0; n < 2 && f.at < f.cells.length; n++) {
+        const j = f.cells[f.at++];
+        if (w.k(j) !== K.NODE) continue;
+        const x = j % N, y = Math.floor(j / N);
+        w.setK(j, K.EMPTY); gone.push(j);
+        this.effect('dust', 'dust', (x + 0.5) * T, (y + 0.5) * T);
+        this.chips(x, y, ['#ffd84a', '#ff8a2a', '#fff6c8'], 4, null, 0.8);
+      }
+    }
+    this.fuses = this.fuses.filter(f => f.at < f.cells.length);
+    if (gone.length) { if (this.time - (this.lastFuse ?? 0) > 0.07) { this.lastFuse = this.time; sfx.hiss(); } this.changed(gone); }
+  }
+  // In a grotto the dull caps on the walls light as the drill flies by, within two cells of it: each with a note,
+  // a step higher than the last while they come less than two seconds apart. A lit cap is the grotto's mineral.
+  glow() {
+    const w = this.world, d = this.drill, P = w.row(this.di).pocket;
+    if (!P || P.twist !== 'glow' || d.mode === 'dead') return;
+    const x0 = Math.floor(d.x), y0 = Math.floor(d.y);
+    let lit = false;
+    for (let y = y0 - 2; y <= y0 + 2; y++) for (let x = x0 - 2; x <= x0 + 2; x++) {
+      const i = y * N + x;
+      if (w.k(i) !== K.CAP || Math.hypot(x + 0.5 - d.x, y + 0.5 - d.y) > 2.1) continue;
+      w.setK(i, K.CAP_LIT); lit = true;
+      if (this.time - this.glowAt > 2) this.glowRun = 0;
+      this.glowAt = this.time;
+      this.sparkle((x + 0.5) * T, (y + 0.5) * T, 5, '#58f0e0'); this.ring((x + 0.5) * T, (y + 0.5) * T, '#58f0e0', 14);
+      sfx.gem(Math.min(9, this.glowRun++));
+    }
+    if (lit) this.version++;
+  }
   // The last cut glows: the ground that would come free if this cell were cut. `also` is whatever else the cut
   // would open besides its own cell (a pane that shatters whole, a crack that runs on, the cells a punch goes
   // through): those glow with it, and what they would leave hanging is found as what the cut itself would.
@@ -1322,6 +1395,8 @@ export class Game {
   }
   finishDig(i) {
     const w = this.world, d = this.drill, x = i % N, y = Math.floor(i / N), k = w.k(i), b = w.b(i), row = rowOf(b), haz = hazOf(k, row);
+    // (What the pocket's own rule opens with the cut is asked while the cell still stands.)
+    const also = this.alsoOpens(i);
     w.setK(i, K.EMPTY);
     if (row.freeze > 0) { w.dug.set(i, this.clock); this.frostOpen.push(i); }
     // (A keystone is iron: it rings and shatters as slate does. A prism breaks like any crystal.)
@@ -1337,6 +1412,14 @@ export class Game {
     // The hazard that was cut into wakes, and a hazard beside the cut: each may open cells (its own; the slate an
     // arc shatters), and every cell opened goes to `changed` together.
     const opened = [i];
+    // A pane shatters whole, a plank splits away: each cell of it goes with a crack of its own. A fuse cut burns.
+    for (const j of also) {
+      w.setK(j, K.EMPTY); opened.push(j);
+      this.effect('shatter', 'shatter', (j % N + 0.5) * T, (Math.floor(j / N) + 0.5) * T);
+      this.chips(j % N, Math.floor(j / N), this.debris(K.SOFT, b), 3, null, 0.8);
+    }
+    if (also.length) { w.see(x, y, 2); this.shake = Math.max(this.shake, 2.5); }
+    if (k === K.NODE && row.pocket?.twist === 'fuse') this.burn(i);
     if (haz) for (const j of this.trigger(i, haz, true)) if (j !== i) opened.push(j);
     for (let s = 0; s < 4; s++) {
       const j = (y + DY[s]) * N + x + DX[s];
@@ -2178,6 +2261,8 @@ export class Game {
       // Ground the string came to lie against on the way: is any of it loose, though nobody knew?
       let met = this.taken.length > 0 && this.discover(this.taken.splice(0), 600, this.walked);
       this.reelTick = (this.reelTick ?? 0) + dt;
+      // (A pocket's own rules: caps light as the drill flies by, and a ring of fuse that was cut burns on.)
+      this.glow(); this.burnFuses(dt);
       // And ground the line home has passed over: is any of that loose?
       if (d.mode !== 'dead' && this.sweepHome(this.reelTick > 0.1)) met = true;
       if (met || this.reelTick > 0.1) { this.reelTick = 0; this.reelIfRound(); }
@@ -2229,6 +2314,8 @@ export class Game {
   // the cells beside it; upright where `i` is not given).
   overlay(k, row, i) {
     const P = row.pocket;
+    // (A grotto's cap before it is lit.)
+    if (k === K.CAP) return sheets.minerals?.frames.cap ? ['minerals', 'cap'] : null;
     if (P !== null && (k === K.NODE || k === (P.kind ?? K.MINERAL))) {
       if (k === (P.kind ?? K.MINERAL)) return this.mineralOf(row) ? ['minerals', P.mineral] : null;
       const w = this.world, joins = j => { const q = w.k(j); return q === K.NODE || q === (P.kind ?? K.MINERAL); };
@@ -2699,6 +2786,20 @@ export class Game {
       if (k === K.SLATE || k === K.VAULT) draw(ctx, 'tough', k === K.SLATE ? 'slate' : 'vault', ux, uy);
       const over = this.overlay(k, row, i);
       if (over && over[1] !== 'hazard' && over[1] !== 'relic' && over[1] !== 'prism') draw(ctx, over[0], over[1], ux, uy);
+      // A glaze's panes: a line of light along the top and left of each, a line of dark along its foot and right,
+      // wherever the ice beside is of another pane.
+      if (row.pocket?.twist === 'pane') {
+        const Z = w.pocketOf(x, y);
+        if (Z !== null && Z.row === b) {
+          const own = w.paneKey(Z, x, y), other = (u, v) => w.k(i + v * N + u) !== K.EMPTY && w.b(i + v * N + u) === b && w.paneKey(Z, x + u, y + v) !== own;
+          ctx.fillStyle = 'rgba(200, 244, 255, 0.5)';
+          if (other(-1, 0)) ctx.fillRect(px, py, 1, T);
+          if (other(0, -1)) ctx.fillRect(px, py, T, 1);
+          ctx.fillStyle = 'rgba(6, 16, 38, 0.6)';
+          if (other(1, 0)) ctx.fillRect(px + T - 1, py, 1, T);
+          if (other(0, 1)) ctx.fillRect(px, py + T - 1, T, 1);
+        }
+      }
     }
   }
 

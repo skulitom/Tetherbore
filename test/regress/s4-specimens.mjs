@@ -81,7 +81,7 @@ const GEM_COLOR = [null, '#bfe6ff', '#ffb060', '#b8f06a', '#d8b8ff'];
   game.haul(plain);
   check(game.bannerSays(game.banner)[2] === null && game.specLine === null && JSON.stringify(S.spec) === kept && game.hauled.spec === 0 && game.hauled.specOf === 0, `a haul with no mineral: ${JSON.stringify(game.bannerSays(game.banner))}, ${JSON.stringify(game.specLine)}`);
   // A pocket with a mineral of its own figure: 1.5 a cell, kept to the fraction and shown whole.
-  const rich = biome({ id: 121, name: 'test-rich', kin: B.LODE, pocket: { mineral: 'opal', lump: 1, spec: 1.5 }, ...looks });
+  const rich = biome({ id: 121, name: 'test-rich', kin: B.LODE, pocket: { mineral: 'zircon', lump: 1, spec: 1.5 }, ...looks });
   w.zoneOf = () => null;
   game.popups.length = 0;
   game.haul(lay(-60, 16, [K.MINERAL], rich.id));

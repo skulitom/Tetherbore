@@ -29,7 +29,8 @@ for (const row of kinds()) {
   check(b.seconds <= b.may && b.seconds >= b.may * 0.5, `${b.name}: the mean pocket pays ${b.seconds.toFixed(1)} s of income, where it may pay ${b.may.toFixed(1)}`);
   for (const band of b.bands) if (band.made >= 10) check(band.seconds <= band.may, `${b.name}: pockets of radius under ${band.to} pay ${band.seconds.toFixed(1)} s in the mean, over the ${band.may.toFixed(1)} they may`);
   check(b.bands.filter(band => band.made >= 10).length >= 3, `${b.name}: its pockets fall in ${b.bands.filter(band => band.made >= 10).length} bands of radius`);
-  check(b.herald.seconds <= b.herald.may && b.herald.mineral >= 9, `${b.name}: as a herald it pays ${b.herald.seconds.toFixed(1)} s, where it may pay ${b.herald.may.toFixed(1)}, from ${b.herald.mineral.toFixed(1)} cells`);
+  // (Of the three kinds that are a direction's first pocket: the others lie further out and are never one.)
+  if (row <= 34) check(b.herald.seconds <= b.herald.may && b.herald.mineral >= 9, `${b.name}: as a herald it pays ${b.herald.seconds.toFixed(1)} s, where it may pay ${b.herald.may.toFixed(1)}, from ${b.herald.mineral.toFixed(1)} cells`);
   check(b.at14 >= 9 && b.at14 <= 15, `${b.name}: at radius ${AT} it gives ${b.at14.toFixed(1)} specimens, not about ${SPECIMENS}`);
 }
 for (const seed of [1, 7, 34]) {

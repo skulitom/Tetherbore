@@ -64,8 +64,11 @@ tap(30, game.H - 20);
 check(game.lab === true && game.labSel === 'lode-items:oreB', `after a tap on the top bar the notes are ${game.lab ? 'open' : 'shut'} at ${game.labSel}`);
 // (Lines are 13 high; the newest button is the last line drawn.)
 const lines = game.buttons.filter(b => b.h === 13).sort((a, b) => a.y - b.y);
-check(lines.length === LAB.length, `${lines.length} lines can be tapped at 320 by 568, of ${LAB.length}`);
-tap(lines[2].x + 5, lines[2].y + 5);
+// (Sixteen things do not fit a phone's panel at once: the lines are in pages, with a way on and a way back at the foot.)
+const turn = game.buttons.filter(b => b.h === 16 && b.w > 40);
+check(lines.length === LAB.length || (lines.length >= 8 && turn.length === 2), `${lines.length} lines can be tapped at 320 by 568, of ${LAB.length}, with ${turn.length} ways to turn the page`);
+if (turn.length === 2) { const before = game.labPage; turn.sort((a, b) => a.x - b.x)[1].act(); game.render(); const second = game.buttons.filter(b => b.h === 13).length; check(game.labPage === before + 1 && second === LAB.length - lines.length, `the second page has ${second} lines`); game.labPage = before; game.render(); }
+{ const third = game.buttons.filter(b => b.h === 13).sort((a, b) => a.y - b.y)[2]; tap(third.x + 5, third.y + 5); }
 check(game.lab && game.labSel === LAB[2].key, `a tap on the third line chose ${game.labSel}`);
 const at = [game.drill.x, game.drill.y];
 game.input.auto = [1, 0, 1]; for (let f = 0; f < 30; f++) game.update(1 / 60); game.input.auto = null;

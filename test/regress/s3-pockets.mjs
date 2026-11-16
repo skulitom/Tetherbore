@@ -122,8 +122,9 @@ const out = {};
   check(wrong === 0, `${wrong} sectors' pockets are not the kind whose hash times weight is largest, or moved when a kind was added`);
   // (With half the weight it takes about a quarter of the sectors that one other kind had from 400 out, and fewer
   // where two had them between them: from every kind there is, in every direction.)
-  check(took > kept * 0.12 && took < kept * 0.6 && fresh < took * 0.05, `the new kind took ${took} of the others' sectors and left them ${kept}; it lies in ${fresh} sectors that had none`);
-  check(lies.slice(1).every(n => n > 5) && [32, 33, 34].every(row => kinds.has(row)), `the new kind lies in ${lies.slice(1)} sectors of the north, south, west and east, in place of kinds ${[...kinds].sort()}`);
+  // (With seven kinds there already, where there were three, a kind of half the weight takes fewer: a twentieth and more.)
+  check(took > kept * 0.05 && took < kept * 0.6 && fresh < took * 0.05, `the new kind took ${took} of the others' sectors and left them ${kept}; it lies in ${fresh} sectors that had none`);
+  check(lies.slice(1).every(n => n > 2) && [32, 33, 34].every(row => kinds.has(row)), `the new kind lies in ${lies.slice(1)} sectors of the north, south, west and east, in place of kinds ${[...kinds].sort()}`);
   out.added = { took, kept, fresh, lies: lies.slice(1) };
   // A kind that may lie as near the core as it likes still lies no nearer than any pocket may: 170 cells.
   biome({ ...hive, id: 62, name: 'test-near', pocket: { ...hive.pocket, kins: 'any', minR: 0 } });
@@ -143,7 +144,7 @@ const out = {};
 // ---- 4. a pocket's cells: inside its sector, within its reach, before every other rule; nothing else moves
 {
   let pockets = 0, cells = 0, astray = 0, beyond = 0, other = 0, changed = 0, inHome = 0, inDeep = 0, bad = 0, minerals = 0, unmet = 0;
-  const KINDS = new Set([K.EMPTY, K.SOFT, K.MINERAL, K.NODE]);
+  const KINDS = new Set([K.EMPTY, K.SOFT, K.MINERAL, K.NODE, K.CAP]);
   for (const seed of [1, 7, 34]) {
     const w = world(seed), bare = new Unpocketed(); bare.reset(seed);
     const list = w.pocketsWithin(2300).filter((Z, n) => Z.herald || n % 5 === 0);

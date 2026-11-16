@@ -219,6 +219,34 @@ export const POCKETS = [
     fill.dots('c', 2, 1).dots('g', 3, 1);
     if (n % 2) fill.dots('G', 1, 2);
   })),
+  // Lantern Grotto (west): wet rock the colour of deep water, with a thread of the caps' own light in it here and
+  // there. Dark, so that a lit cap is the brightest thing in sight.
+  rounded(2, strain('grotto', { k: '#06100e', D: '#12302c', L: '#3a8a78', s: '#00000066', f: '#1c443e', a: '#16383a', b: '#245048', c: '#58f0e0', g: '#2e6a5e' }, 179, (fill, n) => {
+    fill.clumps('a', 0.26, 5).clumps('b', 0.14, 4);
+    for (const [x, y] of fill.places(2, 5, 2)) fill.wander(x, y, [[1, 1], [0, 1], [-1, 1], [0, 1]], fill.int(3, 5), 'g');
+    if (n % 2) fill.dots('c', 1, 1);
+  })),
+  // Tinderwork (south): coal, black and faceted, each facet catching a little light along one edge; an ember deep
+  // in a block now and then.
+  strain('tinder', { k: '#0c0a0c', D: '#221c1e', L: '#6e5a52', s: '#00000066', f: '#3a3032', a: '#2e2628', b: '#463a3c', c: '#ffb030', g: '#5c4c48' }, 181, (fill, n) => {
+    fill.clumps('a', 0.3, 4).clumps('b', 0.14, 3);
+    for (const [x, y] of fill.places(4, 4, 2)) { const far = fill.int(2, 4); fill.line(x, y, x + far, y, 'g').line(x, y + 1, x, y + far - 1, 'g'); }
+    if (n === 1 || n === 3) fill.dots('c', 1, 1);
+  }),
+  // Glaze (north): sheet ice, smooth and deep blue, with long glints lying aslant in it. The seams between its panes
+  // are drawn by the game, since a pane is ten cells and a tile is one.
+  strain('glaze', { k: '#0a1830', D: '#1e4a7a', L: '#c8f4ff', s: '#06102659', f: '#3a78b0', a: '#326ca4', b: '#4686bc', c: '#a8fff0' }, 191, (fill, n) => {
+    fill.clumps('a', 0.2, 7).clumps('b', 0.12, 7);
+    for (const [x, y] of fill.places(2, 5, 3)) { const far = fill.int(2, 4); fill.line(x, y, x + far, y - far, 'b'); }
+    if (n % 2 === 0) fill.dots('c', 1, 1);
+  }),
+  // Shale Stack (east): thin level beds, buff and olive, that meet a block's sides at the same rows in every
+  // variant and so run on through the whole stack: the grain it splits along.
+  strain('shale', { k: '#1c1a14', D: '#4a4636', L: '#c8c0a0', s: '#00000059', f: '#7c765c', a: '#6a644c', b: '#908a6c', g: '#565040' }, 193, fill => {
+    const BEDS = 'bffgaaffbbfgaffa';
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) fill.set(x, y, BEDS[y]);
+    for (const [x, y] of fill.places(4, 2, 1)) fill.line(x, y, x + fill.int(1, 3), y, BEDS[(y + 1) % 16]);
+  }),
 ];
 
 export const POCKET_FLOORS = [
@@ -235,6 +263,14 @@ export const POCKET_FLOORS = [
   }, 5),
   // The flats, cut away: the dark of cold cinders.
   floor('ash-floor', { f: '#1a1a1e', a: '#151518', b: '#222226' }, { color: 'f', speckle: [{ color: 'a', amount: 0.25, size: 6 }, { color: 'b', amount: 0.1, size: 3 }] }, 18),
+  // The grotto's caves: black water-green.
+  floor('grotto-floor', { f: '#040a0a', a: '#030707', b: '#08120f' }, { color: 'f', speckle: [{ color: 'a', amount: 0.25, size: 6 }, { color: 'b', amount: 0.1, size: 3 }] }, 19),
+  // A tinderwork cut away, and a ring burnt out: soot.
+  floor('tinder-floor', { f: '#140e0c', a: '#0e0a08', b: '#1e1410' }, { color: 'f', speckle: [{ color: 'a', amount: 0.25, size: 5 }, { color: 'b', amount: 0.1, size: 3 }] }, 20),
+  // Under the glaze: deep cold blue.
+  floor('glaze-floor', { f: '#081424', a: '#060f1c', b: '#0c1c30' }, { color: 'f', speckle: [{ color: 'a', amount: 0.25, size: 7 }, { color: 'b', amount: 0.08, size: 4 }] }, 21),
+  // Between the beds of a shale stack: dry olive dark.
+  floor('shale-floor', { f: '#18160e', a: '#12100a', b: '#221e14' }, { color: 'f', speckle: [{ color: 'a', amount: 0.25, size: 6 }, { color: 'b', amount: 0.1, size: 3 }] }, 22),
 ];
 
 export const FLOORS = [

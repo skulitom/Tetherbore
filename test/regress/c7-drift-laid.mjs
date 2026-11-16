@@ -34,7 +34,7 @@ const out = {};
   check(Math.abs(digTime(K.SOFT, row) - 0.24) < 1e-9 && Math.abs(digTime(K.MINERAL, row) - 0.45) < 1e-9, 'pumice or aerolite does not cut in the time written');
   check(boulders(5) === 0.8 && Math.abs(boulders(13) - 0.4) < 1e-9 && Math.abs(boulders(26) - 0.2) < 1e-9, `the share of squares with a boulder: ${boulders(5)}, ${boulders(13)}, ${boulders(26)}`);
   // (No other pocket's row has the drift's twist or its chain.)
-  for (const other of BIOMES) if (other && other.pocket && other.id !== 33 && other.id < 120) check(!other.pocket.twist && !other.pocket.chain, `${other.name} has the drift's twist or a chain`);
+  for (const other of BIOMES) if (other && other.pocket && other.id !== 33 && other.id < 120) check(other.pocket.twist !== 'drift' && !other.pocket.chain, `${other.name} has the drift's twist or a chain`);
 }
 
 const w = new World();

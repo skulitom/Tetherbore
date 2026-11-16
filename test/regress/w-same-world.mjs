@@ -84,11 +84,16 @@ const plain = seed => {
     if (!herald && hash(sx, sy, seed + 40) < 0.5) {
       const cx = C + sx * 128 + 38 + Math.floor(hash(sx, sy, seed + 42) * 52), cy = C + sy * 128 + 38 + Math.floor(hash(sx, sy, seed + 43) * 52);
       const far = Math.sqrt((cx - C) * (cx - C) + (cy - C) * (cy - C)), h = hash(sx, sy, seed + 41);
-      const west = C - cx > Math.abs(cy - C), south = !west && cy - C >= Math.abs(cx - C), other = west ? 32 : south ? 34 : 0;
-      // Which kind: the drift, or the direction's other kind where it has one and that kind's hash is the larger
-      // (of two the same, the kind of the lower number).
-      const mine = hash(sx, sy, seed + 133), theirs = other ? hash(sx, sy, seed + 100 + other) : -1, row = theirs > mine || (theirs === mine && other < 33) ? other : 33;
-      const rho = Math.min(30, Math.max(row === 33 ? 9 : 8, 6 + 24 * h * h));
+      const west = C - cx > Math.abs(cy - C), south = !west && cy - C >= Math.abs(cx - C), east = !west && !south && cx - C > Math.abs(cy - C);
+      // Which kind: the drift, which lies anywhere; the direction's own first kind (the west's hive, the south's ash
+      // flat); and, from 300 cells out, the direction's further kind (the west's grotto, 35; the south's tinderwork,
+      // 36; the north's glaze, 37; the east's shale stack, 38). Of those that may lie there, the one whose own hash
+      // for the sector (100 + its ground's number) is largest; of two the same, the kind of the lower number.
+      const may = [33, ...(west ? [32] : south ? [34] : []), ...(far >= 300 ? [west ? 35 : south ? 36 : east ? 38 : 37] : [])].sort((a, b) => a - b);
+      let row = may[0];
+      for (const id of may) if (hash(sx, sy, seed + 100 + id) > hash(sx, sy, seed + 100 + row)) row = id;
+      // (Its radius is kept within its kind's own least: 8, a drift's and a tinderwork's 9, a grotto's 10.)
+      const rho = Math.min(30, Math.max(row === 35 ? 10 : row === 33 || row === 36 ? 9 : 8, 6 + 24 * h * h));
       if (far >= 170 && far + 36 <= WORLD_R - 100 && ![...wrecks, ...relics].some(([x, y]) => (cx - x) ** 2 + (cy - y) ** 2 < (40 + rho) * (40 + rho))) Z = { cx, cy, rho, row };
     }
     zones.set(id, Z);
@@ -146,13 +151,48 @@ const plain = seed => {
   // An ash flat is a disc whose edge wanders between 0.8 and 1.2 of its radius, soft ash with a cell of the mineral
   // where the cell's hash is under one in ten, or 2.1 over the radius where that is less.
   const ashCell = (Z, x, y) => hash(x, y, seed + 51) < Math.min(0.1, 2.1 / Z.rho) ? K.MINERAL : K.SOFT;
+  // The four kinds met from 300 cells out.
+  // A glaze is ice in panes five cells long and two high, each course of them shifted along by its own hash, and in
+  // half the glazes stood on end (the pane's long way runs up). A pane holds one cell of the mineral where its own
+  // hash is under 0.15, or 1.9 over the glaze's radius where that is less, and the pane at the middle always: which
+  // of its ten cells, another hash says.
+  const glazeCell = (Z, x, y) => {
+    const turned = hash(Z.cx, Z.cy, seed + 93) < 0.5, u = turned ? y - Z.cy : x - Z.cx, v = turned ? x - Z.cx : y - Z.cy;
+    const course = Math.floor(v / 2), shift = Math.floor(hash(course, Z.cx * 3 + Z.cy, seed + 93) * 5), n = Math.floor((u + shift) / 5), along = u + shift - 5 * n, up = v - 2 * course;
+    const holds = (course === 0 && n === 0) || hash(Z.cx + n, Z.cy + course, seed + 94) < Math.min(0.15, 1.9 / Z.rho);
+    return holds && up * 5 + along === Math.floor(hash(Z.cx + course, Z.cy + n, seed + 98) * 10) ? K.MINERAL : K.SOFT;
+  };
+  // A shale stack is level beds: a bed holds a seam of the mineral where its hash is under 0.14, or 1.4 over the
+  // stack's radius where that is less (and the bed through the middle always), and along such a bed the mineral
+  // lies wherever a layer of noise six cells to a step is over a half.
+  const shaleCell = (Z, x, y) => {
+    const bed = y - Z.cy;
+    if (bed !== 0 && hash(bed, Z.cx + Z.cy, seed + 95) >= Math.min(0.14, 1.4 / Z.rho)) return K.SOFT;
+    return noise((x - Z.cx) / 6 + 64, bed * 7 + 4096, seed + 95) > 0.5 ? K.MINERAL : K.SOFT;
+  };
+  // A tinderwork is coal with rings of fuse on a grid fourteen cells across, the pocket's middle the middle of one:
+  // a ring is 3.5 to 5.5 cells in radius by its square's hash, laid only where all of it and a cell and a half
+  // more lies within the pocket, and the fuse is the cells within three quarters of a cell of the ring's line.
+  // Inside it a cell is the mineral where its hash is under 0.45, or 5 over the pocket's radius where that is less.
+  const tinderCell = (Z, x, y) => {
+    const ex = x - Z.cx, ey = y - Z.cy, mx = 14 * Math.floor((ex + 7) / 14), my = 14 * Math.floor((ey + 7) / 14), R = 3.5 + 2 * hash(Z.cx + mx, Z.cy + my, seed + 96);
+    if (Math.sqrt(mx * mx + my * my) + R + 1.5 > Z.rho) return K.SOFT;
+    const from = Math.sqrt((ex - mx) ** 2 + (ey - my) ** 2) - R;
+    return from >= 0.75 ? K.SOFT : from > -0.75 ? K.NODE : hash(x, y, seed + 52) < Math.min(0.45, 5 / Z.rho) ? K.MINERAL : K.SOFT;
+  };
+  // A grotto is open wherever a layer of noise five cells to a step is over 0.6; a cell of its rock with open
+  // ground beside it is a cap where the cell's hash is under 0.2, or 2.8 over the grotto's radius where that is less.
+  const cave = (x, y) => noise(x / 5, y / 5, seed + 53) > 0.6;
+  const grottoCell = (Z, x, y) => cave(x, y) ? K.EMPTY : hash(x, y, seed + 54) < Math.min(0.2, 2.8 / Z.rho) && (cave(x + 1, y) || cave(x - 1, y) || cave(x, y + 1) || cave(x, y - 1)) ? K.CAP : K.SOFT;
   // Which cells are a pocket's, and how far from its middle they can lie: a hive's 5.7 cells beyond its radius.
+  // A drift and a tinderwork are plain discs; the edge of any other wanders.
+  const plain = Z => Z.row === 33 || Z.row === 36;
   const inPocket = (Z, x, y) => {
     if (Z.row === 32) return inHive(Z, x, y);
     const d = Math.sqrt((x - Z.cx) ** 2 + (y - Z.cy) ** 2);
-    return d < (Z.row === 33 ? Z.rho : Z.rho * (0.8 + 0.4 * noise(x / 7, y / 7, seed + 44)));
+    return d < (plain(Z) ? Z.rho : Z.rho * (0.8 + 0.4 * noise(x / 7, y / 7, seed + 44)));
   };
-  const reachOf = Z => Z.row === 32 ? Z.rho + 5.7 : Z.row === 33 ? Z.rho : Z.rho * 1.2;
+  const reachOf = Z => Z.row === 32 ? Z.rho + 5.7 : plain(Z) ? Z.rho : Z.rho * 1.2;
   // Whether a disc (its middle and how far it runs) meets a pocket: its middle is nearer a pocket's than the disc
   // runs and the pocket's cells can lie.
   const meets = (cx, cy, reach) => {
@@ -351,6 +391,7 @@ const plain = seed => {
     if (b === 32) return hiveCell(zoneOf(Math.floor(dx / 128), Math.floor(dy / 128)), x, y);
     if (b === 33) return driftCell(zoneOf(Math.floor(dx / 128), Math.floor(dy / 128)), x, y);
     if (b === 34) return ashCell(zoneOf(Math.floor(dx / 128), Math.floor(dy / 128)), x, y);
+    if (b >= 35 && b <= 38) return [grottoCell, tinderCell, glazeCell, shaleCell][b - 35](zoneOf(Math.floor(dx / 128), Math.floor(dy / 128)), x, y);
     // A slab's crack and joints are open and its keys are keys; its own ground and its collar are the ground of
     // wherever it lies, with no find and no cave in them, and in the slab's own the ore's thresholds are 0.05 lower.
     const slab = bare ? 'out' : slabAt(x, y), solid = slab !== 'out', lift = slab === 'inside' ? 0.05 : 0;

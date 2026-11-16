@@ -39,7 +39,8 @@ export function cellsOf(w, Z, pieces = false) {
     const k = w.pocketCell(Z, x, y);
     out.cells++;
     if (kinds) kinds[(y - Z.cy + most) * wide + x - Z.cx + most] = k;
-    if (k === K.EMPTY) out.open++; else if (k === Z.mineral) out.mineral++; else if (k === K.NODE) out.node++;
+    // (A grotto's caps are counted as what they are once lit: its mineral.)
+    if (k === K.EMPTY) out.open++; else if (k === Z.mineral || (k === K.CAP && Z.mineral === K.CAP_LIT)) out.mineral++; else if (k === K.NODE) out.node++;
   }
   if (kinds) for (let from = 0; from < kinds.length; from++) {
     if (kinds[from] <= K.EMPTY) continue;

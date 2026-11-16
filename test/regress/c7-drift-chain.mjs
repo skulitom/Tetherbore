@@ -20,14 +20,14 @@ import { sfx } from '../../js/audio.js';
 
 const fails = [], check = (ok, what) => { if (!ok && fails.length < 16) fails.push(what); };
 const round2 = n => { const unit = 10 ** Math.max(0, Math.floor(Math.log10(n)) - 1); return Math.round(n / unit) * unit; };
-// World 7's drift of fifteen boulders, 638 cells out to the south-east.
-const { game, Z } = await stage(7, 25), w = game.world, S = game.S, P = w.row(Z.cy * N + Z.cx).pocket;
+// World 7's drift of twelve boulders, 893 cells out to the south-east.
+const { game, Z } = await stage(7, 30), w = game.world, S = game.S, P = w.row(Z.cy * N + Z.cx).pocket;
 game.update(1 / 60);
 const rung = [], gem = sfx.gem;
 sfx.gem = step => { rung.push(step); gem(step); };
 const wait = seconds => { for (let f = 0; f < Math.round(seconds * 60); f++) game.update(1 / 60); };
 const boulders = bouldersOf(w, Z).filter(b => b.cells.length < 12);
-check(boulders.length >= 12 && P.chain === true && P.lump === 2 && P.spec === 0.9, `the drift at ${Z.cx - C},${Z.cy - C} has ${boulders.length} boulders under 12 cells`);
+check(boulders.length >= 10 && P.chain === true && P.lump === 2 && P.spec === 0.9, `the drift at ${Z.cx - C},${Z.cy - C} has ${boulders.length} boulders under 12 cells`);
 // What a boulder pays with its lump taken `chain` times: the lump of each cell of aerolite, and the rock's own.
 const lumpOf = (b, chain) => b.cells.filter(i => w.k(i) === K.MINERAL).reduce((sum, i) => sum + round2(income(Math.max(22, Math.hypot(i % N - C, Math.floor(i / N) - C))) * P.lump * chain), 0);
 const rockOf = b => Math.round(b.cells.reduce((sum, i) => sum + (w.k(i) === K.SOFT ? richness(Math.hypot(i % N - C, Math.floor(i / N) - C)) : 0), 0) * haulBonus(b.cells.length, game.val('winch')));

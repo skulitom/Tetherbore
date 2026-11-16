@@ -44,7 +44,7 @@ const stand = (game, x, y) => { const d = game.drill; d.x = d.px = x + 0.5; d.y 
   check(game.overlay(K.SOFT, HIVE, level.near - N) === null && game.rockSheet(K.MINERAL, 32) === 'wax' && game.rockSheet(K.NODE, 32) === 'wax' && game.rockSheet(K.SOFT, 32) === 'wax', 'wax, or the block under amber or a stalk, is not drawn from the wax sheet');
   // (A mineral that has no picture on the sheet, as a test's may not, is drawn as its rock alone.)
   const looks = { sheet: 'mire', floor: 'mire-floor', gloom: [1, 2, 3], mote: ['#ffffff', 'still'], map: [1, 2, 3], debris: ['#000000'] };
-  const odd = biome({ id: 121, name: 'test-opal', kin: B.MIRE, pocket: { mineral: 'opal', node: 'thread', lump: 1, spec: 1 }, ...looks });
+  const odd = biome({ id: 121, name: 'test-zircon', kin: B.MIRE, pocket: { mineral: 'zircon', node: 'thread', lump: 1, spec: 1 }, ...looks });
   check(game.overlay(K.MINERAL, odd) === null && game.overlay(K.NODE, odd) === null && game.mineralOf(odd) === null && game.mineralOf(HIVE) === 'amber' && game.mineralOf(BIOMES[3]) === null, 'a mineral or a node with no picture is drawn all the same');
   check(JSON.stringify(game.debris(K.MINERAL, 32)) === JSON.stringify(HIVE.pocket.chips) && JSON.stringify(game.debris(K.NODE, 32)) === JSON.stringify(HIVE.debris) && JSON.stringify(game.debris(K.SOFT, 32)) === JSON.stringify(HIVE.debris), `amber sheds ${game.debris(K.MINERAL, 32)}, a stalk ${game.debris(K.NODE, 32)}`);
   // On the screen: with a nugget in view, its nine cells of amber and its two of stalk are painted from the sheet.

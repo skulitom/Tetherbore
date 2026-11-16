@@ -17,7 +17,7 @@ import { play } from '../../tools/drift-play.mjs';
 
 const fails = [], check = (ok, what) => { if (!ok && fails.length < 16) fails.push(what); };
 const out = [];
-for (const [pick, name, boulders] of [[0, 'the north\'s first drift', 4], [3, 'a drift 21 cells in radius', 7], [12, 'a drift of eight boulders', 8]]) {
+for (const [pick, name, boulders] of [[0, 'the north\'s first drift', 4], [3, 'a drift 21 cells in radius', 7], [10, 'a drift of eight boulders', 8]]) {
   const r = await play(7, pick), Z = r.drift, at = `${name} (${Z.cx - C},${Z.cy - C})`;
   check(r.boulders === boulders && r.books === boulders, `${at}: ${r.boulders} boulders, ${r.books} of them in the books the frame the drill came in`);
   check(!r.stuck && r.left === 0 && r.home === r.aerolite, `${at}: ${r.home} of ${r.aerolite} cells of aerolite came home, ${r.left} boulders are left${r.stuck ? `, the one at ${r.stuck} not reeled` : ''}`);

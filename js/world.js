@@ -405,12 +405,104 @@ pocket(33, 'drift', { title: 'PUMICE DRIFT', kin: 0, sheet: 'pumice', floor: 'pu
 pocket(34, 'ash', { title: 'ASH FLATS', kin: B.EMBER, sheet: 'ash', floor: 'ash-floor', dig: 0.2, worth: 0, gloom: [14, 14, 16], mote: ['#d0d0d0', 'fall'],
   map: [196, 196, 192], debris: ['#c4c4c0', '#d2d2ce', '#77777f'],
   pocket: { shape: 'ash', kins: [B.EMBER], minR: 170, rho: [8, 30], mineral: 'tektite', lump: 0.5, spec: 0.2, pip: '#d0d0d0', chips: ['#2a2a36', '#8ce0ff', '#ffffff'] } });
+// ---- the pockets met further out: one to each direction, none nearer the core than FURTHER cells, each with a
+// mineral nothing else has and one rule of its own (docs/CONTENT-PLAN.md, content item 10, where they were planned
+// as each direction's first pocket; built for a game that had bought the whole shop and found the ground the same
+// wherever it went). As with the three above, what each holds grows with its radius and not with its area.
+const FURTHER = 300;
+// GLAZE (north): sheet ice in panes five cells long and two high, laid as bricks are, each course shifted along by
+// its own hash (93), and in half the pockets stood on end. A pane in so many (`starglass`) holds one cell of its
+// mineral, where the pane's own hash says (94, 98); the pane at the pocket's middle always does. One bite shatters a
+// whole pane and leaves its mineral standing (js/game.js: the 'pane' twist). `paneAt` works a cell's pane out into
+// PANE: its course, its place along the course, the cell's place in it (along, then up), whether the pocket is
+// turned, and the course's shift.
+const PANE = [0, 0, 0, 0, 0, 0];
+export const starglass = rho => Math.min(0.15, 1.9 / rho);
+const paneAt = (seed, Z, x, y) => {
+  const turned = hash(Z.cx, Z.cy, seed + 93) < 0.5, u = turned ? y - Z.cy : x - Z.cx, v = turned ? x - Z.cx : y - Z.cy;
+  const course = Math.floor(v / 2), off = Math.floor(hash(course, Z.cx * 3 + Z.cy, seed + 93) * 5), n = Math.floor((u + off) / 5);
+  PANE[0] = course; PANE[1] = n; PANE[2] = u + off - n * 5; PANE[3] = v - course * 2; PANE[4] = turned ? 1 : 0; PANE[5] = off;
+};
+// SHALE (east): level beds. One bed in so many (`agates`; 95) holds a seam of its mineral, in runs a few cells long
+// with gaps between (a layer of noise along the bed); the bed through the pocket's middle always does. Cut along
+// the grain, shale splits off a plank at a time (the 'plank' twist).
+export const agates = rho => Math.min(0.14, 1.4 / rho);
+// RINGS (south): coal, and in it rings of fuse a cell or two thick on a grid RING cells across, the pocket's middle
+// the middle of one: each 3.5 to 5.5 cells in radius (96), laid only where the whole ring lies inside the pocket.
+// A ring's heart holds the mineral, a cell in so many (`opals`; 52). The fuse is a cell and a half thick, so that
+// no cell of the heart stands side by side with a cell outside the ring: burn the fuse (the 'fuse' twist) and the
+// heart hangs on nothing. `ringAt` works the ring of the square a cell lies in out into RINGAT: how far the cell
+// is from the ring's middle, and the ring's radius; false where the square has no ring.
+const RING = 14, FUSE_HALF = 0.75, RINGAT = [0, 0];
+export const opals = rho => Math.min(0.45, 5 / rho);
+const ringAt = (Z, seed, ex, ey) => {
+  const gx = Math.floor((ex + RING / 2) / RING), gy = Math.floor((ey + RING / 2) / RING), mx = gx * RING, my = gy * RING;
+  const R = 3.5 + 2 * hash(Z.cx + mx, Z.cy + my, seed + 96);
+  if (Math.sqrt(mx * mx + my * my) + R + 1.5 > Z.rho) return false;
+  RINGAT[0] = Math.sqrt((ex - mx) * (ex - mx) + (ey - my) * (ey - my)); RINGAT[1] = R;
+  return true;
+};
+// GROTTO (west): caves, open wherever a layer of noise (53) runs high, and on their walls caps: a cell of rock with
+// open ground beside it is one, a cell in so many (`caps`; 54). A cap is dull until the drill flies by it, and
+// lights (the 'glow' twist: K.CAP becomes K.CAP_LIT, which is the pocket's mineral).
+export const caps = rho => Math.min(0.2, 2.8 / rho);
+const cave = (seed, x, y) => noise(x / 5, y / 5, seed + 53, 53) > 0.6;
+Object.assign(POCKET_SHAPES, {
+  panes: {
+    cell(seed, Z, x, y) {
+      paneAt(seed, Z, x, y);
+      const course = PANE[0], n = PANE[1], at = PANE[3] * 5 + PANE[2];
+      if (!(course === 0 && n === 0) && hash(Z.cx + n, Z.cy + course, seed + 94) >= starglass(Z.rho)) return K.SOFT;
+      return at === Math.floor(hash(Z.cx + course, Z.cy + n, seed + 98) * 10) ? Z.mineral : K.SOFT;
+    },
+  },
+  shale: {
+    cell(seed, Z, x, y) {
+      const bed = y - Z.cy;
+      if (bed !== 0 && hash(bed, Z.cx + Z.cy, seed + 95) >= agates(Z.rho)) return K.SOFT;
+      return noise((x - Z.cx) / 6 + 64, bed * 7 + 4096, seed + 95, 95) > 0.5 ? Z.mineral : K.SOFT;
+    },
+  },
+  rings: {
+    cell(seed, Z, x, y) {
+      if (!ringAt(Z, seed, x - Z.cx, y - Z.cy)) return K.SOFT;
+      const from = RINGAT[0] - RINGAT[1];
+      return from >= FUSE_HALF ? K.SOFT : from > -FUSE_HALF ? K.NODE : hash(x, y, seed + 52) < opals(Z.rho) ? Z.mineral : K.SOFT;
+    },
+  },
+  grotto: {
+    cell(seed, Z, x, y) {
+      if (cave(seed, x, y)) return K.EMPTY;
+      return hash(x, y, seed + 54) < caps(Z.rho) && (cave(seed, x + 1, y) || cave(seed, x - 1, y) || cave(seed, x, y + 1) || cave(seed, x, y - 1)) ? K.CAP : K.SOFT;
+    },
+  },
+});
+// LANTERN GROTTO. Caves hung with dull caps that light, each with a note, as the drill flies by: only a lit cap is
+// worth the haul, so the place is flown through before it is cut.
+pocket(35, 'grotto', { title: 'LANTERN GROTTO', kin: B.MIRE, sheet: 'grotto', floor: 'grotto-floor', dark: 1.2, gloom: [4, 12, 12], mote: ['#58f0e0', 'rise'],
+  map: [40, 112, 102], debris: ['#1c443e', '#3a8a78', '#12302c'],
+  pocket: { shape: 'grotto', kins: [B.MIRE], minR: FURTHER, rho: [10, 30], kind: K.CAP_LIT, twist: 'glow', mineral: 'lantern', lump: 2.5, spec: 0.67, pip: '#58f0e0', chips: ['#58f0e0', '#c8fff8', '#2a5a54'] } });
+// TINDERWORK. Coal laced with rings of fuse: one bite and the ring burns itself open, leaving its heart, and the
+// fire opals in it, to be lassoed.
+pocket(36, 'tinder', { title: 'TINDERWORK', kin: B.EMBER, sheet: 'tinder', floor: 'tinder-floor', gloom: [20, 10, 6], mote: ['#ffb030', 'rise'],
+  map: [92, 72, 66], debris: ['#3a3032', '#6e5a52', '#221c1e'],
+  pocket: { shape: 'rings', kins: [B.EMBER], minR: FURTHER, rho: [9, 30], wobble: false, twist: 'fuse', mineral: 'opal', node: 'fuse', nodeDig: 0.1, lump: 1.5, spec: 0.65, pip: '#ffb030', chips: ['#ff5a3a', '#ffd070', '#7a1e3a'] } });
+// GLAZE. Sheet ice in panes, worth nothing itself: one bite shatters a whole pane, and the starglass in it is left
+// standing in the open.
+pocket(37, 'glaze', { title: 'GLAZE', kin: B.FROST, sheet: 'glaze', floor: 'glaze-floor', worth: 0, dig: 0.9, gloom: [5, 14, 30], mote: ['#c8f4ff', 'fall'],
+  map: [70, 132, 190], debris: ['#3a78b0', '#c8f4ff', '#1e4a7a'],
+  pocket: { shape: 'panes', kins: [B.FROST], minR: FURTHER, rho: [8, 30], twist: 'pane', mineral: 'starglass', lump: 5, spec: 1.3, pip: '#a8fff0', chips: ['#ffffff', '#a8fff0', '#30c8c0'] } });
+// SHALE STACK. Banded shale that splits along the grain: cut level, one bite sends a plank of up to four cells
+// away; cut across the beds, it is ordinary ground. Agate lies in seams along some of the beds.
+pocket(38, 'shale', { title: 'SHALE STACK', kin: B.LODE, sheet: 'shale', floor: 'shale-floor', gloom: [20, 16, 8], mote: ['#c8c0a0', 'fall'],
+  map: [150, 142, 110], debris: ['#7c765c', '#c8c0a0', '#4a4636'],
+  pocket: { shape: 'shale', kins: [B.LODE], minR: FURTHER, rho: [8, 30], twist: 'plank', mineral: 'agate', lump: 1.0, spec: 0.3, pip: '#e85a3a', chips: ['#e85a3a', '#ffd8a0', '#7a2a1a'] } });
 // The first pocket of each direction lies just past the home ground, where a new game comes on it within its
 // first reaches: HERALD_R cells out along the direction's own line and HERALD_OFF to one side, so that all of it lies
 // in one sector, HERALD_RHO in radius; and HERALD_ON further out where a wreck lies within HERALD_CLEAR cells of
-// that. What kind each is: the first of its list that has a row (the kinds first planned for the heralds are not
-// made yet: docs/CONTENT-PLAN.md, content item 10).
-const HERALDS = [null, [37, 33, 32], [36, 34, 32], [35, 32], [38, 33, 32]];
+// that. What kind each is: the first of its list that has a row. (The four kinds first planned for the heralds
+// are made, and lie further out: a new game meets the drift, the flats and the hive first, as it always has.)
+const HERALDS = [null, [33, 32], [34, 32], [32], [33, 32]];
 export const HERALD_R = 165, HERALD_OFF = 14, HERALD_RHO = 9, HERALD_ON = 40, HERALD_CLEAR = 24;
 // Where each direction's herald lies: its sector of pockets, and the way out from the core and the way aside.
 const HERALD_AT = [null, { sx: 0, sy: -2, ux: 0, uy: -1, ox: 1, oy: 0 }, { sx: -1, sy: 1, ux: 0, uy: 1, ox: -1, oy: 0 }, { sx: -2, sy: -1, ux: -1, uy: 0, ox: 0, oy: -1 }, { sx: 1, sy: 0, ux: 1, uy: 0, ox: 0, oy: 1 }];
@@ -538,7 +630,8 @@ export const cellHash = hash;
 // about the square the cell before them did.
 // Layers and hash seeds in use (added to the world's seed): 1-3 and 14-17 whose ground a cell is; 4 the world's
 // edge; 5-13 and 18 the ground itself; 21-24 finds; 31-32 wrecks; 40-44 and 100 + a pocket's number, where pockets
-// lie and of what kind; 45-47 a hive, 48-50 a drift, 51 an ash flat; 55 and 300 + a strain's number, provinces (56 and
+// lie and of what kind; 45-47 a hive, 48-50 a drift, 51 an ash flat; 52 and 96 a tinderwork, 53-54 a grotto, 93-94
+// and 98 a glaze, 95 a shale stack; 55 and 300 + a strain's number, provinces (56 and
 // 57: which cross a province is); 58-59 a second hazard; 64 grapes, 65 lanes, 66 rivers, 67 bubbles (strata are on 11,
 // stretched); 68 slag among lava; 80-89 keystone slabs (84 the layer their cracks wander by). docs/CONTENT-PLAN.md
 // (S3) allots the rest: take a number from there, so that no two rules read the same layer.
@@ -781,6 +874,18 @@ export class World {
   }
   // What a cell of pocket `Z` is, as its shape lays it.
   pocketCell(Z, x, y) { return Z.shape.cell(this.seed, Z, x, y); }
+  // The pane of a glaze (`Z`) that a cell lies in: a number that two cells share only if they are of one pane, and
+  // the cells of the pane that are the pocket's.
+  paneKey(Z, x, y) { paneAt(this.seed, Z, x, y); return PANE[0] * 8192 + PANE[1]; }
+  paneOf(Z, x, y) {
+    paneAt(this.seed, Z, x, y);
+    const course = PANE[0], n = PANE[1], turned = PANE[4], off = PANE[5], cells = [];
+    for (let b = 0; b < 2; b++) for (let a = 0; a < 5; a++) {
+      const u = n * 5 - off + a, v = course * 2 + b, cx = Z.cx + (turned ? v : u), cy = Z.cy + (turned ? u : v);
+      if (this.inPocket(Z, cx, cy)) cells.push(cy * N + cx);
+    }
+    return cells;
+  }
   // Every pocket whose middle lies within `far` cells of the core, nearest first: for the map, and for tools.
   pocketsWithin(far) {
     const found = [], most = Math.floor(far / ZONE);
