@@ -1297,7 +1297,7 @@ export class Game {
     // (A keystone is iron: it rings and shatters as slate does. A prism breaks like any crystal.)
     const mineral = row.pocket !== null && k === (row.pocket.kind ?? K.MINERAL);
     const tough = k === K.SLATE || k === K.KEY ? 3 : k === K.VAULT ? 4 : k === K.DENSE || k === K.ORE_B || k === K.BASALT || k === K.SLAG || k === K.STEEL || k === K.PRISM || mineral ? 2 : 1;
-    sfx.dig(tough);
+    sfx.dig(tough, GEMS[k] > 0 || mineral ? 'ore' : k === K.ICE ? 'ice' : '');
     this.chips(x, y, this.debris(k, b), 9 + tough * 3, d.ang, 1);
     this.effect('dust', 'dust', (x + 0.5) * T, (y + 0.5) * T);
     if (tough >= 2 || k === K.ICE) this.effect('shatter', 'shatter', (x + 0.5) * T, (y + 0.5) * T);
@@ -1485,7 +1485,7 @@ export class Game {
     const mx = cx / n, my = cy / n;
     cx = (mx + 0.5) * T; cy = (my + 0.5) * T;
     this.effect('haul', 'impact', cx, cy);
-    sfx.crack(n);
+    sfx.crack(n, linked);
     for (const sp of sprites) if (count < 60 || cellHash(sp.x, sp.y, 9) < 0.4) this.chips(sp.x, sp.y, sp.debris, 2, null, 0.7);
     const title = relic >= 0 ? 'RELIC!' : parts ? 'WRECK PART! PAY +10%' : caches ? 'CACHE!' : n >= 200 ? 'COLOSSAL!' : n >= 80 ? 'HUGE HAUL!' : n >= 30 ? 'BIG HAUL!' : n >= 10 ? 'NICE CUT!' : 'HAUL';
     // What the last haul was and paid (`hauled`). Any but a light one says so across the screen, with a flash and
@@ -1549,7 +1549,7 @@ export class Game {
           bits.push({ s, sx: qx * size, sy: qy * size, x: s.x * T + (qx + 0.5) * size, y: s.y * T + (qy + 0.5) * size, vx: Math.cos(a) * v, vy: Math.sin(a) * v, born: h.t, k: s.k, st: 0, ft: 0, stall: 0, ghost: false });
         }
         if (h.count < 80 || cellHash(s.x, s.y, 9) < 0.35) this.chips(s.x, s.y, s.debris, 3, null, 0.8);
-        if (this.time - (this.lastSnap ?? 0) > 0.05) { this.lastSnap = this.time; sfx.dig((s.x + s.y) & 1); }
+        if (this.time - (this.lastSnap ?? 0) > 0.05) { this.lastSnap = this.time; sfx.crumble(); }
       }
       // Once the blocks have broken up, the rope draws the lot in. A long way out it is carried
       // fast as one bundle; the last stretch, and any short haul, is pushed through the tunnels bit by bit.
@@ -2094,7 +2094,7 @@ export class Game {
       const x = Math.floor((this.cam.x + (Math.random() - 0.5) * W) / T), y = Math.floor((this.cam.y + (Math.random() - 0.5) * H) / T), kk = w.peek(x, y);
       if ((kk === K.ORE_A || kk === K.ORE_B || kk === K.STEEL || kk === K.RELIC || kk === K.CACHE || kk === K.WRECK) && Math.random() < (kk === K.CACHE || kk === K.WRECK ? 1 : 0.5)) this.parts.push({ x: (x + 0.25 + Math.random() * 0.5) * T, y: (y + 0.25 + Math.random() * 0.5) * T, vx: 0, vy: 0, t: 0, life: 0.35, color: '#ffffff', size: 1, star: true });
     }
-    setAmbience(here.kin, here.rich >= 2);
+    setAmbience(here.kin, here.rich >= 2, this.far);
     this.chime -= dt;
     if (this.chime <= 0) { this.chime = 2.5 + Math.random() * 4.5; sfx.chime(here.kin); }
   }
