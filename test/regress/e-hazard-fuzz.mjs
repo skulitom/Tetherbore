@@ -3,13 +3,15 @@
 // stock tether faults, spans in a closed seam, the drill's own cell being rock, and how long the drill sat unable to
 // move while steered.
 // Fails on any frame with a fault. (Not for a start in the north: the frost has no hazard of its own.)
-//   node test/regress/e-hazard-fuzz.mjs [seed=1] [turns=500] [start x=0] [start y=170] [density=0.08] [reach=5] [second]
+//   node test/regress/e-hazard-fuzz.mjs [seed=1] [turns=500] [start x=0] [start y=170] [density=0.08] [reach=5] [second | rare]
 // With `second`, every ground that has a hazard is given a second one for the flight (the south spore pods, the
 // west charged crystals, the east lava), the world lays it as it lays any row's, and half the hazards planted are
-// the second: lava among moss, arcs beside lava, pods among crystals.
+// the second: lava among moss, arcs beside lava, pods among crystals. With `rare`, what is planted is the rare
+// hazard of the ground's direction (K.RARE), with no site round it: rime bells tolling their rings open (in the north
+// too), fumaroles firing, glowworms swimming and lodestones pulling the ore near them, many to a screen.
 import { makeGame, tetherFaults, seamFaults, moreFaults, random, bandRel, rel, C, N, K } from './lib/terrain.mjs';
 import { world, tunnel, setDown, wander } from '../harness.mjs';
-const [seed = 1, turns = 500, sx = 0, sy = 170, density = 0.08, reach = 5] = process.argv.slice(2).map(Number), second = process.argv[8] === 'second';
+const [seed = 1, turns = 500, sx = 0, sy = 170, density = 0.08, reach = 5] = process.argv.slice(2).map(Number), second = process.argv[8] === 'second', rare = process.argv[8] === 'rare';
 if (second) {
   const NEXT = { lava: { type: 'spore', rate: 1 }, spore: { type: 'spark', rate: 1 }, spark: { type: 'lava', rate: 1, t: 0.78 } };
   for (const row of world.BIOMES.slice(1, 9)) if (row.haz) world.biome({ ...row, haz2: NEXT[row.haz.type] });
@@ -21,7 +23,7 @@ tunnel(game, sx, sy);
 let made = 0, seconds = 0;
 for (let y = sy - 45; y <= sy + 45; y++) for (let x = sx - 45; x <= sx + 45; x++) {
   const i = (C + y) * N + C + x, k = w.k(i);
-  if ((k === K.SOFT || k === K.DENSE) && w.b(i) !== 0 && rnd() < density) { w.setK(i, second && rnd() < 0.5 ? K.HAZARD2 : K.HAZARD); made++; }
+  if ((k === K.SOFT || k === K.DENSE) && w.b(i) !== 0 && rnd() < density) { w.setK(i, rare ? K.RARE : second && rnd() < 0.5 ? K.HAZARD2 : K.HAZARD); made++; }
   if (w.k(i) === K.HAZARD2) seconds++;
 }
 setDown(game, sx, sy);

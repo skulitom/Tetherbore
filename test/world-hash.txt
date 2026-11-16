@@ -22,7 +22,7 @@ seed 1 east 2000 (piece 31,0): kind 2e14a885 biome faca7bd1
 seed 1 south 2000 (piece 0,31): kind 437c3765 biome 796ec70b
 seed 1 west 2000 (piece -32,0): kind cc461f7f biome 0d7fc815
 seed 1 north 2000 (piece 0,-32): kind 75581bdd biome a10c88c5
-seed 1 south-east 1000 (piece 11,11): kind 008bc52f biome 7026944b
+seed 1 south-east 1000 (piece 11,11): kind b8a9b830 biome 7026944b
 seed 1 south-west 1000 (piece -12,11): kind c5d9a0d4 biome 930a361d
 seed 1 north-west 1000 (piece -12,-12): kind 5f5ce8f3 biome 4d956b0d
 seed 1 north-east 1000 (piece 11,-12): kind 50bbc6ec biome d6538433

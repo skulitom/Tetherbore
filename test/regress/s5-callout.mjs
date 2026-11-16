@@ -2,7 +2,8 @@
 // the game: a ring from the thing, its name in a popup, and a dot kept for the map in S.marks until the thing is
 // gone. One call for a thing however many of its cells come into view; one of a kind in three seconds, though a
 // thing seen sooner still gets its dot; wrecks and relics are named but get no dot (the map shows them anyway); the
-// map keeps 24 dots at the most; a geode's dot is on its ore, so it goes when the ore does. Names only.
+// map keeps 24 dots at the most; a geode's dot is on its ore, so it goes when the ore does; a rare hazard is called
+// out by its own name, and is met from then on. Names only.
 //   node test/regress/s5-callout.mjs
 import { makeGame, world, C, N } from '../harness.mjs';
 const { K, B, BIOMES, FIND, biome } = world;
@@ -65,6 +66,15 @@ game.haul([at(57, 13)]); game.changed([at(57, 13)]);
 check(!S.marks.some(m => m[0] === at(57, 13)) && S.marks.length === 6, `the dot of a cache that was hauled is still there: ${JSON.stringify(S.marks)}`);
 w.setK(at(-19, 63), K.EMPTY); game.changed([at(-19, 63)]);
 check(!S.marks.some(m => m[0] === at(-19, 63)) && S.marks.length === 5, 'the dot of a geode whose ore was cut is still there');
+
+// ---- a rare hazard: each of the four by its own name and colour, with a dot, and met from then on (`S.rare`)
+for (const [type, name, colour, kin, x] of [['bell', 'RIME BELL', '#bff4ff', B.FROST, 220], ['vent', 'FUMAROLE', '#ff9a3c', B.EMBER, 270], ['worm', 'GLOWWORM', '#c8ff5a', B.MIRE, 320], ['lodestone', 'LODESTONE', '#b48cff', B.LODE, 370]]) {
+  const before = S.marks.length;
+  check(!S.rare[type], `a ${type} is met before it is seen`);
+  w.setK(at(x, -90), K.RARE); w.setB(at(x, -90), kin);
+  got = sight(x, -90, 0);
+  check(same(got, { names: [name], colours: [colour], rings: 1, left: 0 }) && S.marks.length === before + 1 && same(S.marks.at(-1), [at(x, -90), K.RARE, colour]) && S.rare[type] === 1, `a ${type} seen: ${JSON.stringify(got)}, its dot ${JSON.stringify(S.marks.at(-1))}, met ${JSON.stringify(S.rare)}`);
+}
 
 // ---- the map keeps 24 dots: the oldest go first
 for (let n = 0; n < 30; n++) { w.setK(at(300 + n * FIND, 200), K.KEY); w.see(C + 300 + n * FIND, C + 200, 0); }

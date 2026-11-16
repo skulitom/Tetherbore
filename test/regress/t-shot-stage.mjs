@@ -6,14 +6,14 @@
 //   view is uncovered; ground standing loose in view is known (a wreck in its hollow); `zoom` widens the game's
 //   canvas and leaves the tether's as it was; `lit` takes the dark away; `met` puts the place's name on its plate
 //   in place of the title card of a first meeting; `wake` wakes the hazard nearest the drill, as a cut beside it
-//   would, and nothing is woken without it; `bombs` gives the drill that level of BLAST and carves no room, and
+//   would, and nothing is woken without it, and `wake=bell` (or any type) the nearest of that type; `bombs` gives the drill that level of BLAST and carves no room, and
 //   `blast` sets one charge off there; `key` stands the drill at the last key of the slab nearest, the other keys
 //   cut through, pushing into it, so that stepped half a second the cut's glow holds the whole slab and stepped two
 //   the slab hangs loose and the drill has let go; `pocket` stands the drill inside the pocket nearest, in the lane
 //   beside the nugget at a hive's middle, with no room carved and the hive's amber left standing, and `haul` brings
 //   that many nuggets home from there, which banks their specimens; and stepped for three seconds, nothing
 //   has moved the drill, nothing is wrong with the tether, and the saved game is as it was.
-import { makeGame, tetherFaults, sight, C, N, K } from '../harness.mjs';
+import { makeGame, tetherFaults, sight, world, C, N, K } from '../harness.mjs';
 
 const SAVE = 'tetherbore-save-v3', fails = [];
 const check = (ok, what) => { if (!ok) fails.push(what); };
@@ -141,6 +141,24 @@ check(await open('', 'example.org') === undefined, 'away from localhost an ordin
   t.advance(2000);
   check(game.world.lava.size > 1 && steel(game) > 0, `two seconds after the wake there are ${game.world.lava.size} cells of lava and ${steel(game)} of steel`);
   check(!tetherFaults(game).length, `the tether beside woken lava: ${tetherFaults(game).join('; ')}`);
+}
+
+// `wake=` a type: the nearest hazard of that type. Seed 7's first rime bell lies at 143,-585 and its first fumarole
+// at -141,572 (`node tools/sites.mjs --where 7`): each is woken by the cut beside it nearest the drill, the bell's
+// ring opens 1.2 s on, and the fumarole fires out of the side that was cut. Lava asked for there is not found.
+{
+  const t = await open('?shot&seed=7&at=141,-576&wake=bell'), game = t.game, w = game.world, heart = (C - 585) * N + C + 143;
+  check(t.shot.facts().woke === 'bell' && game.bells.has(heart), `staged with wake=bell: woke ${t.shot.facts().woke}`);
+  const ring = game.ringOf(heart), solid = ring.filter(i => w.k(i) !== K.EMPTY).length;
+  t.advance(1300);
+  check(solid > 20 && ring.every(i => w.k(i) === K.EMPTY || !world.CRUSH[w.k(i)]) && game.pieceOf.has(heart), `1.3 s after the bell was woken ${ring.filter(i => w.k(i) !== K.EMPTY).length} of its ring's ${solid} cells stand, and its disc is ${game.pieceOf.has(heart) ? 'loose' : 'held'}`);
+  const v = await open('?shot&seed=7&at=-139,565&wake=vent'), vent = (C + 572) * N + C - 141, side = v.game.vents.get(vent)?.way;
+  check(v.shot.facts().woke === 'vent' && side === 3 && v.game.world.k(vent - N) === K.EMPTY, `staged with wake=vent: woke ${v.shot.facts().woke}, to fire ${side}`);
+  v.advance(1300);
+  check(v.game.vents.get(vent)?.pulses === 1 && v.game.jets.length === 1, `1.3 s after the fumarole was woken it has fired ${v.game.vents.get(vent)?.pulses} times`);
+  check(!tetherFaults(v.game).length, `the tether beside a fumarole that has fired: ${tetherFaults(v.game).join('; ')}`);
+  const none = await open('?shot&seed=7&at=141,-576&wake=lava');
+  check(none.shot.facts().woke === null && none.game.bells.size === 0, `wake=lava beside a bell woke ${none.shot.facts().woke}`);
 }
 
 // `key`: the last cut of a keystone slab (seed 7's first slab lies 52 cells south of the core, 3 east).

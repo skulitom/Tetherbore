@@ -1,12 +1,17 @@
 // The whole game played at random and checked after every frame (the verifiers' fuzz of the hunt's fixes, kept):
 //   node test/regress/i-fuzz-play.mjs <seed> <turns> <reach level> <start x> <start y> <dt: 60|30|mix> [flags]
-// flags (comma list): bombs, shop, home, forceshop, lowdrill, ram, pillars, known
+// flags (comma list): bombs, shop, home, forceshop, lowdrill, ram, pillars, known, wake
 // Steering only, or with trips home and throws, bombs, the shop. Checked: the tether (tetherFaults); the books of
 // loose ground (every piece really cut off, one piece, no cell twice); the lasso (an island the tether is right
 // round, found by flooding with none of the game's books, is reeled within two seconds); every haul (what is
 // handed over is loose and wound, and pays what its banner says); money; and the drill (never in rock, never a
 // jump, never far beyond its reach, never stuck: steered and still for two seconds it is steered eight ways, and
 // must move or cut).
+//
+// With `wake` the rare hazard nearest the start (a rime bell, a fumarole, a glowworm or a lodestone; `node
+// tools/sites.mjs --where 7` says where they lie) is woken, as a cut beside it would wake it, at the start and every
+// WAKE_EVERY seconds after while it is there and asleep: so the flight meets it tolling, firing, swimming and
+// pulling, as it may never come to cut beside it by chance. How often it was woken is counted (`rareWakes`).
 //
 // One thing is counted and not failed: a drill hemmed in by lava (`hemmedByLava`). Lava is shut to it until it
 // drains or sets, and at the very end of the reach the ways out are refused, so there it waits, 14 s in the
@@ -17,6 +22,7 @@
 // (basalt that set in the open), 60 and 50 (stuck at the end of the reach), 57 (a bend hooked beyond the string's
 // end), 39 (throws), 51 (bombs and the shop).
 import { makeGame, random, tetherFaults, farStart, UPGRADES, C, N, K, world } from '../harness.mjs';
+import { WORM } from '../../js/game.js';
 
 const argv = process.argv.slice(2);
 const [seed = 30, turns = 300, reach = 5, sx = 0, sy = 0] = argv.slice(0, 5).map(Number);
@@ -286,6 +292,29 @@ function probe(dtOf) {
   return false;
 }
 
+// ---------------------------------------------------------------- the rare hazard by the start, woken
+const WAKE_EVERY = 12, RARES = ['bell', 'vent', 'worm', 'lodestone'];
+let rousedAt = -Infinity;
+function rouse() {
+  if (clock - rousedAt < WAKE_EVERY || game.shop || d.mode === 'dead') return;
+  rousedAt = clock;
+  let best = -1, near = Infinity;
+  for (let v = -20; v <= 20; v++) for (let u = -20; u <= 20; u++) {
+    const j = (C + sy + v) * N + C + sx + u;
+    if (u * u + v * v < near && RARES.includes(w.hazAt(j))) { best = j; near = u * u + v * v; }
+  }
+  if (best < 0) return;
+  const type = w.hazAt(best), awake = { bell: game.bells, vent: game.vents, worm: game.worms, lodestone: game.stones }[type];
+  if (awake.has(best)) return;
+  // (A glowworm the drill is too far from to keep awake would coil up again at once.)
+  const bx = best % N, by = Math.floor(best / N);
+  if (type === 'worm' && Math.hypot(d.x - bx - 0.5, d.y - by - 0.5) > WORM.lose) return;
+  // Woken as a cut beside it wakes it: the cut lights the ground round it, or a glowworm has nowhere seen to swim.
+  w.see(bx, by, 2); game.version++;
+  stats.rareWakes = (stats.rareWakes ?? 0) + 1;
+  game.changed(game.trigger(best, type, false));
+}
+
 // ---------------------------------------------------------------- one frame, checked
 function step(dt, steering, mayProbe = true) {
   const before = { x: d.x, y: d.y, mode: d.mode, speed: d.speed }, g0 = game.S.grit, shown0 = game.banked(), shop = game.shop;
@@ -293,6 +322,7 @@ function step(dt, steering, mayProbe = true) {
   const e0 = expectGrit;
   try { game.update(dt); } catch (e) { note('threw', e.stack.split('\n').slice(0, 5).join(' | ')); }
   frames++; if (!shop) clock += dt;
+  if (flags.has('wake')) rouse();
   stats.maxBends = Math.max(stats.maxBends, game.band.length);
   for (const f of tetherFaults(game)) note('tether: ' + f.replace(/[-\d.(),]+/g, '#'), `${f}\n  band: ${JSON.stringify(game.band.slice(0, 8).map(p => [+(p[0] - HX).toFixed(2), +(p[1] - HY).toFixed(2), p[2] ?? 0]))}`);
   books();
@@ -388,6 +418,7 @@ for (let f = 0; f < 3600 && game.hauls.length; f++) step(1 / 60, false);
 if (game.hauls.length) note('money: hauls never ended', `${game.hauls.length}`);
 if (game.pending.grit || game.pending.gems.some(Boolean)) note('money: something left on its way at the end', JSON.stringify(game.pending));
 for (let g = 1; g < 5; g++) if (game.S.gems[g] !== expectGems[g]) note('money: gems are not the sum of what the banners said', `gem ${g}: ${game.S.gems[g]} against ${expectGems[g]}`);
+if (flags.has('wake') && !stats.rareWakes) note('wake: no rare hazard was ever woken', `none within 20 cells of ${sx},${sy}, or never near enough`);
 stats.longestHeld = +stats.longestHeld.toFixed(2); stats.maxHaulT = +stats.maxHaulT.toFixed(1);
 console.log(JSON.stringify({ seed, turns, reach, start: [sx, sy], dt: dtMode, flags: [...flags].join(','), frames, seconds: +clock.toFixed(0), at: at(), bends: game.band.length, ...stats, problems: Object.fromEntries(kinds) }));
 process.exit(kinds.size ? 1 : 0);

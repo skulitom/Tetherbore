@@ -52,13 +52,19 @@ export const K = {
   GLASS: kind(25, 'GLASS', 1, 1, 0, 0.12),
   TWIN: kind(26, 'TWIN', 1, 2, 0, 0.6),
   FOSSIL: kind(27, 'FOSSIL', 1, 2, 0, 1.0),
+  // The heart of a rare hazard's site: which of the four, the kin of its ground says (`RARE`). It pays its gems to
+  // that direction, and a lump besides (js/game.js: `payOf`).
+  RARE: kind(28, 'RARE', 1, 4, 10, 0.6),
 };
 export const KIND_NAMES = KINDS.map(k => k.name);
 // What is worth calling out the first time it is seen (`World.see`), by kind. Slate is, where it is a geode's shell;
-// a pocket's mineral is too, and which kind that is its row says.
+// a pocket's mineral is too, and which kind that is its row says; and a rare hazard, by its type.
 const NOTABLE = [];
-NOTABLE[K.CACHE] = 'cache'; NOTABLE[K.WRECK] = 'wreck'; NOTABLE[K.RELIC] = 'relic'; NOTABLE[K.KEY] = 'key'; NOTABLE[K.PRISM] = 'prism'; NOTABLE[K.SLATE] = 'geode';
+NOTABLE[K.CACHE] = 'cache'; NOTABLE[K.WRECK] = 'wreck'; NOTABLE[K.RELIC] = 'relic'; NOTABLE[K.KEY] = 'key'; NOTABLE[K.PRISM] = 'prism'; NOTABLE[K.SLATE] = 'geode'; NOTABLE[K.RARE] = 'rare';
 export const HARD = KINDS.map(k => k.hard), GRIT = KINDS.map(k => k.grit), GEMS = KINDS.map(k => k.gems), DIG_TIME = KINDS.map(k => k.dig);
+// What a rare hazard may open or change, by kind: plain rock, ore, ice, basalt, slag, steel, slate, glass and
+// faults. Never a find, a key, a pocket's own cells, another hazard, a relic or a wreck, the edge or the core.
+export const CRUSH = KINDS.map(({ id }) => [K.SOFT, K.DENSE, K.ORE_A, K.ORE_B, K.ICE, K.BASALT, K.SLAG, K.STEEL, K.SLATE, K.GLASS, K.FAULT].includes(id));
 
 // ---------------------------------------------------------------- whose ground a cell is
 // The four directions' own grounds, by number: north, south, west, east. The same numbers are the four gems', and a
@@ -83,11 +89,20 @@ export const base = b => b > 4 ? b - 4 : b;
 //          along a rib they stand that near: one nick unzips a run of it, six cells of slate or more as often as not.
 //          (Counted, tools/strains.mjs. The figures first planned, one cell in ten within 0.015, left a crystal
 //          every ten cells of rib, and an arc took three cells of slate and stopped.)
+// The four rare hazards (`rare`) are no ground's: none is laid as K.HAZARD or K.HAZARD2, and a row that names one
+// is refused. Each lies alone at the heart of a site of its own (`World.siteOf`), one to a direction: the rime
+// bell in the north, the fumarole in the south, the glowworm in the west, the lodestone in the east.
 export const HAZARDS = {
   lava: { kin: B.EMBER, sheet: 'ember-items', share: 0, rind: 0.07 },
   spore: { kin: B.MIRE, sheet: 'mire-items', share: 0.022 },
   spark: { kin: B.LODE, sheet: 'lode-items', share: 0.026, ribs: 0.2 },
+  bell: { kin: B.FROST, sheet: 'bell-items', rare: true },
+  vent: { kin: B.EMBER, sheet: 'vent-items', rare: true },
+  worm: { kin: B.MIRE, sheet: 'worm-items', rare: true },
+  lodestone: { kin: B.LODE, sheet: 'lodestone-items', rare: true },
 };
+// Which rare hazard a K.RARE cell is, by the kin of its ground (none in the home ground).
+export const RARE = [null, 'bell', 'vent', 'worm', 'lodestone'];
 const RIB = 0.03;
 const KIN_ITEMS = ['lode-items', 'frost-items', 'ember-items', 'mire-items', 'lode-items'];
 
@@ -159,6 +174,7 @@ const laid = (haz, what) => {
   if (!haz) return [0, 0];
   const type = HAZARDS[haz.type];
   if (!type) throw new Error(`${what}: there is no hazard called ${haz.type}`);
+  if (type.rare) throw new Error(`${what}: ${haz.type} is a rare hazard, laid only at its sites, never by a ground`);
   if (!type.share && typeof haz.t !== 'number') throw new Error(`${what}: ${haz.type} needs its threshold t`);
   return type.share ? [SCATTER, type.share * (haz.rate ?? 1)] : [POCKETS, haz.t];
 };
@@ -194,10 +210,11 @@ export function biome(f) {
 }
 // The row of a ground's number: the home ground's for a number that has no row.
 export const rowOf = b => BIOMES[b] ?? BIOMES[0];
-// What hazard a cell of kind `k` in ground `row` is: 'lava', 'spore', 'spark', or null (not a hazard, or one of a
-// kind this ground has none of).
-export const hazOf = (k, row) => (k === K.HAZARD ? row.haz : k === K.HAZARD2 ? row.haz2 : null)?.type ?? null;
-// Whose gems a cell pays (1 north, 2 south, 3 west, 4 east).
+// What hazard a cell of kind `k` in ground `row` is: 'lava', 'spore', 'spark', one of the four rare ('bell',
+// 'vent', 'worm', 'lodestone': by the ground's kin), or null (not a hazard, or one of a kind this ground has none of).
+export const hazOf = (k, row) => k === K.RARE ? RARE[row.kin] ?? null : (k === K.HAZARD ? row.haz : k === K.HAZARD2 ? row.haz2 : null)?.type ?? null;
+// Whose gems a cell pays (1 north, 2 south, 3 west, 4 east). A rare hazard's are its ground's direction's, which is
+// its type's.
 export const gemKin = (k, row) => k === K.ORE_A ? row.gemA : k === K.ORE_B ? row.gemB : k === K.STEEL ? B.EMBER : k === K.CAP || k === K.CAP_LIT ? B.MIRE
   : k === K.HAZARD || k === K.HAZARD2 ? HAZARDS[hazOf(k, row)]?.kin ?? row.kin : row.kin;
 // How long a cell takes to cut with the first bit, in seconds.
@@ -632,6 +649,47 @@ export const PROVINCE = 256;
 // Generated ground (crosses) is a share of the provinces that grows with the distance of a province's middle from
 // the core: none under CROSS_FROM cells out, then a part in 2,500 for each cell further, and never over CROSS_MOST.
 export const CROSS_FROM = 500, CROSS_MOST = 0.35;
+// Rare hazards lie at sites, one at the most to a sector SITE cells across, the sectors laid out with their
+// middles on the corners of the slabs' (`World.siteOf`): a site's middle is within eleven cells of a corner each
+// way, and its heart a cell from that at the most, so every cell of one (none lies over six from its heart) is
+// within eighteen cells of the corner, and no cell of a slab, its collar or its keys is: they lie eighteen cells
+// or more inside their sector. None under SITE_FROM cells out.
+// What share of the sectors hold one, by where the middle lies (`SITE_SHARE`, the largest that applies): in a
+// deep flank, in a cross, past SITE_OUT cells out, or in the middle of one ground all round ('plain': every point
+// of two rings, 20 and 40 cells out from the middle, is of the middle's ground: SITE_ROUND). Counted with
+// tools/sites.mjs: 32 to 56 sites a world on worlds 1 to 8, five or more of each type. (The shares first planned,
+// 0.06, 0.08, 0.04 and 0.05, laid 20 to 44, and three of one type in one world.)
+// And four sectors are tried in every world, one in each direction about 594 cells out (`SITE_HERALDS`: the
+// sector and the kin its ground must be, east, west, north, south; then, for each, the sector across its
+// direction's line, tried where the first holds none, and last the sector on the line itself, tried where neither
+// does: in about one world in 160 a pocket or a cavern takes both of the first two), so that a new game meets each
+// of the four early.
+export const SITE = 144, SITE_FROM = 450, SITE_OUT = 1500;
+export const SITE_SHARE = { deep: 0.06, cross: 0.1, far: 0.1, plain: 0.08 };
+const SITE_MOST = 0.1, SITE_CLEAR = 44, SITE_ROOM = 11, SITE_TRIES = 8;
+const SITE_ROUND = [20, 40].flatMap(r => { const d = Math.round(0.7 * r); return [[r, 0], [-r, 0], [0, r], [0, -r], [d, d], [d, -d], [-d, d], [-d, -d]]; });
+export const SITE_HERALDS = [[4, 1, B.LODE], [-4, -1, B.MIRE], [1, -4, B.FROST], [-1, 4, B.EMBER], [4, -1, B.LODE], [-4, 1, B.MIRE], [-1, -4, B.FROST], [1, 4, B.EMBER], [4, 0, B.LODE], [-4, 0, B.MIRE], [0, -4, B.FROST], [0, 4, B.EMBER]];
+// What each rare hazard's site lays round its heart, as the ground lies with its caves cut (`kindAt`): a kind for a
+// cell `u`, `v` from the heart, or -1 where the ground is as it would be. A site never opens a cell, so nothing
+// else in the world moves for it. `reach`: how far from the heart a cell of it lies at the most.
+//   bell       a bell of black ice in a disc of dense rock and rich ore, ringed with ice two cells wide on the
+//              diagonals, so that the ring alone holds the disc to the ground (70)
+//   vent       a cone in a rind of slag, in basalt and dense rock with a little rich ore (71, 72)
+//   worm       a coiled worm in a bed of soft rock, with a few nuggets round it (73)
+//   lodestone  a stone at the heart of an eight-armed star of ore, most of it rich (74)
+export const SITE_SHAPES = {
+  bell: (u, v, x, y, seed) => { const d2 = u * u + v * v; return d2 === 0 ? K.RARE : d2 <= 10 ? (hash(x, y, seed + 70) < 0.3 ? K.ORE_B : K.DENSE) : d2 >= 12 && d2 <= 20 ? K.ICE : -1; },
+  vent: (u, v, x, y, seed) => {
+    const d2 = u * u + v * v;
+    return d2 === 0 ? K.RARE : d2 <= 2 ? K.SLAG : d2 > 9 ? -1 : d2 >= 4 && hash(x, y, seed + 71) < 0.15 ? K.ORE_B : hash(x, y, seed + 72) < 0.6 ? K.BASALT : K.DENSE;
+  },
+  worm: (u, v, x, y, seed) => { const d2 = u * u + v * v; return d2 === 0 ? K.RARE : d2 <= 4 ? K.SOFT : d2 <= 13 && hash(x, y, seed + 73) < 0.25 ? K.ORE_A : -1; },
+  lodestone: (u, v, x, y, seed) => {
+    const d2 = u * u + v * v;
+    return d2 === 0 ? K.RARE : d2 >= 4 && d2 <= 36 && (u === 0 || v === 0 || u === v || u === -v) ? (hash(x, y, seed + 74) < 0.75 ? K.ORE_B : K.ORE_A) : -1;
+  },
+};
+const SITE_REACH = { bell: 5, vent: 3, worm: 4, lodestone: 6 };
 
 const hash = (x, y, s) => {
   let h = Math.imul(x, 374761393) ^ Math.imul(y, 668265263) ^ Math.imul(s, 1442695041);
@@ -646,10 +704,11 @@ export const cellHash = hash;
 // Layers and hash seeds in use (added to the world's seed): 1-3 and 14-17 whose ground a cell is; 4 the world's
 // edge; 5-13 and 18 the ground itself; 21-24 finds; 31-32 wrecks; 40-44 and 100 + a pocket's number, where pockets
 // lie and of what kind; 45-47 a hive, 48-50 a drift, 51 an ash flat; 52 and 96 a tinderwork, 53-54 a grotto, 93-94
-// and 98 a glaze, 95 a shale stack; 55 and 300 + a strain's number, provinces (56 and
-// 57: which cross a province is); 58-59 a second hazard; 64 grapes, 65 lanes, 66 rivers, 67 bubbles (strata are on 11,
-// stretched); 68 slag among lava; 80-89 keystone slabs (84 the layer their cracks wander by). docs/CONTENT-PLAN.md
-// (S3) allots the rest: take a number from there, so that no two rules read the same layer.
+// and 98 a glaze, 95 a shale stack; 55 and 300 + a strain's number, provinces (56 and 57: which cross a province
+// is); 58-59 a second hazard; 60-62 where rare hazards' sites lie, 70-74 what their shapes lay; 64 grapes, 65
+// lanes, 66 rivers, 67 bubbles (strata are on 11, stretched); 68 slag among lava; 80-89 keystone slabs (84 the
+// layer their cracks wander by). docs/CONTENT-PLAN.md (S3) allots the rest: take a number from there, so that no
+// two rules read the same layer.
 const kept = new Float64Array(128 * 7).fill(NaN);
 const noise = (x, y, s, k = s & 127) => {
   const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi, m = k * 7;
@@ -806,6 +865,10 @@ export class World {
     this.refused = { core: 0, wreck: 0, first: 0, pocket: 0, cavern: 0, keys: 0, ring: 0, held: 0 };
     this.zones = new Map();                // the pocket of each sector asked about (null: none), and the sector asked last
     this.zoneLast = { sx: NaN, sy: NaN, seed: NaN, zone: null };
+    this.sites = new Map();                // the rare hazard's site of each sector asked about (null: none), and the sector asked last
+    this.siteLast = { sx: NaN, sy: NaN, seed: NaN, site: null };
+    // How many sites were not laid, of the sectors whose hash could have held one, by what stood against each.
+    this.unsited = { far: 0, ground: 0, wreck: 0, pocket: 0, find: 0, heart: 0, share: 0 };
     this.relicAt = [0, 1, 2, 3].map(d => (C + DY[d] * RELIC_R) * N + C + DX[d] * RELIC_R);
   }
   // Where the eight wrecks lie in this world: [x, y] each, in a direction of its own.
@@ -987,6 +1050,100 @@ export class World {
       }
     }
     return false;
+  }
+
+  // ---------------------------------------------------------------- rare hazards' sites
+  // The site of a rare hazard laid in a sector of SITE cells (sx, sy: counted from the one whose middle is the
+  // core's cell), or null where the sector has none. Worked out once for each sector and kept. A site's record is
+  //   { sx, sy, cx, cy, type, reach, herald }
+  // its sector, its heart (the K.RARE cell), which of the four it is (`RARE`: its ground's kin says), how far from
+  // the heart its cells lie (`SITE_SHAPES`), and whether it is one of the four every world has.
+  //
+  // Its middle lies a few cells from the sector's (60: the hash that says whether it holds one; 61, 62 how far
+  // off its middle lies). It is laid only where each of these holds, the cheapest asked first:
+  //   the sector's hash is under SITE_MOST (none of the shares below is more);
+  //   the middle is SITE_FROM cells out or more, and the last reach goes round the site;
+  //   the middle's ground is a direction's (no pocket's, not the home ground), and the ground seven cells from it
+  //   each way is the same direction's: a site never lies across two;
+  //   it is SITE_CLEAR cells or more from a wreck and from a relic's vault, and SITE_ROOM from any pocket's cells
+  //   and from the middle of any sector's find;
+  //   its heart is solid as the ground lies, with its caves: the middle, or else the first of its four neighbours
+  //   (east, south, west, north) that is, of the same direction's ground;
+  //   the sector's hash is under its share, the largest that applies to where the middle lies.
+  // The four heralds (`SITE_HERALDS`) are asked all but the first and the last, and must lie in their own
+  // direction's ground; where one would not be laid, its middle is tried again elsewhere in the same few cells
+  // (its hashes asked of the sector 64 sectors east, and twice that, and so on), SITE_TRIES times in all, and where
+  // none of those is, the sector on the other side of the direction's line is its herald, and where that has none
+  // either, the sector on the line. Nothing here asks what
+  // the world lays in a cell (`kindAt`), nor about slabs.
+  siteOf(sx, sy) {
+    const seed = this.seed, key = ((sy + 64) << 7) | (sx + 64);
+    if (this.sitesFor !== seed) { this.sitesFor = seed; this.sites.clear(); }
+    let S = this.sites.get(key);
+    if (S !== undefined) return S;
+    const h = hash(sx, sy, seed + 60), at = SITE_HERALDS.findIndex(([x, y]) => x === sx && y === sy);
+    let herald = at >= 0 ? SITE_HERALDS[at][2] : 0;
+    for (let k = at - 4; herald && k >= 0; k -= 4) if (this.siteOf(SITE_HERALDS[k][0], SITE_HERALDS[k][1]) !== null) herald = 0;
+    S = null;
+    if (herald || h < SITE_MOST) for (let n = 0; n < (herald ? SITE_TRIES : 1) && S === null; n++) S = this.site(sx, sy, n, h, herald);
+    this.sites.set(key, S);
+    return S;
+  }
+  // A sector's site at its `n`th try (only a herald has more than one), or null.
+  site(sx, sy, n, h, herald) {
+    const seed = this.seed, no = why => { this.unsited[why]++; return null; };
+    const cx = C + sx * SITE + Math.floor((hash(sx + 64 * n, sy, seed + 61) - 0.5) * 21), cy = C + sy * SITE + Math.floor((hash(sx + 64 * n, sy, seed + 62) - 0.5) * 21);
+    const dx = cx - C, dy = cy - C, far = Math.sqrt(dx * dx + dy * dy);
+    if (far < SITE_FROM || far + 6 > WORLD_R - 100) return no('far');
+    const b = this.biomeAt(cx, cy), row = rowOf(b), kin = row.kin;
+    if (kin < 1 || kin > 4 || row.pocket !== null || (herald && kin !== herald)) return no('ground');
+    for (let d = 0; d < 4; d++) if (rowOf(this.biomeAt(cx + DX[d] * 7, cy + DY[d] * 7)).kin !== kin) return no('ground');
+    for (const [wx, wy] of this.wrecks) if ((cx - wx) * (cx - wx) + (cy - wy) * (cy - wy) < SITE_CLEAR * SITE_CLEAR) return no('wreck');
+    for (let d = 0; d < 4; d++) { const ex = cx - C - DX[d] * RELIC_R, ey = cy - C - DY[d] * RELIC_R; if (ex * ex + ey * ey < SITE_CLEAR * SITE_CLEAR) return no('wreck'); }
+    if (this.meetsPocket(cx, cy, SITE_ROOM)) return no('pocket');
+    for (let fy = Math.floor((cy - SITE_ROOM - C) / FIND), y1 = Math.floor((cy + SITE_ROOM - C) / FIND); fy <= y1; fy++) {
+      for (let fx = Math.floor((cx - SITE_ROOM - C) / FIND), x1 = Math.floor((cx + SITE_ROOM - C) / FIND); fx <= x1; fx++) {
+        const [what, x, y] = this.findSpot(fx, fy);
+        if (what !== null && (x - cx) * (x - cx) + (y - cy) * (y - cy) < SITE_ROOM * SITE_ROOM) return no('find');
+      }
+    }
+    // The heart: open ground is asked for as `kindAt` asks it, before a site has its say.
+    let hx = cx, hy = cy;
+    for (let d = -1; d < 4; d++) {
+      hx = d < 0 ? cx : cx + DX[d]; hy = d < 0 ? cy : cy + DY[d];
+      const g = rowOf(this.biomeAt(hx, hy));
+      if (g.kin === kin && g.lay !== null && !(noise(hx / 19, hy / 19, seed + 18, 18) > g.lay.cavern || noise(hx / 5, hy / 5, seed + 13, 13) > g.lay.cave
+        || (g.lay.bubbles < 1 && bubble(hx, hy, seed, g.lay.bubbles)))) break;
+      if (d === 3) return no('heart');
+    }
+    if (!herald) {
+      const share = row.cross !== null ? SITE_SHARE.cross : row.id >= 5 && row.id <= 8 ? SITE_SHARE.deep : far > SITE_OUT ? SITE_SHARE.far : 0;
+      if (h >= share && !(h < SITE_SHARE.plain && SITE_ROUND.every(([u, v]) => this.biomeAt(cx + u, cy + v) === b))) return no('share');
+    }
+    const type = RARE[kin];
+    return { sx, sy, cx: hx, cy: hy, type, reach: SITE_REACH[type], herald: herald > 0 };
+  }
+  // The site whose cells may include a cell, or null: its sector's, kept while cells of the same sector are asked.
+  siteAt(x, y) {
+    const sx = Math.floor((x - C + SITE / 2) / SITE), sy = Math.floor((y - C + SITE / 2) / SITE), L = this.siteLast;
+    if (L.sx !== sx || L.sy !== sy || L.seed !== this.seed) { L.site = this.siteOf(sx, sy); L.sx = sx; L.sy = sy; L.seed = this.seed; }
+    const S = L.site;
+    if (S === null) return null;
+    const ex = x - S.cx, ey = y - S.cy, most = S.reach;
+    return ex <= most && ex >= -most && ey <= most && ey >= -most && ex * ex + ey * ey <= most * most ? S : null;
+  }
+  // What a sector's site is, asked without making any of the world: [type, x, y, reach], with the heart's cell, or
+  // [null, 0, 0, 0] where it has none. (What is truly there is the world's cells to say: a cell of the shape that
+  // is open ground stays open, and a saved game's pieces may hold ground laid otherwise.)
+  siteSpot(sx, sy) { const S = this.siteOf(sx, sy); return S ? [S.type, S.cx, S.cy, S.reach] : [null, 0, 0, 0]; }
+  // Every site whose heart lies within `far` cells of the core, nearest first: for the map, and for tools.
+  sitesWithin(far) {
+    const found = [], most = Math.ceil(far / SITE) + 1;
+    for (let sy = -most; sy <= most; sy++) for (let sx = -most; sx <= most; sx++) {
+      const S = this.siteOf(sx, sy);
+      if (S && (S.cx - C) * (S.cx - C) + (S.cy - C) * (S.cy - C) <= far * far) found.push(S);
+    }
+    return found.sort((a, b) => (a.cx - C) ** 2 + (a.cy - C) ** 2 - (b.cx - C) ** 2 - (b.cy - C) ** 2);
   }
 
   // ---------------------------------------------------------------- keystone slabs
@@ -1176,6 +1333,7 @@ export class World {
     this.made = 0;
     this.spotted.length = 0;
     this.provincesFor = NaN; this.slabsFor = NaN; this.firstFor = NaN; this.slabLast.seed = NaN; this.zonesFor = NaN; this.zoneLast.seed = NaN;
+    this.sitesFor = NaN; this.siteLast.seed = NaN;
   }
 
   // Whose ground a cell is, from the seed alone. The rules, in the order they are asked (docs/CONTENT-PLAN.md S3):
@@ -1308,6 +1466,8 @@ export class World {
       if (noise(x / 19, y / 19, seed + 18, 18) > g.cavern) return K.EMPTY;
       if (noise(x / 5, y / 5, seed + 13, 13) > g.cave) return K.EMPTY;
       if (g.bubbles < 1 && bubble(x, y, seed, g.bubbles)) return K.EMPTY;
+      // A rare hazard's site has its say over everything laid after the caves, and opens nothing.
+      if (r > SITE_FROM - 10) { const S = this.siteAt(x, y); if (S !== null) { const k = SITE_SHAPES[S.type](x - S.cx, y - S.cy, x, y, seed); if (k >= 0) return k; } }
     }
     if (r > 600 && Math.abs(noise(x / 8, y / 8, seed + 12, 12) - 0.5) < 0.028) return K.VAULT;
     // (`flank`: the cell is not slate, and lies within RIB of a rib's edge or a bed's.)
@@ -1400,9 +1560,10 @@ export class World {
   setB(i, v) { const id = ((i >>> 20) << 8) | ((i >>> 6) & 255), p = this.piece(id); this.keep(id, p); p.biome[(((i >>> 14) & 63) << 6) | (i & 63)] = v; this.touched.add(id); this.stirred++; }
   // Show the ground within `radius` cells of a cell. Returns whether anything new was seen. A cell seen for the
   // first time that is worth calling out (a cache, a wreck, a relic, a keystone, a prism, a pocket's mineral, the
-  // shell of a geode) goes on `spotted` as [what, cell, middle]: what it is ('cache', 'wreck', 'relic', 'key',
-  // 'prism', 'mineral', 'geode'), the cell seen, and the middle cell of the thing (the cell itself, but for a
-  // geode). Whoever calls things out takes them from the list; it never holds more than a few hundred.
+  // shell of a geode, a rare hazard) goes on `spotted` as [what, cell, middle]: what it is ('cache', 'wreck', 'relic',
+  // 'key', 'prism', 'mineral', 'geode', or the rare hazard's type), the cell seen, and the middle cell of the thing
+  // (the cell itself, but for a geode and a rare hazard's site). Whoever calls things out takes them from the list;
+  // it never holds more than a few hundred.
   see(cx, cy, radius) {
     let fresh = false;
     for (let y = cy - radius; y <= cy + radius; y++) for (let x = cx - radius; x <= cx + radius; x++) {
@@ -1410,14 +1571,16 @@ export class World {
       if (p.seen[at]) continue;
       this.keep(id, p); p.seen[at] = 1; this.touched.add(id); this.stirred++; fresh = true;
       const k = p.kind[at], P = (BIOMES[p.biome[at]] ?? BIOMES[0]).pocket;
-      if (NOTABLE[k] !== undefined || (P !== null && k === (P.kind ?? K.MINERAL))) this.notice(x, y, k, P);
+      if (NOTABLE[k] !== undefined || (P !== null && k === (P.kind ?? K.MINERAL))) this.notice(x, y, k, P, p.biome[at]);
     }
     return fresh;
   }
-  notice(x, y, k, P) {
+  notice(x, y, k, P, b = 0) {
     if (this.spotted.length >= 400) return;
     const i = y * N + x;
     if (P !== null && k === (P.kind ?? K.MINERAL)) { this.spotted.push(['mineral', i, i]); return; }
+    // A rare hazard is told of by its type, naming its site's heart (or itself, where it has strayed from it).
+    if (k === K.RARE) { const what = RARE[rowOf(b).kin], S = this.siteAt(x, y); if (what) this.spotted.push([what, i, S !== null ? S.cy * N + S.cx : i]); return; }
     if (k !== K.SLATE) { this.spotted.push([NOTABLE[k], i, i]); return; }
     // Slate is a geode's shell where its sector holds a geode and the cell lies within it.
     const [what, fx, fy, size] = this.findSpot(Math.floor((x - C) / FIND), Math.floor((y - C) / FIND)), dx = x - fx, dy = y - fy;
@@ -1429,9 +1592,10 @@ export class World {
   laid(i) { const p = this.chunks[((i >>> 20) << 8) | ((i >>> 6) & 255)]; return p ? p.kind[(((i >>> 14) & 63) << 6) | (i & 63)] : -1; }
   at(x, y) { return this.k(y * N + x); }
   solid(x, y) { return this.k(y * N + x) !== K.EMPTY; }
-  // The row of the ground a cell lies in, and what hazard the cell is ('lava', 'spore', 'spark') or null.
+  // The row of the ground a cell lies in, and what hazard the cell is ('lava', 'spore', 'spark', or one of the four
+  // rare: 'bell', 'vent', 'worm', 'lodestone') or null.
   row(i) { return BIOMES[this.b(i)] ?? BIOMES[0]; }
-  hazAt(i) { const k = this.k(i); return k === K.HAZARD || k === K.HAZARD2 ? hazOf(k, this.row(i)) : null; }
+  hazAt(i) { const k = this.k(i); return k === K.HAZARD || k === K.HAZARD2 || k === K.RARE ? hazOf(k, this.row(i)) : null; }
 
   // An outline is walked a side at a time, the ground always on the same hand. A side is a cell of ground and which
   // of its sides faces open ground (0 east, 1 south, 2 west, 3 north), held as one number: the cell's, times four,

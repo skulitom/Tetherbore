@@ -1006,7 +1006,202 @@ export const minerals = {
     { name: 'stalk-v', duration: 300, ops: [{ op: 'stamp', symbol: 'upright', x: 0, y: 0 }] }],
 };
 
-export const RECIPES = [finds, cracks, dish, frost, ember, mire, lode, minerals, drill, core, icons, upgrades, ui, logo, tough];
+// The four rare hazards, one to a direction and a sheet each, as the game draws a hazard by its sheet's `hazard`.
+// What they do awake has frames of its own, drawn only while it is awake.
+
+// The rime bell: a squat bell of black ice with a pale rim. It tolls tipped a pixel either way, its rim lit.
+const BELL = [
+  '.....kk.....',
+  '....kmbk.z..',
+  '...kbmbbkzzz',
+  '..kbmwbbbkz.',
+  '..kbmwbbbk..',
+  '..kbmbbbBk..',
+  '.kbmbbbbBBk.',
+  '.kbbbbbbBBk.',
+  'krrrrrrrrrrk',
+  'kRRRRRRRRRRk',
+  '.kkkkrrkkkk.',
+  '.....kk.....',
+];
+const tip = dx => BELL.map((row, y) => y > 6 ? row : dx > 0 ? '.' + row.slice(0, -1) : row.slice(1) + '.');
+export const bell = {
+  version: 1, name: 'bell-items', width: 16, height: 16,
+  palette: { k: '#070c18', b: '#1b2a44', B: '#111a2c', m: '#2e4a70', w: '#e8fbff', r: '#6fb6e8', R: '#3a78b0', z: '#ffffff00' },
+  symbols: { bell: BELL, 'bell-l': tip(-1), 'bell-r': tip(1) },
+  frames: [frame('hazard', 'bell', { duration: 400 }), frame('hazard-b', 'bell', { duration: 400, palette: { w: '#ffffff', r: '#bff4ff', z: '#ffffff' } }),
+    frame('toll-a', 'bell-l', { duration: 80, palette: { r: '#e8fbff', R: '#6fb6e8', w: '#ffffff' } }),
+    frame('toll-b', 'bell-r', { duration: 80, palette: { r: '#e8fbff', R: '#6fb6e8', w: '#ffffff' } })],
+  animations: { hazard: { frames: ['hazard', 'hazard', 'hazard', 'hazard-b'] } },
+};
+
+// The fumarole: a cracked cone with fire in its throat, breathing. Its jet is a band of flame that fills the cell
+// end to end, so a line of them is one flame. Its two drawings are alike at the cell's edges, so any two join.
+const JET_A = [
+  '................',
+  '................',
+  '.....r......r...',
+  '....rorr...ror..',
+  'r..roooor.rooo.r',
+  'orroYYYooroYYoro',
+  'YooYWWWYYoYWWYoY',
+  'WYWWWWWWWWWWWWYW',
+  'WWWWWWYWWWWWWWWW',
+  'YYWWWYYoYWWWYYYY',
+  'ooYYYoorroYYoooo',
+  'rroooor..rrooror',
+  '..rrorr....rr.r.',
+  '....r.......r...',
+  '................',
+  '................',
+];
+const JET_B = [
+  '................',
+  '................',
+  '..r.......r.....',
+  '.ror.....rorr...',
+  'rrooor.rroooorrr',
+  'oooYYoroooYYYooo',
+  'YYYWWYoYYYWWWYYY',
+  'WWWWWWYWWWWWWWWW',
+  'WYWWWWWWWWWYWWWW',
+  'YYYWWYYYYWWWWYYY',
+  'oYoYYooooYYYooYo',
+  'roroorr.roooroor',
+  '.rr.r..rrorr..r.',
+  '.......r..r.....',
+  '................',
+  '................',
+];
+const jet = (name, symbol, rotate) => ({ name, duration: 60, ops: [{ op: 'stamp', symbol, x: 0, y: 0, rotate }] });
+export const vent = {
+  version: 1, name: 'vent-items', width: 16, height: 16,
+  palette: { k: '#120806', l: '#7a4e38', m: '#5a3626', M: '#2a1a14', o: '#ff7a1a', Y: '#ffd36a', W: '#fff6c8', r: '#c2361a', z: '#ffffff00' },
+  symbols: {
+    cone: [
+      '......z.....',
+      '....z...z...',
+      '...kkkkkk...',
+      '..koYWWYok..',
+      '..kloYYoMk..',
+      '..klmmoMMk..',
+      '.kllmmYoMMk.',
+      '.klmmmMoMMk.',
+      'klmmMMMMYoMk',
+      'klmomMMMMoMk',
+      'kkkkkkkkkkkk',
+      '............',
+    ],
+    'jet-a': JET_A, 'jet-b': JET_B,
+  },
+  frames: [frame('hazard', 'cone', { duration: 500 }), frame('hazard-b', 'cone', { duration: 300, palette: { o: '#ffb040', Y: '#fff6c8', W: '#ffffff', z: '#ffd36a' } }),
+    { name: 'rumble-a', duration: 60, palette: { o: '#ffd36a', Y: '#ffffff', W: '#ffffff', z: '#ff7a1a' }, ops: [{ op: 'stamp', symbol: 'cone', x: 1, y: 2 }] },
+    { name: 'rumble-b', duration: 60, palette: { o: '#ffd36a', Y: '#ffffff', W: '#ffffff', z: '#ffd36a' }, ops: [{ op: 'stamp', symbol: 'cone', x: 3, y: 2 }] },
+    jet('jet-h-a', 'jet-a', 0), jet('jet-h-b', 'jet-b', 0), jet('jet-v-a', 'jet-a', 90), jet('jet-v-b', 'jet-b', 90)],
+  animations: { hazard: { frames: ['hazard', 'hazard-b'] } },
+};
+
+// The glowworm: coiled asleep, lamps down its back and a white light at its tail. Awake it swims straight, drawn
+// heading east and turned for the other three ways, its body rippling between two drawings.
+const SWIM_A = [
+  '............',
+  '............',
+  '............',
+  '....kk..kkk.',
+  '..kkglkkgglk',
+  '.kglggglgkgk',
+  'kwggGGgggggk',
+  '.kGGkkGGGGGk',
+  '..kk..kkkkk.',
+  '............',
+  '............',
+  '............',
+];
+const SWIM_B = [
+  '............',
+  '............',
+  '............',
+  '..kk..kkkkk.',
+  '.kglkkglgglk',
+  'kwggglgggkgk',
+  '.kGGggGGgggk',
+  '..kkGGkkGGGk',
+  '....kk..kkk.',
+  '............',
+  '............',
+  '............',
+];
+const swim = (dir, symbol, extra) => ({ name: `swim-${dir}`, duration: 120, ops: [{ op: 'stamp', symbol, x: 2, y: 2, ...extra }] });
+export const worm = {
+  version: 1, name: 'worm-items', width: 16, height: 16,
+  palette: { k: '#1c2a10', g: '#6bd13a', G: '#2f6e1c', l: '#d8ff7a', w: '#ffffff', t: '#c8ff5a60', T: '#6bd13a38' },
+  symbols: {
+    coil: [
+      '...kkkk.kkk.',
+      '..kgglwkgglk',
+      '.kgGGGkkgkgk',
+      'kgGkkk.kGggk',
+      'klGk....kGgk',
+      'kgGk....kGlk',
+      'kgGk....kGgk',
+      'klGk....kGgk',
+      'kggGkkkkGGgk',
+      '.kgGGGGGGgk.',
+      '..kglgglgk..',
+      '...kkkkkk...',
+    ],
+    'swim-a': SWIM_A, 'swim-b': SWIM_B,
+    trail: [
+      '............',
+      '............',
+      '............',
+      '....T.T.....',
+      '...TtTtT.T..',
+      '..TttttTT...',
+      '.T.tttttT...',
+      '..TTttTtT...',
+      '...T.TT.....',
+      '............',
+      '............',
+      '............',
+    ],
+  },
+  frames: [frame('hazard', 'coil', { duration: 450 }), frame('hazard-b', 'coil', { duration: 450, palette: { l: '#ffffff' } }),
+    swim('e-a', 'swim-a'), swim('e-b', 'swim-b'), swim('s-a', 'swim-a', { rotate: 90 }), swim('s-b', 'swim-b', { rotate: 90 }),
+    swim('w-a', 'swim-a', { flipX: true }), swim('w-b', 'swim-b', { flipX: true }), swim('n-a', 'swim-a', { rotate: 270 }), swim('n-b', 'swim-b', { rotate: 270 }),
+    frame('trail', 'trail')],
+  animations: { hazard: { frames: ['hazard', 'hazard', 'hazard-b'] } },
+};
+
+// The lodestone: a lump of dark iron stone with a red pole and a blue, and the filings that stand along the lines
+// between them, clear but when it stirs. The filing frame rings a cell: the ore it will pull next.
+export const lodestone = {
+  version: 1, name: 'lodestone-items', width: 16, height: 16,
+  palette: { k: '#16141c', d: '#3a3448', s: '#454a5a', h: '#6a6e84', R: '#e04848', r: '#902a30', B: '#4f7cff', b: '#2a46a0', z: '#ffffff00', w: '#ffffff' },
+  symbols: {
+    stone: [
+      '...z...z....',
+      '.z..kkkkk.z.',
+      '..kkhhssdk..',
+      '.kRRhsssddk.',
+      'kRRrsssdddkk',
+      'kRrrssdddbBk',
+      'kRrsssddbBBk',
+      '.kksddddbBBk',
+      '...kdddkbBk.',
+      '.z..kkk.kk..',
+      '...z...z..z.',
+      '............',
+    ],
+  },
+  frames: [frame('hazard', 'stone', { duration: 350 }), frame('hazard-b', 'stone', { duration: 350, palette: { R: '#ff7a6a', B: '#8cacff', z: '#d8e0ff' } }),
+    { name: 'hum-a', duration: 60, palette: { R: '#ffd0c8', r: '#e04848', B: '#d0dcff', b: '#4f7cff', z: '#ffffff' }, ops: [{ op: 'stamp', symbol: 'stone', x: 1, y: 2 }] },
+    { name: 'hum-b', duration: 60, palette: { R: '#ffffff', r: '#ff7a6a', B: '#ffffff', b: '#8cacff', z: '#ff6a5a' }, ops: [{ op: 'stamp', symbol: 'stone', x: 3, y: 2 }] },
+    { name: 'filing', duration: 300, ops: [{ op: 'rect', x: 0, y: 0, w: 16, h: 16, color: 'w', filled: false }] }],
+  animations: { hazard: { frames: ['hazard', 'hazard', 'hazard', 'hazard-b'] } },
+};
+
+export const RECIPES = [finds, cracks, dish, frost, ember, mire, lode, minerals, drill, core, icons, upgrades, ui, logo, tough, bell, vent, worm, lodestone];
 
 // The home-screen icon: the core on dark ground, with the drill out on its tether.
 const shift = (ops, dx, dy) => ops.map(op => ({ ...op, x: op.x + dx, y: op.y + dy }));

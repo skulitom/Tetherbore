@@ -1,5 +1,5 @@
 // Photographs the game, so that ground and art can be judged by eye with no hand on a browser:
-//   node tools/shot.mjs <out.png> [--seed 7] [--at dx,dy] [--reach level] [--size 360x640] [--zoom n] [--frames n] [--lit] [--met] [--wake]
+//   node tools/shot.mjs <out.png> [--seed 7] [--at dx,dy] [--reach level] [--size 360x640] [--zoom n] [--frames n] [--lit] [--met] [--wake [type]]
 //                                 [--key] [--pocket] [--haul n] [--cave] [--feel event]
 //
 //   --at dx,dy    where the drill stands, in cells from the core: east and south are counted up, so 300 cells north
@@ -19,7 +19,10 @@
 //                 `--frames 30` catches it, and the names of what the view uncovered, called out in the first frame.)
 //   --wake        the hazard nearest the drill, within 12 cells, is woken as a cut beside it would wake it: lava
 //                 pours, a pod bursts, a crystal's fuse is lit. `--frames` is then how far that has gone when the
-//                 picture is taken (`--frames 5`: lava just woken; 400: poured; 700: set).
+//                 picture is taken (`--frames 5`: lava just woken; 400: poured; 700: set). `--wake bell` (or vent,
+//                 worm, lodestone, lava, spore, spark) wakes the nearest of that type; a rare one is woken by the
+//                 cut beside it nearest the drill, made first (`node tools/sites.mjs --where <seed>` says where they
+//                 lie, with a place beside each to stand).
 //   --key         the last cut of a keystone slab: of the slab nearest `--at` (within 80 cells; `node
 //                 tools/slabs.mjs --where <seed>` lists them) every key is cut through but the one that faces the
 //                 core, and the drill stands in the crack beside what is left of that one, pushing into it.
@@ -57,15 +60,15 @@ import { createServer } from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { WORLD_R } from '../js/world.js';
+import { WORLD_R, HAZARDS } from '../js/world.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
-const usage = 'node tools/shot.mjs <out.png> [--seed 7] [--at dx,dy] [--reach level] [--size 360x640] [--zoom n] [--frames n] [--lit] [--met] [--wake] [--key] [--pocket] [--haul n] [--cave] [--feel event] [--browser path]';
+const usage = 'node tools/shot.mjs <out.png> [--seed 7] [--at dx,dy] [--reach level] [--size 360x640] [--zoom n] [--frames n] [--lit] [--met] [--wake [type]] [--key] [--pocket] [--haul n] [--cave] [--feel event] [--browser path]';
 const wrong = why => { console.error(`${why}\n  ${usage}`); process.exit(2); };
 
 // ---------------------------------------------------------------- what was asked for
-const options = { seed: '7', at: '0,0', reach: '', size: '360x640', zoom: '1', frames: '180', lit: false, met: false, wake: false, key: false, pocket: false, haul: '0', cave: false, feel: '', browser: '' };
+const options = { seed: '7', at: '0,0', reach: '', size: '360x640', zoom: '1', frames: '180', lit: false, met: false, wake: '', key: false, pocket: false, haul: '0', cave: false, feel: '', browser: '' };
 let out = null;
 for (let args = process.argv.slice(2), i = 0; i < args.length; i++) {
   const arg = args[i];
@@ -73,6 +76,12 @@ for (let args = process.argv.slice(2), i = 0; i < args.length; i++) {
   if (!arg.startsWith('--')) { if (out !== null) wrong(`Two places to write were given: ${out} and ${arg}.`); out = arg; continue; }
   const [name, inline] = arg.slice(2).split(/=(.*)/s);
   if (!(name in options)) wrong(`There is no option --${name}.`);
+  // (`--wake` alone wakes the nearest hazard of any type; followed by a type's name, the nearest of that type.)
+  if (name === 'wake') {
+    options.wake = inline ?? (args[i + 1] in HAZARDS ? args[++i] : '1');
+    if (!['0', '1'].includes(options.wake) && !(options.wake in HAZARDS)) wrong(`--wake names a hazard (${Object.keys(HAZARDS).join(', ')}), not ${options.wake}.`);
+    continue;
+  }
   if (typeof options[name] === 'boolean') { options[name] = inline === undefined || inline !== '0'; continue; }
   // A value may begin with a minus (`--at -300,0`), so whatever follows an option is its value.
   const value = inline ?? args[++i];
@@ -231,7 +240,7 @@ async function take() {
   if (level !== null) query.set('reach', `${level}`);
   if (options.lit) query.set('lit', '1');
   if (options.met) query.set('met', '1');
-  if (options.wake) query.set('wake', '1');
+  if (options.wake && options.wake !== '0') query.set('wake', options.wake);
   if (options.key) query.set('key', '1');
   if (options.pocket) query.set('pocket', '1');
   if (options.cave) query.set('cave', '1');

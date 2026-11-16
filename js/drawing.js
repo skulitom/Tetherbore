@@ -3,7 +3,7 @@
 // from its rules: js/game.js copies them onto the game as they are, so `this` in them is the game. Nothing here is a
 // rule of play: what these methods keep on the game is what was drawn and where (the pieces of ground, the chart's
 // picture and view, what can be tapped this frame).
-import { N, C, K, B, DX, DY, BIOMES, HAZARDS, ZONE, FIND, rowOf, hazOf, cellHash, RELIC_R, HOME_R } from './world.js';
+import { N, C, K, B, DX, DY, BIOMES, HAZARDS, CRUSH, ZONE, FIND, rowOf, hazOf, cellHash, RELIC_R, HOME_R } from './world.js';
 import { sheets, draw, drawScaled, frameAt, duration, slice9, text, textWidth, tinted } from './atlas.js';
 import { decorAt, markAt, natural, framesOf, placeOf } from './decor.js';
 import { sfx, isMuted, setMuted, isMusic, setMusic } from './audio.js';
@@ -13,7 +13,7 @@ import { WORKS, MAPS, TABS, LAB, LAB_OF, labLevel, labNext, ROWS } from './shop.
 // once both modules have: js/game.js is the module a page, a test or a tool loads, and this one runs before it,
 // reading nothing of it as it runs. Loaded first on its own, this module would have js/game.js run first, and
 // that copies the methods from here before there are any: so nothing loads it but js/game.js.)
-import { HX, HY, BOOST, DEATH, GIANTS } from './game.js';
+import { HX, HY, BOOST, DEATH, BELL, VENT, WORM, STONE, GIANTS } from './game.js';
 
 export const T = 16;                            // pixels in a cell
 export const DIR_BIOME = [B.LODE, B.EMBER, B.MIRE, B.FROST];
@@ -32,6 +32,9 @@ const wrap = (words, wide) => {
 const LENS = [];
 for (const [level, colour, kinds] of [[1, [214, 178, 64], [K.ORE_A]], [1, [255, 232, 96], [K.ORE_B]], [2, [176, 184, 204], [K.SLATE, K.VAULT, K.KEY, K.STEEL, K.SLAG]], [2, [255, 84, 64], [K.HAZARD, K.HAZARD2]],
   [3, [120, 240, 190], [K.MINERAL, K.NODE, K.CACHE, K.PRISM, K.FOSSIL, K.CAP, K.CAP_LIT, K.TWIN]]]) for (const k of kinds) LENS[k] = [level, ...colour];
+// A rare hazard is shown with the hazards, each of the four in a colour of its own: by the kin of its ground, which
+// is which it is (js/world.js: `RARE`).
+const RARE_LENS = [undefined, [2, 170, 236, 255], [2, 255, 150, 40], [2, 190, 255, 90], [2, 176, 128, 255]];
 // Which finds the finder marks at each level of it, and how far from the drill it marks them, in cells. (It marked
 // every find within the tether's reach, and listed no more than two hundred, from the north down: on the chart of
 // a long reach that was a solid band of dots across the north and none anywhere else.)
@@ -46,6 +49,7 @@ export const GEM_WHERE = [null, 'NORTH', 'SOUTH', 'WEST', 'EAST'];
 export const SPOT = {
   cache: ['CACHE', '#ffe14a'], geode: ['GEODE', '#f4ecd8'], wreck: ['WRECK', '#ff9a3a'], key: ['KEYSTONE', '#a4acbc'], prism: ['PRISM', '#ffffff'],
   relic: ['RELIC', '#ffffff'], mineral: ['MINERAL', '#ffffff'],
+  bell: ['RIME BELL', '#bff4ff'], vent: ['FUMAROLE', '#ff9a3c'], worm: ['GLOWWORM', '#c8ff5a'], lodestone: ['LODESTONE', '#b48cff'],
 };
 // A place's name is written in the colour it has on the map, as bright as that colour goes.
 export const bright = ([r, g, b]) => { const k = 255 / Math.max(1, r, g, b); return `rgb(${Math.round(r * k)},${Math.round(g * k)},${Math.round(b * k)})`; };
@@ -66,6 +70,9 @@ const KEY_GLINTS = 12, KEY_GLINT = 0.4, KEY_GLOW = 2;
 // Glowing decor (js/decor.js): as many as DECOR_MOST in view have a halo, at DECOR_HALO, and the nearest DECOR_GLOWS
 // also light the cave about them, as bright as DECOR_GLOW for as far as DECOR_REACH cells.
 const DECOR_MOST = 64, DECOR_HALO = 0.85, DECOR_GLOWS = 12, DECOR_GLOW = 0.4, DECOR_REACH = 2.2;
+// And rare hazards asleep (the nearest the drill): a glowworm glows brighter than the rest. And how many cells of
+// a fumarole's flames light the dark, at the most.
+const RARE_GLINTS = 8, RARE_GLINT = [0.3, 1.5], WORM_GLOW = [0.45, 2.5], JET_LIGHTS = 16;
 // How the tether looks at each level of reach: rope, braid, cable, then lines of light.
 const TETHERS = [
   { a: '#e8dcc0', b: '#e8dcc0', dash: 1 }, { a: '#e8dcc0', b: '#b89a6c', dash: 0.5 }, { a: '#f0d890', b: '#b0803a', dash: 0.5 },
@@ -165,7 +172,7 @@ export class Drawing {
     }
     if (k === K.ORE_B) return [row.itemsB, 'oreB'];
     if (k === K.DENSE || k === K.ORE_A) return [row.items, k === K.DENSE ? 'dense' : 'oreA'];
-    if (k === K.HAZARD || k === K.HAZARD2) { const haz = hazOf(k, row); return haz ? [HAZARDS[haz].sheet, 'hazard'] : null; }
+    if (k === K.HAZARD || k === K.HAZARD2 || k === K.RARE) { const haz = hazOf(k, row); return haz ? [HAZARDS[haz].sheet, 'hazard'] : null; }
     // Slag and the steel it is quenched to are the lava's, drawn from the lava's sheet whatever ground they lie in.
     if (k === K.SLAG || k === K.STEEL) return [HAZARDS.lava.sheet, k === K.SLAG ? 'slag' : 'steel'];
     // A keystone is an iron staple across its block of rock; a prism turns through the gems' colours (`render`).
@@ -201,7 +208,7 @@ export class Drawing {
     }
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
       const k = w.peek(x, y);
-      if (k !== K.HAZARD && k !== K.HAZARD2 && k !== K.RELIC && k !== K.STEEL && k !== K.PRISM) continue;
+      if (k !== K.HAZARD && k !== K.HAZARD2 && k !== K.RARE && k !== K.RELIC && k !== K.STEEL && k !== K.PRISM) continue;
       const i = y * N + x, row = w.row(i), m = w.mask(x, y), ux = x * T - ox - ((m & 4) ? 0 : 1), uy = y * T - oy - ((m & 16) ? 0 : 1);
       // A prism turns through the gems' colours, each in its own time.
       if (k === K.PRISM) { draw(ctx, 'finds', frameAt('finds', 'prism', now + cellHash(x, y, 4) * 720), ux, uy); continue; }
@@ -211,9 +218,10 @@ export class Drawing {
       // A hazard looks as its type does, whatever ground it lies in.
       const haz = hazOf(k, row);
       if (!haz) continue;
-      const items = HAZARDS[haz].sheet, s = this.sparks.get(i);
-      draw(ctx, items, s && s.fuse > 0 ? (((now / 60) | 0) % 2 ? 'hazard-b' : 'hazard') : frameAt(items, 'hazard', now + cellHash(x, y, 4) * 900), ux, uy);
+      const items = HAZARDS[haz].sheet, s = this.sparks.get(i), awake = k === K.RARE ? this.rareFrame(haz, i, now) : s && s.fuse > 0 ? (((now / 60) | 0) % 2 ? 'hazard-b' : 'hazard') : null;
+      if (awake !== false) draw(ctx, items, awake ?? frameAt(items, 'hazard', now + cellHash(x, y, 4) * 900), ux, uy);
     }
+    this.drawRares(ctx, ox, oy, now);
     // The block being cut cracks further the nearer it is to giving way, and what it would free glows.
     if (d.dig >= 0) {
       const stage = Math.min(4, Math.floor(d.digT / d.digDur * 5));
@@ -427,6 +435,7 @@ export class Drawing {
       }
       ctx.globalAlpha = 1;
     }
+    this.drawRareSigns(ctx, ox, oy, now);
     for (const r of this.rings) {
       // A ring of whole pixels spreading from a point (once its delay is over: `Game.ring`).
       if (r.t < 0) continue;
@@ -814,12 +823,13 @@ export class Drawing {
       [L.lit, L.next] = [L.next, L.lit]; L.x0 = x0; L.y0 = y0;
     }
     L.want.fill(0);
-    const keys = L.keys ??= [];
-    keys.length = 0;
+    const keys = L.keys ??= [], rares = L.rares ??= [];
+    keys.length = 0; rares.length = 0;
     for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) {
       const k = w.peek(x0 + x, y0 + y);
       L.solid[y * cols + x] = k === K.EMPTY ? 0 : 1;
       if (k === K.KEY) keys.push((y0 + y) * N + x0 + x);
+      else if (k === K.RARE) rares.push((y0 + y) * N + x0 + x);
     }
     // The drill's lamp is steady, and it stands where the drill is, not in the middle of the drill's cell: it is
     // lit from each open cell about the drill, less by the way from the drill to that cell's middle. Its power is
@@ -848,6 +858,19 @@ export class Drawing {
     this.glints = keys.length;
     for (const i of keys) this.shine(i % N, Math.floor(i / N), KEY_GLINT, KEY_GLOW);
     this.glowsIn(ox, oy);
+    // Rare hazards that have been seen glint too, the nearest few; and awake, each lights the dark as it goes off.
+    if (rares.length > RARE_GLINTS) {
+      const far = i => ((i % N) + 0.5 - d.x) ** 2 + (Math.floor(i / N) + 0.5 - d.y) ** 2;
+      rares.sort((a, b) => far(a) - far(b)); rares.length = RARE_GLINTS;
+    }
+    for (const i of rares) { const [power, reach] = w.hazAt(i) === 'worm' ? WORM_GLOW : RARE_GLINT; this.shine(i % N, Math.floor(i / N), power, reach); }
+    for (const [i, b] of this.bells) if (b.cool <= 0) this.shine(i % N, Math.floor(i / N), 0.6, 2.5);
+    for (const f of this.flares) this.shine(f.x, f.y, f.power, f.reach);
+    for (const [i, v] of this.vents) if (v.cool <= 0) this.shine(i % N, Math.floor(i / N), 0.6, 2);
+    let flames = 0;
+    for (const e of this.jets) for (const i of e.cells) if (flames++ < JET_LIGHTS) this.shine(i % N, Math.floor(i / N), 0.9, 3);
+    for (const [i, m] of this.worms) { const j = m.since < WORM.tween / 2 ? m.from : i; this.shine(j % N, Math.floor(j / N), 0.8, 3.5); }
+    for (const [i, s] of this.stones) if (s.cool <= 0) this.shine(i % N, Math.floor(i / N), 0.5, 2.5);
     // One pixel of darkness per cell, drawn sixteen times the size and smoothed.
     const mcols = vx1 - vx0 + 1, mrows = vy1 - vy0 + 1;
     let map = this.dark;
@@ -884,6 +907,67 @@ export class Drawing {
       }
       ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
     }
+  }
+
+  // A rare hazard awake, in its own cell (`render`): the frame it is drawn with there (a bell shivers as its fuse
+  // burns, a fumarole rumbles until it has fired, a lodestone hums while it pulls), null for the one it has asleep,
+  // or false for none: a glowworm swimming is drawn on its way from cell to cell (`drawRares`).
+  rareFrame(haz, i, now) {
+    const flick = ((now / 60) | 0) % 2;
+    if (haz === 'bell') { const b = this.bells.get(i); return b && b.cool <= 0 ? (((now / 80) | 0) % 2 ? 'toll-b' : 'toll-a') : null; }
+    if (haz === 'vent') { const v = this.vents.get(i); return v && v.cool <= 0 ? (flick ? 'rumble-b' : 'rumble-a') : null; }
+    if (haz === 'worm') return this.worms.has(i) ? false : null;
+    const s = this.stones.get(i);
+    return s && s.cool <= 0 ? (flick ? 'hum-b' : 'hum-a') : null;
+  }
+  // What the rare hazards awake do in the ground, drawn over it and under the dark: the ring of a bell cracking as
+  // its fuse burns; a fumarole's flames along its jet, flickering; a glowworm under the stone, half seen, swimming
+  // from cell to cell with a trail behind it, or thrashing where it cannot go on; the ore a lodestone is to pull
+  // next, blinking, and the ore it pulled flying to it.
+  drawRares(ctx, ox, oy, now) {
+    const w = this.world, flick = ((now / 60) | 0) % 2, px = i => (i % N) * T - ox, py = i => Math.floor(i / N) * T - oy;
+    const shown = i => px(i) > -T && py(i) > -T && px(i) < this.W && py(i) < this.H;
+    for (const [i, b] of this.bells) {
+      if (b.cool > 0) continue;
+      const stage = Math.min(4, 1 + Math.floor(b.t / BELL.fuse * 4));
+      for (const j of this.ringOf(i)) { const k = w.peek(j % N, Math.floor(j / N)); if (k >= 0 && CRUSH[k] && shown(j)) draw(ctx, 'cracks', `crack-${stage}`, px(j), py(j)); }
+    }
+    const vent = HAZARDS.vent.sheet, worm = HAZARDS.worm.sheet, stone = HAZARDS.lodestone.sheet;
+    for (const e of this.jets) e.cells.forEach((j, n) => { if (shown(j)) draw(ctx, vent, `jet-${e.upright ? 'v' : 'h'}-${(flick + n) % 2 ? 'b' : 'a'}`, px(j), py(j)); });
+    for (const [i, m] of this.worms) {
+      if (m.trail >= 0 && m.trailT > 0 && shown(m.trail)) { ctx.globalAlpha = Math.min(1, m.trailT / WORM.trail); draw(ctx, worm, 'trail', px(m.trail), py(m.trail)); }
+      const u = Math.min(1, m.since / WORM.tween), x = px(m.from) + (px(i) - px(m.from)) * u, y = py(m.from) + (py(i) - py(m.from)) * u;
+      const frame = !m.steps && m.t < WORM.uncoil ? (((now / 100) | 0) % 2 ? 'hazard-b' : 'hazard') : m.stuck ? (flick ? 'hazard-b' : 'hazard') : `swim-${'eswn'[m.way]}-${((now / 120) | 0) % 2 ? 'b' : 'a'}`;
+      ctx.globalAlpha = 0.8; draw(ctx, worm, frame, x, y); ctx.globalAlpha = 1;
+    }
+    for (const s of this.stones.values()) if (s.next && s.cool <= 0 && s.t >= STONE.hum && flick && shown(s.next.from)) draw(ctx, stone, 'filing', px(s.next.from), py(s.next.from));
+    for (const f of this.flying) {
+      const u = 1 - f.t / STONE.fly, x = (f.x0 + (f.x1 - f.x0) * u) * T - ox, y = (f.y0 + (f.y1 - f.y0) * u) * T - oy;
+      if (sheets[f.over[0]]?.frames[f.over[1]]) draw(ctx, f.over[0], f.over[1], x, y);
+    }
+  }
+  // And what they say over the dark, of what is coming: the dotted ring a bell's toll will open; the line a
+  // fumarole's jet will take, in faint red ticks; rings drawn in to a lodestone as it hums, red and blue by turns.
+  drawRareSigns(ctx, ox, oy, now) {
+    const dots = (x, y, rad, colour, alpha) => {
+      const n = Math.max(12, (rad * 1.6) | 0);
+      ctx.globalAlpha = alpha; ctx.fillStyle = colour;
+      for (let a = 0; a < n; a++) ctx.fillRect(Math.round(x + Math.cos(a / n * 6.283) * rad), Math.round(y + Math.sin(a / n * 6.283) * rad), 1, 1);
+    };
+    const cx = i => (i % N + 0.5) * T - ox, cy = i => (Math.floor(i / N) + 0.5) * T - oy;
+    for (const [i, b] of this.bells) if (b.cool <= 0) dots(cx(i), cy(i), 4.5 * T, SPOT.bell[1], 0.55 + 0.35 * Math.sin(now / 70));
+    for (const [i, v] of this.vents) {
+      if (v.cool > 0) continue;
+      ctx.globalAlpha = 0.5 + 0.25 * Math.sin(now / 50); ctx.fillStyle = '#ff4a2a';
+      const sx = DX[v.way], sy = DY[v.way];
+      for (const j of this.jetPath(i, v.way)) for (let n = -6; n <= 6; n += 4) ctx.fillRect(Math.round(cx(j) + sx * n - sy * 0.5), Math.round(cy(j) + sy * n - sx * 0.5), sx ? 2 : 1, sy ? 2 : 1);
+    }
+    for (const [i, s] of this.stones) if (s.cool <= 0 && s.t < STONE.hum) {
+      const rad = (7 - 6 * s.t / STONE.hum) * T;
+      dots(cx(i), cy(i), rad, ((now / 90) | 0) % 2 ? '#ff6a5a' : '#6a8cff', 0.8);
+      if (rad > 3 * T) dots(cx(i), cy(i), rad - 2 * T, ((now / 90) | 0) % 2 ? '#6a8cff' : '#ff6a5a', 0.6);
+    }
+    ctx.globalAlpha = 1;
   }
 
   // A line of whole pixels, clipped to the view; `dash` (0-1) draws only that share of every 4 pixels.
@@ -1151,12 +1235,12 @@ export class Drawing {
       M.mapAt = this.time; M.mapFor = view;
       const px = M.mapData.data;
       for (let v = 0; v < size; v++) for (let u = 0; u < size; u++) {
-        const wx = Math.floor(mx0 + (u - size / 2 + 0.5) * per), wy = Math.floor(my0 + (v - size / 2 + 0.5) * per), o = (v * size + u) * 4, k = w.peek(wx, wy);
-        let [r, g, b] = rowOf(w.biomeKnown(wx, wy)).map;
+        const wx = Math.floor(mx0 + (u - size / 2 + 0.5) * per), wy = Math.floor(my0 + (v - size / 2 + 0.5) * per), o = (v * size + u) * 4, k = w.peek(wx, wy), row = rowOf(w.biomeKnown(wx, wy));
+        let [r, g, b] = row.map;
         const inside = Math.hypot(wx - C, wy - C) <= R;
         let shade = (k < 0 ? 0.3 : k === K.EMPTY ? 0.12 : 0.85) * (inside ? 1 : 0.45);
         // What the lens tells apart is drawn in its own colour, at full strength.
-        const L = k > 0 ? LENS[k] : undefined;
+        const L = k === K.RARE ? RARE_LENS[row.kin] : k > 0 ? LENS[k] : undefined;
         if (L !== undefined && L[0] <= lens) { r = L[1]; g = L[2]; b = L[3]; shade = inside ? 1 : 0.6; }
         px[o] = r * shade + 8; px[o + 1] = g * shade + 7; px[o + 2] = b * shade + 10; px[o + 3] = 255;
       }
@@ -1349,6 +1433,8 @@ export class Drawing {
       ['LAVA', this.swims ? 'SWIMS IN IT' : 'BURNS', this.swims],
       ['SPORES', this.val('sporedrive') ? `SPEED x${BOOST.by}` : 'KNOCK', this.val('sporedrive') > 0],
       ['ARCS', this.val('arccoil') ? 'MEND A PIP' : 'KNOCK', this.val('arccoil') > 0],
+      // (A rare hazard has its line once it has been met: there would be no room on a phone for all of them.)
+      ...[['bell', 'BELLS', 'KNOCK'], ['vent', 'JETS', 'KNOCK'], ['worm', 'WORMS', 'BITE'], ['lodestone', 'LODESTONES', 'KNOCK']].filter(([type]) => S.rare?.[type]).map(([, name, does]) => [name, does, false]),
       ['HAUL PAY', `+${parts * 10}% (${parts}/8 PARTS)`, parts > 0],
       ['FURTHEST OUT', `${Math.floor(S.out ?? 0)} CELLS`],
       ['PLACES MET', `${Object.keys(S.met).length}`],
@@ -1393,11 +1479,13 @@ export class Drawing {
       text(ctx, `${(s.gap / 1000).toFixed(1)}S ${where} ${s.update}+${s.render} AT ${s.out}`, px + 8, y0 + 11 + n * 10, '#bcb4cc');
     });
   }
+  // How far apart the lines of STATS are: 11 pixels, or as little as 9 where that many would not fit above the bar.
+  statsPitch(rows) { return Math.max(9, Math.min(11, Math.floor((this.H - 48 - 20 - 8) / rows))); }
   drawStats(px, y0, pw) {
-    const { ctx } = this;
-    this.stats().forEach(([name, value, lit], n) => {
-      const y = y0 + 2 + n * 11;
-      if (n % 2 === 0) { ctx.fillStyle = '#241f38'; ctx.fillRect(px + 4, y - 1, pw - 8, 11); }
+    const { ctx } = this, rows = this.stats(), pitch = this.statsPitch(rows.length);
+    rows.forEach(([name, value, lit], n) => {
+      const y = y0 + 2 + n * pitch;
+      if (n % 2 === 0) { ctx.fillStyle = '#241f38'; ctx.fillRect(px + 4, y - 1, pw - 8, pitch); }
       text(ctx, name, px + 8, y, '#bcb4cc');
       text(ctx, value, px + pw - 8, y, lit === undefined ? '#ffffff' : lit ? '#8cf2c4' : '#8a84a0', 1);
     });
@@ -1414,7 +1502,7 @@ export class Drawing {
     if (this.labPage < 0 || this.labPage >= pages) this.labPage = Math.floor(LAB.indexOf(sel) / rows);
     if (this.labTab === 'chart' && !this.charted) this.labTab = 'stats';
     const chart = Math.min(pw - 12, H - 52 - HEAD - 10);
-    const rise = 1 - this.labRise, ph = this.labTab === 'menu' ? HEAD + 80 + (this.stalls.length ? 14 + this.stalls.length * 10 : 0) : this.labTab === 'chart' ? HEAD + chart + 10 : this.labTab === 'stats' ? HEAD + this.stats().length * 11 + 8 : HEAD + rows * RH + NOTE + (paged ? 14 : 0) + 4, py = Math.max(2, Math.round((H - 44 - ph) / 2)) + Math.round(rise * rise * 60);
+    const rise = 1 - this.labRise, ph = this.labTab === 'menu' ? HEAD + 80 + (this.stalls.length ? 14 + this.stalls.length * 10 : 0) : this.labTab === 'chart' ? HEAD + chart + 10 : this.labTab === 'stats' ? HEAD + this.stats().length * this.statsPitch(this.stats().length) + 8 : HEAD + rows * RH + NOTE + (paged ? 14 : 0) + 4, py = Math.max(2, Math.round((H - 44 - ph) / 2)) + Math.round(rise * rise * 60);
     slice9(ctx, 'ui', 'panel', px, py, pw, ph);
     this.button(px, py, pw, ph, () => {});
     this.buttons.at(-1).swallow = true;

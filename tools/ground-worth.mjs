@@ -16,7 +16,7 @@
 //   strains    with the provinces of hand-made strains (item 1)
 //   crosses    with the provinces of generated crosses (item 3)
 //   slabs      with keystone slabs, cobble fields and prisms (item 5)
-//   now        with pockets (items 6 and 7): the world as it is
+//   now        with pockets (items 6 and 7) and the sites of the four rare hazards: the world as it is
 // What is printed:
 //   solid      the share of the cells that are ground (not open, not bedrock)
 //   worth      the mean over solid cells of the kind's grit times its ground's `rich` and `worth`: what the rule
@@ -26,7 +26,8 @@
 //   + lumps    the area's figure with what is paid as a lump counted in: a cache, and a cell of a pocket's mineral,
 //              pay so many seconds of the model's income whatever the haul, which is so much grit of a plain cell
 //              hauled out there (the lump, divided by what multiplies a plain cell's grit in the model's haul).
-//              A drift's aerolite is counted with no chain; in a chain it pays up to twice that.
+//              A drift's aerolite is counted with no chain; in a chain it pays up to twice that. A rare hazard's
+//              heart pays a cache's lump, hauled asleep.
 // With `--against` the same cells are also asked of another checkout's js/world.js (the game as it was before the
 // build: commit 4293f7c), which is what `before` says it is: the two must agree. `--rows` lists, for each ring,
 // how much of it is each ground.
@@ -44,6 +45,7 @@ const CACHE_SECONDS = 12;                       // js/game.js, payOf: a cache ho
 class Staged extends World {
   constructor(on) { super(); this.on = on; }
   zoneOf(sx, sy) { return this.on.pockets ? super.zoneOf(sx, sy) : null; }
+  siteOf(sx, sy) { return this.on.sites ? super.siteOf(sx, sy) : null; }
   province(px, py, kin) {
     const b = super.province(px, py, kin);
     return b === kin || (b >= 128 ? this.on.crosses : this.on.strains) ? b : kin;
@@ -55,7 +57,7 @@ class Staged extends World {
   }
 }
 const PARTS = { before: {}, rules: { rules: 1 }, strains: { rules: 1, strains: 1 }, crosses: { rules: 1, strains: 1, crosses: 1 },
-  slabs: { rules: 1, strains: 1, crosses: 1, slabs: 1 }, now: { rules: 1, strains: 1, crosses: 1, slabs: 1, pockets: 1 } };
+  slabs: { rules: 1, strains: 1, crosses: 1, slabs: 1 }, now: { rules: 1, strains: 1, crosses: 1, slabs: 1, pockets: 1, sites: 1 } };
 // Grounds 2, 4, 6 and 8 as they were laid before the direction rules: the same rows with no rind and no ribs.
 // (Copies stand in the table while `before` is asked, and the rows themselves are put back.)
 const bare = () => {
@@ -95,7 +97,7 @@ function sample(w, list, into) {
     into.grit += GRIT[k] * row.rich * row.worth;
     if (b === B.CRUST && (k === K.ORE_A || k === K.ORE_B)) into.grit += (k === K.ORE_B ? 20 : 4) * row.rich * row.worth;
     const far = Math.sqrt(list[n] * list[n] + list[n + 1] * list[n + 1]);
-    if (k === K.CACHE) into.lumps += lumpAs(CACHE_SECONDS, far);
+    if (k === K.CACHE || k === K.RARE) into.lumps += lumpAs(CACHE_SECONDS, far);
     else if (row.pocket !== null && k === (row.pocket.kind ?? K.MINERAL)) into.lumps += lumpAs(row.pocket.lump, far);
   }
 }

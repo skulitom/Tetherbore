@@ -2,7 +2,8 @@
 // and what is thrown comes out of the middle of a step: once, the hull mending itself asked for a tick with no
 // note, the step threw, the next frame was never asked for, and the game stood still for good twenty seconds
 // after any knock. Here the game is played with a stand-in for the browser's audio that is as strict as the
-// browser is: the mend, and a random flight through each direction's ground with the hull taking its knocks.
+// browser is: the mend, a random flight through each direction's ground with the hull taking its knocks, and each
+// of the rare hazards woken beside the drill.
 // And a frame that does throw is written down for the menu, and no more than once a second.
 import { makeGame, random, C, N, K } from '../harness.mjs';
 
@@ -84,6 +85,27 @@ for (const [name, ux, uy] of [['north', 0, -1], ['south', 0, 1], ['west', -1, 0]
     }
   } catch (error) { threw = error; }
   check(!threw, `flying ${name}, the step threw after ${(f / 60).toFixed(0)} s: ${threw?.message}\n      ${String(threw?.stack).split('\n').slice(1, 4).map(l => l.trim()).join(' < ')}`);
+}
+
+// ---- the rare hazards, each woken beside the drill: a bell tolls, a fumarole fires, a glowworm swims and bites,
+// a lodestone pulls, and every sound of theirs is asked for. The drill keeps off the bell, the fumarole and the
+// lodestone, which a cut into would crush before they went off; it goes at the glowworm, to be bitten.
+const asked = {};
+for (const name of Object.keys(audio.sfx)) { const play = audio.sfx[name]; audio.sfx[name] = (...args) => { asked[name] = (asked[name] ?? 0) + 1; return play(...args); }; }
+const THEIRS = { bell: ['bellwake', 'toll'], vent: ['rumble', 'jet'], worm: ['wormwake', 'gnaw'], lodestone: ['hum', 'pull', 'gather'] };
+for (const [type, kin] of [['bell', 1], ['vent', 2], ['worm', 3], ['lodestone', 4]]) {
+  const game = await makeGame(7, { tether: 3, drill: 4 }, { hull: true }), w = game.world, before = made, at = (x, y) => (C + y) * N + C + x;
+  for (let y = -12; y <= 12; y++) for (let x = -12; x <= 12; x++) { w.setK(at(x, y), Math.abs(x) <= 2 && Math.abs(y) <= 2 ? K.EMPTY : (x + y) % 3 ? K.SOFT : K.ORE_A); w.setB(at(x, y), kin); }
+  w.setK(at(5, 0), K.RARE); for (let x = 3; x <= 4; x++) w.setK(at(x, 0), K.EMPTY);
+  w.see(C, C, 14); game.changed();
+  let threw = null;
+  for (const name in asked) delete asked[name];
+  try {
+    game.finishDig(at(5, 1));
+    for (let f = 0; f < 60 * 12; f++) { game.input.auto = type === 'worm' && f % 120 < 30 ? [1, 0, 1] : null; game.update(1 / 60); clock += 1 / 60; if (f % 20 === 0) game.render(); }
+  } catch (error) { threw = error; }
+  const missed = THEIRS[type].filter(name => !asked[name]);
+  check(!threw && made > before && !missed.length, threw ? `a woken ${type}: the step threw: ${threw.message}` : `a woken ${type} never asked for ${missed.join(', ') || 'a sound'}`);
 }
 
 // ---- a frame that threw is written down, for the menu

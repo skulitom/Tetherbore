@@ -1,11 +1,12 @@
 // The table of kinds and the table of grounds (js/world.js: K, BIOMES) say what the game's separate lists said
 // before there were tables: the lists are written out here as they stood. And what was added is as the plan has
 // it (docs/CONTENT-PLAN.md S1): kinds 15 to 27 have their numbers, none of them is unminable, and every sheet a
-// row names is one the art has.
+// row names is one the art has. And kind 28, the heart of a rare hazard, with the four rare hazards' types: each
+// on its own sheet, paying its direction's gems, and none a ground may lay as its hazard.
 //   node test/regress/s1-tables.mjs
 import { readFile } from 'node:fs/promises';
 import { world } from '../harness.mjs';
-const { K, HARD, GRIT, GEMS, DIG_TIME, KIND_NAMES, BIOMES, HAZARDS, B, rowOf, hazOf, gemKin, digTime, biome } = world;
+const { K, HARD, GRIT, GEMS, DIG_TIME, KIND_NAMES, BIOMES, HAZARDS, RARE, CRUSH, B, rowOf, hazOf, gemKin, digTime, biome } = world;
 
 const fails = [], check = (ok, what) => { if (!ok) fails.push(what); };
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -21,10 +22,12 @@ const was = {
 for (const [name, id] of Object.entries(was.K)) check(K[name] === id && KIND_NAMES[id] === name, `kind ${name} is no longer number ${id}`);
 for (const list of ['HARD', 'GRIT', 'GEMS', 'DIG_TIME']) check(same(world[list].slice(0, 15), was[list]), `${list} for kinds 0 to 14 is not as it was: ${world[list].slice(0, 15)}`);
 // Kinds 15 to 27: [hard, grit, gems, dig], from the plan. (But steel's gems: 4, not the plan's 2, set when slag
-// and steel were built, content item 2, so that waking a pocket of lava pays more than hauling it asleep.)
+// and steel were built, content item 2, so that waking a pocket of lava pays more than hauling it asleep.) And 28,
+// the heart of a rare hazard.
 const added = {
   MINERAL: [15, 1, 0, 0, 0.45], NODE: [16, 1, 0, 0, 0.45], HAZARD2: [17, 1, 3, 2, 0.24], KEY: [18, 1, 4, 0, 1.0], FAULT: [19, 1, 1, 0, 0.12], SLAG: [20, 1, 2, 0, 0.45],
   STEEL: [21, 1, 6, 4, 0.6], CAP: [22, 1, 1, 1, 0.24], CAP_LIT: [23, 1, 1, 3, 0.24], PRISM: [24, 1, 0, 0, 0.6], GLASS: [25, 1, 1, 0, 0.12], TWIN: [26, 1, 2, 0, 0.6], FOSSIL: [27, 1, 2, 0, 1.0],
+  RARE: [28, 1, 4, 10, 0.6],
 };
 for (const [name, [id, hard, grit, gems, dig]] of Object.entries(added)) {
   check(K[name] === id && same([HARD[id], GRIT[id], GEMS[id], DIG_TIME[id]], [hard, grit, gems, dig]), `kind ${name} (${id}) is not as the plan has it: ${[K[name], HARD[id], GRIT[id], GEMS[id], DIG_TIME[id]]}`);
@@ -72,6 +75,19 @@ check(BIOMES[0].gen === null && BIOMES[0].lay === null, 'the home ground is laid
 for (const [type, kin] of [['lava', B.EMBER], ['spore', B.MIRE], ['spark', B.LODE]]) {
   check(HAZARDS[type].kin === kin && atlas[HAZARDS[type].sheet]?.frames['hazard-b'] && atlas[HAZARDS[type].sheet].animations.hazard, `the ${type} hazard has no kin ${kin} or no sprite`);
 }
+// The four rare hazards: a K.RARE cell is the one its ground's direction has, on its own sheet, paying that
+// direction's gems; in the home ground it is none. None may be a ground's hazard.
+for (const [type, kin] of [['bell', B.FROST], ['vent', B.EMBER], ['worm', B.MIRE], ['lodestone', B.LODE]]) {
+  check(HAZARDS[type].rare && HAZARDS[type].kin === kin && HAZARDS[type].sheet === `${type}-items` && atlas[HAZARDS[type].sheet]?.frames['hazard-b'] && atlas[HAZARDS[type].sheet]?.frames.hazard && atlas[HAZARDS[type].sheet].animations.hazard,
+    `the ${type} hazard has no kin ${kin} or no sprite`);
+  for (const b of [kin, kin + 4]) check(RARE[kin] === type && hazOf(K.RARE, BIOMES[b]) === type && gemKin(K.RARE, BIOMES[b]) === kin, `ground ${b}: its rare hazard is ${hazOf(K.RARE, BIOMES[b])}, paying gems of ${gemKin(K.RARE, BIOMES[b])}`);
+  let refused = 0;
+  for (const haz of ['haz', 'haz2']) try { biome({ id: 126, name: 'x', gloom: [], mote: [], map: [], debris: [], gen: BIOMES[kin].gen, [haz]: { type, rate: 1, t: 0.8 } }); } catch { refused++; }
+  check(refused === 2 && BIOMES[126] === undefined, `a ground was let lay the ${type} as its hazard`);
+}
+check(hazOf(K.RARE, BIOMES[0]) === null, 'the home ground has a rare hazard');
+// What a rare hazard may open or change: plain rock, ore, ice, basalt, slag, steel, slate, glass and faults.
+check(CRUSH.length === HARD.length && CRUSH.map((c, k) => c ? KIND_NAMES[k] : '').filter(Boolean).join() === 'SOFT,DENSE,ORE_A,ORE_B,SLATE,ICE,BASALT,FAULT,SLAG,STEEL,GLASS', `a rare hazard may crush ${CRUSH.map((c, k) => c ? KIND_NAMES[k] : '').filter(Boolean)}`);
 // The kinds whose gems are a direction's whatever ground they lie in.
 check(gemKin(K.STEEL, BIOMES[1]) === B.EMBER && gemKin(K.CAP, BIOMES[1]) === B.MIRE && gemKin(K.CAP_LIT, BIOMES[4]) === B.MIRE, 'steel pays other than the south, or caps other than the west');
 // A number with no row reads as the home ground; a row must say its own looks; a pocket's node takes its row's time.
@@ -84,5 +100,5 @@ const pocket = biome({ id: 126, name: 'test-pocket', kin: 2, dig: 2, gloom: [1, 
 check(digTime(K.NODE, pocket) === 1.8 && digTime(K.SOFT, pocket) === 0.48 && digTime(K.NODE, BIOMES[1]) === 0.45, `a node's time to cut is not its pocket's: ${digTime(K.NODE, pocket)}`);
 check(pocket.title === 'TEST-POCKET' && pocket.items === 'ember-items' && pocket.lay === null, 'a row left its title, its ore sheet or its thresholds undefaulted');
 
-console.log(fails.length ? `DEFECT: ${fails.join('\n        ')}` : 'ok: kinds 0 to 14 and grounds 0 to 8 are as the lists had them, and kinds 15 to 27 as the plan has them');
+console.log(fails.length ? `DEFECT: ${fails.join('\n        ')}` : 'ok: kinds 0 to 14 and grounds 0 to 8 are as the lists had them, kinds 15 to 28 as the plan has them, and the four rare hazards are laid by no ground');
 process.exit(fails.length ? 1 : 0);

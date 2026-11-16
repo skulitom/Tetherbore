@@ -350,6 +350,63 @@ const make = {
   hiss() { noise(0.6, { type: 'highpass', freq: 5200, to: 1300, q: 0.7, gain: 0.11, attack: 0.02 }); noise(0.35, { freq: 900, to: 500, q: 0.8, gain: 0.05, attack: 0.03 }); },
   puff() { noise(0.4, { type: 'lowpass', freq: 520, to: 160, q: 0.8, gain: 0.22, attack: 0.01 }); tone(240, 0.12, { gain: 0.08, to: 100 }); },
   freeze() { const f = note(15 + ((rnd() * 4) | 0)); tone(f, 0.12, { type: 'sine', gain: 0.05, to: f * 1.3, out: space }); },
+  // The rare things. A rime bell is glass: woken it shivers (two high notes a few beats a second apart, and the ice
+  // creaking), and it tolls (three partials that are no chord, a struck thump and the ice cracking), ringing on.
+  bellwake() {
+    tone(1568, 0.9, { type: 'sine', gain: 0.03, attack: 0.3, out: space }); tone(1575, 0.9, { type: 'sine', gain: 0.03, attack: 0.3, out: space });
+    grains(6, 0.8, { gain: 0.05, freq: 2200, q: 3, type: 'bandpass', out: room });
+  },
+  toll() {
+    hush(0.4, 1.5);
+    tone(330, 2.4, { type: 'sine', gain: 0.1, out: space }); tone(911, 1.5, { type: 'sine', gain: 0.045, out: space }); tone(1782, 0.7, { type: 'sine', gain: 0.03, out: space });
+    tone(165, 1.2, { gain: 0.12, to: 150, kick: 400, out: room });
+    grains(10, 0.5, { first: 0.2, gain: 0.08, freq: 3500, out: room });
+  },
+  // A fumarole: the ground below it rumbling up, then a jet that roars out and is gone.
+  rumble() {
+    noise(1.2, { type: 'lowpass', freq: 160, to: 320, q: 0.8, gain: 0.2, attack: 0.7, out: room });
+    tone(48, 1.2, { type: 'sine', gain: 0.1, to: 64, attack: 0.8, out: room });
+    grains(12, 1.1, { gain: 0.05, freq: 900, type: 'bandpass', out: room });
+  },
+  jet() {
+    noise(0.5, { freq: 2000, to: 700, q: 0.6, gain: 0.2, attack: 0.02 }); noise(0.45, { type: 'lowpass', freq: 500, to: 140, q: 0.7, gain: 0.26, out: room });
+    tone(80, 0.35, { gain: 0.24, to: 55, kick: 260, out: room });
+    grains(6, 0.4, { first: 0.15, gain: 0.08, freq: 2400 });
+  },
+  // A glowworm is small, wet and strange: it wakes on three notes that are no tune and a slither, chews as it goes
+  // (`near` is 0 a way off and 1 beside the drill), snaps when it bites, and is caught with a run up and a sparkle.
+  wormwake() {
+    line([587, 831, 1175], 0.07, { gain: 0.07, ring: 0.3 });
+    noise(0.3, { freq: 500, to: 1400, q: 4, gain: 0.08, attack: 0.08 });
+  },
+  gnaw(near = 0.5) {
+    const n = Math.min(1, Math.max(0, +near || 0));
+    grains(2, 0.07, { gain: 0.08 + 0.14 * n, freq: vary(1300, 0.1), q: 3, type: 'bandpass' });
+    if (!crowded()) tone(vary(260, 0.08), 0.08, { type: 'sine', gain: 0.03 + 0.05 * n, to: 190 });
+  },
+  bite() { noise(0.07, { type: 'highpass', freq: 2500, gain: 0.16, attack: 0.001, out: room }); tone(900, 0.06, { type: 'square', gain: 0.04, to: 350 }); },
+  caught() {
+    line([5, 6, 8, 10].map(note), 0.065, { gain: 0.12, ring: 0.45 });
+    grains(8, 0.45, { gain: 0.04, freq: 6500, delay: 0.2, out: space });
+  },
+  // A lodestone hums as it wakes (a buzz that opens up, beating against a note just off its octave, and a thin
+  // whine), each ore it pulls goes zing and lands with a clack, and when it has done it clangs (two partials that
+  // do not agree: metal) and runs up a note for each ore it gathered, as many as six.
+  hum() {
+    tone(55, 1, { type: 'sawtooth', gain: 0.1, lp: 250, lpTo: 900, attack: 0.35 });
+    tone(113, 1, { type: 'sine', gain: 0.07, attack: 0.35 });
+    noise(0.9, { freq: 4200, to: 5200, q: 5, gain: 0.025, attack: 0.3 });
+  },
+  pull() {
+    tone(vary(1200, 0.05), 0.09, { type: 'sine', gain: 0.06, to: 2800 }); noise(0.02, { type: 'highpass', freq: 5000, gain: 0.04, attack: 0.001 });
+    tone(240, 0.07, { gain: 0.09, to: 120, kick: 600, delay: 0.18, out: room });
+  },
+  gather(n = 4) {
+    const f = vary(523, 0.03), k = Math.min(6, Math.max(0, n | 0));
+    tone(f, 0.6, { type: 'sine', gain: 0.1, out: room }); tone(f * 2.76, 0.4, { type: 'sine', gain: 0.05, out: room });
+    noise(0.02, { type: 'highpass', freq: 5000, gain: 0.06, attack: 0.001 });
+    if (k) line(Array.from({ length: k }, (_, i) => note(10 + i)), 0.045, { gain: 0.1, ring: 0.35, delay: 0.08 });
+  },
   // A relic, a cache, a part of a wreck: the scale run up over two held notes, the top note rung, and a shimmer.
   relic() {
     hush(0.4, 1.3);
@@ -378,7 +435,8 @@ const make = {
 
 // The least time between two of one sound, in seconds: for any not named, a fiftieth, so that two asked for in one
 // frame are one sound and not one twice as loud.
-const GAP = { dig: 0.04, crumble: 0.055, grind: 0.095, tick: 0.04, gem: 0.05, slide: 0.05, thud: 0.05, clink: 0.08, hiss: 0.1, puff: 0.08, freeze: 0.06, zap: 0.06, knock: 0.1, banked: 0.08, relic: 0.25, ping: 0.05 };
+const GAP = { dig: 0.04, crumble: 0.055, grind: 0.095, tick: 0.04, gem: 0.05, slide: 0.05, thud: 0.05, clink: 0.08, hiss: 0.1, puff: 0.08, freeze: 0.06, zap: 0.06, knock: 0.1, banked: 0.08, relic: 0.25, ping: 0.05,
+  toll: 0.25, rumble: 0.3, jet: 0.3, gnaw: 0.15, bite: 0.2, hum: 0.5, pull: 0.12, gather: 0.3 };
 const played = Object.create(null);
 let told = false;
 // A sound by name: `sfx.dig(2)`. Nothing happens with no context, when muted, while the page is aside (`setAside`),
@@ -561,7 +619,8 @@ sfx.arrive = sound('arrive', ground => {
   tone(keep(tune[tune.length - 1] * 2, 300, 2600), 1.2, { type: 'sine', gain: 0.02, delay: 0.11 * tune.length, attack: 0.05, out: space });
 });
 // Something seen for the first time: a few notes of its own for each kind of thing.
-const SPOTS = { cache: [10, 12], geode: [7, 9, 12], wreck: [6, 3], key: [5, 5], prism: [12, 14, 17], relic: [5, 7, 9, 12], mineral: [8, 11] };
+const SPOTS = { cache: [10, 12], geode: [7, 9, 12], wreck: [6, 3], key: [5, 5], prism: [12, 14, 17], relic: [5, 7, 9, 12], mineral: [8, 11],
+  bell: [15, 12, 15], vent: [3, 0, 5], worm: [9, 7, 10, 8], lodestone: [5, 10, 5] };
 sfx.spot = sound('spot', what => line((SPOTS[what] ?? SPOTS.cache).map(note), 0.09, { gain: 0.11, ring: 0.32 }));
 // A wreck close by ticks: `near` is 0 at the edge of hearing and 1 beside it.
 sfx.ping = sound('ping', (near = 0) => tone(620 + 260 * near, 0.08, { type: 'sine', gain: 0.035 + 0.05 * near, attack: 0.002, out: space }));
