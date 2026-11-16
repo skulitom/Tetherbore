@@ -1115,14 +1115,17 @@ export class World {
     const seed = this.seed, dx = x - C, dy = y - C, r = Math.sqrt(dx * dx + dy * dy);
     if (r > POCKET_NEAR) { const Z = this.pocketOf(x, y); if (Z !== null && this.inPocket(Z, x, y)) return Z.row; }
     if (r < HOME_R - 25 - SURE || (r < HOME_R + 25 + SURE && r < HOME_R + (noise(x / 30, y / 30, seed + 3, 3) - 0.5) * 50)) return B.CRUST;
-    // The larger of the two distances, on a border that wanders in long sweeps and small wobbles.
+    // The larger of the two distances, on a border that wanders in long sweeps and small wobbles. A wobble moves
+    // either distance by under half of `near`, so it is asked for only where the sweeps leave the two within `near`
+    // of each other: anywhere else it cannot change which is larger.
     const far = Math.min(90, r * 0.2), near = Math.min(8, r * 0.1), n1 = noise(x / 61, y / 61, seed + 1, 1), n2 = noise(x / 61, y / 61, seed + 2, 2);
-    const ax = Math.abs(dx) + (n1 - 0.5) * far + (noise(x / 9, y / 9, seed + 16, 16) - 0.5) * near;
-    const ay = Math.abs(dy) + (n2 - 0.5) * far + (noise(x / 9, y / 9, seed + 17, 17) - 0.5) * near;
-    const b = ax > ay ? (dx > 0 ? B.LODE : B.MIRE) : (dy < 0 ? B.FROST : B.EMBER);
+    const px = Math.abs(dx) + (n1 - 0.5) * far, py = Math.abs(dy) + (n2 - 0.5) * far;
+    const alongX = px - py > near + SURE || (py - px <= near + SURE && px + (noise(x / 9, y / 9, seed + 16, 16) - 0.5) * near > py + (noise(x / 9, y / 9, seed + 17, 17) - 0.5) * near);
+    const b = alongX ? (dx > 0 ? B.LODE : B.MIRE) : (dy < 0 ? B.FROST : B.EMBER);
     if (r > DEEP_R - 100 - SURE) {
+      // The flank's edges wander too, and in the same way each wandering is asked for only where it can move the edge past the cell.
       const least = Math.min(Math.abs(dx), Math.abs(dy)), flank = Math.max(Math.abs(dx), Math.abs(dy)) * 0.36;
-      if (least > flank - 30 - SURE && r > DEEP_R + (noise(x / 50, y / 50, seed + 14, 14) - 0.5) * 200 && least > flank + (noise(x / 37, y / 37, seed + 15, 15) - 0.5) * 60) return b + 4;
+      if (least > flank - 30 - SURE && (r > DEEP_R + 100 + SURE || r > DEEP_R + (noise(x / 50, y / 50, seed + 14, 14) - 0.5) * 200) && (least > flank + 30 + SURE || least > flank + (noise(x / 37, y / 37, seed + 15, 15) - 0.5) * 60)) return b + 4;
       if (r > WORLD_R + 2) return b;           // past the world's edge there is only bedrock, and no province is asked for
     }
     // Provinces are PROVINCE cells across, on borders that wander with the same long sweeps as the directions' do.
