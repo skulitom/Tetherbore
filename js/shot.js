@@ -39,9 +39,22 @@
 // (the ground's fireflies, all of them about the drill), `icicle` (one falls near the drill) or `rime` (the
 // corners frosted over). Stepped a little way, the picture catches it (js/feel.js: `force`).
 //
+// What the upgrades show (js/fit.js) is staged with five more: `lv` sets levels before anything else is looked at,
+// `max` every row at its last, `late` every row at its last before the late game's, or `id.n` one row, any of them
+// in a list read left to right (`lv=max,drill.6`); `shop=<tab>` opens the shop at that tab (with the drill at the
+// core); `buy=<id>` buys that row's next level as a purchase does, with nothing asked for it (and never saved): with
+// `shop` the shop's moment is what is seen, and without it the shop is opened, bought from and shut at once, so the
+// part is fitted at the core; `steer=x,y` holds the thumb that way for every frame; `fire=<id>` makes a power of
+// what WORKS fits act at once: `mender` (a pip mended), `arccoil` (an arc taken in), `sporedrive` (a spore's
+// drive), `lavaskin` (lava under the drill), `diamond` (steel ahead, to cut), `blackbox` (the drill wrecked). And
+// `ladder` shows no world at all: every level of every row, drawn by the game's own drawing in rows, labelled.
+//
 // The view is held still: `tetherbore.advance(ms)` steps it, `tetherbore.resume()` lets it play.
 import * as world from './world.js';
-import { T, UPGRADES } from './game.js';
+import { T, UPGRADES, BOOST } from './game.js';
+import { ROWS, EARLY } from './shop.js';
+import { draw, frameAt, sheets, text } from './atlas.js';
+import { TETHERS, CORE_IDLE, DISH, REFINERY, CUTTER, BOX, ORBIT } from './fit.js';
 
 const { N, C, K } = world, HX = C + 0.5, HY = C + 0.5;
 const ROOM = 2;                                 // the room is this many cells out from the drill's own, each way
@@ -255,6 +268,44 @@ export function stage(game, query) {
   const hauled = pocket && haul ? nuggets(game, pocket.zone, haul) : [];
   if (hauled.length) { w.see(Math.floor(d.x), Math.floor(d.y), 12); game.haul(hauled); game.changed(hauled); }
 
+  // Levels, the shop, a purchase, the thumb, a power acting (above).
+  const levels = query.get('lv');
+  if (levels) {
+    let set = 0;
+    for (const word of levels.split(',')) {
+      if (word === 'max' || word === 'late') { for (const u of ROWS) { game.S.lv[u.id] = word === 'max' ? u.values.length - 1 : EARLY[u.id]; set += game.S.lv[u.id]; } continue; }
+      const [id, n] = word.split('.'), u = ROWS.find(r => r.id === id);
+      if (u && Number.isInteger(+n)) { game.S.lv[id] = Math.max(0, Math.min(u.values.length - 1, +n)); set += game.S.lv[id]; }
+    }
+    // (A game with levels bought has bought before: the next purchase is not its first.)
+    game.S.stats.buys = set; game.S.stats.hauls = Math.max(1, game.S.stats.hauls);
+  }
+  const tab = query.get('shop');
+  if (tab) { game.shop = true; game.shopTab = tab; game.shopRise = 1; }
+  const buying = ROWS.find(u => u.id === query.get('buy'));
+  if (buying) {
+    // (Bought as a purchase is, its price put aside: a level at its last is bought again from the one before.)
+    if (game.S.lv[buying.id] >= buying.values.length - 1) game.S.lv[buying.id] = buying.values.length - 2;
+    const can = game.canBuy, cost = game.cost, open = game.shop;
+    game.canBuy = u => u === buying || can.call(game, u);
+    game.cost = u => u === buying ? { grit: 0, gems: 0, spec: 0 } : cost.call(game, u);
+    game.shop = true; game.buy(buying); game.shop = open;
+    game.canBuy = can; game.cost = cost;
+  }
+  const steer = (query.get('steer') ?? '').split(',').map(Number);
+  if (steer.length === 2 && steer.every(Number.isFinite) && Math.hypot(...steer) > 0) game.input.auto = [steer[0] / Math.hypot(...steer), steer[1] / Math.hypot(...steer), 1];
+  const fire = query.get('fire');
+  if (fire) {
+    const i = game.di, x = i % N, y = Math.floor(i / N);
+    if (fire === 'mender') { game.S.lv.mender ||= 1; game.dents = 1; game.mendIn = game.val('mender'); }
+    else if (fire === 'arccoil') { game.S.lv.arccoil = 1; game.dents = 1; game.zap(x + 2, y); }
+    else if (fire === 'sporedrive') { game.S.lv.sporedrive = 1; game.boost = BOOST.time; }
+    else if (fire === 'lavaskin') { game.S.lv.lavaskin = 1; for (const j of [i, i - 1, i + 1]) { w.lava.set(j, 9); game.lavaVol.set(j, 1); } }
+    else if (fire === 'diamond') { game.S.lv.diamond = 1; w.setK(i + 2, K.STEEL); w.setK(i + 1, K.STEEL); game.changed(); game.input.auto = [1, 0, 1]; }
+    else if (fire === 'blackbox') { game.S.lv.blackbox ||= 1; game.dents = game.val('hull') - 1; game.shield = 0; game.hit(0.3); }
+  }
+  if (query.has('ladder') && query.get('ladder') !== '0') game.render = () => ladder(game);
+
   let shown = 1;                                // the zoom as it came out: no canvas is made wider than MOST
   return {
     seed, at: [dx, dy], level, reach: reaches[level], zoom, lit,
@@ -293,4 +344,67 @@ export function stage(game, query) {
       };
     },
   };
+}
+
+// Every level of every row, drawn by the game's own drawing, in rows: the bit spinning and hot, the ram with its
+// flame, the hull's plates, what WORKS fits plain and lit (the mender at each level), what CORE fits on the drill
+// (the black box, the lamp), the reach's spans, the dish, the core with its circling lights, and what CORE builds
+// on the station. (The game is not drawn: this is a page of pictures.)
+function ladder(game) {
+  const ctx = game.ctx, S = game.S, keep = { ...S.lv }, now = game.time * 1000, look = { heat: 0, flame: 0, tint: '#ffffff', tintAlpha: 0, lit: 0, spin: 0 };
+  ctx.globalAlpha = 1; ctx.fillStyle = '#100e18'; ctx.fillRect(0, 0, game.W, game.H);
+  game.overCtx?.clearRect(0, 0, game.over.width, game.over.height);
+  const clear = () => { for (const u of ROWS) S.lv[u.id] = 0; };
+  const label = (name, y) => text(ctx, name, 4, y - 4, '#bcb4cc');
+  // A row of drills, one a level, each drawn by `paint(x, y, level)` with every other row at nothing.
+  const drills = (name, y, n, paint, step = 22, from = 52) => {
+    label(name, y);
+    for (let k = 0; k < n; k++) { clear(); paint(from + k * step, y, k); text(ctx, `${k}`, from + k * step, y + 9, '#6a6478', 0.5); }
+  };
+  let y = 14;
+  look.lit = 0;
+  drills('BIT', y, 8, (x, yy, l) => { look.heat = l >= 3 ? 0.6 + 0.3 * Math.sin(game.time * 6) : 0; look.flame = 0; game.drawDrill(x, yy, 0, l, 0, now, 1, 1, ctx, 0, null, look); }); y += 26;
+  drills('RAM', y, 7, (x, yy, l) => { look.heat = 0; look.flame = 1; game.drawDrill(x, yy, 0, 0, l, now, 1, 1, ctx, 0, null, look); }, 34, 64); y += 26;
+  drills('HULL', y, 8, (x, yy, l) => game.drawDrill(x, yy, 0, 0, 0, -1, 1, 1, ctx, l, null, null)); y += 26;
+  // What WORKS fits, and what CORE puts on the drill: plain, then lit. (The diamond tip on both cones.)
+  const fits = [['mender', 1, 0], ['mender', 2, 0], ['mender', 3, 0], ['mender', 4, 0], ['mender', 5, 0], ['lavaskin', 1, 0], ['sporedrive', 1, 0], ['arccoil', 1, 0],
+    ['diamond', 1, 0], ['diamond', 1, 6], ['blackbox', 1, 0], ['lamp', 1, 0], ['lamp', 3, 0], ['lamp', 5, 0]];
+  look.heat = 0; look.flame = 0;
+  for (const lit of [0, 127]) {
+    label(lit ? 'LIT' : 'FITS', y);
+    fits.forEach(([id, l, bit], k) => { clear(); S.lv[id] = l; look.lit = lit; game.drawDrill(52 + k * 22, y, 0, bit, 0, -1, 1, 1, ctx, 0, null, look); });
+    y += 22;
+  }
+  y += 4;
+  // The reach: a span of each level, with a dot of its light where it has one.
+  label('REACH', y);
+  TETHERS.forEach((style, k) => {
+    const x = 44 + k * 22;
+    if (style.thick) game.drawSpan(x, y + 5, x + 16, y - 5, style);
+    game.drawSpan(x, y + 4, x + 16, y - 6, style);
+    if (style.glow) { const u = (game.time % 0.8) / 0.8; ctx.fillStyle = style.glow; ctx.fillRect(Math.round(x + 16 * u), Math.round(y + 4 - 10 * u), 2, 2); }
+  });
+  y += 22;
+  label('SCAN', y);
+  for (let k = 0; k < DISH.length; k++) draw(ctx, 'dish', frameAt('dish', DISH[k], now), 44 + k * 22, y - 10);
+  y += 22;
+  label('WINCH', y + 16);
+  for (let k = 0; k < CORE_IDLE.length; k++) {
+    const x = 40 + k * 50;
+    draw(ctx, 'core', frameAt('core', CORE_IDLE[k], now), x, y - 6);
+    ctx.fillStyle = '#c8f4ff';
+    for (let n = 0; n < ORBIT[k]; n++) { const a = game.time * 0.8 + n * 6.2832 / ORBIT[k]; ctx.fillRect(Math.round(x + 24 + Math.cos(a) * 25), Math.round(y + 18 + Math.sin(a) * 25), 2, 2); }
+  }
+  y += 56;
+  // What CORE builds on the station, each level a cell of its corner of the sheet, twice the size.
+  const parts = [['REFINERY', REFINERY, 0, 0], ['CUTTER', CUTTER, 46, 46], ['BLACK BOX', BOX.map(f => f && f[((game.time * 2) | 0) % 2]), 0, 44]];
+  for (const [name, frames, cx, cy] of parts) {
+    label(name, y + 10);
+    for (let k = 1; k < frames.length; k++) {
+      const r = frames[k] ? sheets.station.frames[frames[k]] : frameAt('station', 'cutter-6', now);
+      ctx.drawImage(sheets.station.image, r[0] + cx, r[1] + cy, 18, 18, 52 + (k - 1) * 40, y - 6, 36, 36);
+    }
+    y += 40;
+  }
+  Object.assign(S.lv, keep);
 }

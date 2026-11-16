@@ -100,6 +100,10 @@ const EFFECTS = [
   ['bank', 'holy-spells', 'area'],
   ['freeze', 'ice-spells', 'impact'],
   ['steam', 'smoke-puff', 'smoke-puff'],
+  // (For the fittings that are made a show of: a circle and a pillar of light at the core, and the shield bubble
+  // about the drill at the hull's last level.)
+  ['crest', 'healing-circle', 'healing-circle'],
+  ['ward', 'shield', 'shield'],
 ];
 const tmp = join(ART, '.tmp');
 await mkdir(tmp, { recursive: true });

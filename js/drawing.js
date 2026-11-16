@@ -8,6 +8,7 @@ import { sheets, draw, drawScaled, frameAt, duration, slice9, text, textWidth, t
 import { decorAt, markAt, natural, framesOf, placeOf } from './decor.js';
 import { sfx, isMuted, setMuted, isMusic, setMusic } from './audio.js';
 import { WORKS, MAPS, TABS, LAB, LAB_OF, labLevel, labNext, ROWS } from './shop.js';
+import { TETHERS, BODY, BODY_A, HOT, HOT_A, RAM, PLATE, FLAME, FLAME_TIER, FITS, FIT_BIT, CORE_IDLE, CORE_C, CORE_FLASH, DISH, REFINERY, CUTTER, BOX, ORBIT, BEACON } from './fit.js';
 // (The middle of the core and two figures of the rules are the game's, read from js/game.js, which imports this
 // module in turn. The two may import each other because these names are read only inside the methods, which run
 // once both modules have: js/game.js is the module a page, a test or a tool loads, and this one runs before it,
@@ -73,13 +74,13 @@ const DECOR_MOST = 64, DECOR_HALO = 0.85, DECOR_GLOWS = 12, DECOR_GLOW = 0.4, DE
 // And rare hazards asleep (the nearest the drill): a glowworm glows brighter than the rest. And how many cells of
 // a fumarole's flames light the dark, at the most.
 const RARE_GLINTS = 8, RARE_GLINT = [0.3, 1.5], WORM_GLOW = [0.45, 2.5], JET_LIGHTS = 16;
-// How the tether looks at each level of reach: rope, braid, cable, then lines of light.
-const TETHERS = [
-  { a: '#e8dcc0', b: '#e8dcc0', dash: 1 }, { a: '#e8dcc0', b: '#b89a6c', dash: 0.5 }, { a: '#f0d890', b: '#b0803a', dash: 0.5 },
-  { a: '#f0b060', b: '#c8442a', dash: 0.5 }, { a: '#d8e0ec', b: '#8a94a8', dash: 0.5 }, { a: '#eef4ff', b: '#6e7c98', dash: 0.25, thick: true },
-  { a: '#ffe89a', b: '#c89020', dash: 0.25, thick: true }, { a: '#fff4c0', b: '#e8a020', dash: 0.5, thick: true },
-  { a: '#a8fff0', b: '#30c8c0', dash: 0.5, thick: true }, { a: '#ffc8f4', b: '#b050d0', dash: 0.5, thick: true }, { a: '#ffffff', b: '#5cc4f0', dash: 0.5, thick: true },
-];
+// (How the tether looks at each level of reach, and what lights run along it, is js/fit.js's: `TETHERS`.)
+// What the shop's pictures of the next level show of the drill besides its parts: the bit hot, the flame, what is
+// fitted lit (`drawShop`). One, made once and filled in for each picture.
+const PREVIEW = { heat: 0, flame: 0, tint: '#ffffff', tintAlpha: 0, lit: 0, spin: 0 };
+// And the frames of the CORE tab's rows: where on the station's sheet each part lies, a cell's worth of it.
+const PART_CROP = { refinery: [0, 1], cutter: [48, 47], blackbox: [0, 45] };
+const NO_DASH = [];                             // (a line with no dashes: the one list, given each time)
 const ROUND = 3.5, BRAID = 4;                    // on the fine canvas: how wide a rope rounds a corner, and the length of one turn of its braid, in the game's pixels
 const LIGHT_STEP = [[1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, -1, 1], [1, 1, 1.41], [-1, 1, 1.41], [1, -1, 1.41], [-1, -1, 1.41]];
 // How far light goes to each of those neighbours, in a flat array: the flood of light reads it eight times for
@@ -232,12 +233,14 @@ export class Drawing {
         ctx.globalAlpha = 1;
       }
     }
-    // The core, as the winch upgrades have built it, with the scanner's dish on its shoulder.
+    // The core, as the winch upgrades have built it, with the scanner's dish on its shoulder and what CORE has built
+    // on it (js/fit.js: `station`).
     const coreX = (C - 1) * T - ox, coreY = (C - 1) * T - oy;
     if (coreX > -80 && coreY > -80 && coreX < W + 40 && coreY < H + 40) {
-      const hull = Math.min(5, this.S.lv.winch);
-      draw(ctx, 'core', this.coreFlash > 0 ? `core-flash-${hull}` : this.S.won ? `core-c-${hull}` : frameAt('core', `idle-${hull}`, now), coreX, coreY);
-      draw(ctx, 'dish', frameAt('dish', `dish-${Math.min(4, this.S.lv.scanner)}`, now), coreX + 34, coreY - 6);
+      const hull = Math.min(8, this.S.lv.winch);
+      draw(ctx, 'core', this.coreFlash > 0 ? CORE_FLASH[hull] : this.S.won ? CORE_C[hull] : frameAt('core', CORE_IDLE[hull], now), coreX, coreY);
+      draw(ctx, 'dish', frameAt('dish', DISH[Math.min(6, this.S.lv.scanner)], now), coreX + 34, coreY - 6);
+      this.fitter.station(this, ctx, coreX, coreY, now);
       [[39, 20], [20, 39], [1, 20], [20, 1]].forEach(([u, v], dir) => {
         if (this.S.relics[dir]) drawScaled(ctx, BIOMES[DIR_BIOME[dir]].items, 'relic', coreX + u, coreY + v, 8, 8);
       });
@@ -374,7 +377,8 @@ export class Drawing {
     // pixels is still a clean square (`drawRopes`). With a panel up, and where there is no such canvas, it is drawn
     // here with the ground.
     const wake = speed > 14 ? [3, 2, 1].map(g => [0.34 - g * 0.09, dx - d.vx / speed * g * 7, dy - d.vy / speed * g * 7]) : [];
-    this.drillDrawn = [dx, dy, d.ang, this.S.lv.drill, this.S.lv.momentum, d.mode !== 'dead' && (d.dig >= 0 || speed > 1) ? now : -1, along, across];
+    // (Turned as it is fitted on the core: drawn so, and its heading left as it is. js/fit.js: `look`.)
+    this.drillDrawn = [dx, dy, d.ang + this.fitter.look.spin, this.S.lv.drill, this.S.lv.momentum, d.mode !== 'dead' && (d.dig >= 0 || speed > 1) ? now : -1, along, across];
     // A wreck is dark; a drill that has just been knocked blinks for as long as nothing can knock it again.
     const alpha = d.mode === 'dead' ? 0.5 : this.shield > 0 && ((now / 70) | 0) % 2 === 0 ? 0.35 : 1, hurt = this.hurt > 0 && ((now / 50) | 0) % 2 === 1;
     this.drillFine = this.over && this.shopRise <= 0.02 && this.labRise <= 0.02 ? { wake, alpha, hurt } : null;
@@ -382,7 +386,7 @@ export class Drawing {
       // Speed leaves a wake: fading copies of the drill back along the way it came.
       for (const [a, wx, wy] of wake) { ctx.globalAlpha = a; this.drawDrill(wx, wy, d.ang, this.S.lv.drill, this.S.lv.momentum, -1, along, across); }
       ctx.globalAlpha = alpha;
-      this.drawDrill(...this.drillDrawn);
+      this.drawDrill(...this.drillDrawn, ctx, this.S.lv.hull, null, this.fitter.look);
       ctx.globalAlpha = 1;
       if (hurt) { ctx.globalAlpha = 0.5; ctx.fillStyle = '#ff5a4a'; ctx.fillRect(Math.round(dx) - 5, Math.round(dy) - 5, 10, 10); ctx.globalAlpha = 1; }
     }
@@ -413,6 +417,8 @@ export class Drawing {
     { const t0 = performance.now(); this.light(ox, oy); this.timed('light', t0); }
     // What the ground's feel lights over the dark, and the layers over the whole view.
     { const t0 = performance.now(); this.feel.glow(this, ctx, ox, oy); this.timed('feel', t0); }
+    // What the upgrades show glowing: sparks, flame, light about the station, the lamp's flare (js/fit.js).
+    { const t0 = performance.now(); this.fitter.glow(this, ctx, ox, oy, now); this.timed('fit', t0); }
     // Ground lying loose: cut off from the world, waiting for the tether to be drawn round it. It shows through the
     // dark, with a dotted edge that crawls round it.
     if (this.pieceOf.size) {
@@ -457,23 +463,44 @@ export class Drawing {
     if (this.over) { const t0 = performance.now(); this.drawRopes(ox, oy); this.timed('ropes', t0); }
   }
 
-  // The drill as its upgrades have made it (the bit's metal, whatever the ram has bolted on), drawn about its
-  // middle at any heading, `along` and `across` times its size.
-  drawDrill(x, y, ang, bit, ram, now, along = 1, across = 1, ctx = this.ctx, plates = this.S.lv.hull, fitted = null) {
-    // (The levels of the late game have no pictures of their own yet: bit, ram and plates are drawn as at the last that has.)
-    bit = Math.min(bit, 4); ram = Math.min(ram, 4); plates = Math.min(plates, 4);
-    const body = now >= 0 ? frameAt('drill', `right-${bit}`, now) : `right-a-${bit}`, s = sheets.drill;
+  // The drill as its upgrades have made it (the bit's metal, whatever the ram has bolted on, the hull's plates, what
+  // is fitted), drawn about its middle at any heading, `along` and `across` times its size. `fitted` is a row drawn
+  // a level on from where it is (the shop's picture of what it will look like); `look` is what the drill shows this
+  // frame beyond its levels (js/fit.js: `Fitter.look`): the flame behind it, the bit hot, what is fitted lit, the
+  // whole of it flashed a colour. Every alpha is the caller's times its own, so a drill that blinks or lies wrecked
+  // blinks and lies dim with all of it; and the drawing never changes how it is laid on, so where it is drawn to cut
+  // the tether away in its shape (with no look: no flame) the cut is its shape and nothing more.
+  drawDrill(x, y, ang, bit, ram, now, along = 1, across = 1, ctx = this.ctx, plates = this.S.lv.hull, fitted = null, look = null) {
+    bit = Math.min(bit, 7); ram = Math.min(ram, 6); plates = Math.min(plates, 7);
+    const s = sheets.drill, F = s.frames, base = ctx.globalAlpha, body = now >= 0 ? frameAt('drill', BODY[bit], now) : F[BODY_A[bit]];
     ctx.save();
     // (On the game's own canvas it stands on a whole pixel; on a finer one, exactly where it is.)
     if (ctx === this.ctx) ctx.translate(Math.round(x), Math.round(y)); else ctx.translate(x, y);
     ctx.rotate(ang);
     ctx.scale(along, across);
-    const fits = WORKS.filter(u => this.S.lv[u.id] > 0 || u.id === fitted).map(u => `fit-${u.id}`);
-    for (const frame of [...(ram > 0 ? [`ram-right-${ram}`] : []), body, ...(plates > 0 ? [`plate-right-${plates}`] : []), ...fits]) {
-      const r = typeof frame === 'string' ? s.frames[frame] : frame;
-      ctx.drawImage(s.image, r[0], r[1], r[2], r[3], -8, -8, 16, 16);
+    if (look !== null && look.flame > 0 && ram >= 3) {
+      const r = frameAt('drill', FLAME[FLAME_TIER[ram]], Math.max(0, now));
+      ctx.globalAlpha = base * look.flame; ctx.drawImage(s.image, r[0], r[1], r[2], r[3], -24, -8, 16, 16); ctx.globalAlpha = base;
     }
+    const hot = look !== null && look.heat > 0 && bit >= 3 ? (now >= 0 ? frameAt('drill', HOT[bit], now) : F[HOT_A[bit]]) : null;
+    this.drillParts(ctx, s.image, F, body, hot, look === null ? 0 : look.heat, bit, ram, plates, fitted, look === null ? 0 : look.lit, base);
+    if (look !== null && look.tintAlpha > 0) { ctx.globalAlpha = base * look.tintAlpha; this.drillParts(ctx, tinted('drill', look.tint), F, body, null, 0, bit, ram, plates, fitted, look.lit, base * look.tintAlpha); }
     ctx.restore();
+  }
+  // The drill's parts in turn, from `image` (the sheet, or the sheet in one colour): the ram, the body, the bit hot,
+  // the plates, and what is fitted, plain or lit.
+  drillParts(ctx, image, F, body, hot, heat, bit, ram, plates, fitted, lit, alpha) {
+    if (ram > 0) { const r = F[RAM[ram]]; ctx.drawImage(image, r[0], r[1], r[2], r[3], -8, -8, 16, 16); }
+    ctx.drawImage(image, body[0], body[1], body[2], body[3], -8, -8, 16, 16);
+    if (hot !== null) { ctx.globalAlpha = alpha * heat; ctx.drawImage(image, hot[0], hot[1], hot[2], hot[3], -8, -8, 16, 16); ctx.globalAlpha = alpha; }
+    if (plates > 0) { const r = F[PLATE[plates]]; ctx.drawImage(image, r[0], r[1], r[2], r[3], -8, -8, 16, 16); }
+    const S = this.S;
+    for (let k = 0; k < FITS.length; k++) {
+      const f = FITS[k], most = f.frames.length - 1, level = f.id === fitted ? Math.min(most, S.lv[f.id] + 1) : Math.min(most, S.lv[f.id]);
+      if (level <= 0) continue;
+      const r = F[(f.long && bit >= 5 ? f.long : f.frames)[level][(lit & f.bit) ? 1 : 0]];
+      ctx.drawImage(image, r[0], r[1], r[2], r[3], -8, -8, 16, 16);
+    }
   }
   // The tether and the loops round hauls, drawn on the canvas laid over the game at the screen's own resolution: smooth
   // lines whatever way they lie, rounded where they turn a corner, then shaded by the same darkness as the ground and
@@ -496,7 +523,9 @@ export class Drawing {
       // tether lies off the screen, and so does nearly all of the rope of every haul on its way home: traced whole,
       // three times each, a dozen hauls a thousand cells out were a dozen ropes twenty thousand pixels long in every
       // frame, and a phone stood still drawing them.
-      const runs = r.loop ? null : this.ropeRuns(pts, braid);
+      // (A rope that lights run along is measured as a braided one is: the lights keep their places on it.)
+      const runs = r.loop ? null : this.ropeRuns(pts, braid || !!r.pulse);
+      r.runs = runs; r.wide = wide;
       if (runs !== null && !runs.length) continue;
       const trace = (dy, only = null) => {
         o.beginPath();
@@ -524,23 +553,25 @@ export class Drawing {
           }
         }
       };
-      o.setLineDash([]); o.lineCap = 'round';
+      r.trace = trace;
+      o.setLineDash(NO_DASH); o.lineCap = 'round';
       o.strokeStyle = 'rgba(10, 8, 16, 0.7)'; o.lineWidth = wide + 1.2; trace(0.8); o.stroke();
       o.strokeStyle = r.style.a; o.lineWidth = wide; trace(0); o.stroke();
       if (braid) {
         // The second strand of the braid, in short lengths along it: each part of the rope begins its lengths where
         // the whole rope would have them, so the braid stays put on the ground whatever part of it is in view.
-        o.lineCap = 'butt'; o.setLineDash([BRAID * r.style.dash, BRAID * (1 - r.style.dash)]);
+        o.lineCap = 'butt'; o.setLineDash(r.style.braid ??= [BRAID * r.style.dash, BRAID * (1 - r.style.dash)]);
         o.strokeStyle = r.style.b; o.lineWidth = wide * 0.62;
         if (r.loop) { trace(0); o.stroke(); }
         else for (const run of runs) { o.lineDashOffset = run[2] % BRAID; trace(0, run); o.stroke(); }
-        o.lineDashOffset = 0; o.setLineDash([]);
+        o.lineDashOffset = 0; o.setLineDash(NO_DASH);
       }
       if (r.loop) for (const [x, y] of pts) { bx0 = Math.min(bx0, x); by0 = Math.min(by0, y); bx1 = Math.max(bx1, x); by1 = Math.max(by1, y); }
       else for (const [from, to] of runs) for (let i = from; i <= to; i++) { const [x, y] = pts[i]; bx0 = Math.min(bx0, x); by0 = Math.min(by0, y); bx1 = Math.max(bx1, x); by1 = Math.max(by1, y); }
     }
     // (The drill and its wake are drawn here too: their place is cleared with the ropes'.)
-    if (fine) for (const [x, y] of [[this.drillDrawn[0], this.drillDrawn[1]], ...fine.wake.map(([, wx, wy]) => [wx, wy])]) { bx0 = Math.min(bx0, x - 8); by0 = Math.min(by0, y - 8); bx1 = Math.max(bx1, x + 8); by1 = Math.max(by1, y + 8); }
+    // (A box about each of them as wide as the ram's flame reaches behind the drill at any heading.)
+    if (fine) for (const [x, y] of [[this.drillDrawn[0], this.drillDrawn[1]], ...fine.wake.map(([, wx, wy]) => [wx, wy])]) { bx0 = Math.min(bx0, x - 24); by0 = Math.min(by0, y - 24); bx1 = Math.max(bx1, x + 24); by1 = Math.max(by1, y + 24); }
     if (bx0 > bx1) return;
     bx0 = Math.max(0, Math.floor(bx0 - 12)); by0 = Math.max(0, Math.floor(by0 - 12)); bx1 = Math.min(W, Math.ceil(bx1 + 12)); by1 = Math.min(H, Math.ceil(by1 + 12));
     this.ropeDirty = [bx0, by0, bx1, by1];
@@ -549,6 +580,19 @@ export class Drawing {
       o.globalCompositeOperation = 'source-atop'; o.imageSmoothingEnabled = true; o.globalAlpha = 0.85;
       o.drawImage(this.dark, ...this.darkAt);
       o.globalCompositeOperation = 'source-over'; o.globalAlpha = 1;
+    }
+    // From the seventh reach, light runs along the tether from the core out to the drill, over the dark: a short
+    // dash every so far along it, moving, each part of the rope's dashes where the whole rope would have them.
+    for (const r of this.ropes) {
+      const style = r.style;
+      if (!r.pulse || !style.glow || !r.runs || !r.runs.length) continue;
+      const period = 3 + style.gap;
+      o.globalCompositeOperation = 'lighter'; o.lineCap = 'butt'; o.setLineDash(style.dashes); o.lineWidth = r.wide + 0.6;
+      for (let pass = 0; pass < (style.twin ? 2 : 1); pass++) {
+        o.strokeStyle = pass ? style.twin : style.glow;
+        for (const run of r.runs) { o.lineDashOffset = ((run[2] - this.time * style.run + pass * period / 2) % period + period) % period; r.trace(0, run); o.stroke(); }
+      }
+      o.lineDashOffset = 0; o.setLineDash(NO_DASH); o.globalCompositeOperation = 'source-over';
     }
     // The tether lies under the drill: it is cut away in the drill's own shape, so that at the core, where its end
     // is made fast under the drill, and wherever the drill flies back over it, the drill is whole on top.
@@ -563,7 +607,7 @@ export class Drawing {
       o.imageSmoothingEnabled = false;
       for (const [a, wx, wy] of fine.wake) { o.globalAlpha = a; this.drawDrill(wx, wy, ang, bit, ram, -1, along, across, o); }
       o.globalAlpha = fine.alpha;
-      this.drawDrill(...this.drillDrawn, o);
+      this.drawDrill(...this.drillDrawn, o, this.S.lv.hull, null, this.fitter.look);
       o.globalAlpha = 1;
       if (fine.hurt) { o.globalAlpha = 0.5; o.fillStyle = '#ff5a4a'; o.fillRect(dx - 5, dy - 5, 10, 10); o.globalAlpha = 1; }
     }
@@ -999,7 +1043,9 @@ export class Drawing {
     // Where the tether's reach ends: a faint dotted ring, bright for a moment when the drill is turned back by it.
     const cx = HX * T - ox, cy = HY * T - oy, rad = (R + 0.5) * T, off = Math.hypot(W / 2 - cx, H / 2 - cy), half = Math.hypot(W, H) / 2;
     if (off + half > rad && off - half < rad) {
-      ctx.fillStyle = this.edge > 0 ? '#ff7a5a' : '#f4ecd8'; ctx.globalAlpha = this.edge > 0 ? 0.9 : 0.3;
+      // (From the seventh reach it is in the tether's own colour.)
+      const lv = this.S.lv.tether;
+      ctx.fillStyle = this.edge > 0 ? '#ff7a5a' : lv >= 6 ? TETHERS[lv].a : '#f4ecd8'; ctx.globalAlpha = this.edge > 0 ? 0.9 : lv >= 6 ? 0.35 : 0.3;
       // Only the arc that crosses the view is walked: the ring may be thousands of cells round.
       const mid = Math.atan2(H / 2 - cy, W / 2 - cx), sweep = Math.min(Math.PI, half / rad * 1.3), step = 7 / rad, phase = (this.time * 0.05) % step;
       for (let a = Math.ceil((mid - sweep) / step) * step + phase; a < mid + sweep; a += step) {
@@ -1016,7 +1062,7 @@ export class Drawing {
       // It leaves the drill's tail, and is laid out from the core's end so that its braid stays put on the ground
       // as the drill pays it out.
       pts[0] = [d.x * T - ox - Math.cos(d.ang) * 5, d.y * T - oy - Math.sin(d.ang) * 5];
-      this.ropes.push({ pts: pts.reverse(), style, wob });
+      this.ropes.push({ pts: pts.reverse(), style, wob, pulse: true });
       return;
     }
     for (const pass of own.thick ? [2, 1, 0] : [1, 0]) {
@@ -1083,6 +1129,8 @@ export class Drawing {
       if (note.sub) text(ctx, note.sub, W / 2, Math.round(head) + 24, '#ffe14a', 0.5);
       ctx.globalAlpha = 1;
     }
+    // The names of parts as they are fitted, a milestone's banner (under the core, clear of all of the above).
+    this.fitter.hud(this, ctx, head);
     if (S.won && this.wonAt !== undefined && this.time - this.wonAt < 6) text(ctx, 'CORE RESTORED', W / 2, H * 0.36, '#ffe14a', 0.5, 2);
     // A ground met for the first time: its name alone, large, a little under where a haul's banner goes (and under
     // the banner itself, if one is up). A name too long for the screen is set on two lines, or small.
@@ -1311,6 +1359,8 @@ export class Drawing {
     const [dx, dy] = at(d.x, d.y);
     ctx.fillStyle = ((this.time * 3) | 0) % 2 ? '#ffffff' : '#ffd83a'; ctx.fillRect(Math.round(dx) - 1, Math.round(dy) - 1, 3, 3);
     ctx.restore();
+    // (A row of the MAP tab being fitted sweeps the map in the corner.)
+    if (!big) this.fitter.map(this, ctx, x, y, size, size);
   }
   // The finds the finder marks within `half` cells of a place (square) and within its range of the drill: those of the kinds its level knows, that
   // still lie where the seed laid them (a pocket or a wreck may have taken the place), within the tether's reach,
@@ -1557,6 +1607,62 @@ export class Drawing {
       this.buttons.unshift({ x: px + pw / 2, y: fy - 2, w: pw / 2 - 4, h: 16, act: () => { this.labPage = (this.labPage + 1) % pages; sfx.tap(); } });
     }
   }
+  // The shop's picture of level `next` of row `u`, in the 16 x 16 at (vx, vy), as it will look and move: the reach's
+  // span with light running along it, the bit spinning and hot, the ram's flame behind the tail, the plates with a
+  // glint across them, the core turning with its lights, the dish with its ping, what WORKS fits lit by turns, the
+  // map's icon swept, and what CORE builds as it will stand on the station.
+  drawPreview(ctx, u, next, vx, vy) {
+    const S = this.S, now = this.time * 1000, t = this.time, F = sheets.drill.frames, image = sheets.drill.image, P = PREVIEW;
+    P.heat = 0; P.flame = 0; P.tintAlpha = 0; P.lit = 0; P.spin = 0;
+    if (u.id === 'tether') {
+      const style = TETHERS[next];
+      if (style.thick) this.drawSpan(vx + 1, vy + 13, vx + 14, vy + 4, style);
+      this.drawSpan(vx + 1, vy + 12, vx + 14, vy + 3, style);
+      if (style.glow) { const k = (t % 0.8) / 0.8; ctx.fillStyle = style.glow; ctx.fillRect(Math.round(vx + 1 + 12 * k), Math.round(vy + 11 - 9 * k), 2, 2); }
+    } else if (u.id === 'drill') {
+      if (next >= 3) P.heat = 0.5 + 0.4 * Math.sin(t * 8);
+      this.drawDrill(vx + 8, vy + 8, 0, next, S.lv.momentum, now, 1, 1, ctx, S.lv.hull, null, P);
+      if (next >= 2) { ctx.fillStyle = '#fff2a0'; ctx.fillRect(vx + 15, vy + 6 + ((t * 18) | 0) % 4, 1, 1); }
+    } else if (u.id === 'momentum') {
+      const ram = Math.min(6, next);
+      if (ram >= 3) {
+        // (The tail alone, with its flame behind it: the flame's last ten pixels, and the six of the drill's tail.)
+        const f = frameAt('drill', FLAME[FLAME_TIER[ram]], now), r = F[RAM[ram]], b = F[BODY_A[Math.min(7, S.lv.drill)]];
+        ctx.drawImage(image, f[0] + 6, f[1], 10, 16, vx, vy, 10, 16);
+        ctx.drawImage(image, r[0], r[1], 6, 16, vx + 10, vy, 6, 16);
+        ctx.drawImage(image, b[0], b[1], 6, 16, vx + 10, vy, 6, 16);
+      } else this.drawDrill(vx + 8, vy + 8, 0, S.lv.drill, next, -1);
+    } else if (u.id === 'hull') {
+      this.drawDrill(vx + 8, vy + 8, 0, S.lv.drill, S.lv.momentum, -1, 1, 1, ctx, next);
+      ctx.globalAlpha = 0.55; ctx.fillStyle = '#ffffff'; ctx.fillRect(vx + 2 + Math.floor((t % 1.2) / 1.2 * 12), vy + 4, 1, 8); ctx.globalAlpha = 1;
+    } else if (u.id === 'winch') {
+      drawScaled(ctx, 'core', frameAt('core', CORE_IDLE[next], now), vx, vy, 16, 16);
+      ctx.fillStyle = '#c8f4ff';
+      for (let k = 0; k < ORBIT[next]; k++) { const a = t * 0.8 + k * 6.2832 / ORBIT[next]; ctx.fillRect(Math.round(vx + 7.5 + Math.cos(a) * 7.5), Math.round(vy + 7.5 + Math.sin(a) * 7.5), 1, 1); }
+    } else if (u.id === 'scanner') {
+      draw(ctx, 'dish', frameAt('dish', DISH[next], now), vx, vy);
+      const k = (t % 1.5) / 1.5, rad = 1 + k * 7, n = 12;
+      ctx.globalAlpha = 1 - k; ctx.fillStyle = '#5fe0d0';
+      for (let a = 0; a < n; a++) ctx.fillRect(Math.round(vx + 8 + Math.cos(a / n * 6.283) * rad), Math.round(vy + 3 + Math.sin(a / n * 6.283) * rad), 1, 1);
+      ctx.globalAlpha = 1;
+    } else if (u.kin !== undefined && u.spec) {
+      P.lit = ((t * 2) | 0) % 2 ? FIT_BIT[u.id] : 0;
+      this.drawDrill(vx + 8, vy + 8, 0, S.lv.drill, S.lv.momentum, -1, 1, 1, ctx, S.lv.hull, u.id, P);
+    } else if (MAPS.includes(u)) {
+      draw(ctx, 'upgrades', u.icon, vx + 2, vy + 2);
+      ctx.globalAlpha = 0.6; ctx.fillStyle = '#5cc4f0'; ctx.fillRect(vx + 2, vy + 2 + Math.floor((t % 1.2) / 1.2 * 12), 12, 1); ctx.globalAlpha = 1;
+    } else if (u.id === 'lamp') {
+      P.lit = FIT_BIT.lamp;
+      this.drawDrill(vx + 6, vy + 8, 0, S.lv.drill, 0, -1, 1, 1, ctx, 0, 'lamp', P);
+      ctx.globalAlpha = 0.5 + 0.3 * Math.sin(t * 3); ctx.fillStyle = '#ffe0a0'; ctx.fillRect(vx + 13, vy + 7, 3, 1); ctx.fillRect(vx + 14, vy + 6, 1, 3); ctx.globalAlpha = 1;
+    } else if (PART_CROP[u.id] && sheets.station) {
+      const [cx, cy] = PART_CROP[u.id], name = u.id === 'refinery' ? REFINERY[next] : u.id === 'cutter' ? (next >= 6 ? null : CUTTER[next]) : BOX[next]?.[((t / BEACON[next]) % 1) < 0.15 ? 1 : 0];
+      const r = name ? sheets.station.frames[name] : frameAt('station', 'cutter-6', now);
+      if (r) ctx.drawImage(sheets.station.image, r[0] + cx, r[1] + cy, 16, 16, vx, vy, 16, 16);
+      if (u.id === 'refinery' && ((t * 3) | 0) % 3 === 0) { ctx.fillStyle = '#ffd84a'; ctx.fillRect(vx + 6, vy + 2, 1, 1); }
+    } else if (u.pic) draw(ctx, 'icons', u.pic, vx + 3, vy + 3);
+    else { draw(ctx, 'upgrades', u.icon, vx + 2, vy + 2); text(ctx, `${u.values[next]}`, vx + 15, vy + 7, '#ffffff', 1); }
+  }
   drawShop() {
     const { ctx, W, H, S } = this;
     ctx.globalAlpha = 0.6 * this.shopRise; ctx.fillStyle = '#07060b'; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1;
@@ -1581,24 +1687,16 @@ export class Drawing {
     tab.rows.forEach((u, n) => {
       const y = py + 20 + n * rh, c = this.cost(u), can = this.canBuy(u), lit = this.bought?.id === u.id;
       slice9(ctx, 'ui', lit ? 'button-down' : !c ? 'button-max' : can ? 'button' : 'button-off', px + 4, y, pw - 8, rh - 1);
-      // What it will look like once bought (or does now, at its last level).
+      // What it will look like once bought (or does now, at its last level), moving as it will.
       const l = S.lv[u.id], next = Math.min(l + 1, u.values.length - 1), vx = px + 7, vy = y + Math.floor((rh - 17) / 2);
       ctx.fillStyle = '#0c0a12'; ctx.fillRect(vx, vy, 16, 16);
-      if (u.id === 'drill') this.drawDrill(vx + 8, vy + 8, 0, next, S.lv.momentum, this.time * 1000);
-      else if (u.id === 'momentum') this.drawDrill(vx + 8, vy + 8, 0, S.lv.drill, next, -1);
-      else if (u.id === 'tether') { for (const pass of TETHERS[next].thick ? [1, 0] : [0]) this.drawSpan(vx + 1, vy + 12 + pass, vx + 14, vy + 3 + pass, TETHERS[next]); }
-      else if (u.id === 'winch') drawScaled(ctx, 'core', `core-a-${Math.min(5, next)}`, vx, vy, 16, 16);
-      else if (u.id === 'scanner') draw(ctx, 'dish', `dish-${Math.min(4, next)}`, vx, vy);
-      else if (u.id === 'hull') this.drawDrill(vx + 8, vy + 8, 0, S.lv.drill, S.lv.momentum, -1, 1, 1, ctx, next);
-      else if (u.kin !== undefined && u.spec) this.drawDrill(vx + 8, vy + 8, 0, S.lv.drill, S.lv.momentum, -1, 1, 1, ctx, S.lv.hull, u.id);
-      else if (MAPS.includes(u)) draw(ctx, 'upgrades', u.icon, vx + 2, vy + 2);
-      else if (u.pic) draw(ctx, 'icons', u.pic, vx + 3, vy + 3);
-      else { draw(ctx, 'upgrades', u.icon, vx + 2, vy + 2); text(ctx, `${u.values[next]}`, vx + 15, vy + 7, '#ffffff', 1); }
-      // What it is, what it does, and what the next level changes.
+      this.drawPreview(ctx, u, next, vx, vy);
+      // What it is, what it does, and what the next level changes. (Where a level has just been bought, the new
+      // value is stamped in its place for a moment: js/fit.js, `panel`.)
       text(ctx, u.name, px + 25, y + 2, '#ffffff');
       // (A thing fitted once has no levels to show: it is FITTED or it is not.)
       const once = u.values.length === 2, steps = once ? (c ? '' : 'FITTED') : c ? `${u.show(u.values[l])}>${u.show(u.values[l + 1])}` : `${u.show(u.values[l])} MAX`;
-      text(ctx, steps, px + 31 + textWidth(u.name), y + 2, c ? '#bfe6ff' : '#ffe14a');
+      if (!this.fitter.stamps(tab.id, u.id)) text(ctx, steps, px + 31 + textWidth(u.name), y + 2, c ? '#bfe6ff' : '#ffe14a');
       const lack = c ? this.lacks(u) : null;
       // What must be found first is said on the second line, and no price is shown until it has been.
       // (A row tall enough for three lines keeps what the thing does on its second, whatever is on the third.)
@@ -1630,6 +1728,8 @@ export class Drawing {
       } else text(ctx, u.what, px + 25, y + rh - 12, '#e8c070');
       this.buttons.unshift({ x: px + 4, y, w: pw - 8, h: rh - 1, act: () => this.buy(u) });
     });
+    // The moment of a purchase, over the rows (js/fit.js).
+    this.fitter.panel(this, ctx, px, py, pw, ph, rh, tab);
     const fy = py + ph - 19;
     // Why a tap was refused is said on the footer's line: the header is the tabs'. (A new world is in the menu.)
     const note = this.shopNote && this.shopNote.t > 0 ? this.shopNote : null;
