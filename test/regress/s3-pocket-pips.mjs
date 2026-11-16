@@ -16,7 +16,7 @@ const { B, BIOMES, ZONE } = world;
 const fails = [], check = (ok, what) => { if (!ok && fails.length < 12) fails.push(what); };
 const far = Z => Math.hypot(Z.cx - C, Z.cy - C);
 
-const game = await makeGame(7, { tether: 5 }), w = game.world, S = game.S, d = game.drill;
+const game = await makeGame(7, { tether: 4 }), w = game.world, S = game.S, d = game.drill;
 let asked = 0;
 const within = w.pocketsWithin.bind(w);
 w.pocketsWithin = r => { asked++; return within(r); };
@@ -24,8 +24,8 @@ w.pocketsWithin = r => { asked++; return within(r); };
 // ---- the sixth reach: the heralds
 let pips = game.pocketPips();
 const heralds = within(230).filter(Z => Z.herald);
-check(heralds.length === 4 && heralds.every(Z => pips.includes(Z)), `on reach 230, ${pips.length} pockets are marked, ${heralds.filter(Z => pips.includes(Z)).length} of the four heralds among them`);
-check(pips.every(Z => far(Z) <= 230 && !S.visited[Z.key]) && pips.length === within(230).length, `pockets marked beyond the reach or visited: ${pips.map(Z => Math.round(far(Z)))}`);
+check(heralds.length === 4 && heralds.every(Z => pips.includes(Z)), `on reach 250, ${pips.length} pockets are marked, ${heralds.filter(Z => pips.includes(Z)).length} of the four heralds among them`);
+check(pips.every(Z => far(Z) <= 250 && !S.visited[Z.key]) && pips.length === within(250).length, `pockets marked beyond the reach or visited: ${pips.map(Z => Math.round(far(Z)))}`);
 
 // ---- drawn: two pixels in the pocket's colour on four of dark, where it lies
 {

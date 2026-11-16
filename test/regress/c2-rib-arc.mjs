@@ -67,7 +67,7 @@ check(arc.hauls === 1 && arc.n === 25 && arc.left === 0, `with the neck shattere
 
 // ---- the rest, in one field.
 fixRandom(5);
-const game = await makeGame(7, { tether: 2 }), w = game.world;                // reach 40
+const game = await makeGame(7, { tether: 0 }), w = game.world;                // reach 40
 arena(game, 44, K.SOFT, B.LODE);
 game.changed();
 const calls = spy(game);

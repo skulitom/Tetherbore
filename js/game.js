@@ -25,7 +25,10 @@ const GEM_COLOR = [null, '#bfe6ff', '#ffb060', '#b8f06a', '#d8b8ff'];
 // of a level of reach is that income for a set time (`MINUTES`), longer at each level. Every other upgrade is priced
 // as a share of the reach it belongs beside (`beside`, in levels of reach), and takes gems only once that reach is
 // well into the ground the gems come from.
-const REACH = [12, 22, 40, 72, 130, 230, 420, 750, 1350, 2300];
+// (The first reaches were 12, 22, 40, 72 and 130 cells: a new game met the end of its tether within three seconds
+// of leaving the core, half a screen out, and at every turn for its first hour. They begin at 40 now, each about
+// six tenths more than the last, to the same 2,300; a level still costs so many minutes of what its reach earns.)
+const REACH = [40, 64, 100, 160, 250, 400, 620, 950, 1500, 2300];
 const PACE = 0.9, WORTH = 1.6;                  // cells cut a second, turning and flying counted in; grit in an average cell
 const GEM_REACH = 5;                            // the level of reach (230) from which upgrades may ask for gems
 export const richness = r => Math.max(1, r / 12);
@@ -92,7 +95,7 @@ export const UPGRADES = [
   // The hull: how many knocks the drill takes before it is wrecked and wound home (`hit`, `wreck`), a pip a level,
   // each a plate more on the drill. Its first level is priced beside a reach that has only just met hazards and
   // asks no gems; from there on it takes the south's, whose lava is the worst of what it is for.
-  { id: 'hull', icon: 'hull', name: 'HULL', what: 'TAKES MORE KNOCKS', values: [5, 6, 7, 8, 9], gem: B.EMBER, needs: ['out', [150, 300, 600, 1000]], ...levels([4.5, 5.5, 6.5, 7.5], 0.5), show: v => `${v}` },
+  { id: 'hull', icon: 'hull', name: 'HULL', what: 'TAKES MORE KNOCKS', values: [5, 6, 7, 8, 9], gem: B.EMBER, needs: ['out', [150, 300, 600, 1000]], ...levels([3.5, 4.5, 5.5, 6.5], 0.5), show: v => `${v}` },
 ];
 // What the lab can know: each thing the bit can crush, by the sheet and frame it is drawn from (`Game.sampleOf`),
 // with its name, where it lies, and the lab's note on it. A thing crushed is a sample analysed, and what is known

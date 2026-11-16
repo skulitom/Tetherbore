@@ -119,7 +119,7 @@ for (const coil of [0, 1]) {
   const game = await fitted('lavaskin', 1);
   game.S.lv.tether = 3; game.S.lv.hull = 2; game.dents = 1; game.S.lab['lode-items:oreA'] = 4;
   const said = Object.fromEntries(game.stats().map(([name, value, lit]) => [name, [value, lit]]));
-  check(said.REACH[0] === '72 CELLS' && said.HULL[0] === '6/7 PIPS' && said.MENDS[0] === '1 PIP / 20 S' && said.LAVA[0] === 'SWIMS IN IT' && said.LAVA[1] === true && said.SPORES[0] === 'KNOCK' && said.SPORES[1] === false && said.ANALYSED[0] === '1/16, UP TO +3%', `the stats say ${JSON.stringify(said)}`);
+  check(said.REACH[0] === '160 CELLS' && said.HULL[0] === '6/7 PIPS' && said.MENDS[0] === '1 PIP / 20 S' && said.LAVA[0] === 'SWIMS IN IT' && said.LAVA[1] === true && said.SPORES[0] === 'KNOCK' && said.SPORES[1] === false && said.ANALYSED[0] === '1/16, UP TO +3%', `the stats say ${JSON.stringify(said)}`);
   game.resize(320, 568, 1); game.labTab = 'stats'; game.openLab(true); game.render();
   // (The panel's tabs stand in its header, left to right: STATS, LAB, MENU; and MAP before MENU once the chart is bought.)
   const heads = game.buttons.filter(b => b.h === 20 && b.w < 60 && b.w > 24 && b.y < game.H / 2).sort((a, b) => a.x - b.x);
@@ -251,9 +251,9 @@ for (const coil of [0, 1]) {
   // its third level it asks that the drill has been three fifths of the way out its tether already goes.
   game.S.gems = game.S.gems.map(() => 0);
   for (let l = 0; l < 9; l++) game.buy(reach);
-  check(game.S.lv.tether === 2 && game.val('tether') === 40 && game.shopNote?.text === 'NEEDS 0/24 CELLS OUT' && reach.gems.every(g => g === 0), `with grit and a drill that has been nowhere the reach is ${game.val('tether')}: '${game.shopNote?.text}'`);
-  game.S.out = 24.5; game.buy(reach); game.buy(reach);
-  check(game.val('tether') === 72 && game.lacks(reach) === 'NEEDS 24/43 CELLS OUT', `having been 24 cells out the reach is ${game.val('tether')}, and the next step says '${game.lacks(reach)}'`);
+  check(game.S.lv.tether === 2 && game.val('tether') === 100 && game.shopNote?.text === 'NEEDS 0/60 CELLS OUT' && reach.gems.every(g => g === 0), `with grit and a drill that has been nowhere the reach is ${game.val('tether')}: '${game.shopNote?.text}'`);
+  game.S.out = 60.5; game.buy(reach); game.buy(reach);
+  check(game.val('tether') === 160 && game.lacks(reach) === 'NEEDS 60/96 CELLS OUT', `having been 60 cells out the reach is ${game.val('tether')}, and the next step says '${game.lacks(reach)}'`);
   game.S.out = 5000;
   for (let l = 0; l < 9; l++) game.buy(reach);
   check(game.S.lv.tether === 9 && game.val('tether') === 2300, `having been everywhere, with grit alone the reach is ${game.val('tether')}`);

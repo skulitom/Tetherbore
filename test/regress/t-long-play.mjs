@@ -39,7 +39,8 @@ if (first) {
   // the fourth reach, 72, by six minutes, where it was at the fifth before levels asked for that.)
   if (S.lv.tether < 3) note(`after ${minutes} minutes the reach is at level ${S.lv.tether}: under 3`);
   if (!first.first.slab) note('the first keystone slab was not brought home');
-  if (sum.loops < 8) note(`${sum.loops} rings flown shut: under 8`);
+  // (With the first reaches as long as they are now the pilot's rings are wider, and it flies seven where it flew eight.)
+  if (sum.loops < 6) note(`${sum.loops} rings flown shut: under 6`);
   if (sum.failed > 2) note(`${sum.failed} rings left standing`);
   if (samples.length !== minutes) note(`${samples.length} lines for ${minutes} minutes`);
   // What came in is what the hauls paid and the station's own trickle: a little every two seconds, and no more.

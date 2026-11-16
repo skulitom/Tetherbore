@@ -10,6 +10,9 @@ import { makeGame, tetherFaults, C, N, K } from '../harness.mjs';
 let bad = 0;
 for (const [ram, hz] of [[0, 60], [3, 120], [0, 30]]) {
   const game = await makeGame(34, { tether: 5, drill: 4, momentum: ram });
+  // (The place is laid out for a reach of 230 cells, which the sixth reach was: the game is given that reach.)
+  const val = game.val.bind(game);
+  game.val = id => id === 'tether' ? 230 : val(id);
   const d = game.drill, w = game.world, at = (x, y) => (C + y) * N + C + x, HX = C + 0.5, R = game.val('tether');
   // Solid soft ground round the spot; a tunnel three cells wide from the core, then a corridor one cell wide east
   // along a row to the spot. The drill flies the corridor to the end of its reach, and is then set in the middle of

@@ -50,7 +50,7 @@ check(HAUL_MOST === 40, `the winch draws in ${HAUL_MOST} times its load`);
 
 // ---- the next reach costs less where the ground within this one is spent
 {
-  const game = await makeGame(7, { tether: 5 }), w = game.world, list = reach.grit[5];
+  const game = await makeGame(7, { tether: 4 }), w = game.world, list = reach.grit[4];
   check(game.groundLeft() === 1 && game.cost(reach).grit === list, `with the ground as the seed laid it the next reach costs ${game.cost(reach).grit} of ${list}`);
   // Every cell within the reach opened, but a rim five cells wide at its edge.
   const R = game.val('tether'), open = (from, to) => { for (let y = -R; y <= R; y++) for (let x = -R; x <= R; x++) { const r = Math.hypot(x, y); if (r >= from && r < to && r > 4) w.setK((C + y) * N + C + x, K.EMPTY); } game.version++; };
@@ -63,13 +63,13 @@ check(HAUL_MOST === 40, `the winch draws in ${HAUL_MOST} times its load`);
   open(0, R - 5);
   const least = game.cost(reach).grit;
   check(least < list * 0.03 && least >= 1, `with all but a rim of the ground gone the next reach costs ${least} of ${list}`);
-  // The game that was stuck: 72 thousand grit, everything within 230 gone. It buys the reach and goes on.
-  game.S.grit = 72000; game.S.out = 229;
+  // A game that is stuck: 72 thousand grit, everything within its reach of 250 gone. It buys the reach and goes on.
+  game.S.grit = 72000; game.S.out = 249;
   check(game.canBuy(reach), `with 72,000 grit and the ground spent the next reach ${game.lacks(reach) ?? 'cannot be paid for'}`);
   game.buy(reach);
-  check(game.val('tether') === 420 && game.S.grit === 72000 - least && game.groundLeft() === 1, `bought: a reach of ${game.val('tether')}, ${game.S.grit} grit left, and the reach after costs ${game.groundLeft()} of its price`);
+  check(game.val('tether') === 400 && game.S.grit === 72000 - least && game.groundLeft() === 1, `bought: a reach of ${game.val('tether')}, ${game.S.grit} grit left, and the reach after costs ${game.groundLeft()} of its price`);
   // The shop says why the price is what it is.
-  game.S.lv.tether = 5; game.shop = true; game.shopRise = 1; game.resize(320, 568, 1); game.render();
+  game.S.lv.tether = 4; game.shop = true; game.shopRise = 1; game.resize(320, 568, 1); game.render();
   // No other row's price moves.
   check(UPGRADES.filter(u => u.id !== 'tether').every(u => game.cost(u) === null || game.cost(u).grit === u.grit[game.S.lv[u.id]]), 'a row other than the reach costs something other than its price');
 }

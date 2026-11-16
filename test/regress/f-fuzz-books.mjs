@@ -8,7 +8,7 @@ import { makeGame, K, B, at, rect, arena, fixRandom, random, where, bandRel, tet
 
 const [seed = 1, turns = 400] = process.argv.slice(2).map(Number);
 fixRandom(seed);
-const game = await makeGame(7, { tether: 2, drill: 4 }), w = game.world, d = game.drill, rnd = random(seed + 100), R = 46;
+const game = await makeGame(7, { tether: 0, drill: 4 }), w = game.world, d = game.drill, rnd = random(seed + 100), R = 46;
 arena(game, R);
 for (let n = 0; n < 6; n++) { const x = Math.floor(rnd() * 50) - 25, y = Math.floor(rnd() * 50) - 25, a = 2 + Math.floor(rnd() * 6), b = 2 + Math.floor(rnd() * 6); if (Math.abs(x) < 6 && Math.abs(y) < 6) continue; rect(game, x - a, y - b, x + a, y + b, K.EMPTY); }
 rect(game, -2, -2, 2, 2, K.EMPTY);

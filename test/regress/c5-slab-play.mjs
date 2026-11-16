@@ -40,7 +40,7 @@ function whole(name, r, keys) {
 for (const seed of [7, 11, 34]) {
   const r = await play(seed, 0), name = `seed ${seed}, the first slab`;
   if (!whole(name, r, 2)) continue;
-  check(r.levels.tether === 3 && r.hauled.over === 1, `${name}: played at reach level ${r.levels.tether}, the haul at ${r.hauled.over} of full pay`);
+  check(r.levels.tether === 2 && r.hauled.over === 1, `${name}: played at reach level ${r.levels.tether}, the haul at ${r.hauled.over} of full pay`);
   check(r.reachT < 30 && r.lapT < 20, `${name}: ${r.reachT.toFixed(1)} s of play to the crack and ${r.lapT.toFixed(1)} s round it`);
   out[`first ${seed}`] = { cells: r.hauled.n, keyCells: r.keys, grit: r.hauled.grit, to: +r.reachT.toFixed(1), lap: +r.lapT.toFixed(1), sides: r.loose.sides };
 }

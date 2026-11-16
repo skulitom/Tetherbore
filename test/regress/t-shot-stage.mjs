@@ -66,7 +66,7 @@ check(await open('', 'example.org') === undefined, 'away from localhost an ordin
     check(room, 'the room round the drill is not open');
     check(sight(w, d.x, d.y, C + 0.5, C + 0.5), 'the tunnel from the core is not open');
     check(game.band.length === 2 && !tetherFaults(game).length, `the tether as staged: ${tetherFaults(game).join('; ') || `${game.band.length} points`}`);
-    check(t.shot.level === 6 && t.shot.reach === 420 && game.S.lv.tether === 6, `the reach is level ${t.shot.level} (${t.shot.reach}), not the first that reaches 300 cells (6, 420)`);
+    check(t.shot.level === 5 && t.shot.reach === 400 && game.S.lv.tether === 5, `the reach is level ${t.shot.level} (${t.shot.reach}), not the first that reaches 300 cells (5, 400)`);
     check(game.W === 180 && game.H === 320, `the view is ${game.W} x ${game.H}, not the game's own 180 x 320`);
     check(uncovered(game), 'ground in view is not uncovered');
     check(game.daylight === false, 'the dark is gone though `lit` was not asked for');
@@ -150,7 +150,7 @@ check(await open('', 'example.org') === undefined, 'away from localhost an ordin
   check(f.key && f.key.slab[0] === 3 && f.key.slab[1] === 52 && f.key.radius === 8, `staged with key: ${JSON.stringify(f.key)}`);
   check(left.length >= 1 && left.length <= 3 && left.length < S.keys.length, `${left.length} of the slab's ${S.keys.length} cells of key are left standing`);
   check(w.slabCell(S, Math.floor(d.x), Math.floor(d.y)) > 0 && w.k(game.di) === K.EMPTY && !game.pieceOf.has(mid), 'the drill does not stand in the crack, or the slab is loose before the cut');
-  check(game.S.lv.tether === 3 && !tetherFaults(game).length, `the reach is level ${game.S.lv.tether}; the tether: ${tetherFaults(game).join('; ')}`);
+  check(game.S.lv.tether === 2 && !tetherFaults(game).length, `the reach is level ${game.S.lv.tether}; the tether: ${tetherFaults(game).join('; ')}`);
   const [x0, y0] = [d.x, d.y];
   t.advance(500);
   const glow = t.shot.facts().key.glow, into = (C + f.key.into[1]) * N + C + f.key.into[0];

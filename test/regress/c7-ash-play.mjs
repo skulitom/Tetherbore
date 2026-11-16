@@ -17,7 +17,7 @@ import { play } from '../../tools/ash-play.mjs';
 
 const fails = [], check = (ok, what) => { if (!ok && fails.length < 16) fails.push(what); };
 const out = [];
-for (const [pick, share, lv, name] of [[0, 0.75, {}, 'the south\'s first ash flat'], [1, 0.62, { drill: 4 }, 'a flat 23 cells in radius, with the best bit'], [1, 0.62, { drill: 0, winch: 0 }, 'the same flat with the first bit and the first winch']]) {
+for (const [pick, share, lv, name] of [[0, 0.75, { tether: 5 }, 'the south\'s first ash flat'], [1, 0.62, { drill: 4 }, 'a flat 23 cells in radius, with the best bit'], [1, 0.62, { drill: 0, winch: 0 }, 'the same flat with the first bit and the first winch']]) {
   const r = await play(7, pick, share, lv), Z = r.flat, at = `${name} (${Z.cx - C},${Z.cy - C})`;
   const big = r.hauled.filter(h => h.n > r.loop * r.loop), loop = big[0];
   check(big.length === 1 && loop && loop.ash === loop.n && !loop.light && loop.n > 2.2 * r.loop * r.loop, `${at}: a loop ${r.loop.toFixed(1)} cells in radius brought home hauls of ${r.hauled.map(h => `${h.n} (${h.ash} of them ash)`).join(', ')} cells`);
