@@ -6,6 +6,8 @@
 //     the room or the space; every source is started and stopped, not before its gain has died; every pitch is a
 //     number a speaker can play; and when a source ends its layer is taken out of the graph.
 //   - No sound makes more than 16 nodes.
+//   - Rewards grow with what happened: a bigger haul is banked with more notes, a run of hauls and a chain of
+//     loops each begin a step higher than the last, and the ticks of a haul climb as it is paid out.
 //   - Sounds that come in bursts have a least gap: sixty cuts asked for in a second are at most 26 sounds, thirty
 //     grinds at most 11; and with many layers sounding the small sounds make little or nothing.
 //   - A sound that goes wrong does not throw into the frame that asked for it, and says so once.
@@ -159,6 +161,28 @@ if (!crowd.banked) fails.push('with many layers sounding, a haul is not banked a
 for (const node of made) if (node.onended && !fixed.includes(node)) node.onended();
 clock += 10;
 if (ask(['tick', 2]).length !== 2) fails.push('when the layers have ended, a tick does not come back');
+
+// ---------------------------------------------------------------- rewards grow with what happened
+// The run of notes a reward plays is the one oscillator whose pitch is only ever set, never slid: its first note.
+const tune = nodes => nodes.find(node => node.kind === 'oscillator' && node.frequency.events.length >= 2 && node.frequency.events.every(e => e.kind === 'set'))?.frequency.events.map(e => e.value) ?? [];
+const done = nodes => { for (const node of nodes) node.onended?.(); return nodes; };
+clock += 20;
+const hauls = [];
+for (let n = 0; n < 6; n++, clock += 1.5) hauls.push(tune(done(ask(['banked', 20])))[0]);
+if (!hauls.every((f, n) => f > 0 && (n === 0 || f > hauls[n - 1]))) fails.push(`six hauls banked one after another begin at ${hauls.map(f => Math.round(f)).join(', ')} Hz: a run is meant to climb`);
+clock += 20;
+const alone = tune(done(ask(['banked', 20])))[0];
+if (alone !== hauls[0]) fails.push(`a haul banked long after a run begins at ${Math.round(alone)} Hz, not at the ${Math.round(hauls[0])} Hz a first haul does`);
+const links = [];
+for (let n = 0; n < 6; n++) { clock += 1; links.push(tune(done(ask(['crack', 20, n])))[0]); }
+if (!links.every((f, n) => f > 0 && (n === 0 || f > links[n - 1]))) fails.push(`six loops closed in a chain ring at ${links.map(f => Math.round(f)).join(', ')} Hz: each is meant to be higher`);
+const sizes = [3, 15, 40, 150].map(size => { clock += 20; return tune(done(ask(['banked', size]))).length; });
+if (sizes.join() !== '2,3,4,5') fails.push(`hauls of 3, 15, 40 and 150 cells are banked with ${sizes.join(', ')} notes (2, 3, 4, 5 are meant)`);
+clock += 20;
+const paid = [0, 7, 14].map(step => { clock += 1; return done(ask(['tick', step])).find(node => node.kind === 'oscillator').frequency.events[0].value; });
+if (!(paid[0] < paid[1] && paid[1] < paid[2])) fails.push(`ticks at the start, middle and end of a haul are at ${paid.map(f => Math.round(f)).join(', ')} Hz: they are meant to climb`);
+const rocks = [1, 2, 3, 4].map(hard => { clock += 1; return done(ask(['dig', hard])).length; }), ore = (clock += 1, done(ask(['dig', 2, 'ore'])).length);
+if (rocks[0] !== 5 || rocks[3] <= rocks[2] || rocks[2] <= rocks[1] || ore <= rocks[1]) fails.push(`cuts in soft, dense, slate and vault are ${rocks.join(', ')} nodes and in ore ${ore}: soft is meant to be 5, and slate, a vault and ore each to have a layer more`);
 
 // ---------------------------------------------------------------- a sound that goes wrong
 clock += 10;
