@@ -1,5 +1,5 @@
 // A staged view of the world, for tools/shot.mjs to photograph and for looking at a far place by hand:
-//   index.html?shot&seed=7&at=0,-300&reach=6&zoom=4&lit&met&wake&key&pocket&haul=1
+//   index.html?shot&seed=7&at=0,-300&reach=6&zoom=4&lit&met&wake&key&pocket&haul=1   (or wake=bell, and so on)
 // js/main.js loads this file only when the address has `shot`; ordinary play never fetches it.
 //
 // The view is a fresh world on `seed` (7 if none is given). It reads no saved game and is never saved. The drill
@@ -12,7 +12,10 @@
 // it down. `lit` leaves out the dark. `met` takes every ground as met before, so the name of the place the drill
 // stands in comes up on its plate and not, as the first time, across the screen. `wake` wakes the hazard nearest
 // the drill (within WAKE cells), as a cut beside it would: lava pours and quenches its slag, a pod bursts, a
-// crystal's fuse is lit; how far that has gone when the picture is taken is how long the view is stepped.
+// crystal's fuse is lit; how far that has gone when the picture is taken is how long the view is stepped. `wake=`
+// a type (lava, spore, spark, bell, vent, worm, lodestone) wakes the nearest of that type. A rare hazard is woken
+// by the cut beside it that is nearest the drill, which is made first: a rime bell's fuse is lit, a fumarole
+// rumbles and fires out of that side, a glowworm uncoils, a lodestone hums.
 // `key` is the last cut of a keystone slab: of the slab nearest `at` (within KEY cells; no cobble field) every key
 // is cut through but the one that faces the core, which is cut down to one line of cells across the crack, and the
 // drill stands in the crack beside that line, at the end of a tunnel from the core, pushing into it. Stepped a
@@ -143,7 +146,7 @@ export function stage(game, query) {
   const seed = Math.floor(number('seed', 7));
   let [dx = 0, dy = 0] = (query.get('at') ?? '').split(',').map(v => Math.round(+v) || 0);
   const zoom = Math.max(1, number('zoom', 1)), lit = query.has('lit') && query.get('lit') !== '0', met = query.has('met') && query.get('met') !== '0';
-  const wake = query.has('wake') && query.get('wake') !== '0';
+  const wake = query.has('wake') && query.get('wake') !== '0', only = world.HAZARDS[query.get('wake')] ? query.get('wake') : null;
   const haul = Math.max(0, Math.min(9, Math.floor(number('haul', 0))));
 
   game.save = () => {};
@@ -188,9 +191,18 @@ export function stage(game, query) {
     let best = -1, near = Infinity;
     for (let v = -WAKE; v <= WAKE; v++) for (let u = -WAKE; u <= WAKE; u++) {
       const j = (y0 + v) * N + x0 + u;
-      if (u * u + v * v < near && w.hazAt(j)) { best = j; near = u * u + v * v; }
+      if (u * u + v * v < near && w.hazAt(j) && (!only || w.hazAt(j) === only)) { best = j; near = u * u + v * v; }
     }
-    if (best >= 0) { woke = w.hazAt(best); game.changed(game.trigger(best, woke, false)); }
+    if (best >= 0) {
+      woke = w.hazAt(best);
+      const cut = [];
+      if (world.HAZARDS[woke].rare) {
+        let side = -1, least = Infinity;
+        for (const s of [1, N, -1, -N]) { const j = best + s, far = (j % N - x0) ** 2 + (Math.floor(j / N) - y0) ** 2; if (far < least) { least = far; side = j; } }
+        if (world.CRUSH[w.k(side)]) { w.setK(side, K.EMPTY); cut.push(side); }
+      }
+      game.changed([...cut, ...game.trigger(best, woke, false)]);
+    }
   }
   // The drill pushes into the last key for as long as the view is stepped and that cell of key stands, and then
   // lets go. (Whatever steers the game after that, a hand or a test, takes the stick as it always could.)

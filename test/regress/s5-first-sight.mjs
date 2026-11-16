@@ -1,6 +1,7 @@
 // S5, the world's side of first sight. World.see puts each cell seen for the first time that is worth calling out
 // on `spotted`, as [what, cell, middle]: a cache, a wreck, a relic, a keystone, a prism, a pocket's mineral (which
-// kind that is, its row says), and slate where it is the shell of a geode. Nothing else goes on it, and no cell
+// kind that is, its row says), slate where it is the shell of a geode, and a rare hazard by its type (its site's
+// heart the middle: test c9-rare-laid). Nothing else goes on it, and no cell
 // twice. World.findSpot says what a sector of finds holds without making any of the world, and agrees with the
 // ground the world then makes.
 //   node test/regress/s5-first-sight.mjs
@@ -63,6 +64,12 @@ const nodes = biome({ id: 122, name: 'test-nodes', kin: B.MIRE, pocket: { minera
 [[K.MINERAL, hive.id], [K.NODE, hive.id], [K.MINERAL, nodes.id], [K.NODE, nodes.id]].forEach(([k, b], n) => { w.setK(at(205 + n * 2, 80), k); w.setB(at(205 + n * 2, 80), b); });
 const ore = seen(208, 80, 4).sort();
 check(JSON.stringify(ore) === JSON.stringify(['mineral 205,80 205,80', 'mineral 211,80 211,80']), `a pocket's mineral: ${JSON.stringify(ore)}`);
+
+// A rare hazard: by its type, which its ground's kin says (none in the home ground); where no site holds it (one
+// planted here) it names itself as its middle.
+[[B.FROST, 'bell'], [B.EMBER, 'vent'], [B.MIRE, 'worm'], [B.LODE, 'lodestone'], [B.CRUST, null]].forEach(([b, type], n) => { w.setK(at(205 + n * 3, 90), K.RARE); w.setB(at(205 + n * 3, 90), b); });
+const rares = seen(211, 90, 7).sort();
+check(JSON.stringify(rares) === JSON.stringify(['bell 205,90 205,90', 'lodestone 214,90 214,90', 'vent 208,90 208,90', 'worm 211,90 211,90']), `rare hazards: ${JSON.stringify(rares)}`);
 
 // ---- the list is the world's: a new world starts with none, and it never grows without end
 w.see(C + 57, C - 60, 30);

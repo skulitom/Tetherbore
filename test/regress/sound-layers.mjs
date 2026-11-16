@@ -73,12 +73,16 @@ const audio = await import('../../js/audio.js'), { sfx } = audio;
 const ASKS = [['dig', 1], ['dig', 2], ['dig', 3], ['dig', 4], ['dig', 2, 'ore'], ['dig', 1, 'ice'], ['dig', 0], ['crumble'], ['grind'], ['slide', 3], ['slide', 12], ['thud'], ['clink'], ['twang'],
   ['crack', 1], ['crack', 12, 0], ['crack', 80, 3], ['crack', 400, 9], ['tick', 0], ['tick', 14], ['tick'], ['gem', 0], ['gem', 6], ['gem', 14], ['banked', 3], ['banked', 20], ['banked', 50], ['banked', 300],
   ['dock'], ['buy'], ['deny'], ['tap'], ['zap'], ['hiss'], ['puff'], ['freeze'], ['relic'], ['knock'], ['wreck'], ['mend'], ['chime', 0], ['chime', 3], ['chime', 9], ['place', 1], ['arrive', 2],
-  ['spot', 'relic'], ['spot', 'nothing known'], ['ping', 0], ['ping', 1], ['step', 0.5], ['recall'], ['low']];
+  ['spot', 'relic'], ['spot', 'nothing known'], ['ping', 0], ['ping', 1], ['step', 0.5], ['recall'], ['low'],
+  ['bellwake'], ['toll'], ['rumble'], ['jet'], ['wormwake'], ['gnaw'], ['gnaw', 0], ['gnaw', 1], ['gnaw', 7], ['gnaw', -3], ['gnaw', NaN], ['bite'], ['caught'],
+  ['hum'], ['pull'], ['gather'], ['gather', 0], ['gather', 1], ['gather', 6], ['gather', 40], ['gather', NaN],
+  ['spot', 'bell'], ['spot', 'vent'], ['spot', 'worm'], ['spot', 'lodestone']];
 const said = ask => `${ask[0]}(${ask.slice(1).map(a => JSON.stringify(a)).join(', ')})`;
 const ask = ([name, ...args]) => { const from = made.length; draws = 0; sfx[name](...args); return made.slice(from); };
 // (A giant haul's sound, at every size of giant and at HALF.)
 ASKS.push(['vast', 1], ['vast', 3], ['vast', 6], ['vast', 7], ['vast', 0], ['vast', NaN]);
-for (const name of ['tap', 'gem', 'relic', 'dig', 'tick', 'slide', 'hiss', 'dock', 'clink', 'zap', 'wreck', 'twang', 'thud', 'spot', 'puff', 'place', 'ping', 'mend', 'knock', 'grind', 'freeze', 'deny', 'crack', 'chime', 'buy', 'banked', 'arrive']) {
+for (const name of ['tap', 'gem', 'relic', 'dig', 'tick', 'slide', 'hiss', 'dock', 'clink', 'zap', 'wreck', 'twang', 'thud', 'spot', 'puff', 'place', 'ping', 'mend', 'knock', 'grind', 'freeze', 'deny', 'crack', 'chime', 'buy', 'banked', 'arrive',
+  'bellwake', 'toll', 'rumble', 'jet', 'wormwake', 'gnaw', 'bite', 'caught', 'hum', 'pull', 'gather']) {
   if (typeof sfx[name] !== 'function') fails.push(`the game asks for sfx.${name}, and there is none`);
 }
 

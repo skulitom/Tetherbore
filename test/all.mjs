@@ -2,7 +2,8 @@
 // the smoke test, and the rope fuzz on seeds 11 to 18 from the core, from a start 200 cells out each way and from
 // inside a province of each strain of ground, from a deep flank, from inside provinces of generated crosses, from
 // the cracks of keystone slabs, and from inside amber hives, pumice drifts and ash flats (most on world 7, some of
-// each on worlds 19 and 23 as well); and the slabs themselves, as they lie in 200 worlds (slab-moat.mjs).
+// each on worlds 19 and 23 as well), and from beside a rare hazard's site of each kind; and the slabs themselves, as
+// they lie in 200 worlds (slab-moat.mjs).
 //   node test/all.mjs [only: a word the test's name must hold]
 // One line a test, and the last line of a failing test's own output under it. Exits 1 if any failed. Tests run side by
 // side, as many as the machine has cores to spare, and the whole run takes a few minutes.
@@ -29,7 +30,10 @@ const ARGS = {
     // hazards planted: smoulder (pods and lava), kilnstone (crystals and lava), buzzmire (pods and crystals), thaw
     // (lava in ground that freezes) and mouldstone (crystals and pods).
     [7, 300, -1152, -384, 0.08, 8, 'second'], [7, 300, 1152, 384, 0.08, 8, 'second'], [7, 300, -640, -640, 0.08, 8, 'second'],
-    [7, 300, -128, -1408, 0.08, 9, 'second'], [7, 300, 1920, 640, 0.08, 9, 'second']],
+    [7, 300, -128, -1408, 0.08, 9, 'second'], [7, 300, 1920, 640, 0.08, 9, 'second'],
+    // Each direction's rare hazard planted thickly, with no site round it: rime bells (in the north, which has no
+    // other hazard), fumaroles, glowworms and lodestones.
+    [2, 300, 0, -200, 0.02, 5, 'rare'], [3, 300, 0, 200, 0.02, 5, 'rare'], [4, 300, -200, 0, 0.02, 5, 'rare'], [5, 300, 200, 0, 0.02, 5, 'rare']],
   'f-big': [[71], [250], [205, 'jog'], [150, 'bump']],
   'f-freed-diff': [[1, 4000, 14, 0.55], [5, 6000, 20, 0.62], [9, 3000, 20, 0.62]],
   'f-fuzz-books': [[2, 300], [7, 300], [9, 300], [12, 300]],
@@ -75,7 +79,13 @@ const ARGS = {
     // field of thirty-two blocks, a hive 21 cells in radius, a drift rich in aerolite with trips home, and a
     // great ash flat.
     [19, 300, 9, 128, -1408, 60], [19, 300, 8, -384, 640, 60], [23, 300, 8, -640, 640, 'mix'], [23, 300, 8, 1152, 384, 60],
-    [23, 300, 6, -310, 49, 'mix'], [23, 300, 6, -330, -54, 60], [19, 300, 6, 300, -171, 30, 'home'], [19, 300, 7, -212, 341, 'mix']],
+    [23, 300, 6, -310, 49, 'mix'], [23, 300, 6, -330, -54, 60], [19, 300, 6, 300, -171, 30, 'home'], [19, 300, 7, -212, 341, 'mix'],
+    // From beside the site of a rare hazard (`node tools/sites.mjs --where 7` and `--where 11` say where they lie),
+    // which is woken at the start and every twelve seconds it is asleep: the first rime bell, fumarole, glowworm
+    // and lodestone of worlds 7 and 11, and the nearest glowworm of world 7.
+    [7, 300, 6, 141, -576, 60, 'wake'], [7, 300, 6, -139, 565, 'mix', 'wake'], [7, 300, 6, -558, -141, 60, 'wake'], [7, 300, 6, 562, 151, 30, 'wake'],
+    [11, 300, 6, 143, -575, 'mix', 'wake'], [11, 300, 6, -140, 560, 60, 'wake'], [11, 300, 6, -578, -138, 30, 'wake'], [11, 300, 6, 574, 134, 60, 'wake'],
+    [7, 300, 6, -430, 285, 'mix', 'wake']],
 };
 const tests = [];
 for (const file of readdirSync(here + 'regress').filter(name => name.endsWith('.mjs')).sort()) {
@@ -122,6 +132,11 @@ for (const [x, y, reach, what] of [[14, -165, 5, 'the north\'s first drift'], [4
 for (const [seed, x, y, reach, what] of [[19, 128, -1408, 9, 'crazed thaw'], [23, -1152, 384, 8, 'banded rimemoss'], [23, -310, 49, 6, 'a cobble field of 32'], [23, -330, -54, 6, 'a hive 21 in radius'],
   [19, 300, -171, 6, 'a drift rich in aerolite'], [23, 88, 210, 6, 'a great ash flat']]) {
   tests.push({ name: `rope-fuzz.mjs ${seed} 400 ${reach} ${x} ${y} (${what})`, run: ['rope-fuzz.mjs', seed, 400, reach, x, y] });
+}
+
+// And from beside the first site of each rare hazard on world 7: a rime bell, a fumarole, a glowworm, a lodestone.
+for (const [x, y, what] of [[141, -576, 'a rime bell'], [-139, 565, 'a fumarole'], [-558, -141, 'a glowworm'], [562, 151, 'a lodestone']]) {
+  tests.push({ name: `rope-fuzz.mjs 7 400 6 ${x} ${y} (${what})`, run: ['rope-fuzz.mjs', 7, 400, 6, x, y] });
 }
 
 // And in a deep flank, where the crystals and the lava are thickest.

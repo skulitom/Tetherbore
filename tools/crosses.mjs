@@ -60,7 +60,8 @@ export const where = (seed, most = WORLD_R - 100) => {
 // What is counted of a ground: how many windows, how many cells, and cells of each kind.
 // `count(seeds)` is a Map from a ground's number to that, for every cross and each direction's own ground.
 export const count = (seeds = 8) => {
-  const w = new World(), counts = new Map();
+  // (The ground as the cross lays it: a rare hazard's site, a bell's ring of ice in a cross of the north, is none of it.)
+  const w = new (class extends World { siteOf() { return null; } })(), counts = new Map();
   for (let seed = 1; seed <= seeds; seed++) {
     const had = new Map();
     w.reset(seed);
