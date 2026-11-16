@@ -6,6 +6,8 @@
 // Writes assets/<name>.png for each sheet, assets/atlas.json (every sheet's frames and animations in one file; a
 // cross also has `map`, its colour on the map, and `debris`, the colours that fly off it) and
 // art/recipes/<name>.json, the compiled recipe of each sheet, to inspect with `pixelbolt inspect`.
+// Pixelbolt draws the pixels and tools/png.mjs writes them, as a palette where a sheet has 256 colours or fewer
+// (every sheet has under fifty), which is near two fifths fewer bytes for a phone to fetch than Pixelbolt's own RGBA.
 // The output is deterministic: the same sources and Pixelbolt commit give the same bytes.
 import { readFile, writeFile, mkdir, rm } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
@@ -13,6 +15,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { ROCKS, STRAINS, POCKETS, CROSSES, CROSS_LOOKS, FLOORS, POCKET_FLOORS, LAVA } from './tiles.mjs';
 import { RECIPES, appIcon } from './sprites.mjs';
+import { encodePNG } from '../tools/png.mjs';
 
 const ART = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(ART, '..');
@@ -36,7 +39,7 @@ async function emit(recipe, name = recipe.name, extra = {}) {
   const project = pb.renderProject(recipe);
   for (const warning of project.warnings) console.warn(`${name}: ${warning}`);
   const atlas = pb.buildAtlas(project);
-  await writeFile(join(ASSETS, `${name}.png`), pb.encodePNG(atlas.data, atlas.width, atlas.height));
+  await writeFile(join(ASSETS, `${name}.png`), encodePNG(atlas.width, atlas.height, atlas.data));
   await writeFile(join(KEEP, `${name}.json`), JSON.stringify(recipe));
   const frames = {};
   for (const [frame, f] of Object.entries(atlas.metadata.frames)) frames[frame] = [f.frame.x, f.frame.y, f.frame.w, f.frame.h, f.duration];
@@ -61,7 +64,7 @@ if (wanted('icon')) {
   await mkdir(join(ROOT, 'media'), { recursive: true });
   for (const [scale, size] of [[3, 192], [8, 512]]) {
     const atlas = pb.buildAtlas(pb.renderProject({ ...appIcon, sheet: { padding: 0, scale } }));
-    await writeFile(join(ROOT, 'media', `icon-${size}.png`), pb.encodePNG(atlas.data, atlas.width, atlas.height));
+    await writeFile(join(ROOT, 'media', `icon-${size}.png`), encodePNG(atlas.width, atlas.height, atlas.data));
   }
   await writeFile(join(KEEP, 'icon.json'), JSON.stringify(appIcon));
 }
