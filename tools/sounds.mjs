@@ -20,9 +20,11 @@
 //   first    the time the first call took, in a page where no sound had yet been made: the browser builds each
 //            kind of node and each waveform when it is first asked for, so this is paid once a sitting
 // The music's rows also say how many nodes are held from the unlock on (the master's chain, the bed's and the
-// music's) and how many timers run. The run fails (exit 1) if any row clips, a muted row makes a sound or a node,
-// a sound throws or has not died away when its row ends, or a node is made that no sound asked for (the music is
-// to make none as it plays). `--wav` writes every row as a 16-bit mono WAV file, to be listened to. `--module` measures
+// music's) and how many timers run. There is a row of each ground's piece alone, with no bed (`music: <score>`),
+// and of three crosses. The run fails (exit 1) if any row clips, a muted row makes a sound or a node, a sound
+// throws or has not died away when its row ends, or a node is made that no sound asked for (the music is to make
+// none as it plays); or if a piece alone is not under the sounds (its peak over -18 dB or its level over -30 dB)
+// or cannot be heard (its level under -62 dB). `--wav` writes every row as a 16-bit mono WAV file, to be listened to. `--module` measures
 // another file of sounds in the same way (the one before a change, say), given from the top of the checkout.
 //
 // Like tools/shot.mjs it serves this checkout on a loopback port, read only, drives the browser over the DevTools
@@ -59,9 +61,13 @@ if (!await access(path.join(root, options.module)).then(() => true, () => false)
 // ---------------------------------------------------------------- what is asked of the sounds
 // A row: its name, how many seconds are rendered, and what is asked for: [seconds from the start, sound, ...arguments].
 // A row may also set `muted`, `music` (the switch; off unless a row turns it on), `bed` ([ground, deep, cells from the
-// core]: the sound of the place is started, as the game starts it) and `moves` ([seconds, ground, deep, cells]).
+// core]: the sound of the place is started, as the game starts it), `moves` ([seconds, ground, deep, cells]) and
+// `score` (a ground whose music is played alone, with no bed). A ground is a score's name, a row or a number.
 const one = (name, seconds, sound, ...args) => ({ name, seconds, events: [[0, sound, ...args]] });
 const every = (gap, count, sound, args = () => [], from = 0) => Array.from({ length: count }, (_, n) => [from + n * gap, sound, ...args(n)]);
+// Three crosses, as rows of the world are (the host's piece with the donor's voice and a structure's change).
+const CROSSES = [{ name: 'hollow thaw', kin: 1, cross: { host: 1, donor: 2, structure: 1 } }, { name: 'banded buzzmire', kin: 3, cross: { host: 3, donor: 4, structure: 4 } },
+  { name: 'crazed hoarsand', kin: 4, cross: { host: 4, donor: 1, structure: 2 } }];
 const haul = (at, size, link) => [[at, 'crack', size, link], ...every(0.045, 16, 'tick', n => [n], at + 0.5), [at + 0.5 + 16 * 0.045, 'banked', size]];
 const rows = [
   one('dig soft', 1, 'dig', 1), one('dig dense', 1, 'dig', 2), one('dig slate', 1, 'dig', 3), one('dig vault', 1, 'dig', 4),
@@ -73,7 +79,7 @@ const rows = [
   one('banked 5', 2, 'banked', 5), one('banked 15', 2.5, 'banked', 15), one('banked 40', 2.5, 'banked', 40), one('banked 150', 3, 'banked', 150),
   one('dock', 2, 'dock'), one('buy', 2.5, 'buy'), one('deny', 1.5, 'deny'), one('tap', 1, 'tap'), one('zap', 2, 'zap'), one('hiss', 1.5, 'hiss'), one('puff', 1.5, 'puff'),
   one('freeze', 1.5, 'freeze'), one('relic', 3.5, 'relic'), one('knock', 1.5, 'knock'), one('wreck', 3.5, 'wreck'), one('mend', 2, 'mend'),
-  one('chime 0', 3, 'chime', 0), one('place 1', 2, 'place', 1), one('arrive 2', 3.5, 'arrive', 2), one('spot relic', 2, 'spot', 'relic'), one('ping 1', 1.5, 'ping', 1),
+  one('chime 0', 3, 'chime', 0), one('place 1', 2, 'place', 1), one('arrive 2', 3.5, 'arrive', 2), one('place hive', 2, 'place', 'hive'), one('arrive rime', 3.5, 'arrive', 'rime'), one('spot relic', 2, 'spot', 'relic'), one('ping 1', 1.5, 'ping', 1),
   one('step', 1, 'step', 0.5), one('recall', 1.5, 'recall'), one('low', 1.5, 'low'),
   { name: 'burst: 20 digs in a second', seconds: 2, events: every(0.05, 20, 'dig', n => [1 + (n % 3 === 2)]) },
   { name: 'burst: 60 digs asked in a second', seconds: 2, events: every(1 / 60, 60, 'dig', n => [2, n % 4 ? '' : 'ore']) },
@@ -87,10 +93,13 @@ const rows = [
   { name: 'the bed alone, home', seconds: 20, bed: [0, false, 0], events: [] },
   { name: 'music alone, on the core', seconds: 60, music: true, events: [] },
   { name: 'music and bed, home', seconds: 60, music: true, bed: [0, false, 40], events: [] },
-  { name: 'music and bed, east, deep, far', seconds: 60, music: true, bed: [2, true, 1500], events: [] },
-  { name: 'music, four grounds in a minute', seconds: 60, music: true, bed: [1, false, 200], moves: [[15, 2, false, 300], [30, 3, false, 300], [45, 4, true, 1000]], events: [] },
+  { name: 'music and bed, magma, far', seconds: 60, music: true, bed: ['magma', false, 1500], events: [] },
+  { name: 'music, eight grounds in a minute', seconds: 60, music: true, bed: ['frost', false, 200],
+    moves: [[7.5, 'firn', false, 300], [15, 'hive', false, 300], [22.5, 'ember', false, 300], [30, CROSSES[0], false, 600], [37.5, 'mire', false, 300], [45, 'lode', false, 300], [52.5, 'glaze', false, 400]], events: [] },
   { name: 'music under a run of six hauls', seconds: 20, music: true, bed: [0, false, 40], events: [0, 1, 2, 3, 4, 5].flatMap(n => haul(8 + n * 1.5, 14 + n * 6, n)) },
   { name: 'music turned off at 10 s', seconds: 16, music: true, events: [[10, 'music-off']] },
+  ...['crust', 'frost', 'ember', 'mire', 'lode', 'rime', 'magma', 'bloom', 'gilt', 'firn', 'serac', 'scoria', 'forge', 'tangle', 'sporefall', 'redrock', 'loess',
+    'hive', 'drift', 'ash', 'grotto', 'tinder', 'glaze', 'shale', ...CROSSES].map(score => ({ name: `music: ${score.name ?? score}`, seconds: 24, music: true, score, events: [] })),
 ].filter(row => row.name.includes(only));
 if (!rows.length) wrong(`No row's name holds "${only}".`);
 
@@ -145,6 +154,7 @@ async function measure(row, module, wav) {
   audio.unlock();
   const unlock = (performance.now() - began) * 1000;
   if (row.bed) audio.setAmbience?.(...row.bed);
+  if (row.score) audio.hear?.(row.score);
   const fixed = state.made, timers = state.timers.filter(Boolean).length;
   state.made = 0;
   // What happens at each moment, in order: the music's timer first, then the sounds asked for.
@@ -311,6 +321,8 @@ async function run() {
     for (const said of result.thrown) faults.push(`${row.name}: a sound went wrong: ${said}`);
     if (row.muted && (result.peak > 0 || result.nodes)) faults.push(`${row.name}: muted, yet it made ${result.nodes} nodes and a peak of ${dB(result.peak)} dB`);
     if (result.beside) faults.push(`${row.name}: ${result.beside} nodes were made as it played that no sound asked for${row.music ? ': the music is to make none' : ''}`);
+    if (row.score && (result.peak > 10 ** (-18 / 20) || result.rms > 10 ** (-30 / 20))) faults.push(`${row.name}: the music is to stay under the sounds, and it peaks at ${dB(result.peak)} dB with a level of ${dB(result.rms)} dB`);
+    if (row.score && !(result.rms > 10 ** (-62 / 20))) faults.push(`${row.name}: the music cannot be heard (${dB(result.rms)} dB)`);
     if (!row.music && !row.bed && result.tail > 0.001) faults.push(`${row.name}: it has not died away when its ${row.seconds} seconds are up`);
   }
   if (options.json) console.log(JSON.stringify(results, null, 1));

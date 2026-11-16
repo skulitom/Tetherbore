@@ -13,8 +13,11 @@
 //   - A sound that goes wrong does not throw into the frame that asked for it, and says so once.
 //   - While the page is aside (hidden, or another window has the focus) the context is suspended and no sound makes
 //     anything; a touch then does not wake it, and coming back resumes it.
-//   - The music is made once (13 nodes and one timer), makes no node however long it plays, is soft and slow, and
-//     stops with its switch or the mute and comes back; both switches are kept in storage.
+//   - The music is made once (26 nodes, eleven sources, one timer), makes no node however long it plays or however
+//     often the ground changes, is soft, posts each voice's notes in the order of their times and always a little
+//     ahead, changes a voice's waveform only while it is silent, changes ground only when the drill has stayed, posts
+//     nothing while the page is hidden, and stops with its switch or the mute and comes back with the score it was
+//     playing; both switches are kept in storage. Every ground's call and bell is its own score's.
 // What they sound like is not held here: `node tools/sounds.mjs` measures that in a browser.
 //   node test/regress/sound-layers.mjs
 const fails = [], kept = new Map();
@@ -49,7 +52,15 @@ class Context {
   resume() { resumed++; this.state = 'running'; }
   suspend() { suspended++; this.state = 'suspended'; }
   createGain() { return new Node('gain', { gain: 1 }); }
-  createOscillator() { if (broken) throw new Error('no oscillator today'); return new Node('oscillator', { frequency: 440, detune: 0 }); }
+  createOscillator() {
+    if (broken) throw new Error('no oscillator today');
+    // (Every time an oscillator is dressed in a waveform is written down, with the time.)
+    const o = new Node('oscillator', { frequency: 440, detune: 0 });
+    o.dressed = []; let type = 'sine';
+    Object.defineProperty(o, 'type', { get: () => type, set: v => { type = v; o.dressed.push(clock); } });
+    o.setPeriodicWave = wave => { o.wave = wave; o.dressed.push(clock); };
+    return o;
+  }
   createBufferSource() { return new Node('noise'); }
   createBiquadFilter() { return new Node('filter', { frequency: 350, Q: 1 }); }
   createDynamicsCompressor() { return new Node('compressor', { threshold: -24, knee: 30, ratio: 12, attack: 0.003, release: 0.25 }); }
@@ -78,6 +89,9 @@ const said = ask => `${ask[0]}(${ask.slice(1).map(a => JSON.stringify(a)).join('
 const ask = ([name, ...args]) => { const from = made.length; draws = 0; sfx[name](...args); return made.slice(from); };
 // (A giant haul's sound, at every size of giant and at HALF.)
 ASKS.push(['vast', 1], ['vast', 3], ['vast', 6], ['vast', 7], ['vast', 0], ['vast', NaN]);
+// (A place's bell and calls, by a score's name, a row of a pocket, a cross, a ground with no score, a number.)
+const THAW = { name: 'hollow thaw', kin: 1, cross: { host: 1, donor: 2, structure: 1 } };
+ASKS.push(['chime', 'hive'], ['chime', { name: 'glaze', kin: 1 }], ['place', 'drift'], ['place', THAW], ['arrive', 'rime'], ['arrive', 'no such ground'], ['place', 9]);
 for (const name of ['tap', 'gem', 'relic', 'dig', 'tick', 'slide', 'hiss', 'dock', 'clink', 'zap', 'wreck', 'twang', 'thud', 'spot', 'puff', 'place', 'ping', 'mend', 'knock', 'grind', 'freeze', 'deny', 'crack', 'chime', 'buy', 'banked', 'arrive']) {
   if (typeof sfx[name] !== 'function') fails.push(`the game asks for sfx.${name}, and there is none`);
 }
@@ -102,10 +116,10 @@ if (contexts !== 1) fails.push(`unlocking twice made ${contexts} contexts`);
 if (!(master.gain.value > 0 && master.gain.value <= 1)) fails.push(`the master's gain is ${master.gain.value}`);
 const level = master.gain.value;
 if (fixed.filter(node => node.kind === 'compressor').length !== 1 || fixed.filter(node => node.kind === 'shaper').length !== 1) fails.push('there is not one compressor and one ceiling');
-const music = band.filter(node => node.kind === 'oscillator');
-if (music.length !== 5 || timers.size !== 1) fails.push(`the music is ${music.length} oscillators and ${timers.size} timers at the first touch (5 and 1 are meant)`);
+const music = band.filter(node => node.kind === 'oscillator' || node.kind === 'noise');
+if (music.length !== 11 || music.filter(node => node.kind === 'oscillator').length !== 10 || timers.size !== 1) fails.push(`the music is ${music.length} sources and ${timers.size} timers at the first touch (11, ten of them oscillators, and 1 are meant)`);
 const musicNodes = band.length;
-if (musicNodes !== 13) fails.push(`the music is ${musicNodes} nodes (13 are meant)`);
+if (musicNodes !== 26) fails.push(`the music is ${musicNodes} nodes (26 are meant)`);
 
 // ---------------------------------------------------------------- each sound, layer by layer
 let most = 0;
@@ -198,35 +212,122 @@ if (warned.length !== 1) fails.push(`two sounds that went wrong said so ${warned
 console.warn = warn;
 
 // ---------------------------------------------------------------- the music
-// Ten minutes of it, the ground changed now and then: the timer is run as a browser would run it.
-const before = made.length, [timer] = timers.values(), posts = () => band.reduce((sum, node) => sum + ['gain', 'frequency'].reduce((n, key) => n + (node[key]?.events.length ?? 0), 0), 0);
+// Ten minutes of it, the ground changed every twelve seconds through every kind of score (a direction, a deep
+// flank, a strain, a pocket, a cross, by name, number and row): the timer is run as a browser would run it, and the
+// ground is told once each time, as the conductor is to take it up by itself.
+const before = made.length, [timer] = timers.values();
+const posts = () => band.reduce((sum, node) => sum + ['gain', 'frequency'].reduce((n, key) => n + (node[key]?.events.length ?? 0), 0), 0);
 const posted = posts();
-if (timer.ms < 1000) fails.push(`the music's timer runs every ${timer.ms} ms`);
-for (let n = 0; n < 400; n++) {
+const soft = band[0], duck = soft.outs[0], isParam = to => to instanceof Param;
+const voices = band.filter(node => node.kind === 'gain' && (node.outs[0] === soft || (node.outs[0] === duck && node !== soft)));
+const hits = voices.find(node => node.outs[0] === duck), sways = band.filter(node => node.kind === 'gain' && isParam(node.outs[0]));
+const swayers = band.filter(node => node.kind === 'oscillator' && sways.includes(node.outs[0]));
+if (voices.length !== 7 || !hits || sways.length !== 2 || swayers.length !== 2) fails.push(`the music's voices are ${voices.length} gains (7 are meant: two pads, a lead, two plucks, a bass and a drum) and ${sways.length} sways`);
+if (timer.ms < 250 || timer.ms > 1000) fails.push(`the music's timer runs every ${timer.ms} ms`);
+const GROUNDS = [0, [1, true], 'firn', 'serac', 'hive', 2, 'scoria', 'forge', 'drift', 3, [3, true], 'tangle', 'sporefall', 'grotto', 4, [4, true], 'redrock', 'loess',
+  'shale', 'ash', 'tinder', 'glaze', [2, true], 1, THAW, { name: 'banded buzzmire', kin: 3, cross: { host: 3, donor: 4, structure: 4 } },
+  { name: 'crazed hoarsand', kin: 4, cross: { host: 4, donor: 1, structure: 2 } }];
+const runs = Math.round(600 / (timer.ms / 1000)), every = Math.round(12 / (timer.ms / 1000)), heard = new Set();
+let short = 0;
+for (let n = 0; n < runs; n++) {
   clock += timer.ms / 1000;
-  if (n % 40 === 20) audio.setAmbience((n / 40) % 5 | 0, n % 80 === 20, 100 + n * 5);
+  if (n % every === 0) { const g = GROUNDS[(n / every) % GROUNDS.length]; audio.setAmbience(...(Array.isArray(g) ? g : [g, false]), 100 + n); }
   timer.run();
+  const now = audio.musicNow();
+  if (now.score) heard.add(now.score);
+  // (What is posted reaches always a little ahead of the clock: the horizon, not the last note, as a sparse score
+  // may go a while with none.)
+  if (now.dressed && !(now.next >= clock + 0.6)) short++;
 }
+if (short) fails.push(`the music's posting fell short of 0.6 s ahead ${short} times`);
+if (heard.size < GROUNDS.length - 3) fails.push(`in ten minutes of ${GROUNDS.length} grounds the music played ${heard.size} scores: ${[...heard].join(', ')}`);
 if (made.length - before > 5) fails.push(`the music made ${made.length - before} nodes in ten minutes (the bed's five, the first time the ground is told, are all that is meant)`);
 const notes = posts() - posted;
-if (!(notes > 80 && notes < 1200)) fails.push(`the music posted ${notes} changes in ten minutes (a few hundred are meant: a note is three)`);
-for (const node of band) {
-  for (const e of node.gain?.events ?? []) if (e.kind !== 'target' || e.value > 1 || (node.outs[0]?.kind === 'filter' && (e.value > 0.03 || e.more < 0.3))) fails.push(`the music: a gain goes to ${e.value} over ${e.more} s (${e.kind})`);
-  if (node.kind === 'oscillator') for (const e of node.frequency.events) if (!(e.value >= 150 && e.value <= 1500)) fails.push(`the music: a note at ${e.value} Hz`);
+if (!(notes > 1500 && notes < 36000)) fails.push(`the music posted ${notes} changes in ten minutes (thousands are meant: a note is three to five)`);
+// What a gain's automation comes to at time `d`, all its events being targets.
+const valueAt = (param, d) => {
+  let v = param.first, target = v, tau = 0, start = 0;
+  for (const e of [...param.events].sort((a, b) => a.time - b.time)) {
+    if (e.time > d) break;
+    if (tau) v = target + (v - target) * Math.exp(-(e.time - start) / tau);
+    target = e.value; tau = e.more; start = e.time;
+  }
+  return tau ? target + (v - target) * Math.exp(-(d - start) / tau) : v;
+};
+let loudest = 0;
+for (const node of voices) {
+  const events = node.gain.events, top = node === hits ? 0.5 : 0.04;
+  for (const e of events) if (e.kind !== 'target' || !(e.more >= 0.001) || !(e.value >= 0 && e.value <= top)) fails.push(`the music: a voice's gain goes to ${e.value} over ${e.more} s (${e.kind})`);
+  if (events.some((e, n) => n && e.time < events[n - 1].time - 1e-9)) fails.push('the music: a voice\'s gain has an event posted before one already there: a note is cut');
+  if (node !== hits) loudest += Math.max(0, ...events.map(e => e.value));
 }
+if (loudest > 0.13) fails.push(`the music's melodic voices together reach ${loudest.toFixed(3)} (0.13 at the most is meant)`);
+for (const node of sways) for (const e of node.gain.events) if (e.kind !== 'target' || !(e.value >= 0 && e.value <= 40)) fails.push(`the music: a sway goes to ${e.value} cents`);
+for (const node of band) {
+  if (node.kind === 'gain' && !voices.includes(node) && !sways.includes(node)) for (const e of node.gain.events) if (e.kind !== 'target' || e.value > 1 || e.value < 0) fails.push(`the music: its level goes to ${e.value} (${e.kind})`);
+  if (node.kind === 'oscillator') {
+    const [lo, hi] = swayers.includes(node) ? [0.05, 32] : [50, 2000], events = node.frequency.events;
+    for (const e of events) if (!(e.value >= lo && e.value <= hi)) fails.push(`the music: ${swayers.includes(node) ? 'a sway' : 'a note'} at ${e.value} Hz`);
+    if (events.some((e, n) => n && e.time < events[n - 1].time - 1e-9)) fails.push('the music: a pitch is posted before one already there');
+  }
+  if (node.kind === 'filter') {
+    for (const e of node.frequency.events) if (!(e.value >= 60 && e.value <= 9000)) fails.push(`the music: a filter at ${e.value} Hz`);
+    for (const e of node.Q.events) if (!(e.value >= 0.1 && e.value <= 20)) fails.push(`the music: a filter's Q at ${e.value}`);
+  }
+}
+// A waveform is changed only on a voice that is silent at that moment (each oscillator's first dressing is as it
+// is made, before it sounds).
+let dressings = 0;
+for (const node of band) {
+  if (node.kind !== 'oscillator' || swayers.includes(node)) continue;
+  let gain = node;
+  while (gain && gain.kind !== 'gain') gain = gain.outs[0];
+  for (const d of node.dressed.slice(1)) {
+    dressings++;
+    const v = valueAt(gain.gain, d);
+    if (!(v <= 0.0004)) fails.push(`the music: a voice was dressed in another waveform at ${d.toFixed(2)} s while its gain was ${v.toFixed(5)}: a click`);
+  }
+}
+if (dressings < GROUNDS.length) fails.push(`in ten minutes of ${GROUNDS.length} grounds the music's voices were dressed in another waveform ${dressings} times`);
+// A border that wanders: the ground goes to the south and back within a moment, and the music does not turn; held
+// there, it turns once.
+const dressed = () => band.reduce((n, node) => n + (node.dressed?.length ?? 0), 0), runFor = seconds => { for (let k = 0; k < seconds / (timer.ms / 1000); k++) { clock += timer.ms / 1000; timer.run(); } };
+audio.setAmbience('frost', false, 200); runFor(10);
+const still = dressed(), turns = audio.musicNow().turns;
+clock += 0.3; audio.setAmbience('ember', false, 200); timer.run(); clock += 0.3; audio.setAmbience('frost', false, 200); timer.run(); runFor(3);
+if (audio.musicNow().playing !== 'frost' || dressed() !== still || audio.musicNow().turns !== turns) fails.push(`a border crossed and crossed back within 0.6 s turned the music ${audio.musicNow().turns - turns} times (to ${audio.musicNow().playing}, ${dressed() - still} voices dressed)`);
+audio.setAmbience('ember', false, 200); runFor(4);
+if (audio.musicNow().playing !== 'ember' || audio.musicNow().score !== 'ember' || !audio.musicNow().dressed || audio.musicNow().turns !== turns + 1) fails.push(`held in the south for 4 s, the music plays ${audio.musicNow().score}, having turned ${audio.musicNow().turns - turns} times (once is meant)`);
+// The page hidden: nothing is posted; shown again, nothing is posted in the past.
+runFor(3);
+document.hidden = true;
+const hidden = posts();
+runFor(5);
+if (posts() !== hidden) fails.push(`with the page hidden the music posted ${posts() - hidden} changes`);
+document.hidden = false;
+const back = clock, params = band.flatMap(node => ['gain', 'frequency'].map(key => node[key]).filter(Boolean)), was = params.map(p => p.events.length);
+clock += timer.ms / 1000; timer.run();
+if (params.some((p, n) => p.events.slice(was[n]).some(e => e.time < back))) fails.push('back from hidden, the music posted a note in the past');
+// The calls of a place are its own score's: the north's and the south's begin apart, and the east's are the first
+// and the last note of its motif, a fifth apart.
+const call = ground => { clock += 10; const nodes = ask(['place', ground]), f = tune(nodes); for (const node of nodes) node.onended?.(); return f; };
+const [north, south, east] = ['frost', 'ember', 'lode'].map(call);
+if (!(north[0] > 0 && south[0] > 0 && Math.abs(north[0] - south[0]) > 1)) fails.push(`the north's and the south's names come up on ${Math.round(north[0])} and ${Math.round(south[0])} Hz`);
+if (!(east.length === 2 && Math.abs(east[0] / east[1] - 2 ** (7 / 12)) < 1e-6 && east.every(f => f >= 260 && f <= 1400))) fails.push(`the east's name comes up on ${east.map(Math.round).join(', ')} Hz: the first and last of its motif, a fifth apart, are meant`);
 // Its switch, and the mute, which also stops it.
 audio.setMusic(false);
 if (audio.isMusic() || timers.size || kept.get('tetherbore-music') !== '0' || !music.every(o => o.stopped >= clock)) fails.push('the music\'s switch, turned off, does not stop it, its timer and its oscillators, or is not kept');
 let from = made.length;
 audio.setMusic(true);
-if (!audio.isMusic() || timers.size !== 1 || made.length - from !== 13 || kept.get('tetherbore-music') !== '1') fails.push(`the music's switch, turned on again, made ${made.length - from} nodes and ${timers.size} timers (13 and 1 are meant)`);
+if (!audio.isMusic() || timers.size !== 1 || made.length - from !== 26 || kept.get('tetherbore-music') !== '1') fails.push(`the music's switch, turned on again, made ${made.length - from} nodes and ${timers.size} timers (26 and 1 are meant)`);
+if (audio.musicNow().score !== audio.musicNow().playing || !audio.musicNow().playing) fails.push(`the music, turned on again, plays ${audio.musicNow().score} where the ground's is ${audio.musicNow().playing}`);
 audio.setMuted(true);
 if (!audio.isMuted() || master.gain.value !== 0 || kept.get('tetherbore-mute') !== '1' || timers.size) fails.push('muted, the master is not at nothing, or the music\'s timer still runs, or the mute is not kept');
 clock += 10;
 for (const one of ASKS) { const nodes = ask(one); if (nodes.length) fails.push(`${said(one)} made ${nodes.length} nodes when muted`); if (draws !== (one[0] === 'chime' ? 1 : 0)) fails.push(`${said(one)} drew ${draws} from Math.random when muted`); }
 from = made.length;
 audio.setMuted(false);
-if (audio.isMuted() || master.gain.value !== level || kept.get('tetherbore-mute') !== '0' || timers.size !== 1 || made.length - from !== 13) fails.push('unmuted, the master is not back at its level or the music is not back');
+if (audio.isMuted() || master.gain.value !== level || kept.get('tetherbore-mute') !== '0' || timers.size !== 1 || made.length - from !== 26) fails.push('unmuted, the master is not back at its level or the music is not back');
 audio.setMusic(false);
 
 // ---------------------------------------------------------------- aside: the page hidden or out of focus
@@ -242,5 +343,5 @@ if (resumed !== wasResumed + 1) fails.push('back from aside, the context was not
 clock += 10;
 if (!ask(['tap']).length) fails.push('back from aside, a tap made nothing');
 
-console.log(fails.length ? `DEFECT: ${[...new Set(fails)].slice(0, 30).join('\n        ')}` : `ok: ${ASKS.length} sounds, none over ${most} nodes, every gain from nothing to nothing; sixty cuts asked in a second are ${digs} sounds and thirty grinds ${grinds}; the music is 13 nodes and posted ${notes} changes in ten minutes`);
+console.log(fails.length ? `DEFECT: ${[...new Set(fails)].slice(0, 30).join('\n        ')}` : `ok: ${ASKS.length} sounds, none over ${most} nodes, every gain from nothing to nothing; sixty cuts asked in a second are ${digs} sounds and thirty grinds ${grinds}; the music is ${musicNodes} nodes and posted ${notes} changes in ten minutes of ${GROUNDS.length} grounds (${heard.size} scores played, ${dressings} waveforms changed on silent voices, its melodic voices together at most ${loudest.toFixed(3)})`);
 process.exit(fails.length ? 1 : 0);

@@ -13,9 +13,9 @@
 //     sound that goes wrong says so once and is dropped: the frame that asked for it goes on.
 //   - `Math.random` is left to the game, whose tests count its draws: variation here has a generator of its own.
 //     (`chime` draws from it once a call, heard or not, as it always did.)
-//   - The music (at the foot of this file) is five oscillators that sound for as long as it plays: a timer once in
-//     a second and a half posts their next notes on the audio clock. No node is made for a note, and nothing is
-//     done in a frame.
+//   - The music (at the foot of this file) is eleven sources that sound for as long as it plays, each ground's own
+//     piece: a timer twice a second posts their next notes on the audio clock. No node is made for a note or for a
+//     change of ground, and nothing is done in a frame.
 // `node tools/sounds.mjs` renders every sound in a browser and measures it; test/regress/sound-layers.mjs holds the
 // rules above with no browser.
 
@@ -69,6 +69,8 @@ export function unlock() {
   } catch { room = space = master; }
   // The voice of every note that is a reward: a music box, a clear first harmonic with a little of the next few.
   try { keys = c.createPeriodicWave(new Float32Array([0, 0, 0, 0, 0, 0, 0]), new Float32Array([0, 1, 0.45, 0.18, 0.1, 0, 0.04])); } catch { keys = null; }
+  // (And the waves the music's instruments are made of, which the cues of a place ring in too.)
+  try { for (const [name, h] of Object.entries(SHAPES)) waves[name] = c.createPeriodicWave(new Float32Array(h.length + 1), new Float32Array([0, ...h])); } catch { /* triangles */ }
   // (The browser draws up a waveform the first time an oscillator asks for it, which takes it a moment: the two
   // that most sounds are made of are asked for now, at the first touch, not at the first cut.)
   c.createOscillator().type = 'triangle';
@@ -127,7 +129,7 @@ function play(source, gain, t, end, out, offset) {
   live++;
   source.onended = () => { live--; gain.disconnect(); };
 }
-const voice = (osc, type) => { if (type !== 'keys') osc.type = type; else if (keys) osc.setPeriodicWave(keys); else osc.type = 'triangle'; };
+const voice = (osc, type) => { if (BUILT.includes(type)) osc.type = type; else if (type === 'keys' && keys) osc.setPeriodicWave(keys); else if (waves[type]) osc.setPeriodicWave(waves[type]); else osc.type = 'triangle'; };
 const sweep = (param, from, to, t, end) => {
   try { param.automationRate = 'k-rate'; } catch { /* an old browser */ }      // a filter that moves is worked out once a block, not once a sample
   param.setValueAtTime(from, t);
@@ -393,12 +395,25 @@ for (const name of Object.keys(make)) sfx[name] = sound(name, make[name]);
 
 // ---------------------------------------------------------------- the sound of the place
 // A bed of filtered noise and a low drone that change with the ground the drill is in, and now and then a single
-// soft note from that ground's own scale.
-let bed = null, bedKey = -1, ground = 0, depth = false, away = 0, band = null, conductor = 0;
-const AIR = [[420, 55], [1500, 82], [240, 41], [700, 62], [520, 73]];     // [filter Hz, drone Hz] per direction
-// (`far` is how many cells the drill is from the core, if the game says: only the music listens to it.)
-export function setAmbience(biome, deep, far) {
+// soft bell. Every ground has a piece of music of its own, its score (`scoreOf`, with the music below), and the bed,
+// the bell and the two calls a place makes (its name coming up, a ground met for the first time) are drawn from it:
+// its key, its air, its bell and its motif.
+let bed = null, band = null, conductor = 0, away = 0;
+// The score the drill's ground asks for (`wanted`, since `wantedAt`) and the one the music and the bed are playing.
+// A border that wanders is crossed many times in a few cells: the music changes only when the drill has been in
+// the new ground for SETTLE seconds.
+let wanted = null, wantedAt = 0, playing = null, lastGround, lastDeep;
+const SETTLE = 0.8;
+// `ground` is the ground's row (or a score's name, or a number: a direction, `deep` taking its deep flank); `far` is
+// how many cells the drill is from the core, if the game says: only the music listens to it. Asked every frame, it
+// does nothing but compare unless the ground has changed.
+export function setAmbience(ground, deep, far) {
   if (far >= 0) away = far;
+  if (ground !== lastGround || deep !== lastDeep) {
+    lastGround = ground; lastDeep = deep;
+    const s = scoreOf(ground, deep);
+    if (s !== wanted) { wanted = s; wantedAt = ctx ? ctx.currentTime : 0; }
+  }
   if (!ctx) return;
   if (!bed) {
     const src = ctx.createBufferSource(), filter = ctx.createBiquadFilter(), out = ctx.createGain(), drone = ctx.createOscillator(), dg = ctx.createGain();
@@ -409,37 +424,52 @@ export function setAmbience(biome, deep, far) {
     src.connect(filter); filter.connect(out); drone.connect(dg); dg.connect(out); out.connect(master);
     src.start(); drone.start();
     bed = { filter, out, drone };
+    const [hz, low] = (playing ?? wanted).air;
+    filter.frequency.value = hz; drone.frequency.value = low;
+    out.gain.setTargetAtTime(0.06, ctx.currentTime, 1.5);
   }
-  const key = biome + (deep ? 10 : 0);
-  if (key === bedKey) return;
-  bedKey = key;
-  // The music goes with the ground: what it holds is let go, and its next notes are the new ground's.
-  ground = biome; depth = !!deep;
-  if (band) for (const v of band.voices) if (v.held) v.at = 0;
-  const [hz, low] = AIR[biome] ?? AIR[0], t = ctx.currentTime;
-  bed.filter.frequency.setTargetAtTime(hz * (deep ? 0.7 : 1), t, 1.2);
-  bed.drone.frequency.setTargetAtTime(low * (deep ? 0.75 : 1), t, 1.2);
-  bed.out.gain.setTargetAtTime(0.06, t, 1.5);
+  settle();
 }
-const MOODS = [[0, 4, 7], [7, 9, 12, 14, 16], [0, 3, 5], [2, 4, 9, 11], [0, 4, 7, 9]];
-const TOP = [440, 880, 165, 330, 440];                                     // the note each direction's scale stands on
-const chime = sound('chime', (biome, pick) => {
-  const steps = MOODS[biome] ?? MOODS[0], f = (TOP[biome] ?? TOP[0]) * 2 ** (steps[(pick * steps.length) | 0] / 12);
-  tone(f, 1.6, { type: 'sine', gain: 0.045, attack: 0.08, out: space });
-  tone(f * 1.5, 1.2, { type: 'sine', gain: 0.02, attack: 0.1, delay: 0.22, out: space });
+// The new ground's score is taken when it has been asked for long enough, or at once if nothing is playing.
+function settle() {
+  if (!ctx || !wanted || wanted === playing) return;
+  if (playing && ctx.currentTime - wantedAt < SETTLE) return;
+  playing = wanted;
+  if (bed) {
+    const [hz, low] = playing.air, t = ctx.currentTime;
+    bed.filter.frequency.setTargetAtTime(hz, t, 1.2);
+    bed.drone.frequency.setTargetAtTime(low, t, 1.2);
+  }
+  if (band) turn(playing);
+}
+// What a bell is scaled by in its wave, as the waves with more harmonics sound the louder.
+const BELL = { sine: 1, triangle: 1, keys: 0.9, glass: 0.8, hollow: 0.9, reed: 0.7, organ: 0.7, choir: 0.8, brass: 0.6, buzz: 0.5, bass: 0.8, anvil: 0.7, square: 0.5, sawtooth: 0.55 };
+const bellOf = s => BELL[s.bell] ?? 1;
+// Degrees of a score lifted together by octaves into [lo, hi], so a run keeps its shape.
+const phrase = (s, degrees, lo, hi) => { const fs = degrees.map(k => hz(s, k)), up = lift(fs, lo, hi, 0); return fs.map(f => keep(f * up, lo, hi)); };
+// A bell of the ground's own scale in its own voice, and the note two above it after a moment.
+const chime = sound('chime', (ground, pick) => {
+  const s = scoreOf(ground), k = (pick * MODES[s.mode].length) | 0, [a, b] = phrase(s, [k, k + 2], 300, 1300);
+  tone(a, 1.6, { type: s.bell, gain: 0.045 * bellOf(s), attack: 0.08, out: space });
+  tone(b, 1.2, { type: s.bell, gain: 0.02 * bellOf(s), attack: 0.1, delay: 0.22, out: space });
 });
 // (The game's own generator picks the note, once a call whether or not it is heard: the game's tests count on it.)
-sfx.chime = biome => chime(biome, Math.random());
-// A place's name comes up on its plate: two notes of its direction's scale, the lowest and then the highest.
-sfx.place = sound('place', kin => {
-  const steps = MOODS[kin] ?? MOODS[0], top = TOP[kin] ?? TOP[0];
-  line([top * 2 ** (steps[0] / 12), top * 2 ** (steps[steps.length - 1] / 12)], 0.13, { type: 'triangle', gain: 0.085, ring: 0.5 });
+sfx.chime = ground => chime(ground, Math.random());
+// A place's name comes up on its plate: the first and the last note of its motif, which its music opens with (with
+// no motif, its first note and its fifth). The music steps back for it, as the music may still be the last place's.
+sfx.place = sound('place', ground => {
+  const s = scoreOf(ground), tune = s.fit.tune.length ? [s.fit.tune[0], s.fit.tune[s.fit.tune.length - 1]] : [0, MODES[s.mode].length > 5 ? 4 : 3];
+  hush(0.4, 1.2);
+  line(phrase(s, tune, 260, 1400), 0.13, { type: s.bell, gain: 0.085 * bellOf(s), ring: 0.5 });
 });
-// A ground met for the first time: the notes of its scale together, spread a little, over the note it stands on.
-sfx.arrive = sound('arrive', kin => {
-  const steps = MOODS[kin] ?? MOODS[0], top = TOP[kin] ?? TOP[0];
-  tone(top / 2, 1.8, { gain: 0.07, attack: 0.03, out: space });
-  steps.slice(0, 4).forEach((step, n) => tone(top * 2 ** (step / 12), 1.5, { type: 'sine', gain: 0.07, attack: 0.03, delay: 0.05 + n * 0.07, out: space }));
+// A ground met for the first time: its root low down, its motif (five notes at the most) in its bell over it, and
+// a glint an octave over the last.
+sfx.arrive = sound('arrive', ground => {
+  const s = scoreOf(ground), tune = phrase(s, s.fit.tune.length ? s.fit.tune.slice(0, 5) : [0, 2, 4], 300, 1400);
+  hush(0.3, 2);
+  tone(keep(s.root, 100, 250), 1.8, { gain: 0.07, attack: 0.03, out: space });
+  line(tune, 0.11, { type: s.bell, gain: 0.08 * bellOf(s), ring: 0.9, out: space });
+  tone(keep(tune[tune.length - 1] * 2, 300, 2600), 1.2, { type: 'sine', gain: 0.02, delay: 0.11 * tune.length, attack: 0.05, out: space });
 });
 // Something seen for the first time: a few notes of its own for each kind of thing.
 const SPOTS = { cache: [10, 12], geode: [7, 9, 12], wreck: [6, 3], key: [5, 5], prism: [12, 14, 17], relic: [5, 7, 9, 12], mineral: [8, 11] };
@@ -448,99 +478,549 @@ sfx.spot = sound('spot', what => line((SPOTS[what] ?? SPOTS.cache).map(note), 0.
 sfx.ping = sound('ping', (near = 0) => tone(620 + 260 * near, 0.08, { type: 'sine', gain: 0.035 + 0.05 * near, attack: 0.002, out: space }));
 
 // ---------------------------------------------------------------- the music
-// It grows out of the bed: over the drone, two soft notes of the ground's own scale are held for ten seconds or so
-// and let go, not together, so that the pair is always changing; and now and then a third, an octave or so up,
-// comes and goes. Each ground has its scale, on the note its drone stands on, and the scale holds the notes its
-// chimes are drawn from: the home ground the plainest (a major five-note scale, its notes held longest and the
-// third voice rarest), the north open and with no third, the south minor, the west major, the east with a raised
-// seventh. Deep ground and ground far from the core are darker and sparser; on the core it is a little brighter.
-// A big reward hushes it for a moment (`hush`). While the page is hidden it lets go of what it holds.
+// Every ground plays a piece of its own. A piece is a score: a row of figures that says its tempo and metre, its
+// scale and the note it stands on, the chords it goes round, a motif of a bar that is the ground's own tune, the
+// instruments that play it (their waveforms, how high they sit, how they rise and die) and the patterns they play,
+// one bar long or two. The home ground is a music box over warm pads; the north a waltz of glass over open fifths
+// and wind; the south a slow march on a stone drum, a reed sighing a half step; the west a seasick lilt on a scale
+// of whole tones, its pads swaying; the east a caravan, a reed over a drum and an oud. The deep flanks have darker
+// pieces of their own, each strain is its direction's piece with one thing changed, each pocket has a small piece,
+// and a cross plays its host's piece with the donor's own voice in it (the north gives its glass, the south its
+// drum, the west its swaying pads, the east its reed) and its structure's change.
 //
-// Three voices, thirteen nodes, made when the music starts and kept until it stops. A held voice is two triangles
-// into a gain, the second quieter and a third of a cycle a second sharp, so that the note swells and sinks slowly
-// and never stands still; the third voice is one sine. All go through one lowpass, the hush and the music's own
-// level into the master (not the echo: see `unlock`). A note is a few numbers posted on the audio clock by a timer
-// that runs once in a second and a half: no node is made for it, and nothing is done in a frame. Which note comes
-// next is drawn from the generator the sounds use, so it never comes round again.
-const MODE = [[0, 2, 4, 7, 9], [0, 2, 5, 7, 9], [0, 3, 5, 7, 10], [0, 2, 4, 7, 9], [0, 2, 4, 7, 11]];
-const EVERY = 1500, AHEAD = 2;          // the timer's period in milliseconds, and how far ahead it posts, in seconds
-const MUSIC = 0.5;                      // the music's level against the sounds'
-const degree = (base, mode, k) => base * 2 ** ((mode[((k % 5) + 5) % 5] + 12 * Math.floor(k / 5)) / 12);
+// A piece goes round its form, a phrase of four bars to a letter: an A phrase plays as written, a B phrase thinner
+// (no drum, fewer plucks, the motif a little higher, the lead more), and a rest only the pads; every phrase but a
+// rest opens with the motif. Notes come at random within the patterns, so a long stay does not come round the same
+// twice. Ground far from the core is sparser and darker, and on the core it is a little brighter.
+//
+// The band is made once, when the music starts, and kept until it stops: two pads (two oscillators into a gain
+// each), a lead, two plucks (each through a lowpass that closes as it dies), a bass, a drum (the second of noise,
+// through a bandpass) and two slow oscillators that sway the pads' pitch and the lead's (joined for good, which costs
+// a little even where a piece has no sway). Twenty-six nodes. A note is
+// a few numbers posted on the audio clock by a timer twice a second, AHEAD of time, on a grid of sixteenths: no node
+// is made for it, and nothing is done in a frame. What is posted on a voice is posted in the order of its times
+// (each voice keeps `last`, the time of the latest), so nothing posted cuts what was posted before it. A pluck,
+// the bass, the lead and the drum strike again only after a dip of a few thousandths of a second to nothing, so
+// that a note still ringing is never cut with a click; the two plucks take turns, so one rings over the next. The
+// pads take turns too: the new chord rises on the pad that is silent as the other falls. A waveform is changed only
+// on a voice that is silent (`quiet`), which is why a change of ground lets the old piece's posted notes play out,
+// lets its voices go, and holds the sounding pad until the new piece begins on the other.
+// It is soft, under the sounds, and steps back for a moment when anything that pays rings (`hush`), so that rewards,
+// which ring in the major five-note scale, do not rub against a ground in another.
+const MODES = {
+  major5: [0, 2, 4, 7, 9], open5: [0, 2, 5, 7, 9], minor5: [0, 3, 5, 7, 10], hira: [0, 2, 3, 7, 8], hexa: [0, 2, 4, 5, 7, 9], whole: [0, 2, 4, 6, 8, 10],
+  dorian: [0, 2, 3, 5, 7, 9, 10], phrygian: [0, 1, 3, 5, 7, 8, 10], lydian: [0, 2, 4, 6, 7, 9, 11], lydaug: [0, 2, 4, 6, 8, 9, 11],
+  mixo: [0, 2, 4, 5, 7, 9, 10], harmonic: [0, 2, 3, 5, 7, 8, 11], hijaz: [0, 1, 4, 5, 7, 8, 10], double: [0, 1, 4, 5, 7, 8, 11],
+};
+// The waves of the instruments, by the strength of each harmonic from the first up (made once, in `unlock`).
+// `keys`, the music box, is made there too; the browser's own four are used as they are.
+const SHAPES = {
+  glass: [1, 0.05, 0.35, 0, 0.2, 0, 0.12, 0, 0.06], reed: [1, 0.08, 0.55, 0.05, 0.3, 0.03, 0.18, 0, 0.1],
+  organ: [1, 0.7, 0.25, 0.45, 0, 0.2, 0, 0.18], hollow: [1, 0, 0, 0.45, 0, 0, 0, 0, 0.12], bass: [1, 0.6, 0.4, 0.2, 0.12, 0.06],
+  buzz: [0.5, 0.8, 0.7, 0.6, 0.5, 0.42, 0.34, 0.28, 0.22, 0.18, 0.14], brass: [1, 0.85, 0.65, 0.48, 0.34, 0.22, 0.14, 0.08],
+  choir: [1, 0.15, 0.5, 0.08, 0.3, 0.04, 0.12], anvil: [1, 0, 0.5, 0, 0, 0.45, 0, 0, 0.3, 0, 0.22],
+};
+const BUILT = ['sine', 'square', 'sawtooth', 'triangle'], waves = {};
+// The drum's hits, all soft and low, so that none is taken for the ground cracking: [band Hz, Q, peak, decay,
+// attack]. s a shaker, h a breath of wind, w a knock of wood, d a low skin drum.
+const DRUMS = { s: [5000, 1.2, 0.05, 0.03, 0.003], h: [2200, 0.6, 0.06, 0.16, 0.05], w: [560, 3, 0.2, 0.05, 0.003], d: [210, 2.2, 0.45, 0.1, 0.004] };
+// Where each voice may sound, in Hz: a phrase is lifted by octaves as a whole into its voice's room (the bass up
+// where a phone's speaker can play it).
+const ROOM = { pad: [110, 880], lead: [196, 1568], pluck: [220, 1760], bass: [90, 330] };
+// What a score is, with what each figure is when a score does not say. A step is a sixteenth.
+//   bpm, bar        beats a minute; steps to a bar (12 is three beats, 16 four, 20 five)
+//   swing, tempo    how much later the off steps fall (0 to 0.3); what the bpm is multiplied by (a strain's twist)
+//   root, mode      the note the scale stands on, in Hz, and the scale (MODES)
+//   chords          the degree each bar's chord stands on, bar by bar, round and round
+//   motif           a bar of degrees of the scale from its root (0-9, a-f; '.' is nothing): the ground's tune
+//   form, lift      the round of four-bar phrases (A, B, r), and how many degrees higher a B phrase's motif is
+//   air             the bed's [filter Hz, drone Hz]; bright, the music's lowpass in Hz; bell, the wave of its bells
+//   level           the piece's loudness against the others; sign, the voice it gives a cross it is the donor of
+//   echo            [steps, share]: a pluck or lead note comes back that many steps later, that much softer
+//   burst           [count, by]: a pluck note sets off count - 1 more on the steps after, `by` degrees apart
+//   glide           what a pluck's pitch slides up to as it dies (1, none)
+const TOP = { bpm: 66, bar: 16, swing: 0, tempo: 1, root: 220, mode: 'major5', chords: [0], motif: '', form: 'AABr', lift: 2,
+  air: [420, 55], bright: 1100, bell: 'keys', level: 1, sign: null, echo: null, burst: null, glide: 1 };
+// And each voice. Patterns are in degrees over the bar's chord; `oct` is how many octaves up its room a phrase sits;
+// `vib` is [rate Hz, cents]. A pad holds two notes of the chord (`tones`), the second `spread` Hz off, and rises
+// and falls in `rise` and `fall` (time constants, seconds). The lead wanders among the degrees of `range`, a note at
+// a time every `grid` steps with the chance `every`, each `len` seconds long. A pluck strikes its pattern with the
+// chance `chance`, its lowpass closing from lp[0] to lp[1] as it dies in `decay`. The drum's pattern is of DRUMS.
+const PART = {
+  pad: { wave: 'triangle', tones: [0, 2], spread: 0.4, gain: 0.016, rise: 1.5, fall: 0.35, oct: 0, vib: [0.1, 0] },
+  lead: { wave: 'sine', grid: 4, every: 0.25, range: [5, 10], len: 0.6, rise: 0.05, fall: 0.4, gain: 0.011, oct: 0, vib: [0.1, 0] },
+  pluck: { wave: 'keys', pattern: '0...', chance: 0.8, lp: [3000, 1500], q: 0.7, decay: 0.4, gain: 0.011, oct: 1 },
+  bass: { wave: 'bass', pattern: '0...............', decay: 0.8, gain: 0.02, oct: 0 },
+  perc: { pattern: 'w...', gain: 1 },
+};
+const VOICES = Object.keys(PART);
+// The scores made by hand, by the name of the ground. A strain is `of` its direction's score: its `twist` is the
+// change that is its own and goes into crosses of its structure, and the rest of it is changed for it alone.
+const SCORES = {
+  // The home ground: a music box over warm pads, steady and kind.
+  crust: { bpm: 66, root: 220, mode: 'major5', chords: [0, 3, 4, 3], motif: '4.3.2...0.......', bright: 1100, air: [420, 55], bell: 'keys', sign: 'pluck',
+    pad: { wave: 'triangle', tones: [0, 2], spread: 0.35, gain: 0.017, rise: 1.4, fall: 0.3, oct: 1 },
+    pluck: { wave: 'keys', pattern: '0...2...1...3...', chance: 0.85, lp: [3000, 1600], q: 0.5, decay: 0.45, gain: 0.012, oct: 1 },
+    bass: { wave: 'bass', pattern: '0.......3.......', decay: 1.2, gain: 0.018 } },
+  // The north: a crystal waltz with no third in it, glass high over open fifths, a breath of wind, no bass.
+  frost: { bpm: 52, bar: 12, root: 330, mode: 'open5', chords: [0, 0, 3, 1], motif: '9.7.4.......', bright: 2400, air: [1500, 82], bell: 'glass', sign: 'pluck', form: 'AABAr',
+    pad: { wave: 'sine', tones: [0, 3], spread: 0.9, gain: 0.018, rise: 2.2, fall: 0.4, oct: 1 },
+    pluck: { wave: 'glass', pattern: '7.....9.....', chance: 0.6, lp: [6000, 3000], q: 0.3, decay: 0.9, gain: 0.012, oct: 2 },
+    perc: { pattern: 'h...........', gain: 1 } },
+  // The south: a slow march in the dark. Phrygian, a stone drum, a reed that sighs down a half step.
+  ember: { bpm: 60, root: 147, mode: 'phrygian', chords: [0, 1, 0, 6], motif: '8.7.............', bright: 800, air: [240, 41], bell: 'sine', sign: 'perc', level: 1.1,
+    pad: { wave: 'sawtooth', tones: [0, 4], spread: 0.25, gain: 0.012, rise: 0.9, fall: 0.3, oct: 1 },
+    lead: { wave: 'reed', grid: 8, every: 0.4, range: [7, 12], len: 1.2, rise: 0.15, fall: 0.6, gain: 0.014, vib: [4.5, 12] },
+    bass: { wave: 'bass', pattern: '0.......0.0.....', decay: 0.35, gain: 0.024 },
+    perc: { pattern: 'd.......d.w.....', gain: 1 } },
+  // The west: a seasick lilt. Whole tones, swung, pads that sway out of tune and back, hollow drips.
+  mire: { bpm: 76, swing: 0.22, root: 196, mode: 'whole', chords: [0, 1, 0, 5], motif: '5.4.3...0.......', bright: 1200, air: [700, 62], bell: 'hollow', sign: 'pad',
+    pad: { wave: 'triangle', tones: [0, 2], spread: 0.5, gain: 0.017, rise: 1.8, fall: 0.35, oct: 1, vib: [0.35, 22] },
+    pluck: { wave: 'hollow', pattern: '0..3.....5..2...', chance: 0.7, lp: [2600, 900], q: 1, decay: 0.3, gain: 0.015, oct: 1 },
+    bass: { wave: 'bass', pattern: '0...........4...', decay: 0.8, gain: 0.02 },
+    perc: { pattern: '......w.......w.', gain: 0.6 } },
+  // The east: a caravan. Double harmonic, a reed with vibrato over a drum and an oud, a fifth held under.
+  lode: { bpm: 92, root: 220, mode: 'double', chords: [0, 0, 1, 0], motif: '4.5.4.2.1...0...', bright: 1500, air: [520, 73], bell: 'keys', sign: 'lead', level: 1.1,
+    pad: { wave: 'triangle', tones: [0, 4], spread: 0.2, gain: 0.011, rise: 2.5, fall: 0.35, oct: 0 },
+    lead: { wave: 'reed', grid: 2, every: 0.35, range: [4, 11], len: 0.35, rise: 0.02, fall: 0.25, gain: 0.013, oct: 1, vib: [5.5, 18] },
+    pluck: { wave: 'sawtooth', pattern: '0.0.4...0.1.0...', chance: 0.9, lp: [2200, 400], q: 2, decay: 0.12, gain: 0.012, oct: 0 },
+    perc: { pattern: 'd..w..w.d.w.w...', gain: 1 } },
+  // Deep north: frozen stillness in five. Lydian glass pads, a low pure drone, a rare high bell.
+  rime: { bpm: 44, bar: 20, root: 262, mode: 'lydian', chords: [0, 1], motif: '3...4...6...........', bright: 1900, air: [1100, 65], bell: 'glass', sign: 'pluck', form: 'AB',
+    pad: { wave: 'glass', tones: [0, 4], spread: 0.6, gain: 0.016, rise: 3, fall: 0.4, oct: 1 },
+    pluck: { wave: 'keys', pattern: '....b...............', chance: 0.5, lp: [5000, 2500], q: 0.3, decay: 1.4, gain: 0.011, oct: 2 },
+    bass: { wave: 'organ', pattern: '0...................', decay: 3, gain: 0.018 } },
+  // Deep south: a forge's heartbeat. Eighths in the bass, a drum on every beat, dark square pads.
+  magma: { bpm: 80, root: 139, mode: 'hijaz', chords: [0, 0, 1, 6], motif: '7.8.9.8.7.......', bright: 700, air: [180, 36], bell: 'sine', sign: 'perc',
+    pad: { wave: 'square', tones: [0, 4], spread: 0.3, gain: 0.01, rise: 1.2, fall: 0.3, oct: 1 },
+    lead: { wave: 'sawtooth', grid: 8, every: 0.15, range: [7, 11], len: 1.5, rise: 0.3, fall: 0.8, gain: 0.01, oct: 1, vib: [3, 10] },
+    bass: { wave: 'bass', pattern: '0.0.0.0.1.0.0.0.', decay: 0.15, gain: 0.024 },
+    perc: { pattern: 'd...d...d...d.d.', gain: 1 } },
+  // Deep west: a strange garden waltz. Choir pads swaying, a hollow arpeggio climbing, a soft shaker.
+  bloom: { bpm: 84, bar: 12, swing: 0.15, root: 233, mode: 'lydaug', chords: [0, 1, 4, 1], motif: '7.9.b.9.7...', bright: 1400, air: [600, 58], bell: 'hollow', sign: 'pad',
+    pad: { wave: 'choir', tones: [0, 2], spread: 0.7, gain: 0.016, rise: 1, fall: 0.3, oct: 1, vib: [0.5, 18] },
+    lead: { wave: 'sine', grid: 4, every: 0.3, range: [7, 13], len: 0.6, rise: 0.05, fall: 0.5, gain: 0.011, oct: 1, vib: [0.5, 15] },
+    pluck: { wave: 'hollow', pattern: '0.2.4.6.4.2.', chance: 0.9, lp: [3000, 1200], q: 0.8, decay: 0.25, gain: 0.012, oct: 1 },
+    bass: { wave: 'bass', pattern: '0...........', decay: 1.2, gain: 0.016 },
+    perc: { pattern: 's...s...s...', gain: 0.7 } },
+  // Deep east: a gilded tomb's procession. Harmonic minor, organ pads, a slow brass fanfare over a pedal.
+  gilt: { bpm: 58, root: 175, mode: 'harmonic', chords: [0, 3, 4, 0], motif: '4...6...7.....6.', bright: 1300, air: [480, 44], bell: 'keys', sign: 'lead',
+    pad: { wave: 'organ', tones: [0, 2], spread: 0.15, gain: 0.013, rise: 0.6, fall: 0.25, oct: 1 },
+    lead: { wave: 'brass', grid: 4, every: 0.2, range: [4, 11], len: 0.9, rise: 0.06, fall: 0.4, gain: 0.011, oct: 1, vib: [5, 8] },
+    bass: { wave: 'organ', pattern: '0.......0.......', decay: 1.5, gain: 0.02 },
+    perc: { pattern: 'd.......w.......', gain: 0.8 } },
+
+  // The strains. Firn: a frozen river, a run of glass up the scale every bar, slower, no wind. Serac: shattered,
+  // every twinkle falls in shards down the scale. Scoria: bubbles, rising pops of a pure note. Forge: an anvil rings
+  // on the second and fourth beats. Tangle: great caves, slower, and every note comes back off the walls.
+  // Sporefall: one drip sets off two more. Redrock: level beds, even eighths in the bass. Loess: the quick road,
+  // faster, a light shaker, the oud quiet.
+  firn: { of: 'frost', twist: { pluck: { pattern: '0.1.2.3.4...' } }, bpm: 46, perc: null, chords: [0, 3] },
+  serac: { of: 'frost', twist: { burst: [3, -1] }, bpm: 58, pluck: { decay: 0.35, chance: 0.8 } },
+  scoria: { of: 'ember', twist: { glide: 1.5, pluck: { wave: 'sine', pattern: '..5...7....4..9.', chance: 0.6, lp: [2000, 1500], q: 0.5, decay: 0.2, gain: 0.012, oct: 1 } },
+    perc: { pattern: 'd...............' } },
+  forge: { of: 'ember', twist: { pluck: { wave: 'anvil', pattern: '....7.......7...', chance: 1, lp: [5000, 2500], q: 0.5, decay: 0.5, gain: 0.009, oct: 2 } },
+    bpm: 70, bass: { pattern: '0...0...0.0.0...' } },
+  tangle: { of: 'mire', twist: { tempo: 0.85, echo: [3, 0.45] }, bright: 1500, pad: { rise: 2.6 } },
+  sporefall: { of: 'mire', twist: { burst: [3, 1] }, perc: { pattern: '....s.......s...' }, pluck: { chance: 0.5 } },
+  redrock: { of: 'lode', twist: { bass: { wave: 'bass', pattern: '0.0.0.0.0.0.0.0.', decay: 0.12, gain: 0.02, oct: 0 } }, perc: { pattern: 'd...w...d...w...' } },
+  loess: { of: 'lode', twist: { tempo: 1.2, perc: { pattern: 's.s.s.s.s.s.s.s.', gain: 0.6 } }, pluck: null, lead: { every: 0.2 }, bright: 1900 },
+
+  // The pockets. Where a pocket's own rule rings rewards (the drift's chain, the grotto's caps), its key holds
+  // the major five-note scale on A that they ring in.
+  // The amber hive: the comb, six to a bar like its cells, warm wax organ, a buzz flitting on the sixteenths.
+  hive: { bpm: 104, bar: 12, root: 262, mode: 'hexa', chords: [0, 3, 4, 0], motif: '4.5.4.5.4...', bright: 1600, air: [900, 87], bell: 'keys', level: 1.15,
+    pad: { wave: 'organ', tones: [0, 4], spread: 0.2, gain: 0.012, rise: 0.8, fall: 0.25, oct: 1 },
+    lead: { wave: 'buzz', grid: 1, every: 0.55, range: [5, 9], len: 0.1, rise: 0.01, fall: 0.06, gain: 0.008, oct: 1, vib: [26, 30] },
+    pluck: { wave: 'hollow', pattern: '0.2.4.0.2.4.', chance: 0.9, lp: [2800, 1000], q: 0.7, decay: 0.15, gain: 0.011, oct: 1 } },
+  // The pumice drift: a night sky. Almost nothing: high stars come and go, and leave room for the chain's notes.
+  drift: { bpm: 40, root: 440, mode: 'major5', chords: [0, 3], motif: '7.......9.......', bright: 2600, air: [1800, 110], bell: 'keys', form: 'AB',
+    pad: { wave: 'sine', tones: [0, 5], spread: 1.2, gain: 0.012, rise: 3, fall: 0.6, oct: 1 },
+    pluck: { wave: 'keys', pattern: '0.2.4.7.9.4.2.7.', chance: 0.22, lp: [6000, 4000], q: 0.3, decay: 1.2, gain: 0.01, oct: 2 } },
+  // The ash flats: muffled and grey, a soft breath on every beat as the drill ploughs, nothing bright; its motif
+  // is the bass's.
+  ash: { bpm: 66, root: 165, mode: 'minor5', chords: [0, 0, 3, 2], motif: '2...0...........', bright: 600, air: [300, 41], bell: 'sine', level: 0.85,
+    pad: { wave: 'sine', tones: [0, 2], spread: 0.15, gain: 0.018, rise: 2, fall: 0.4, oct: 1 },
+    bass: { wave: 'bass', pattern: '0.......3.......', decay: 0.9, gain: 0.02, oct: 1 },
+    perc: { pattern: 'h...h...h...h...', gain: 0.9 } },
+  // The lantern grotto: a lullaby in three on a music box, a slow sway, a drip.
+  grotto: { bpm: 56, bar: 12, root: 220, mode: 'mixo', chords: [0, 6, 3, 0], motif: '9.8.7...4...', bright: 1400, air: [650, 49], bell: 'keys',
+    pad: { wave: 'triangle', tones: [0, 2], spread: 0.4, gain: 0.015, rise: 2, fall: 0.4, oct: 1, vib: [0.25, 14] },
+    lead: { wave: 'keys', grid: 4, every: 0.3, range: [7, 12], len: 0.5, rise: 0.01, fall: 0.9, gain: 0.012, oct: 1 },
+    bass: { wave: 'bass', pattern: '0...........', decay: 2, gain: 0.016 },
+    perc: { pattern: '.......w....', gain: 0.5 } },
+  // The tinderwork: a fuse burning. A clock's knock counting under a smouldering ostinato in threes against four.
+  tinder: { bpm: 96, root: 147, mode: 'phrygian', chords: [0, 1], motif: '7.8.7.......', bright: 900, air: [350, 49], bell: 'sine', level: 1.15,
+    pad: { wave: 'sawtooth', tones: [0, 4], spread: 0.3, gain: 0.01, rise: 0.8, fall: 0.25, oct: 1 },
+    pluck: { wave: 'square', pattern: '0..0..0.0..0..1.', chance: 0.9, lp: [1600, 300], q: 3, decay: 0.08, gain: 0.011, oct: 1 },
+    bass: { wave: 'bass', pattern: '0...............', decay: 0.4, gain: 0.022 },
+    perc: { pattern: 'w...w...w...w...', gain: 0.7 } },
+  // Glaze: panes. Every other bar a pane shatters, a cascade of glass down the scale, then stillness.
+  glaze: { bpm: 66, root: 392, mode: 'hira', chords: [0, 3], motif: '7.4.2.0.........', bright: 2600, air: [1700, 98], bell: 'glass', level: 1.1,
+    pad: { wave: 'sine', tones: [0, 3], spread: 0.8, gain: 0.013, rise: 2.5, fall: 0.4, oct: 1 },
+    pluck: { wave: 'glass', pattern: 'a987654.........'.padEnd(32, '.'), chance: 0.9, lp: [7000, 4000], q: 0.3, decay: 0.5, gain: 0.01, oct: 1 } },
+  // The shale stack: beds of shale, notes in level planks of four, step by step.
+  shale: { bpm: 84, root: 185, mode: 'dorian', chords: [0, 3, 0, 4], motif: '0.2.4.7.........', bright: 1200, air: [500, 46], bell: 'hollow', level: 1.15,
+    pad: { wave: 'triangle', tones: [0, 4], spread: 0.2, gain: 0.011, rise: 2, fall: 0.4, oct: 1 },
+    pluck: { wave: 'hollow', pattern: '0.0.0.0.2.2.2.2.', chance: 1, lp: [2400, 900], q: 0.8, decay: 0.12, gain: 0.011, oct: 1 },
+    bass: { wave: 'bass', pattern: '0.......0.......', decay: 0.5, gain: 0.02 },
+    perc: { pattern: 'w...............', gain: 0.7 } },
+};
+// A direction's score by its number, and its deep flank's; and the strain whose twist each structure of a cross
+// takes (HOLLOW, CRAZED, FROTHY, BANDED). The numbers are the world's, which never move.
+const KIN = ['crust', 'frost', 'ember', 'mire', 'lode'], DEEP = ['crust', 'rime', 'magma', 'bloom', 'gilt'];
+const STRAIN_TWIST = [null, 'tangle', 'serac', 'scoria', 'redrock'];
+export const scoreNames = () => Object.keys(SCORES);
+
+// A score made whole: every figure there, every voice it has filled out, and what is worked out once beforehand
+// (`fit`: how far each phrase is lifted, the motif's notes). Frozen, so nothing that plays it can change it.
+const merge = (base, over) => {
+  const s = { ...base };
+  for (const [key, value] of Object.entries(over)) s[key] = VOICES.includes(key) && value && base[key] ? { ...base[key], ...value } : value;
+  return s;
+};
+const freeze = o => { if (o && typeof o === 'object' && !Object.isFrozen(o)) { Object.freeze(o); for (const v of Object.values(o)) freeze(v); } return o; };
+function finish(s, name, from) {
+  const o = { name, from };
+  for (const key of Object.keys(TOP)) o[key] = s[key] === undefined ? TOP[key] : s[key];
+  for (const key of VOICES) o[key] = s[key] ? { ...PART[key], ...s[key] } : null;
+  if (!MODES[o.mode]) o.mode = 'major5';
+  if (!o.chords?.length) o.chords = [0];
+  if (!/^A[ABr]*$/.test(o.form)) o.form = 'A';
+  o.fit = fits(o);
+  return freeze(o);
+}
+const named = new Map(), rows = new WeakMap(), crosses = new Map();
+function resolve(name) {
+  if (named.has(name)) return named.get(name);
+  const raw = SCORES[name];
+  let s = null;
+  if (raw?.of && SCORES[raw.of]) {
+    const { of, twist, ...own } = raw;
+    s = finish(merge(merge(resolve(of), twist ?? {}), own), name, [of]);
+  } else if (raw) s = finish(raw, name, null);
+  named.set(name, s);
+  return s;
+}
+// A cross: the host's piece, its structure's twist, and the donor's own voice last, so that it is always there.
+// The donor's voice is written in degrees, so it plays in the host's key and scale.
+function crossScore(row) {
+  const { host, donor, structure } = row.cross, a = resolve(KIN[host]), b = resolve(KIN[donor]), twist = STRAIN_TWIST[structure] ?? null;
+  if (!a || !b) return null;
+  const key = `${host} ${donor} ${structure} ${row.name}`;
+  if (!crosses.has(key)) {
+    const sign = b.sign;
+    crosses.set(key, finish(merge(merge(a, twist ? SCORES[twist].twist : {}), sign ? { [sign]: b[sign] } : {}), row.name, [a.name, b.name, twist]));
+  }
+  return crosses.get(key);
+}
+// The score of a ground: its row (by its name, then as a cross, then its direction's), a score's name, or a number
+// (a direction; with `deep`, its deep flank). Whatever it is given it answers with a score, the home ground's if
+// nothing else.
+export function scoreOf(ground, deep = false) {
+  let s = null;
+  if (ground && typeof ground === 'object') {
+    s = rows.get(ground);
+    if (!s) {
+      s = resolve(ground.name) ?? (ground.cross ? crossScore(ground) : null) ?? resolve(KIN[ground.kin] ?? 'crust') ?? resolve('crust');
+      rows.set(ground, s);
+    }
+    return s;
+  }
+  if (typeof ground === 'number') return resolve((deep ? DEEP : KIN)[ground] ?? 'crust') ?? resolve('crust');
+  return resolve(String(ground)) ?? resolve('crust');
+}
+
+// ---- pitches
+// The k-th degree of a score's scale from its root (k may run past an octave, or below).
+const hz = (s, k) => { const m = MODES[s.mode], n = m.length; return s.root * 2 ** ((m[((k % n) + n) % n] + 12 * Math.floor(k / n)) / 12); };
+const hex = c => { const d = c === undefined ? NaN : parseInt(c, 16); return d >= 0 ? d : -1; };
+// A note moved by octaves into [lo, hi] (a last resort: phrases are lifted whole, below).
+const keep = (f, lo, hi) => { if (!(f > 0 && Number.isFinite(f))) return lo; while (f > hi) f /= 2; while (f < lo) f *= 2; return f; };
+// What a phrase is multiplied by to lie in [lo, hi], `oct` octaves up from the bottom of it where there is room: a
+// power of two, so the phrase keeps its shape.
+function lift(fs, lo, hi, oct) {
+  if (!fs.length) return 1;
+  const low = Math.min(...fs), high = Math.max(...fs), floor = Math.ceil(Math.log2(lo / low) - 1e-9);
+  return 2 ** Math.max(floor, Math.min(floor + (oct | 0), Math.floor(Math.log2(hi / high) + 1e-9)));
+}
+const digits = p => [...p].map(hex).filter(d => d >= 0);
+// The room a voice of a score sounds in (a pluck that glides keeps room to glide up into), and what degree `k`
+// sounds at on it, its phrase lifted by `up`.
+const roomOf = (s, voice) => voice === 'pluck' ? [ROOM.pluck[0], ROOM.pluck[1] / Math.max(1, s.glide)] : ROOM[voice];
+const pitch = (s, voice, k, up) => keep(up * hz(s, k), ...roomOf(s, voice));
+function fits(s) {
+  const fit = { pad: {}, pluck: {}, bass: {}, lead: 1, motif: 1, carrier: s.lead ? 'lead' : s.pluck ? 'pluck' : s.bass ? 'bass' : null, tune: digits(s.motif), gaps: [] };
+  for (const c of new Set(s.chords)) {
+    if (s.pad) fit.pad[c] = lift(s.pad.tones.map(t => hz(s, c + t)), ...roomOf(s, 'pad'), s.pad.oct);
+    for (const voice of ['pluck', 'bass']) if (s[voice]) fit[voice][c] = lift(digits(s[voice].pattern).map(d => hz(s, c + d)), ...roomOf(s, voice), s[voice].oct);
+  }
+  if (s.lead) fit.lead = lift([hz(s, s.lead.range[0]), hz(s, s.lead.range[1])], ...roomOf(s, 'lead'), s.lead.oct);
+  if (fit.carrier && fit.tune.length) fit.motif = lift([...fit.tune, ...fit.tune.map(k => k + s.lift)].map(k => hz(s, k)), ...roomOf(s, fit.carrier), s[fit.carrier].oct);
+  // How many steps from each note of the motif to its next (a motif's notes run into each other, never over).
+  for (let i = 0, last = -1; i <= s.bar; i++) if (i === s.bar || hex(s.motif[i]) >= 0) { if (last >= 0) fit.gaps[last] = i < s.bar ? i - last : 0; last = i; }
+  return fit;
+}
+
+// ---- the band
+const EVERY = 500, AHEAD = 1.2;         // the timer's period in milliseconds, and how far ahead it posts, in seconds
+const LET_GO = 0.2, DIP = 0.006;        // how quickly a voice is let go at a change of ground; the dip before a strike
+const MUSIC = 0.8;                      // the music's level against the sounds'
+const LULL = 0.55;                      // what the music steps back to while anything that pays rings
+const STEPS = [-2, -1, -1, 1, 1, 2], NO_VIB = [0.1, 0];
+let spoke = false;
+const stepLen = (s, n) => 15 / (s.bpm * s.tempo) * (n % 2 ? 1 - s.swing : 1 + s.swing);
+const pat = (p, n, i, bar) => p[p.length % bar ? i % p.length : n % p.length];
+// The music steps back to `to` for `hold` seconds (the deepest of any asked for meanwhile), and comes back when the
+// conductor next looks.
 function hush(to, hold) {
   if (!band) return;
   const t = ctx.currentTime;
-  band.duck.gain.setTargetAtTime(to, t, 0.05); band.duck.gain.setTargetAtTime(1, t + hold, 0.5);
+  if (t >= band.downUntil) band.down = 1;
+  if (to < band.down) { band.duck.gain.setTargetAtTime(to, t, 0.05); band.down = to; }
+  band.downUntil = Math.max(band.downUntil, t + hold);
 }
-// The music is playing exactly when there is a context, its switch is on and the game is not muted.
+// Whatever pays rings over the music stepped back a little.
+for (const name of ['tick', 'gem', 'crack', 'banked', 'spot', 'mend', 'freeze']) {
+  const play = sfx[name];
+  sfx[name] = (...args) => { if (ctx && !muted && !aside) hush(LULL, 0.6); play(...args); };
+}
+// The music is playing exactly when there is a context, its switch is on and the game is not muted. A band made
+// anew (the switch, the mute) takes up the score being played, the home ground's if there is none yet.
 function tune() {
   const want = !!ctx && music && !muted;
   if (want && !band) {
-    const t = ctx.currentTime, soft = ctx.createBiquadFilter(), duck = ctx.createGain(), out = ctx.createGain();
+    const t = ctx.currentTime, soft = ctx.createBiquadFilter(), duck = ctx.createGain(), out = ctx.createGain(), sources = [];
     soft.type = 'lowpass'; soft.Q.value = 0.5; soft.frequency.value = 1000;
     out.gain.value = 0; out.gain.setTargetAtTime(MUSIC, t, 1.2);
     soft.connect(duck); duck.connect(out); out.connect(master);
-    const voices = [0, 1, 2].map(n => {
-      const gain = ctx.createGain(), oscs = [ctx.createOscillator()];
-      gain.gain.value = 0; gain.connect(soft);
-      oscs[0].type = n < 2 ? 'triangle' : 'sine'; oscs[0].connect(gain);
-      if (n < 2) {
-        const beside = ctx.createOscillator(), less = ctx.createGain();
-        beside.type = 'triangle'; less.gain.value = 0.45;
-        beside.connect(less); less.connect(gain); oscs.push(beside);
-      }
-      for (const o of oscs) o.start(t);
-      return { gain, oscs, held: false, at: t + [0.4, 4, 9][n], k: [0, 5, 10][n] };
+    const osc = () => { const o = ctx.createOscillator(); o.type = 'triangle'; sources.push(o); return o; };
+    const gain = to => { const g = ctx.createGain(); g.gain.value = 0; g.connect(to); return g; };
+    const pads = [0, 1].map(() => { const g = gain(soft), o = [osc(), osc()]; o[0].connect(g); o[1].connect(g); return { osc: o, gain: g, wave: 'triangle', last: 0, quiet: 0 }; });
+    const mono = () => { const g = gain(soft), o = osc(); o.connect(g); return { osc: o, gain: g, wave: 'triangle', last: 0, flast: 0, quiet: 0 }; };
+    const lead = mono();
+    const plucks = [0, 1].map(() => {
+      const o = osc(), lp = ctx.createBiquadFilter(), g = gain(soft);
+      lp.type = 'lowpass'; lp.frequency.value = 2000; o.connect(lp); lp.connect(g);
+      return { osc: o, lp, gain: g, wave: 'triangle', last: 0, flast: 0, quiet: 0 };
     });
-    band = { soft, duck, out, voices, bright: 0 };
+    const bass = mono();
+    const noise = ctx.createBufferSource(), bp = ctx.createBiquadFilter(), hits = gain(duck);
+    noise.buffer = noiseBuffer; noise.loop = true; bp.type = 'bandpass'; bp.frequency.value = 600; noise.connect(bp); bp.connect(hits); sources.push(noise);
+    const perc = { gain: hits, bp, drum: '', last: 0, quiet: 0 };
+    // (An old browser whose oscillators have no detune does without the sway.)
+    const sway = to => {
+      const o = ctx.createOscillator(), depth = ctx.createGain();
+      o.type = 'sine'; o.frequency.value = 0.1; depth.gain.value = 0; o.connect(depth); sources.push(o);
+      for (const one of to) try { depth.connect(one.detune); } catch { /* no sway */ }
+      return { osc: o, depth };
+    };
+    const swayPads = sway(pads.flatMap(p => p.osc)), swayLead = sway([lead.osc]);
+    for (const o of sources) o.start(t);
+    band = { soft, duck, out, sources, pads, lead, plucks, bass, perc, swayPads, swayLead, voices: [lead, ...plucks, bass, perc],
+      score: null, turns: 0, next: t + 0.05, n: 0, begin: 0, dressed: false, on: -1, chord: null, pk: 0, leadK: 0, bright: 0, thin: 0, mix: 1, down: 1, downUntil: 0,
+      queue: Array.from({ length: 16 }, () => ({ n: -1, f: 0, vel: 0, lead: false })) };
     conductor = setInterval(conduct, EVERY);
     conductor.unref?.();                // (in Node, where the tests run, a timer would keep a finished test from ending)
+    turn(playing ?? (playing = wanted ?? scoreOf(0)));
     conduct();
   } else if (!want && band) {
     clearInterval(conductor);
     const old = band;
     band = null;
     if (!ctx) return;
-    const t = ctx.currentTime, oscs = old.voices.flatMap(v => v.oscs);
+    const t = ctx.currentTime;
     old.out.gain.setTargetAtTime(0, t, 0.25);
-    for (const o of oscs) o.stop(t + 2);
-    oscs[0].onended = () => old.out.disconnect();
+    for (const o of old.sources) o.stop(t + 2);
+    old.sources[0].onended = () => old.out.disconnect();
   }
 }
-// What the timer does: each voice whose next change falls within AHEAD seconds has it posted. A voice at rest
-// takes a note and rises to it; a voice holding one lets it go, and rests until it has died away and a while more.
-// (A voice whose time is nothing was told to let go by a change of ground: `setAmbience`.)
+// The music turns to another score. What is posted plays out, which is the end of its phrase; then every voice but
+// the sounding pad is let go, and the new piece begins once they are silent and can be dressed in its waves.
+function turn(s) {
+  const t = ctx.currentTime, at = Math.max(band.next, t + 0.05);
+  if (band.dressed) {
+    let begin = t;
+    for (const v of band.voices) {
+      const go = Math.max(at, v.last);
+      v.gain.gain.setTargetAtTime(0, go, LET_GO);
+      v.last = go; v.quiet = Math.min(v.quiet, go + 5 * LET_GO);
+      begin = Math.max(begin, v.quiet);
+    }
+    for (const p of band.pads) if (p !== band.pads[band.on]) begin = Math.max(begin, p.quiet);
+    band.begin = begin;
+  }
+  band.score = s; band.n = 0; band.next = at; band.dressed = false; band.chord = null; band.turns++;
+  for (const q of band.queue) q.n = -1;
+}
+// A voice is dressed in a wave only while it is silent.
+const wear = (v, wave) => { if (v.wave !== wave) { for (const o of Array.isArray(v.osc) ? v.osc : [v.osc]) voice(o, wave); v.wave = wave; } };
+function dress(s, t) {
+  if (s.lead) wear(band.lead, s.lead.wave);
+  if (s.pluck) for (const p of band.plucks) { wear(p, s.pluck.wave); p.lp.Q.setValueAtTime(s.pluck.q, t); }
+  if (s.bass) wear(band.bass, s.bass.wave);
+  band.perc.drum = '';
+  if (!s.pad && band.on >= 0) {
+    const p = band.pads[band.on], go = Math.max(t + 0.05, p.last);
+    p.gain.gain.setTargetAtTime(0, go, 0.6); p.last = go; p.quiet = go + 3; band.on = -1;
+  }
+  const pv = s.pad?.vib ?? NO_VIB, lv = s.lead?.vib ?? NO_VIB;
+  for (const [sway, [rate, cents]] of [[band.swayPads, pv], [band.swayLead, lv]]) {
+    sway.osc.frequency.setTargetAtTime(Math.max(0.05, rate), t + 0.05, 0.3);
+    sway.depth.gain.setTargetAtTime(Math.max(0, cents), t + 0.05, 0.4);
+  }
+  if (s.lead) band.leadK = Math.round((s.lead.range[0] + s.lead.range[1]) / 2);
+  band.bright = 0; band.dressed = true; band.next = Math.max(band.next, t + 0.05);
+}
+// (The pad that sounded through a turn is dressed when it has fallen silent.)
+const redress = (s, t) => { if (s.pad) for (const p of band.pads) if (t >= p.quiet) wear(p, s.pad.wave); };
+// What the timer does: the next steps that fall within AHEAD seconds are posted. A conductor that goes wrong says
+// so once and is let be: the timer goes on.
 function conduct() {
   if (!band) return;
-  const t = ctx.currentTime, mode = MODE[ground] ?? MODE[0], home = ground === 0, hidden = typeof document !== 'undefined' && !!document.hidden;
-  const thin = Math.min(1, Math.max(0, (away - 130) / 1200) + (depth ? 0.35 : 0));
-  let base = (AIR[ground] ?? AIR[0])[1] * 4;
-  if (base < 190) base *= 2;
-  const bright = Math.round((away < 3 ? 1500 : 1050) * (1 - 0.4 * thin));
-  if (bright !== band.bright) { band.bright = bright; band.soft.frequency.setTargetAtTime(bright, t, 2.5); }
-  band.voices.forEach((v, n) => {
-    if (hidden ? !v.held : v.at > t + AHEAD) return;
-    const at = hidden ? t + 0.05 : Math.max(v.at, t + 0.05), long = n < 2;
-    if (v.held) {
-      const fall = long ? 1.8 : 1.1, told = v.at === 0;
-      v.gain.gain.setTargetAtTime(0, at, fall);
-      v.held = false;
-      v.at = at + fall * 3 + (told ? n * 2.5 : long ? rnd() * 3 * (1 + thin) : (5 + rnd() * 11) * (1 + 2 * thin) * (home ? 1.5 : 1));
-      return;
-    }
-    // The low voice keeps to the notes the scale stands on (its first, its fifth, its third); the others wander by
-    // a step or two, each within its own octave or so.
-    if (n === 0) { const was = v.k; do v.k = [0, 0, 3, 2][(rnd() * 4) | 0]; while (v.k === was && rnd() < 0.8); }
-    else {
-      const low = n === 1 ? 3 : 8, high = n === 1 ? 8 : 12;
-      v.k = Math.max(low, Math.min(high, v.k + [-2, -1, -1, 1, 1, 2][(rnd() * 6) | 0]));
-      if (v.k === band.voices[0].k + 5) v.k += v.k < high ? 1 : -1;            // never the low voice's own note
-    }
-    let f = degree(base, mode, v.k);
-    while (f > 1500) f /= 2;
-    v.oscs[0].frequency.setValueAtTime(f, at);
-    if (long) v.oscs[1].frequency.setValueAtTime(f + 0.3 + 0.1 * n, at);
-    v.gain.gain.setTargetAtTime([0.02, 0.016, 0.013][n] * (n ? 1 - 0.4 * thin : 1), at, long ? 1.6 : 0.4);
-    v.held = true;
-    v.at = at + (long ? (7 + rnd() * 7) * (home ? 1.3 : 1) : 1.4 + rnd() * 1.2);
-  });
+  try { follow(); } catch (error) { if (!spoke) { spoke = true; console.warn('music:', error); } }
 }
+function follow() {
+  const t = ctx.currentTime, hidden = typeof document !== 'undefined' && !!document.hidden;
+  settle();
+  if (band.down < 1 && t >= band.downUntil) { band.duck.gain.setTargetAtTime(1, t, 0.5); band.down = 1; }
+  if (!band.score) turn(playing ?? (playing = wanted ?? scoreOf(0)));
+  if (hidden) { band.next = Math.max(band.next, t + 0.05); return; }
+  const s = band.score;
+  if (!band.dressed) { if (t < band.begin) return; dress(s, t); }
+  redress(s, t);
+  // Ground far from the core is sparser and darker; on the core it is a little brighter.
+  const thin = Math.min(1, Math.max(0, (away - 130) / 1200)), bright = Math.round(s.bright * (away < 3 ? 1.4 : 1) * (1 - 0.4 * thin));
+  band.thin = thin; band.mix = s.level * (1 - 0.4 * thin);
+  if (bright !== band.bright) { band.bright = bright; band.soft.frequency.setTargetAtTime(bright, t, 2.5); }
+  if (band.next < t + 0.05) band.next = t + 0.05;       // (after a stall, what was missed is let go)
+  while (band.next < t + AHEAD) { post(band.next, band.n); band.next += stepLen(s, band.n); band.n++; }
+}
+// A strike on a voice: a dip to nothing, the pitch, the rise, and after `hold` the fall. Never before what is
+// already posted on it.
+function strike(v, at, f, peak, attack, hold, fall) {
+  const from = Math.max(at, v.last), on = from + DIP, g = v.gain.gain;
+  g.setTargetAtTime(0, from, 0.0015);
+  v.osc.frequency.setValueAtTime(f, on);
+  g.setTargetAtTime(peak, on, attack);
+  g.setTargetAtTime(0, on + hold, fall);
+  v.last = on + hold; v.flast = Math.max(v.flast, on); v.quiet = on + hold + 5 * fall;
+  return on;
+}
+// One step of the score at `at`: the pads on a change of chord, then the motif or the patterns.
+function post(at, n) {
+  const s = band.score, bar = s.bar, i = n % bar, b = Math.floor(n / bar), part = s.form[Math.floor(b / 4) % s.form.length], chord = s.chords[b % s.chords.length];
+  const vel = (i === 0 ? 1 : i % 4 === 0 ? 0.85 : i % 2 === 0 ? 0.72 : 0.6) * (0.9 + 0.2 * rnd()), fit = s.fit;
+  if (i === 0 && s.pad && (chord !== band.chord || band.on < 0)) chordOn(at, s, chord);
+  if (part === 'r') return;
+  const motif = b % 4 === 0 ? hex(s.motif[i]) : -1, carrier = b % 4 === 0 ? fit.carrier : null, lift = part === 'B' ? s.lift : 0, B = part === 'B';
+  let plucked = false;
+  if (s.lead && s.lead.wave === band.lead.wave) {
+    if (carrier === 'lead') { if (motif >= 0) leadNote(at, n, pitch(s, 'lead', motif + lift, fit.motif), 1, fit.gaps[i] ? Math.min(s.lead.len, 0.9 * fit.gaps[i] * stepLen(s, 1)) : s.lead.len); }
+    else if (i % s.lead.grid === 0 && at >= band.lead.last && rnd() < s.lead.every * (B ? 1.4 : 1) * (1 - 0.6 * band.thin)) {
+      band.leadK = Math.max(s.lead.range[0], Math.min(s.lead.range[1], band.leadK + STEPS[(rnd() * 6) | 0]));
+      leadNote(at, n, pitch(s, 'lead', band.leadK, fit.lead), vel, s.lead.len);
+    }
+  }
+  if (s.pluck && s.pluck.wave === band.plucks[0].wave) {
+    if (carrier === 'pluck') { if (motif >= 0) plucked = pluck(at, n, motif + lift, fit.motif, 1); }
+    else {
+      const d = hex(pat(s.pluck.pattern, n, i, bar));
+      if (d >= 0 && rnd() < s.pluck.chance * (B ? 0.6 : 1) * (1 - 0.5 * band.thin)) plucked = pluck(at, n, chord + d, fit.pluck[chord], vel);
+    }
+  }
+  // What was queued for this step (an echo, the rest of a burst), where nothing else is playing (and never on the
+  // lead in a bar whose motif it plays).
+  for (const q of band.queue) {
+    if (q.n < 0 || q.n > n) continue;
+    if (q.n === n) { if (q.lead) { if (s.lead && carrier !== 'lead') leadNote(at, n, q.f, q.vel, s.lead.len, false); } else if (!plucked) plucked = strikePluck(at, q.f, q.vel); }
+    q.n = -1;
+  }
+  if (s.bass && s.bass.wave === band.bass.wave) {
+    const d = carrier === 'bass' ? motif : hex(pat(s.bass.pattern, n, i, bar));
+    if (d >= 0 && at >= band.bass.last) {
+      const f = carrier === 'bass' ? pitch(s, 'bass', motif + lift, fit.motif) : pitch(s, 'bass', chord + d, fit.bass[chord]);
+      strike(band.bass, at, f, s.bass.gain * vel * band.mix, 0.006, 0.03, s.bass.decay);
+    }
+  }
+  if (s.perc && !B) { const c = pat(s.perc.pattern, n, i, bar); if (DRUMS[c]) hit(at, c, vel, s); }
+}
+// The pads: the chord rises on the pad that is silent while the other falls.
+function chordOn(at, s, chord) {
+  const p = s.pad, on = band.on < 0 ? 0 : 1 - band.on, v = band.pads[on], old = band.on < 0 ? null : band.pads[band.on], up = s.fit.pad[chord] ?? 1;
+  const when = Math.max(at, v.last), f = p.tones.map(k => pitch(s, 'pad', chord + k, up));
+  v.osc[0].frequency.setValueAtTime(f[0], when); v.osc[1].frequency.setValueAtTime(f[1] + p.spread, when);
+  v.gain.gain.setTargetAtTime(p.gain * band.mix, when, p.rise);
+  v.last = when; v.quiet = Infinity;
+  if (old) { const go = Math.max(when, old.last); old.gain.gain.setTargetAtTime(0, go, p.fall); old.last = go; old.quiet = go + 5 * p.fall; }
+  band.on = on; band.chord = chord;
+}
+// The lead holds a note for `hold` seconds, but never into the first note of a motif it is to play; an echo of it
+// is queued, unless it is an echo itself.
+function leadNote(at, n, f, vel, hold, echo = true) {
+  const s = band.score, v = band.lead, bar = s.bar;
+  if (at < v.last) return;
+  if (Math.floor(n / bar) % 4 === 3 && s.fit.carrier === 'lead' && hex(s.motif[0]) >= 0) {
+    let room = 0;
+    for (let k = n; k % bar || k === n; k++) room += stepLen(s, k);
+    hold = Math.min(hold, room - DIP - 0.02);
+    if (hold < 0.04) return;
+  }
+  strike(v, at, f, s.lead.gain * vel * band.mix, s.lead.rise, hold, s.lead.fall);
+  if (s.echo && echo) queue(n + s.echo[0], f, vel * s.echo[1], true);
+}
+// A pluck of degree `k` (lifted by `up`), with its echo and the rest of its burst queued.
+function pluck(at, n, k, up, vel) {
+  const s = band.score, f = pitch(s, 'pluck', k, up);
+  if (!strikePluck(at, f, vel)) return false;
+  if (s.echo) queue(n + s.echo[0], f, vel * s.echo[1], false);
+  if (s.burst) for (let j = 1; j < s.burst[0]; j++) queue(n + j, pitch(s, 'pluck', k + j * s.burst[1], up), vel * (1 - 0.2 * j), false);
+  return true;
+}
+function strikePluck(at, f, vel) {
+  const s = band.score, p = s.pluck;
+  let v = band.plucks[band.pk];
+  if (at < Math.max(v.last, v.flast)) v = band.plucks[1 - band.pk];
+  if (at < Math.max(v.last, v.flast)) return false;
+  band.pk = band.plucks.indexOf(v) ^ 1;
+  const on = strike(v, at, f, p.gain * vel * band.mix, 0.004, 0.015, p.decay);
+  v.lp.frequency.setValueAtTime(p.lp[0], on); v.lp.frequency.setTargetAtTime(p.lp[1], on, p.decay * 0.7);
+  if (s.glide > 1) { v.flast = on + Math.min(3 * p.decay, 1.2 * stepLen(s, 1)); v.osc.frequency.exponentialRampToValueAtTime(f * s.glide, v.flast); }
+  return true;
+}
+function queue(n, f, vel, lead) {
+  const q = band.queue.find(q => q.n < 0);
+  if (q) { q.n = n; q.f = f; q.vel = vel; q.lead = lead; }
+}
+// A hit of the drum: the bandpass is moved only while the hit before it has dipped to nothing, and well before the
+// hit (MOVE), since a bandpass moved from a wide band to a narrow one rings out for a while with what it held.
+const MOVE = 0.03;
+function hit(at, c, vel, s) {
+  const [freq, q, peak, decay, rise] = DRUMS[c], v = band.perc, attack = Math.min(rise, 0.25 * stepLen(s, 1)), moved = v.drum !== c;
+  const from = Math.max(at + (rnd() - 0.5) * 0.008 - (moved ? MOVE : 0), v.last), on = from + (moved ? MOVE : DIP), g = v.gain.gain;
+  g.setTargetAtTime(0, from, 0.0015);
+  if (moved) { v.bp.frequency.setValueAtTime(freq, from + 0.004); v.bp.Q.setValueAtTime(q, from + 0.004); v.drum = c; }
+  g.setTargetAtTime(peak * s.perc.gain * vel * (1 - 0.5 * band.thin), on, attack);
+  g.setTargetAtTime(0, on + 2 * attack, decay);
+  v.last = on + 2 * attack; v.quiet = v.last + 5 * decay;
+}
+// For the tools: a ground's music alone, with no bed (`node tools/sounds.mjs`), and what the music is doing.
+export function hear(ground, far = 300) {
+  away = far; lastGround = ground; lastDeep = false;
+  wanted = playing = scoreOf(ground);
+  if (band) turn(playing);
+}
+// For the tests: every phrase a score's voices play (each chord's pads and patterns, the lead's range, the motif
+// and its answer), as degrees and as the pitches they sound at; and the names of the waves there are.
+export function phrasesOf(ground) {
+  const s = scoreOf(ground), fit = s.fit, out = [], take = (voice, degrees, up, motif = false) => out.push({ voice, motif, degrees, hz: degrees.map(k => pitch(s, voice, k, up)) });
+  for (const c of new Set(s.chords)) {
+    if (s.pad) take('pad', s.pad.tones.map(k => c + k), fit.pad[c]);
+    for (const voice of ['pluck', 'bass']) if (s[voice]) take(voice, digits(s[voice].pattern).map(d => c + d), fit[voice][c]);
+  }
+  if (s.lead) take('lead', Array.from({ length: s.lead.range[1] - s.lead.range[0] + 1 }, (_, k) => s.lead.range[0] + k), fit.lead);
+  if (fit.carrier) for (const up of [0, s.lift]) take(fit.carrier, fit.tune.map(k => k + up), fit.motif, true);
+  return out;
+}
+export const waveNames = () => [...BUILT, 'keys', ...Object.keys(SHAPES)];
+export const musicNow = () => ({ playing: playing?.name ?? null, wanted: wanted?.name ?? null, score: band?.score?.name ?? null, next: band?.next ?? null, dressed: !!band?.dressed, turns: band?.turns ?? 0 });
