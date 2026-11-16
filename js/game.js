@@ -56,6 +56,12 @@ const round2 = n => { const unit = 10 ** Math.max(0, Math.floor(Math.log10(n)) -
 const LIGHT = 12, CHAIN = 6;
 // How many bits of rubble may be on their way home at once, over every haul there is.
 export const RUBBLE = 400;
+// Which bits of rubble are in which cell, to find the bits near each (`jostle`): a table of chains, each cell hashed
+// to one chain, which holds the bits by their place in the list being jostled, in that order. The rubble is sorted
+// into cells up to eight times a frame, so the arrays are kept and grown, not made anew. (It was a Map of arrays made
+// anew each time, keyed by numbers too big to be small integers: rubble took half as long again.)
+const crowd = { head: new Int32Array(64), next: new Int32Array(32), cellX: new Int32Array(32), cellY: new Int32Array(32) };
+const chainOf = (x, y) => Math.imul(x, 73856093) ^ Math.imul(y, 19349663);
 // What the step up from each level of reach costs: the first is within the first haul, then 3 minutes of the
 // model's income rising to 15. (It was half that. A whole game played by a pilot earned two to three times what
 // the model says, and the owner had the shop nearly bought out before leaving the ground about the core: every
@@ -311,6 +317,41 @@ const store = () => opened ??= new Promise((resolve, reject) => {
   open.onsuccess = () => { const db = open.result; db.onclose = () => { opened = null; }; db.onversionchange = () => { opened = null; db.close?.(); }; resolve(db); };
   open.onerror = () => { opened = null; reject(open.error); };
 });
+
+// The bits of a haul still on their way, gathered afresh at each small step of `updateHauls` so that the steps walk
+// only those and not the many already home. (One list serves every haul: each is done with it before the next.)
+const live = [];
+// No two bits in the same place: this is what makes the heap flow instead of shrinking. Each of `bits[0..n)` is
+// pushed apart from any other nearer than two radii, twice over. Each push moves both bits of the pair at once, so
+// the pairs must be met in the same order every time: each cell's bits in the order of `bits`, which the chains of
+// `crowd` keep by being built from the last bit back.
+function jostle(bits, n, size, rad) {
+  // The crowd's arrays are grown to hold every bit, and its table to twice as many chains.
+  const span = Math.max(64, 2 ** Math.ceil(Math.log2(n * 2)));
+  if (crowd.next.length < n) for (const key of ['next', 'cellX', 'cellY']) crowd[key] = new Int32Array(span / 2);
+  if (crowd.head.length < span) crowd.head = new Int32Array(span);
+  const { head, next, cellX, cellY } = crowd, mask = span - 1;
+  for (let pass = 0; pass < 2; pass++) {
+    head.fill(-1, 0, span);
+    for (let i = n - 1; i >= 0; i--) {
+      const b = bits[i], x = Math.floor(b.x / size), y = Math.floor(b.y / size), at = chainOf(x, y) & mask;
+      cellX[i] = x; cellY[i] = y; next[i] = head[at]; head[at] = i;
+    }
+    for (let i = 0; i < n; i++) {
+      const b = bits[i], gx = Math.floor(b.x / size), gy = Math.floor(b.y / size);
+      for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
+        const x = gx + ox, y = gy + oy;
+        for (let j = head[chainOf(x, y) & mask]; j >= 0; j = next[j]) {
+          if (j === i || cellX[j] !== x || cellY[j] !== y) continue;
+          const c = bits[j], ux = c.x - b.x, uy = c.y - b.y, far2 = ux * ux + uy * uy;
+          if (far2 >= 4 * rad * rad) continue;
+          const far = Math.sqrt(far2) || 0.01, push = (2 * rad - far) * 0.25, nx = far2 ? ux / far : 1, ny = far2 ? uy / far : 0;
+          b.x -= nx * push; b.y -= ny * push; c.x += nx * push; c.y += ny * push;
+        }
+      }
+    }
+  }
+}
 
 export class Game {
   // `over` is a second canvas laid on the first at the screen's full resolution, for the tether: without one (in
@@ -1749,7 +1790,6 @@ export class Game {
   // rock, so they have to flow down the tunnels to the core, where a hatch opens and they drop in. `h.S` is how far
   // along the route the rope is drawing them to.
   updateHauls(dt) {
-    const w = this.world, homeX = HX * T, homeY = HY * T;
     for (const h of this.hauls) {
       h.t += dt;
       const { size, bits } = h, per = T / size, rad = size * 0.45, wall = size * 0.4;
@@ -1759,7 +1799,9 @@ export class Game {
         s.broke = true;
         for (let q = 0; q < per * per; q++) {
           const qx = q % per, qy = (q / per) | 0, a = Math.atan2(qy - (per - 1) / 2, qx - (per - 1) / 2) + (Math.random() - 0.5) * 2, v = 25 + Math.random() * 70;
-          bits.push({ s, sx: qx * size, sy: qy * size, x: s.x * T + (qx + 0.5) * size, y: s.y * T + (qy + 0.5) * size, vx: Math.cos(a) * v, vy: Math.sin(a) * v, born: h.t, k: s.k, st: 0, ft: 0, stall: 0, ghost: false });
+          // (Every field a bit will ever have is given here, so that all bits are of one shape to the engine and the
+          // loops that move them stay quick: `moved` is the length of its last step, none yet.)
+          bits.push({ s, sx: qx * size, sy: qy * size, x: s.x * T + (qx + 0.5) * size, y: s.y * T + (qy + 0.5) * size, vx: Math.cos(a) * v, vy: Math.sin(a) * v, born: h.t, k: s.k, st: 0, ft: 0, stall: 0, ghost: false, fast: false, ox: 0, oy: 0, moved: Infinity });
         }
         if (h.count < 80 || cellHash(s.x, s.y, 9) < 0.35) this.chips(s.x, s.y, s.debris, 3, null, 0.8);
         if (this.time - (this.lastSnap ?? 0) > 0.05) { this.lastSnap = this.time; sfx.crumble(); }
@@ -1778,68 +1820,14 @@ export class Game {
       h.hole += Math.max(-60 * dt, Math.min(60 * dt, open - h.hole));
       const steps = express ? 1 : Math.max(1, Math.min(4, Math.ceil((h.v * 1.5 + 80) * dt / 3))), sdt = dt / steps;
       let arrived = 0;
+      // Each small step moves the bits still on their way, and those alone: drawn in, pushed apart, held off the rock.
       for (let step = 0; step < steps; step++) {
-        for (const b of bits) {
-          if (b.st) continue;
-          const age = h.t - b.born;
-          if (express && age > 0.18) {
-            // Carried: the bundle moves as one, still jostling.
-            b.x += (aim[0] - before[0]) / steps; b.y += (aim[1] - before[1]) / steps; b.k = seg; b.ghost = true; b.fast = true;
-          } else if (b.fast) { b.fast = false; b.ghost = false; b.stall = 0; }
-          if (age > 0.18) {
-            // Drawn along the tether toward where the bundle is, never faster than it can follow.
-            const [u, k] = this.onRoute(h, b.x, b.y, b.k - 1, b.k + 3);
-            b.k = k;
-            const to = home && h.hole > 3 ? [homeX, homeY] : this.along(h, u < h.S ? Math.min(h.S, u + 24) : Math.max(h.S, u - 24));
-            const tx = to[0] - b.x, ty = to[1] - b.y, gap = Math.hypot(tx, ty) || 1, top = Math.min(h.v * 1.5 + 90, gap * 12), ease = Math.min(1, sdt * 12);
-            b.vx += (tx / gap * top - b.vx) * ease; b.vy += (ty / gap * top - b.vy) * ease;
-            // A bit that is caught behind rock is let through it rather than left behind.
-            if (!b.ghost) { if (gap > 20 && Math.abs(b.vx) + Math.abs(b.vy) > 30 && b.moved < 0.25 * sdt * top) b.stall += sdt; else b.stall = Math.max(0, b.stall - sdt); if (b.stall > 0.5) b.ghost = true; }
-          } else { b.vx *= 1 - 4 * sdt; b.vy *= 1 - 4 * sdt; }
-          b.ox = b.x; b.oy = b.y;
-          b.x += b.vx * sdt; b.y += b.vy * sdt;
-        }
-        // No two bits in the same place: this is what makes the heap flow instead of shrinking.
-        for (let pass = 0; pass < 2; pass++) {
-          const grid = new Map();
-          for (const b of bits) {
-            if (b.st) continue;
-            const key = Math.floor(b.x / size) * 1048576 + Math.floor(b.y / size);
-            const cell = grid.get(key);
-            if (cell) cell.push(b); else grid.set(key, [b]);
-          }
-          for (const b of bits) {
-            if (b.st) continue;
-            const gx = Math.floor(b.x / size), gy = Math.floor(b.y / size);
-            for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
-              const cell = grid.get((gx + ox) * 1048576 + gy + oy);
-              if (!cell) continue;
-              for (const c of cell) {
-                if (c === b) continue;
-                const ux = c.x - b.x, uy = c.y - b.y, far2 = ux * ux + uy * uy;
-                if (far2 >= 4 * rad * rad) continue;
-                const far = Math.sqrt(far2) || 0.01, push = (2 * rad - far) * 0.25, nx = far2 ? ux / far : 1, ny = far2 ? uy / far : 0;
-                b.x -= nx * push; b.y -= ny * push; c.x += nx * push; c.y += ny * push;
-              }
-            }
-          }
-        }
-        for (const b of bits) {
-          if (b.st) continue;
-          // Rock is solid to it.
-          if (!b.ghost) {
-            for (let cy = Math.floor((b.y - wall) / T); cy <= Math.floor((b.y + wall) / T); cy++) for (let cx = Math.floor((b.x - wall) / T); cx <= Math.floor((b.x + wall) / T); cx++) {
-              if (w.k(cy * N + cx) === K.EMPTY) continue;
-              const nx = Math.max(cx * T, Math.min(b.x, cx * T + T)), ny = Math.max(cy * T, Math.min(b.y, cy * T + T)), vx = b.x - nx, vy = b.y - ny, gap = Math.hypot(vx, vy);
-              if (gap >= wall) continue;
-              if (gap > 0.01) { b.x = nx + vx / gap * wall; b.y = ny + vy / gap * wall; }
-              else { b.x = b.ox; b.y = b.oy; }
-            }
-          }
-          b.moved = Math.hypot(b.x - b.ox, b.y - b.oy);
-          // Over the open hatch, it drops in.
-          if (h.hole > 3 && Math.hypot(b.x - homeX, b.y - homeY) < h.hole - 1) { b.st = 1; arrived++; if (--b.s.left === 0 && b.s.gem) this.pending.gems[b.s.gem] = Math.max(0, this.pending.gems[b.s.gem] - b.s.gems); }
-        }
+        let n = 0;
+        for (const b of bits) if (!b.st) live[n++] = b;
+        if (!n) break;
+        this.drawIn(h, live, n, sdt, steps, express, aim, before, seg, home);
+        jostle(live, n, size, rad);
+        arrived += this.settle(h, live, n, wall);
       }
       // Nothing is ever left lying about: stragglers are drawn straight in.
       if (h.homeAt !== undefined && h.t > h.homeAt + 2.5 + h.total * 0.004) for (const b of bits) {
@@ -1871,6 +1859,55 @@ export class Game {
     if (this.hauls.length && this.hauls.every(h => h.doneAt !== undefined && h.t > h.doneAt + 0.4 && h.hole < 0.5)) {
       this.hauls.length = 0; this.pending.grit = 0; this.pending.gems.fill(0);
     }
+  }
+  // One small step of `sdt` seconds (of `steps` in the frame) for the bits `bits[0..n)` of haul `h`: each is drawn
+  // along the route toward the rope's end, `aim` (it was at `before` when the frame began, on segment `seg`), or,
+  // once the rope is `home` and the hatch open, toward the hatch; and it moves on at its speed. Where it began the
+  // step is kept (`ox`, `oy`) for `settle`.
+  drawIn(h, bits, n, sdt, steps, express, aim, before, seg, home) {
+    const homeX = HX * T, homeY = HY * T;
+    for (let i = 0; i < n; i++) {
+      const b = bits[i], age = h.t - b.born;
+      if (express && age > 0.18) {
+        // Carried: the bundle moves as one, still jostling.
+        b.x += (aim[0] - before[0]) / steps; b.y += (aim[1] - before[1]) / steps; b.k = seg; b.ghost = true; b.fast = true;
+      } else if (b.fast) { b.fast = false; b.ghost = false; b.stall = 0; }
+      if (age > 0.18) {
+        // Drawn along the tether toward where the bundle is, never faster than it can follow.
+        const [u, k] = this.onRoute(h, b.x, b.y, b.k - 1, b.k + 3);
+        b.k = k;
+        const to = home && h.hole > 3 ? [homeX, homeY] : this.along(h, u < h.S ? Math.min(h.S, u + 24) : Math.max(h.S, u - 24));
+        const tx = to[0] - b.x, ty = to[1] - b.y, gap = Math.hypot(tx, ty) || 1, top = Math.min(h.v * 1.5 + 90, gap * 12), ease = Math.min(1, sdt * 12);
+        b.vx += (tx / gap * top - b.vx) * ease; b.vy += (ty / gap * top - b.vy) * ease;
+        // A bit that is caught behind rock is let through it rather than left behind.
+        if (!b.ghost) { if (gap > 20 && Math.abs(b.vx) + Math.abs(b.vy) > 30 && b.moved < 0.25 * sdt * top) b.stall += sdt; else b.stall = Math.max(0, b.stall - sdt); if (b.stall > 0.5) b.ghost = true; }
+      } else { b.vx *= 1 - 4 * sdt; b.vy *= 1 - 4 * sdt; }
+      b.ox = b.x; b.oy = b.y;
+      b.x += b.vx * sdt; b.y += b.vy * sdt;
+    }
+  }
+  // The end of a small step for the bits `bits[0..n)` of haul `h`: rock pushes each back out to `wall` pixels from
+  // it (unless the bit is being let through), and one over the open hatch drops in. Returns how many dropped in.
+  settle(h, bits, n, wall) {
+    const w = this.world, homeX = HX * T, homeY = HY * T;
+    let arrived = 0;
+    for (let i = 0; i < n; i++) {
+      const b = bits[i];
+      // Rock is solid to it.
+      if (!b.ghost) {
+        for (let cy = Math.floor((b.y - wall) / T); cy <= Math.floor((b.y + wall) / T); cy++) for (let cx = Math.floor((b.x - wall) / T); cx <= Math.floor((b.x + wall) / T); cx++) {
+          if (w.k(cy * N + cx) === K.EMPTY) continue;
+          const nx = Math.max(cx * T, Math.min(b.x, cx * T + T)), ny = Math.max(cy * T, Math.min(b.y, cy * T + T)), vx = b.x - nx, vy = b.y - ny, gap = Math.hypot(vx, vy);
+          if (gap >= wall) continue;
+          if (gap > 0.01) { b.x = nx + vx / gap * wall; b.y = ny + vy / gap * wall; }
+          else { b.x = b.ox; b.y = b.oy; }
+        }
+      }
+      b.moved = Math.hypot(b.x - b.ox, b.y - b.oy);
+      // Over the open hatch, it drops in.
+      if (h.hole > 3 && Math.hypot(b.x - homeX, b.y - homeY) < h.hole - 1) { b.st = 1; arrived++; if (--b.s.left === 0 && b.s.gem) this.pending.gems[b.s.gem] = Math.max(0, this.pending.gems[b.s.gem] - b.s.gems); }
+    }
+    return arrived;
   }
 
   // ------------------------------------------------------------ hazards
