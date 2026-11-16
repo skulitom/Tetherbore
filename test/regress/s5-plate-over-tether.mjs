@@ -29,7 +29,7 @@ if (game.panels.length !== 2) problems.push(`${game.panels.length} panels listed
 for (const [n, what] of [[0, 'the plate that names a place'], [1, 'the count of specimens']]) {
   const p = game.panels[n];
   if (!p) continue;
-  if (!(p[1] === (n ? 60 : 44) && p[3] === 14 && p[2] > 20)) problems.push(`${what} is listed at ${p}`);
+  if (!(p[1] === (n ? 20 : 4) && p[3] === 14 && p[2] > 20)) problems.push(`${what} is listed at ${p}`);
   if (!within(p)) problems.push(`the tether is not cut away behind ${what} (${p}): ${made.join(' | ')}`);
 }
 // A name across the screen (the first meeting) is no panel: the tether stays whole under it.

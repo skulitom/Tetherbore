@@ -55,11 +55,11 @@ check(before.S.lab && Object.keys(before.S.lab).length === 0, `a game saved befo
 loaded.fresh(9);
 check(Object.keys(loaded.S.lab).length === 0 && !loaded.lab, 'a new world keeps the old lab');
 
-// The notes: a tap on the top bar opens them, a tap on a line chooses it, a tap outside shuts them; the drill
+// The notes: a tap on the bar at the foot of the screen opens them, a tap on a line chooses it, a tap outside shuts them; the drill
 // does not move while they are up.
 game.resize(320, 568, 1); game.render();
 const tap = (x, y) => { game.pointerDown(1, x, y); game.pointerUp(1); game.render(); };
-tap(30, 10);
+tap(30, game.H - 20);
 // (They open at the thing a level was last gained in: the quartz.)
 check(game.lab === true && game.labSel === 'lode-items:oreB', `after a tap on the top bar the notes are ${game.lab ? 'open' : 'shut'} at ${game.labSel}`);
 // (Lines are 13 high; the newest button is the last line drawn.)
@@ -70,7 +70,7 @@ check(game.lab && game.labSel === LAB[2].key, `a tap on the third line chose ${g
 const at = [game.drill.x, game.drill.y];
 game.input.auto = [1, 0, 1]; for (let f = 0; f < 30; f++) game.update(1 / 60); game.input.auto = null;
 check(game.drill.x === at[0] && game.drill.y === at[1], 'the drill moved with the notes open');
-tap(2, game.H - 2);
+tap(2, 2);
 check(game.lab === false, 'a tap outside the notes left them open');
 // Every page of the notes draws on a short screen, known and unknown lines alike.
 game.resize(600, 260, 1); game.openLab(true);

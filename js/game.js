@@ -42,9 +42,11 @@ const round2 = n => { const unit = 10 ** Math.max(0, Math.floor(Math.log10(n)) -
 // A haul of fewer cells than LIGHT, with nothing in it to make a show of, is a light one: it stops nothing and
 // says what it paid where it lay. A haul made within CHAIN seconds of the one before is a link in a chain.
 const LIGHT = 12, CHAIN = 6;
-// What the step up from each level of reach costs: the first is within the first haul, then 1.5 minutes of income
-// rising to 7.
-const REACH_COST = REACH.slice(0, -1).map((R, l) => l === 0 ? 15 : round2(income(R) * (40 + 50 * l)));
+// What the step up from each level of reach costs: the first is within the first haul, then 3 minutes of the
+// model's income rising to 15. (It was half that. A whole game played by a pilot earned two to three times what
+// the model says, and the owner had the shop nearly bought out before leaving the ground about the core: every
+// other price follows the reach's, so all of them are doubled with it.)
+const REACH_COST = REACH.slice(0, -1).map((R, l) => l === 0 ? 15 : round2(income(R) * (80 + 100 * l)));
 // The price of something that belongs beside level `at` of reach (it may lie between two), and its gems.
 const priced = (at, share) => {
   const lo = Math.min(REACH_COST.length - 1, Math.floor(at)), hi = Math.min(REACH_COST.length - 1, lo + 1);
@@ -63,8 +65,10 @@ const levels = (beside, share) => ({ beside, grit: beside.map(at => priced(at, s
 const NEEDS = { parts: 'WRECK PARTS', kinds: 'KINDS ANALYSED', places: 'PLACES MET' };
 // `values` is what each level gives; `grit` and `gems` what the next level costs; `gem` whose gems it takes.
 export const UPGRADES = [
-  // The tether's reach: how far from the core the drill may go, by any road. Each level nearly doubles it.
-  { id: 'tether', icon: 'string', name: 'REACH', what: 'TETHER GOES FURTHER', values: REACH, gem: B.MIRE, needs: ['parts', REACH.slice(0, -1).map(R => WRECK_R.filter(r => r <= R).length)], ...levels(REACH.slice(0, -1).map((R, l) => l), 1), show: v => `${v}` },
+  // The tether's reach: how far from the core the drill may go, by any road. Each level nearly doubles it. It is
+  // bought with grit alone, which every ground gives: no one direction's gems and nothing that must be found in
+  // one place, so a player may follow a single direction as far out as they like.
+  { id: 'tether', icon: 'string', name: 'REACH', what: 'TETHER GOES FURTHER', values: REACH, gem: B.MIRE, ...levels(REACH.slice(0, -1).map((R, l) => l), 1), gems: REACH.slice(0, -1).map(() => 0), show: v => `${v}` },
   { id: 'drill', icon: 'drill', name: 'BIT', what: 'CUTS FASTER', values: [1, 2, 3, 4, 5], gem: B.LODE, needs: ['kinds', [0, 2, 5, 9]], ...levels([0.6, 2.2, 4.4, 6.6], 0.6), show: v => `MK${v}` },
   { id: 'winch', icon: 'winch', name: 'WINCH', what: 'BIGGER HAULS AT FULL PAY', values: [1, 1.3, 1.6, 2, 2.5, 3], gem: B.FROST, needs: ['places', [1, 3, 5, 8, 12]], ...levels([0.8, 2, 3.6, 5.4, 7.2], 0.5), show: v => `x${v}` },
   { id: 'scanner', icon: 'scanner', name: 'SCAN', what: 'SEES DEEPER IN ROCK', values: [3, 4, 5, 7, 9], gem: B.FROST, needs: ['parts', [0, 1, 2, 4]], ...levels([0.4, 1.6, 3.4, 5.8], 0.3), show: v => `${v}` },
@@ -2463,9 +2467,9 @@ export class Game {
       o.globalAlpha = 1;
       if (fine.hurt) { o.globalAlpha = 0.5; o.fillStyle = '#ff5a4a'; o.fillRect(dx - 5, dy - 5, 10, 10); o.globalAlpha = 1; }
     }
-    // Never over the interface: the top bar, the map, the buttons, and the small panels that come and go under the
+    // Never over the interface: the bar at the foot, the map, the buttons, and the small panels that come and go under the
     // top bar (a place's plate, the count of specimens), which the frame's own drawing of the interface listed.
-    o.clearRect(0, 0, W, 43);
+    o.clearRect(0, H - 44, W, 44);
     if (this.mapRect) o.clearRect(...this.mapRect);
     for (const b of this.buttons) o.clearRect(b.x, b.y, b.w, b.h);
     for (const p of this.panels) o.clearRect(...p);
@@ -2766,58 +2770,53 @@ export class Game {
       lines.forEach((line, n) => text(ctx, line, W / 2, y + n * 11 * big, place.colour, 0.5, big + (n === 0 && lines.length === 1 && place.t < 0.07 ? 1 : 0)));
       ctx.globalAlpha = 1;
     }
-    // Top: what has been banked, and how much of its reach the tether has left.
-    slice9(ctx, 'ui', 'panel', 2, 2, W - 4, 40);
-    draw(ctx, 'icons', 'grit', 6, 5);
-    text(ctx, compact(S.grit - this.pending.grit), 18, 6 - (this.counted > 0 ? 1 : 0), this.counted > 0 ? '#ffffff' : '#ffe14a');
+    // The bar, at the foot of the screen: what has been banked, the hull, what the lab knows, and how much of its
+    // reach the tether has left. A tap on it opens the panel (what the drill is, the lab's notes, the chart, the
+    // menu), and another shuts it.
+    const B = H - 44;
+    slice9(ctx, 'ui', 'panel', 2, B + 2, W - 4, 40);
+    draw(ctx, 'icons', 'grit', 6, B + 5);
+    text(ctx, compact(S.grit - this.pending.grit), 18, B + 6 - (this.counted > 0 ? 1 : 0), this.counted > 0 ? '#ffffff' : '#ffe14a');
     const gw = (W - 30) / 4;
     for (let g = 1; g < 5; g++) {
       const gx = Math.round(6 + (g - 1) * gw), have = S.gems[g] - this.pending.gems[g];
       ctx.globalAlpha = S.gems[g] > 0 ? 1 : 0.35;
-      draw(ctx, 'icons', GEM_ICON[g], gx, 17);
-      text(ctx, compact(have), gx + 12, 18, GEM_COLOR[g]);
+      draw(ctx, 'icons', GEM_ICON[g], gx, B + 17);
+      text(ctx, compact(have), gx + 12, B + 18, GEM_COLOR[g]);
       ctx.globalAlpha = 1;
     }
     const R = this.val('tether'), far = this.far, left = Math.max(0, R - far), label = compact(left), room = textWidth(label) + 10;
-    this.bar(6, 29, W - 12 - room, 'tether', left / R, far / R > 0.93 ? '#ff7a5a' : '#f4ecd8', this.twang > 0);
-    text(ctx, label, W - 6, 30, this.twang > 0 ? '#ff7a5a' : '#f4ecd8', 1);
+    this.bar(6, B + 29, W - 12 - room, 'tether', left / R, far / R > 0.93 ? '#ff7a5a' : '#f4ecd8', this.twang > 0);
+    text(ctx, label, W - 6, B + 30, this.twang > 0 ? '#ff7a5a' : '#f4ecd8', 1);
     // The hull: a pip for each knock it can take, after the grit. One just lost shows red for a moment, the last
     // one left stays red, and a hull just mended shows white.
     const pips = this.val('hull'), sound = this.hull, hx = 18 + textWidth(compact(S.grit - this.pending.grit)) + 7;
     for (let n = 0; n < pips; n++) {
       const x = hx + n * 5, full = n < sound, lost = n === sound && this.knocked > 0;
-      ctx.fillStyle = '#16121c'; ctx.fillRect(x, 6, 4, 7);
+      ctx.fillStyle = '#16121c'; ctx.fillRect(x, B + 6, 4, 7);
       ctx.fillStyle = lost ? '#ff5a4a' : !full ? '#3a3450' : this.mended > 0 ? '#ffffff' : sound === 1 ? '#ff7a5a' : '#bfe6ff';
-      ctx.fillRect(x + 1, 7, 2, 5);
+      ctx.fillRect(x + 1, B + 7, 2, 5);
     }
-    // What the lab has analysed, of all it can: shown once there is a first sample, lit for a moment by a new
-    // level. A tap anywhere on the bar (but the sound) opens the lab's notes, and another shuts them.
+    // What the lab has analysed, of all it can: shown once there is a first sample, lit for a moment by a new level.
     const known = LAB.filter(e => S.lab[e.key]).length;
-    if (known && hx + pips * 5 + 4 < W - 27 - textWidth(`${known}/${LAB.length}`) - 11) {
+    if (known && hx + pips * 5 + 4 < W - 6 - textWidth(`${known}/${LAB.length}`) - 11) {
       const count = `${known}/${LAB.length}`, lit = this.labFlash > 0 && ((now / 120) | 0) % 2 === 0;
-      text(ctx, count, W - 27, 6, lit ? '#ffffff' : '#8cf2c4', 1);
-      draw(ctx, 'icons', 'lab', W - 27 - textWidth(count) - 11, 5);
+      text(ctx, count, W - 6, B + 6, lit ? '#ffffff' : '#8cf2c4', 1);
+      draw(ctx, 'icons', 'lab', W - 6 - textWidth(count) - 11, B + 5);
     }
-    this.button(0, 0, W - 24, 42, () => this.openLab(!this.lab));
-    draw(ctx, 'ui', isMuted() ? 'mute' : 'sound', W - 21, 2);
-    this.button(W - 24, 0, 24, 20, () => { setMuted(!isMuted()); sfx.tap(); });
-    // Start over: two taps, so a slip of the thumb does not cost a world.
-    const sure = this.confirmReset > 0, word = sure ? 'SURE?' : 'NEW', ww = textWidth(word) + 8;
-    slice9(ctx, 'ui', sure ? 'button-off' : 'panel', W - ww - 2, 44, ww, 14);
-    text(ctx, word, W - ww / 2 - 2, 46, sure ? '#ff7a5a' : '#9a94a8', 0.5);
-    this.button(W - ww - 6, 42, ww + 6, 20, () => {
-      if (this.confirmReset > 0) { this.confirmReset = 0; this.fresh((Math.random() * 1e9) | 0); this.save(); sfx.relic(); } else { this.confirmReset = 2.5; sfx.tap(); }
-    });
+    this.button(0, B, W, 44, () => this.openLab(!this.lab));
     // The place the drill has come into: its name on a plate, with its direction's gem (and a second gem, where
     // the place pays two).
     if (place && !place.card) {
       const more = place.also ? 11 : 0, slide = Math.min(1, place.t / 0.15), pw = textWidth(place.title) + 23 + more, px = 4 - Math.round((1 - slide) * (1 - slide) * 10);
       ctx.globalAlpha = Math.min(1, slide, (place.life - place.t) / 0.3);
-      slice9(ctx, 'ui', 'panel', px, 44, pw, 14);
-      this.panels.push([px, 44, pw, 14]);
-      if (place.mineral) this.drawMineral(ctx, place.mineral, px + 3, 45); else draw(ctx, 'icons', place.icon, px + 4, 46);
-      if (place.also) draw(ctx, 'icons', place.also, px + 15, 46);
-      text(ctx, place.title, px + 17 + more, 46, place.colour);
+      // (At the head of the screen; under the map, where its name is too long to stand beside it.)
+      const ty = px + pw > W - 60 ? 58 : 4;
+      slice9(ctx, 'ui', 'panel', px, ty, pw, 14);
+      this.panels.push([px, ty, pw, 14]);
+      if (place.mineral) this.drawMineral(ctx, place.mineral, px + 3, ty + 1); else draw(ctx, 'icons', place.icon, px + 4, ty + 2);
+      if (place.also) draw(ctx, 'icons', place.also, px + 15, ty + 2);
+      text(ctx, place.title, px + 17 + more, ty + 2, place.colour);
       ctx.globalAlpha = 1;
     }
     // Specimens just banked: the count of that direction's slides out under the top bar, below where a place's
@@ -2827,15 +2826,16 @@ export class Game {
       const need = this.specNeed(line.kin), label = `${Math.floor(S.spec[line.kin] + 1e-9)}${need ? `/${need}` : ''}`;
       const slide = Math.min(1, line.t / 0.15), pw = textWidth(label) + 23, px = 4 - Math.round((1 - slide) * (1 - slide) * 10);
       ctx.globalAlpha = Math.min(1, slide, (line.life - line.t) / 0.3);
-      slice9(ctx, 'ui', 'panel', px, 60, pw, 14);
-      this.panels.push([px, 60, pw, 14]);
-      draw(ctx, 'icons', `spec-${GEM_ICON[line.kin]}`, px + 4, 62);
-      text(ctx, label, px + 17, 62, GEM_COLOR[line.kin]);
+      slice9(ctx, 'ui', 'panel', px, 20, pw, 14);
+      this.panels.push([px, 20, pw, 14]);
+      draw(ctx, 'icons', `spec-${GEM_ICON[line.kin]}`, px + 4, 22);
+      text(ctx, label, px + 17, 22, GEM_COLOR[line.kin]);
       ctx.globalAlpha = 1;
     }
-    this.drawMap(W - 54, H - 58);
-    // Bottom: the shop when the drill is home.
-    const by = H - 46;
+    // The map, in the top right corner.
+    this.drawMap(W - 52, 6);
+    // The shop's button, over the bar, when the drill is home.
+    const by = H - 88;
     const afford = ROWS.some(u => this.canBuy(u));
     if (this.atCore && !this.shop && !this.lab && d.mode === 'free') {
       const w = 84, x = Math.round(W / 2 - w / 2) - 14, up = afford && ((now / 300) | 0) % 2;
@@ -3023,7 +3023,7 @@ export class Game {
   panelTabs(px, py, pw, HEAD) {
     const { ctx } = this;
     let tx = px + 8;
-    for (const [id, name] of [['stats', 'STATS'], ['lab', 'ANALYSIS'], ...(this.charted ? [['chart', 'CHART']] : [])]) {
+    for (const [id, name] of [['stats', 'STATS'], ['lab', 'LAB'], ...(this.charted ? [['chart', 'MAP']] : []), ['menu', 'MENU']]) {
       const tw = textWidth(name), on = this.labTab === id;
       text(ctx, name, tx, py + 7, on ? '#ffe14a' : '#8a84a0');
       if (on) { ctx.fillStyle = '#ffe14a'; ctx.fillRect(tx, py + 17, tw, 1); }
@@ -3058,6 +3058,19 @@ export class Game {
       ['CHART', this.val('chart') ? 'YES' : 'NONE', this.val('chart') > 0],
     ];
   }
+  // The menu: the sound, and a new world (two taps, so a slip of the thumb does not cost a world).
+  drawMenu(px, y0, pw) {
+    const { ctx } = this, sure = this.confirmReset > 0;
+    slice9(ctx, 'ui', 'button', px + 6, y0 + 4, pw - 12, 20);
+    text(ctx, 'SOUND', px + 14, y0 + 10, '#ffffff');
+    text(ctx, isMuted() ? 'OFF' : 'ON', px + pw - 14, y0 + 10, isMuted() ? '#ff7a5a' : '#8cf2c4', 1);
+    this.buttons.unshift({ x: px + 6, y: y0 + 4, w: pw - 12, h: 20, act: () => { setMuted(!isMuted()); sfx.tap(); } });
+    slice9(ctx, 'ui', sure ? 'button-off' : 'button', px + 6, y0 + 28, pw - 12, 20);
+    text(ctx, sure ? 'TAP AGAIN: NEW WORLD' : 'NEW WORLD', px + pw / 2, y0 + 34, sure ? '#ff7a5a' : '#ffffff', 0.5);
+    this.buttons.unshift({ x: px + 6, y: y0 + 28, w: pw - 12, h: 20, act: () => {
+      if (this.confirmReset > 0) { this.confirmReset = 0; this.fresh((Math.random() * 1e9) | 0); this.save(); sfx.relic(); } else { this.confirmReset = 2.5; sfx.tap(); }
+    } });
+  }
   drawStats(px, y0, pw) {
     const { ctx } = this;
     this.stats().forEach(([name, value, lit], n) => {
@@ -3079,13 +3092,13 @@ export class Game {
     if (this.labPage < 0 || this.labPage >= pages) this.labPage = Math.floor(LAB.indexOf(sel) / rows);
     if (this.labTab === 'chart' && !this.charted) this.labTab = 'stats';
     const chart = Math.min(pw - 12, H - 52 - HEAD - 10);
-    const rise = 1 - this.labRise, ph = this.labTab === 'chart' ? HEAD + chart + 10 : this.labTab === 'stats' ? HEAD + this.stats().length * 11 + 8 : HEAD + rows * RH + NOTE + (paged ? 14 : 0) + 4, py = Math.max(44, Math.round((H - ph) / 2)) + Math.round(rise * rise * 60);
+    const rise = 1 - this.labRise, ph = this.labTab === 'menu' ? HEAD + 56 : this.labTab === 'chart' ? HEAD + chart + 10 : this.labTab === 'stats' ? HEAD + this.stats().length * 11 + 8 : HEAD + rows * RH + NOTE + (paged ? 14 : 0) + 4, py = Math.max(2, Math.round((H - 44 - ph) / 2)) + Math.round(rise * rise * 60);
     slice9(ctx, 'ui', 'panel', px, py, pw, ph);
     this.button(px, py, pw, ph, () => {});
     this.panelTabs(px, py, pw, HEAD);
     if (this.labTab === 'stats') { this.drawStats(px, py + HEAD, pw); return; }
+    if (this.labTab === 'menu') { this.drawMenu(px, py + HEAD, pw); return; }
     if (this.labTab === 'chart') { this.drawMap(Math.round(px + (pw - chart) / 2), py + HEAD + 3, { size: chart, per: Math.max(0.3, this.val('tether') * 2.25 / chart) }); return; }
-    text(ctx, `${LAB.filter(e => S.lab[e.key]).length}/${LAB.length}`, px + pw - 28, py + 7, '#8cf2c4', 1);
     LAB.slice(this.labPage * rows, this.labPage * rows + rows).forEach((e, r) => {
       const y = py + HEAD + r * RH, n = S.lab[e.key] ?? 0, on = e === sel;
       if (on) { ctx.fillStyle = '#3a3260'; ctx.fillRect(px + 4, y, pw - 8, RH - 1); }
@@ -3123,7 +3136,7 @@ export class Game {
     // (The panel is as tall as its longest tab, so it does not jump when the tab is changed.)
     const most = Math.max(...TABS.map(t => t.rows.length)), tab = TABS.find(t => t.id === this.shopTab) ?? TABS[0];
     const pw = Math.min(W - 8, 200), px = Math.round((W - pw) / 2), rh = Math.max(24, Math.min(32, Math.floor((H - 100) / most)));
-    const rise = 1 - this.shopRise, ph = 22 + rh * most + 22, py = Math.max(44, Math.round((H - ph) / 2)) + Math.round(rise * rise * 60);
+    const rise = 1 - this.shopRise, ph = 22 + rh * most + 22, py = Math.max(2, Math.round((H - 44 - ph) / 2)) + Math.round(rise * rise * 60);
     slice9(ctx, 'ui', 'panel', px, py, pw, ph);
     this.button(px, py, pw, ph, () => {});
     // The tabs: the one that is open in yellow, and a dot on one that has something to buy.
@@ -3186,13 +3199,9 @@ export class Game {
       this.buttons.unshift({ x: px + 4, y, w: pw - 8, h: rh - 1, act: () => this.buy(u) });
     });
     const fy = py + ph - 19;
-    // Why a tap was refused is said on the footer's line, in place of NEW WORLD while it shows: the header is the tabs'.
+    // Why a tap was refused is said on the footer's line: the header is the tabs'. (A new world is in the menu.)
     const note = this.shopNote && this.shopNote.t > 0 ? this.shopNote : null;
     if (note) note.t -= 1 / 60;
-    if (note && this.confirmReset <= 0) text(ctx, note.text, px + pw / 2, fy + 4, note.color, 0.5);
-    else text(ctx, this.confirmReset > 0 ? 'TAP AGAIN: NEW WORLD' : 'NEW WORLD', px + pw / 2, fy + 4, this.confirmReset > 0 ? '#ff7a5a' : '#6a6478', 0.5);
-    this.buttons.unshift({ x: px + 4, y: fy, w: pw - 8, h: 17, act: () => {
-      if (this.confirmReset > 0) { this.confirmReset = 0; this.fresh((Math.random() * 1e9) | 0); this.save(); sfx.relic(); } else { this.confirmReset = 2.5; sfx.tap(); }
-    } });
+    if (note) text(ctx, note.text, px + pw / 2, fy + 4, note.color, 0.5);
   }
 }

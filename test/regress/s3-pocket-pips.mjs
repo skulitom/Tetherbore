@@ -33,7 +33,7 @@ check(pips.every(Z => far(Z) <= 230 && !S.visited[Z.key]) && pips.length === wit
   // (The drill is stood twenty cells from the nearest of them, so that one at least lies on the map.)
   const nearest = pips.slice().sort((a, b) => far(a) - far(b))[0];
   game.drill.x = nearest.cx + 20.5; game.drill.y = nearest.cy + 0.5;
-  const size = 46, per = 1.5, [mapX, mapY] = [game.W - 54, game.H - 58], squares = [], dx = Math.floor(game.drill.x) + 0.5, dy = Math.floor(game.drill.y) + 0.5;
+  const size = 46, per = 1.5, [mapX, mapY] = [game.W - 52, 6], squares = [], dx = Math.floor(game.drill.x) + 0.5, dy = Math.floor(game.drill.y) + 0.5;
   game.ctx.fillRect = (x, y, wide, high) => { squares.push([game.ctx.fillStyle, x, y, wide, high]); };
   game.render();
   let on = 0;

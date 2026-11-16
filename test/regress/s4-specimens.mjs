@@ -99,7 +99,7 @@ const GEM_COLOR = [null, '#bfe6ff', '#ffb060', '#b8f06a', '#d8b8ff'];
   w.zoneOf = () => null;
   const cells = [at(-60, 10)]; w.setK(cells[0], K.MINERAL); w.setB(cells[0], 32);
   let drawn = 0;
-  game.ctx.drawImage = (image, sx, sy, sw, sh, dx, dy) => { if (image === icons.image && sx === r[0] && sy === r[1] && dy === 62) drawn++; };
+  game.ctx.drawImage = (image, sx, sy, sw, sh, dx, dy) => { if (image === icons.image && sx === r[0] && sy === r[1] && dy === 22) drawn++; };
   game.render();
   check(drawn === 0, 'the count of specimens is drawn with none banked');
   game.haul(cells);

@@ -31,7 +31,7 @@ check(WORKS.every(u => u.grit.length === u.values.length - 1 && u.spec.length ==
   // Both tabs draw, and a tap on a tab opens it.
   game.resize(320, 568, 1); game.shop = true; game.shopRise = 1; game.render();
   // (The tabs stand in the panel's header, left to right, each a button twenty high and under sixty wide.)
-  const tabs = game.buttons.filter(b => b.h === 20 && b.y > 43 && b.y < game.H / 2 && b.w < 60 && b.w > 24 && b.x < game.W * 0.6).sort((a, b) => a.x - b.x);
+  const tabs = game.buttons.filter(b => b.h === 20 && b.y < game.H / 2 && b.w < 60 && b.w > 24 && b.x < game.W * 0.6).sort((a, b) => a.x - b.x);
   tabs[1]?.act(); game.render();
   // What a refused tap says is written on the footer's line, never over the tabs in the header.
   {
@@ -113,9 +113,18 @@ for (const coil of [0, 1]) {
   const said = Object.fromEntries(game.stats().map(([name, value, lit]) => [name, [value, lit]]));
   check(said.REACH[0] === '72 CELLS' && said.HULL[0] === '4/5 PIPS' && said.LAVA[0] === 'SWIMS IN IT' && said.LAVA[1] === true && said.SPORES[0] === 'KNOCK' && said.SPORES[1] === false && said.ANALYSED[0] === '1/12, UP TO +3%', `the stats say ${JSON.stringify(said)}`);
   game.resize(320, 568, 1); game.labTab = 'stats'; game.openLab(true); game.render();
-  const tab = game.buttons.find(b => b.h === 20 && b.x > 40 && b.w > 40 && b.w < 80);
-  tab?.act(); game.render();
-  check(game.labTab === 'lab', `a tap on ANALYSIS left the panel at '${game.labTab}'`);
+  // (The panel's tabs stand in its header, left to right: STATS, LAB, MENU; and MAP before MENU once the chart is bought.)
+  const heads = game.buttons.filter(b => b.h === 20 && b.w < 60 && b.w > 24 && b.y < game.H / 2).sort((a, b) => a.x - b.x);
+  heads[1]?.act(); game.render();
+  check(heads.length === 3 && game.labTab === 'lab', `a tap on the second of ${heads.length} tabs left the panel at '${game.labTab}'`);
+  // The menu: the sound, and a new world on the second tap.
+  heads[2].act(); game.render();
+  const rows = game.buttons.filter(b => b.h === 20 && b.w > 100).sort((a, b) => a.y - b.y), seed = game.S.seed;
+  check(game.labTab === 'menu' && rows.length === 2, `the menu has ${rows.length} rows`);
+  rows[1].act(); game.render();
+  check(game.S.seed === seed && game.confirmReset > 0, 'one tap on NEW WORLD made a new world');
+  rows[1].act(); game.render();
+  check(game.S.seed !== seed, 'two taps on NEW WORLD made no new world');
   game.openLab(false);
 }
 
@@ -176,12 +185,17 @@ for (const coil of [0, 1]) {
 {
   const game = await makeGame(7), reach = UPGRADES[0], winch = UPGRADES.find(u => u.id === 'winch');
   game.S.grit = 1e12; game.S.gems = game.S.gems.map(() => 1e6);
-  for (let l = 0; l < 3; l++) game.buy(reach);
-  check(game.S.lv.tether === 3 && game.val('tether') === 72, `the first three levels of reach ask for nothing found: level ${game.S.lv.tether}`);
-  game.buy(reach);
-  check(game.S.lv.tether === 3 && game.shopNote?.text === 'NEEDS 0/1 WRECK PARTS', `the step past a reach of 72 with no wreck part ${game.S.lv.tether > 3 ? 'was bought' : 'was refused'}: '${game.shopNote?.text}'`);
-  game.S.wrecks[0] = 1; game.buy(reach);
-  check(game.S.lv.tether === 4 && game.lacks(reach) === 'NEEDS 1/2 WRECK PARTS', `with the first wreck's part the reach is ${game.val('tether')}, and the next step says '${game.lacks(reach)}'`);
+  // Reach is bought with grit alone: no gems of any direction, and nothing that must be found.
+  game.S.gems = game.S.gems.map(() => 0);
+  for (let l = 0; l < 9; l++) game.buy(reach);
+  check(game.S.lv.tether === 9 && game.val('tether') === 2300 && reach.gems.every(g => g === 0) && !reach.needs, `with grit alone the reach is ${game.val('tether')}`);
+  game.S.gems = game.S.gems.map(() => 1e6);
+  // The scan's levels ask for wreck parts: none for the first, one for the second.
+  const scan = UPGRADES.find(u => u.id === 'scanner');
+  game.buy(scan); game.buy(scan);
+  check(game.S.lv.scanner === 1 && game.shopNote?.text === 'NEEDS 0/1 WRECK PARTS', `the scan's second level with no wreck part ${game.S.lv.scanner > 1 ? 'was bought' : 'was refused'}: '${game.shopNote?.text}'`);
+  game.S.wrecks[0] = 1; game.buy(scan);
+  check(game.S.lv.scanner === 2 && game.lacks(scan) === 'NEEDS 1/2 WRECK PARTS', `with the first wreck's part the scan is at level ${game.S.lv.scanner}, and the next says '${game.lacks(scan)}'`);
   game.buy(winch); game.buy(winch);
   check(game.S.lv.winch === 1 && game.lacks(winch) === 'NEEDS 1/3 PLACES MET', `with only the home ground met the winch is at level ${game.S.lv.winch}: '${game.lacks(winch)}'`);
   game.S.met[1] = 1; game.S.met[2] = 1; game.buy(winch);
