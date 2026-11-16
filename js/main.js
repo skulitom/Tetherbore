@@ -27,10 +27,15 @@ const at = e => { const r = canvas.getBoundingClientRect(); return [(e.clientX -
 canvas.addEventListener('pointerdown', e => { e.preventDefault(); canvas.setPointerCapture?.(e.pointerId); game.pointerDown(e.pointerId, ...at(e)); });
 canvas.addEventListener('pointermove', e => { e.preventDefault(); game.pointerMove(e.pointerId, ...at(e)); });
 for (const type of ['pointerup', 'pointercancel']) canvas.addEventListener(type, e => { e.preventDefault(); game.pointerUp(e.pointerId); });
-// A wheel turned over the chart zooms it.
-canvas.addEventListener('wheel', e => { if (game.wheel(...at(e), e.deltaY)) e.preventDefault(); }, { passive: false });
+// A wheel turned over the chart zooms it, and over the lab's notes scrolls them: by the game's pixels, whatever the
+// browser counts in (pixels, lines or pages) and however many of the screen's pixels a pixel of the game is.
+canvas.addEventListener('wheel', e => {
+  const r = canvas.getBoundingClientRect(), unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1;
+  if (game.wheel(...at(e), e.deltaY * unit * game.W / r.width)) e.preventDefault();
+}, { passive: false });
 canvas.addEventListener('contextmenu', e => e.preventDefault());
-window.addEventListener('keydown', e => { if (!e.repeat && !e.metaKey && !e.ctrlKey && game.key(e.code, true)) e.preventDefault(); else if (e.repeat && /^Arrow|Space/.test(e.code)) e.preventDefault(); });
+// (A key held down comes again: the game says whether it takes those, as the lab's list does to walk through it.)
+window.addEventListener('keydown', e => { if (!e.metaKey && !e.ctrlKey && game.key(e.code, true, e.repeat)) e.preventDefault(); else if (e.repeat && /^Arrow|Space/.test(e.code)) e.preventDefault(); });
 window.addEventListener('keyup', e => { game.key(e.code, false); });
 document.addEventListener('visibilitychange', () => { if (document.hidden) game.save(); });
 // The game is silent while its tab is hidden or another window has the focus (js/audio.js, `setAside`).

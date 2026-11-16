@@ -7,7 +7,7 @@ import { N, C, K, B, DX, DY, BIOMES, HAZARDS, CRUSH, ZONE, FIND, rowOf, hazOf, c
 import { sheets, draw, drawScaled, frameAt, duration, slice9, text, textWidth, tinted } from './atlas.js';
 import { decorAt, markAt, natural, framesOf, placeOf } from './decor.js';
 import { sfx, isMuted, setMuted, isMusic, setMusic } from './audio.js';
-import { WORKS, MAPS, TABS, LAB, LAB_OF, labLevel, labNext, ROWS } from './shop.js';
+import { WORKS, MAPS, TABS, LAB, LAB_OF, LAB_KINS, labLevel, labNext, ROWS } from './shop.js';
 import { TETHERS, BODY, BODY_A, HOT, HOT_A, RAM, PLATE, FLAME, FLAME_TIER, FITS, FIT_BIT, CORE_IDLE, CORE_C, CORE_FLASH, DISH, REFINERY, CUTTER, BOX, ORBIT, BEACON } from './fit.js';
 // (The middle of the core and two figures of the rules are the game's, read from js/game.js, which imports this
 // module in turn. The two may import each other because these names are read only inside the methods, which run
@@ -29,6 +29,24 @@ const wrap = (words, wide) => {
   }
   return lines;
 };
+// The lab's notes are one list in five parts, laid out once here: a line of SEC pixels at the head of each part (its
+// icon, its title and how many of it are known) and a line of RH for each thing, in the order of `LAB`. `lines` is
+// every line from the top, `line[i]` thing i's (with what is said of it before it is known, `found`), `at[i]` where
+// it begins, `head[k]` where part k's head does, and `content` how tall the whole list is. NOTE is the room under
+// the list for what is said of the thing chosen: a line of its count, and up to NOTE_LINES lines of its note
+// (test/regress/l-analysis.mjs holds every note to them on the narrowest panel).
+export const LAB_RH = 13, LAB_SEC = 12, LAB_HEAD = 20, NOTE_LINES = 4, LAB_NOTE = 12 + NOTE_LINES * 10 + 4;
+export const LAB_LIST = (() => {
+  const lines = [], line = [], at = [], head = [];
+  let y = 0;
+  LAB.forEach((e, i) => {
+    if (i === 0 || LAB[i - 1].kin !== e.kin) { head[e.kin] = y; lines.push({ y, h: LAB_SEC, kin: e.kin, entry: null, i: -1, total: LAB.filter(f => f.kin === e.kin).length }); y += LAB_SEC; }
+    const [sheet, frame] = e.key.split(':');
+    at[i] = y; lines.push(line[i] = { y, h: LAB_RH, kin: e.kin, entry: e, i, sheet, frame, found: `CUT THROUGH ONE WITH THE BIT. FOUND: ${e.where}.` });
+    y += LAB_RH;
+  });
+  return { lines, line, at, head, content: y };
+})();
 // What the lens shows a kind of ground as, and from which level of it: [level, red, green, blue].
 const LENS = [];
 for (const [level, colour, kinds] of [[1, [214, 178, 64], [K.ORE_A]], [1, [255, 232, 96], [K.ORE_B]], [2, [176, 184, 204], [K.SLATE, K.VAULT, K.KEY, K.STEEL, K.SLAG]], [2, [255, 84, 64], [K.HAZARD, K.HAZARD2]],
@@ -156,8 +174,10 @@ export class Drawing {
     return [sheet, rects[(cellHash(x, y, 3) * rects.length) | 0]];
   }
   // What is drawn over a cell's rock, as [sheet, frame], or null for nothing: dense rock and ore from its ground's
-  // own sheet (`row`), a hazard from its type's, a relic from its direction's, a find from the finds'. A cross's
-  // rich ore is its donor's, and is drawn as the donor's (`itemsB`), so that what it looks like is what it pays.
+  // own sheet (`row`), a hazard from its type's, a relic from its direction's, a find from the finds'. Ore is drawn
+  // from what its row says its two ores are (`ores`), which is what the lab knows them by: a cross's rich ore is its
+  // donor's, so that what it looks like is what it pays, and a strain's or a deep flank's are its own. (The row's
+  // own pairs are returned, so nothing is made for a cell.)
   // A pocket's mineral is its own frame of the 'minerals' sheet, and its special cell (a hive's stalk) one of two:
   // the one that runs level or the one that stands upright, as the cell `i` lies between what it joins (asked of
   // the cells beside it; upright where `i` is not given).
@@ -171,8 +191,9 @@ export class Drawing {
       const frame = `${P.node}-${i !== undefined && !joins(i - N) && !joins(i + N) && (joins(i - 1) || joins(i + 1)) ? 'h' : 'v'}`;
       return sheets.minerals?.frames[frame] ? ['minerals', frame] : null;
     }
-    if (k === K.ORE_B) return [row.itemsB, 'oreB'];
-    if (k === K.DENSE || k === K.ORE_A) return [row.items, k === K.DENSE ? 'dense' : 'oreA'];
+    if (k === K.ORE_B) return row.ores[1];
+    if (k === K.ORE_A) return row.ores[0];
+    if (k === K.DENSE) return [row.items, 'dense'];
     if (k === K.HAZARD || k === K.HAZARD2 || k === K.RARE) { const haz = hazOf(k, row); return haz ? [HAZARDS[haz].sheet, 'hazard'] : null; }
     // Slag and the steel it is quenched to are the lava's, drawn from the lava's sheet whatever ground they lie in.
     if (k === K.SLAG || k === K.STEEL) return [HAZARDS.lava.sheet, k === K.SLAG ? 'slag' : 'steel'];
@@ -1431,8 +1452,15 @@ export class Drawing {
     c.x = wx - ox * this.chartBase / c.zoom; c.y = wy - oy * this.chartBase / c.zoom;
     this.chartView();
   }
-  // A wheel turned over the chart zooms it about the pointer. Returns whether the chart took it.
+  // A wheel turned over the chart zooms it about the pointer, and over the lab's notes scrolls them (`delta` in the
+  // game's pixels: js/main.js turns lines and pages into those). Returns whether either took it.
   wheel(x, y, delta) {
+    if (this.lab && this.labTab === 'lab') {
+      const g = this.labGeom();
+      if (x < g.px || y < g.py || x >= g.px + g.pw || y >= g.py + g.ph) return false;
+      this.labScroll = Math.max(0, Math.min(g.most, this.labScroll + delta)); this.labVel = 0; this.labAim = null;
+      return true;
+    }
     const r = this.lab && this.labTab === 'chart' ? this.chartRect : null;
     if (!r || x < r[0] || y < r[1] || x >= r[0] + r[2] || y >= r[1] + r[3]) return false;
     this.chartZoom(delta < 0 ? 1.2 : 1 / 1.2, x, y);
@@ -1540,19 +1568,42 @@ export class Drawing {
       text(ctx, value, px + pw - 8, y, lit === undefined ? '#ffffff' : lit ? '#8cf2c4' : '#8a84a0', 1);
     });
   }
-  // The lab's notes: everything it can know, a line each (what is not yet analysed is only a question mark), and
-  // under the list what it has to say of the line that was tapped. Where the list is longer than the screen it is
-  // turned a page at a time.
+  // Where the lab's notes lie on the screen, worked out from the screen's size and how far the panel has risen, as
+  // they are drawn, so that a touch is read against the lines it falls on: the panel (px, py, pw, ph), the window
+  // the list is seen through (vx, vy, vw, view), and how far it can be scrolled (`most`). One object, filled again.
+  labGeom() {
+    const g = this.labG ??= { px: 0, py: 0, pw: 0, ph: 0, vx: 0, vy: 0, vw: 0, view: 0, most: 0 }, { W, H } = this, rise = 1 - this.labRise;
+    g.pw = Math.min(W - 8, 200); g.px = Math.round((W - g.pw) / 2);
+    g.view = Math.min(LAB_LIST.content, Math.max(3 * LAB_RH, H - 48 - LAB_HEAD - LAB_NOTE - 4));
+    g.ph = LAB_HEAD + g.view + LAB_NOTE + 4;
+    g.py = Math.max(2, Math.round((H - 44 - g.ph) / 2)) + Math.round(rise * rise * 60);
+    g.vx = g.px + 4; g.vy = g.py + LAB_HEAD; g.vw = g.pw - 8;
+    g.most = LAB_LIST.content - g.view;
+    return g;
+  }
+  // The head of a part of the lab's list, at (x, y) and `w` wide, over whatever lies under it: its icon, its title
+  // in its gems' colour and how many of it are known (`known`, by part).
+  labHead(line, x, y, w, known) {
+    const { ctx } = this, [title, icon] = LAB_KINS[line.kin], f = sheets.icons.frames[icon];
+    ctx.fillStyle = '#1c1a28'; ctx.fillRect(x, y, w, LAB_SEC);
+    ctx.drawImage(sheets.icons.image, f[0], f[1], f[2], f[3], x + 2, y + 1, f[2], f[3]);
+    text(ctx, title, x + 16, y + 1, GEM_COLOR[line.kin] ?? '#f4ecd8');
+    text(ctx, `${known[line.kin]}/${line.total}`, x + w - 5, y + 1, '#8a84a0', 1);
+    ctx.fillStyle = '#4a4468'; ctx.fillRect(x + 2, y + LAB_SEC - 1, w - 8, 1);
+  }
+  // The panel the bar opens: STATS, the lab's notes (LAB), the chart (MAP) and MENU. The lab's notes are everything
+  // the lab can know, in five parts, a line each: what is analysed with its picture and its worth, what is not with
+  // where it is found. The list scrolls (dragged, flicked, wheeled or stepped with the keys: js/game.js), clipped to
+  // its window, the head of the part at the top held there until the next pushes it up; a bar at its edge says how
+  // far down it is and marks the line chosen, and under it the lab says what it knows of the line chosen.
   drawLab() {
-    const { ctx, W, H, S } = this, RH = 13, HEAD = 20, NOTE = 48;
+    const { ctx, W, H, S } = this, HEAD = LAB_HEAD;
     ctx.globalAlpha = 0.6 * this.labRise; ctx.fillStyle = '#07060b'; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1;
-    const pw = Math.min(W - 8, 200), px = Math.round((W - pw) / 2);
-    const room = H - 48 - HEAD - NOTE - 4, paged = Math.floor(room / RH) < LAB.length, rows = paged ? Math.max(3, Math.floor((room - 14) / RH)) : LAB.length, pages = Math.ceil(LAB.length / rows);
-    const sel = LAB_OF[this.labSel] ?? LAB[0];
-    if (this.labPage < 0 || this.labPage >= pages) this.labPage = Math.floor(LAB.indexOf(sel) / rows);
     if (this.labTab === 'chart' && !this.charted) this.labTab = 'stats';
+    const g = this.labGeom(), { pw, px } = g;
     const chart = Math.min(pw - 12, H - 52 - HEAD - 10);
-    const rise = 1 - this.labRise, ph = this.labTab === 'menu' ? HEAD + 80 + (this.stalls.length ? 14 + this.stalls.length * 10 : 0) : this.labTab === 'chart' ? HEAD + chart + 10 : this.labTab === 'stats' ? HEAD + this.stats().length * this.statsPitch(this.stats().length) + 8 : HEAD + rows * RH + NOTE + (paged ? 14 : 0) + 4, py = Math.max(2, Math.round((H - 44 - ph) / 2)) + Math.round(rise * rise * 60);
+    const rise = 1 - this.labRise, ph = this.labTab === 'menu' ? HEAD + 80 + (this.stalls.length ? 14 + this.stalls.length * 10 : 0) : this.labTab === 'chart' ? HEAD + chart + 10 : this.labTab === 'stats' ? HEAD + this.stats().length * this.statsPitch(this.stats().length) + 8 : g.ph;
+    const py = this.labTab === 'lab' ? g.py : Math.max(2, Math.round((H - 44 - ph) / 2)) + Math.round(rise * rise * 60);
     slice9(ctx, 'ui', 'panel', px, py, pw, ph);
     this.button(px, py, pw, ph, () => {});
     this.buttons.at(-1).swallow = true;
@@ -1576,36 +1627,60 @@ export class Drawing {
       if (view.zoom > 1.01) text(ctx, `x${view.zoom.toFixed(1)}`, cx0 + 3, cy0 + chart - 12, '#f4ecd8');
       return;
     }
-    LAB.slice(this.labPage * rows, this.labPage * rows + rows).forEach((e, r) => {
-      const y = py + HEAD + r * RH, n = S.lab[e.key] ?? 0, on = e === sel;
-      if (on) { ctx.fillStyle = '#3a3260'; ctx.fillRect(px + 4, y, pw - 8, RH - 1); }
+    const sel = LAB_OF[this.labSel] ?? LAB[0], chosen = LAB.indexOf(sel), { vx, vy, vw, view, most } = g;
+    this.labScroll = Math.max(0, Math.min(most, this.labScroll));
+    const top = Math.round(this.labScroll), RIGHT = vx + vw - 5;
+    // How many of each part are known, counted once a frame with no list made.
+    const known = this.labKnown ??= [0, 0, 0, 0, 0];
+    known.fill(0);
+    for (const e of LAB) if (S.lab[e.key]) known[e.kin]++;
+    ctx.save(); ctx.beginPath(); ctx.rect(vx, vy, vw, view); ctx.clip();
+    for (const line of LAB_LIST.lines) {
+      if (line.y + line.h <= top) continue;
+      if (line.y >= top + view) break;
+      const y = vy + line.y - top;
+      if (!line.entry) { this.labHead(line, vx, y, vw, known); continue; }
+      const e = line.entry, n = S.lab[e.key] ?? 0, on = line.i === chosen;
+      if (on) { ctx.fillStyle = '#3a3260'; ctx.fillRect(vx, y, vw - 4, LAB_RH - 1); }
       if (n) {
-        const [sheet, frame] = e.key.split(':'), f = sheets[sheet].frames[frame];
-        ctx.drawImage(sheets[sheet].image, f[0] + 2, f[1] + 2, 12, 12, px + 6, y, 12, 12);
-        text(ctx, e.name, px + 22, y + 2, on ? '#ffe14a' : '#ffffff');
-        text(ctx, `+${labLevel(n)}%`, px + pw - 8, y + 2, '#8cf2c4', 1);
+        const f = sheets[line.sheet].frames[line.frame];
+        ctx.drawImage(sheets[line.sheet].image, f[0] + 2, f[1] + 2, 12, 12, vx + 2, y, 12, 12);
+        text(ctx, e.name, vx + 18, y + 2, on ? '#ffe14a' : '#ffffff');
+        text(ctx, `+${labLevel(n)}%`, RIGHT, y + 2, '#8cf2c4', 1);
       } else {
-        text(ctx, '?', px + 10, y + 2, '#6a6478');
-        text(ctx, '? ? ?', px + 22, y + 2, on ? '#bcb4cc' : '#6a6478');
+        // (What is not yet known says where it is found.)
+        text(ctx, '?', vx + 6, y + 2, on ? '#bcb4cc' : '#6a6478');
+        text(ctx, e.at, vx + 18, y + 2, on ? '#bcb4cc' : '#6a6478');
       }
-      this.buttons.unshift({ x: px + 4, y, w: pw - 8, h: RH, act: () => { this.labSel = e.key; sfx.tap(); } });
-    });
-    // What the lab says of the line chosen.
-    const ny = py + HEAD + rows * RH + 3, n = S.lab[sel.key] ?? 0;
+    }
+    // The head of the part at the top of the window stays there, and the next one pushes it up as it comes.
+    let held = null, next = Infinity;
+    for (const line of LAB_LIST.lines) if (!line.entry) { if (line.y <= top) held = line; else { next = line.y; break; } }
+    if (held && held.y < top) this.labHead(held, vx, vy + Math.min(0, next - top - LAB_SEC), vw, known);
+    // A fade at either edge while there is more beyond it (at the top, under the head held there).
+    ctx.fillStyle = '#1c1a28';
+    for (let r = 0; r < 4; r++) {
+      ctx.globalAlpha = 0.8 - r * 0.2;
+      if (top < most) ctx.fillRect(vx, vy + view - 1 - r, vw - 4, 1);
+      if (top > 0) ctx.fillRect(vx, vy + LAB_SEC + r, vw - 4, 1);
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+    // The bar at the window's right edge: where the window is in the list, and a mark where the line chosen lies.
+    if (most > 0) {
+      const thumb = Math.max(8, Math.round(view * view / LAB_LIST.content)), ty = vy + Math.round((view - thumb) * top / most);
+      ctx.fillStyle = '#2a2838'; ctx.fillRect(vx + vw - 2, vy, 2, view);
+      ctx.fillStyle = '#6a6488'; ctx.fillRect(vx + vw - 2, ty, 2, thumb);
+      ctx.fillStyle = '#ffe14a'; ctx.fillRect(vx + vw - 3, vy + Math.round((LAB_LIST.at[chosen] + LAB_RH / 2) * (view - 1) / LAB_LIST.content), 3, 1);
+    }
+    // What the lab says of the line chosen (its note wrapped once for the width it is drawn at, not every frame).
+    const ny = vy + view + 3, n = S.lab[sel.key] ?? 0, wide = pw - 16, said = n ? sel.note : LAB_LIST.line[chosen].found;
+    const w = this.labWrap ??= { said: '', wide: 0, lines: [] };
+    if (w.said !== said || w.wide !== wide) { w.said = said; w.wide = wide; w.lines = wrap(said, wide).slice(0, NOTE_LINES); }
     ctx.fillStyle = '#4a4468'; ctx.fillRect(px + 6, ny - 2, pw - 12, 1);
-    if (n) {
-      text(ctx, `${compact(n)} SAMPLES. NEXT +1% AT ${compact(labNext(n))}`, px + 8, ny + 1, '#bfe6ff');
-      wrap(sel.note, pw - 16).slice(0, 3).forEach((line, l) => text(ctx, line, px + 8, ny + 12 + l * 10, '#d8d0c0'));
-    } else {
-      text(ctx, 'NOT ANALYSED YET', px + 8, ny + 1, '#bcb4cc');
-      wrap(`CUT THROUGH ONE WITH THE BIT. FOUND: ${sel.where}.`, pw - 16).slice(0, 3).forEach((line, l) => text(ctx, line, px + 8, ny + 12 + l * 10, '#9a94a8'));
-    }
-    if (paged) {
-      const fy = py + ph - 16;
-      text(ctx, `< ${this.labPage + 1}/${pages} >`, px + pw / 2, fy + 2, '#bfe6ff', 0.5);
-      this.buttons.unshift({ x: px + 4, y: fy - 2, w: pw / 2 - 4, h: 16, act: () => { this.labPage = (this.labPage + pages - 1) % pages; sfx.tap(); } });
-      this.buttons.unshift({ x: px + pw / 2, y: fy - 2, w: pw / 2 - 4, h: 16, act: () => { this.labPage = (this.labPage + 1) % pages; sfx.tap(); } });
-    }
+    if (n) text(ctx, `${compact(n)} SAMPLES. +1% AT ${compact(labNext(n))}`, px + 8, ny + 1, '#bfe6ff');
+    else text(ctx, 'NOT ANALYSED YET', px + 8, ny + 1, '#bcb4cc');
+    for (let l = 0; l < w.lines.length; l++) text(ctx, w.lines[l], px + 8, ny + 12 + l * 10, n ? '#d8d0c0' : '#9a94a8');
   }
   // The shop's picture of level `next` of row `u`, in the 16 x 16 at (vx, vy), as it will look and move: the reach's
   // span with light running along it, the bit spinning and hot, the ram's flame behind the tail, the plates with a

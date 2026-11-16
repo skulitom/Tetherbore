@@ -4,8 +4,8 @@
 //   - loess is cut in half the time;
 //   - a pocket of lava in forge pours further (7) than one in scoria or the south's own ground (5);
 //   - a hauled cell pays by its row's `rich`: forge a quarter more than the south's own, loess 0.85 of the east's;
-//   - rock is drawn from the strain's own sheet over its direction's floor, its ore from its direction's sheet,
-//     and its chips and its colour on the map are its own;
+//   - rock is drawn from the strain's own sheet over its direction's floor, its two ores from frames of their own
+//     (the `ores` sheet), its hazard as its direction's, and its chips and its colour on the map are its own;
 //   - coming into one, the place is named by the strain's name.
 //   node test/regress/c1-strain-play.mjs
 import { makeGame, world } from '../harness.mjs';
@@ -63,7 +63,7 @@ check(pay.lode > 100 && Math.abs(pay.loess / pay.lode - 0.85) < 0.01, `fifty cel
 for (const id of [FIRN, SERAC, SCORIA, FORGE, 21, SPOREFALL, 23, LOESS]) {
   const row = BIOMES[id], own = BIOMES[row.kin];
   check(game.rockSheet(K.SOFT, id) === row.name && game.rockSheet(K.DENSE, id) === row.name && game.rockSheet(K.SLATE, id) === 'slate' && game.rockSheet(K.ICE, id) === 'ice', `${row.name}: its rock is drawn from ${game.rockSheet(K.SOFT, id)}`);
-  check(row.floor === own.floor && JSON.stringify(game.overlay(K.ORE_A, row)) === JSON.stringify([own.items, 'oreA']) && JSON.stringify(game.overlay(K.HAZARD, row)) === JSON.stringify(game.overlay(K.HAZARD, own)), `${row.name}: its floor, ore or hazard is not drawn as its direction's`);
+  check(row.floor === own.floor && JSON.stringify(game.overlay(K.ORE_A, row)) === JSON.stringify(['ores', `${row.name}A`]) && JSON.stringify(game.overlay(K.ORE_B, row)) === JSON.stringify(['ores', `${row.name}B`]) && JSON.stringify(game.overlay(K.HAZARD, row)) === JSON.stringify(game.overlay(K.HAZARD, own)), `${row.name}: its floor or hazard is not drawn as its direction's, or its ores not as its own`);
   check(game.debris(K.SOFT, id) === row.debris && game.debris(K.SOFT, id) !== own.debris, `${row.name}: its chips are not its own colours`);
 }
 

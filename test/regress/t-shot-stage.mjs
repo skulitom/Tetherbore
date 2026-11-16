@@ -14,8 +14,10 @@
 //   that many nuggets home from there, which banks their specimens; `lv` sets levels (`max`, `late`, `id.n`),
 //   `shop` opens the shop, `buy` buys a row's next level (the shop's moment with `shop`, the fitting at the core
 //   without), `steer` holds the thumb, `fire` makes a power of what WORKS fits act, and `ladder` draws every level
-//   of every row and no world, and none of them sets anything unasked; and stepped for three seconds, nothing
-//   has moved the drill, nothing is wrong with the tether, and the saved game is as it was.
+//   of every row and no world; `lab` opens the lab's notes knowing what it is told, `labsel` chooses a thing and
+//   `scroll` scrolls the list, and `orebook` draws every ground's ores and no world; and none of them sets anything
+//   unasked; and stepped for three seconds, nothing has moved the drill, nothing is wrong with the tether, and the
+//   saved game is as it was.
 import { makeGame, tetherFaults, sight, world, C, N, K } from '../harness.mjs';
 
 const SAVE = 'tetherbore-save-v3', fails = [];
@@ -265,6 +267,26 @@ check(await open('', 'example.org') === undefined, 'away from localhost an ordin
   try { ladder.advance(500); } catch (error) { threw = error.message; }
   check(!threw, `the ladder threw: ${threw}`);
   check(localStorage.getItem(SAVE) === saved, 'a view staged with levels, the shop and a purchase wrote over the saved game');
+}
+
+// The lab's notes: `lab` sets what is known and opens them at LAB, risen; `labsel` chooses a thing and shows it,
+// `scroll` scrolls on from there; `orebook` is a page of every ground's ores. Without `lab` the notes are shut and
+// nothing is known; with them the saved game is left alone.
+{
+  const bare = await open('?shot&seed=7');
+  check(!bare.game.lab && Object.keys(bare.game.S.lab).length === 0, 'a view staged without lab opened the notes or knew something');
+  const all = await open('?shot&seed=7&lab=all'), A = all.game;
+  check(A.lab && A.labTab === 'lab' && A.labRise === 1 && Object.keys(A.S.lab).length === 48 && A.S.lab[Object.keys(A.S.lab)[11]] === 2, `lab=all: the notes ${A.lab ? 'open' : 'shut'} at ${A.labTab}, ${Object.keys(A.S.lab).length} known`);
+  const some = await open('?shot&seed=7&lab=20&labsel=seracB'), S = some.game, g = S.labGeom();
+  check(Object.keys(S.S.lab).length === 20 && S.labSel === 'ores:seracB' && S.labScroll > 0 && S.labScroll <= g.most, `lab=20&labsel=seracB: ${Object.keys(S.S.lab).length} known, ${S.labSel} chosen, scrolled ${S.labScroll}`);
+  const named = await open('?shot&seed=7&lab=none&labsel=FLUORITE&scroll=40'), N2 = named.game;
+  check(Object.keys(N2.S.lab).length === 0 && N2.labSel === 'ores:seracB', `lab=none&labsel=FLUORITE: ${Object.keys(N2.S.lab).length} known, ${N2.labSel} chosen`);
+  check(Math.abs(N2.labScroll - Math.min(N2.labGeom().most, S.labScroll + 40)) <= 1, `scroll=40 left the list at ${N2.labScroll}, not 40 on from ${S.labScroll}`);
+  const book = await open('?shot&seed=7&orebook');
+  let threw = null;
+  try { book.advance(100); } catch (error) { threw = error.message; }
+  check(!threw && !book.game.lab, `the ore book threw: ${threw}`);
+  check(localStorage.getItem(SAVE) === saved, 'a view of the notes of the lab wrote over the saved game');
 }
 
 if (fails.length) { console.log(`FAIL: ${fails.join('\n      ')}`); process.exit(1); }

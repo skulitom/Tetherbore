@@ -4,7 +4,7 @@ import { World, CellBook, N, C, K, B, HARD, GRIT, GEMS, DX, DY, HAZARDS, RARE, C
 import { sheets, frameAt, duration } from './atlas.js';
 import { sfx, unlock, setAmbience } from './audio.js';
 import { richness, haulBonus, overload, income, round2, NEEDS, UPGRADES, LAB, LAB_OF, labLevel, labNext, CORE, ROWS, REACH } from './shop.js';
-import { Drawing, T, DIR_BIOME, GEM_ICON, GEM_COLOR, GEM_WHERE, SPOT, bright, compact, DEBRIS } from './drawing.js';
+import { Drawing, T, DIR_BIOME, GEM_ICON, GEM_COLOR, GEM_WHERE, SPOT, bright, compact, DEBRIS, LAB_LIST, LAB_RH, LAB_SEC } from './drawing.js';
 import { Feel } from './feel.js';
 import { Fitter } from './fit.js';
 export { richness, haulBonus, overload, income, UPGRADES, LAB, labLevel, labNext, WORKS, MAPS, CORE } from './shop.js';
@@ -143,6 +143,13 @@ const gap = (px, py, ax, ay, bx, by) => {
 // square on to each block, and the loop a thumb draws is the loop that is cut. Ore cut into there says CRUSHED no
 // more often than every CRUSH_EVERY seconds: a plough goes through a mineral a second.
 const PLOUGH = 0.3, CRUSH_EVERY = 1;
+// A finger on the lab's list that moves less than LAB_TAP pixels is a tap; let go, the list runs on until it is
+// slower than LAB_REST pixels a second.
+const LAB_TAP = 5, LAB_REST = 6;
+// The lab's keys of what is not ore (`sampleOf`): steel, a keystone's iron, each hazard by its type (its sheet's
+// `hazard` frame), and each pocket's mineral, the last made the first time it is asked for.
+const STEEL_SAMPLE = `${HAZARDS.lava.sheet}:steel`, KEY_SAMPLE = 'finds:key', MINERAL_SAMPLE = {};
+const HAZ_SAMPLE = Object.fromEntries(Object.entries(HAZARDS).map(([type, { sheet }]) => [type, `${sheet}:hazard`]));
 // The boulders of a drift (a pocket whose row's `twist` is 'drift') are in the books of loose ground while the
 // drill is in the drift or near it, and leave them once it is out and they are AWAY cells off the screen: so the
 // books do not grow by a drift's boulders for every drift crossed.
@@ -218,7 +225,11 @@ export class Game {
     this.swept = 0;                         // cells the tether's sweeps have looked at, for tests of how much work is done
     this.effects = []; this.popups = []; this.hauls = []; this.clouds = []; this.sparks = new Map(); this.lavaVol = new Map(); this.frostOpen = [];
     this.parts = []; this.rings = []; this.motes = []; this.gloom = [10, 8, 7]; this.murk = 1; this.flash = 0; this.counted = 0; this.chime = 3; this.clock = 0;
-    this.shake = 0; this.twang = 0; this.edge = 0; this.hurt = 0; this.coreFlash = 0; this.banner = null; this.shop = false; this.shopRise = 0; this.lab = false; this.labRise = 0; this.labSel = null; this.labPage = 0; this.labFlash = 0; this.confirmReset = 0;
+    this.shake = 0; this.twang = 0; this.edge = 0; this.hurt = 0; this.coreFlash = 0; this.banner = null; this.shop = false; this.shopRise = 0; this.lab = false; this.labRise = 0; this.labSel = null; this.labFlash = 0; this.confirmReset = 0;
+    // The lab's list: how far it is scrolled, in pixels, and how fast it is going; the finger holding it ({ id, y0,
+    // s0, moved }: where it came down, the scroll then, and the furthest it has gone since), a scroll it is easing
+    // to, and the scroll at the last step (`stepLab`).
+    this.labScroll = 0; this.labVel = 0; this.labTouch = null; this.labAim = null; this.labPrev = 0;
     this.buttons = []; this.panels = [];    // what can be tapped this frame; and the small panels up this frame, each [x, y, w, h]
     this.chunks = new Map(); this.version = 0;
     this.daylight = false;                  // no dark is laid over the ground: only a staged view asks for it (js/shot.js)
@@ -291,7 +302,8 @@ export class Game {
     this.called.clear(); this.calledAt = {}; this.tickIn = 0;
     // The first piece, beside the core, lies loose from the start: the open cell between them tells of it.
     this.changed([C * N + C + 3]);
-    this.shop = false; this.lab = false; this.labSel = null; this.labPage = 0; this.labFlash = 0;
+    this.shop = false; this.lab = false; this.labSel = null; this.labFlash = 0;
+    this.labScroll = 0; this.labVel = 0; this.labTouch = null; this.labAim = null; this.labPrev = 0;
     this.feel.reset(this.S.seed);
     this.fitter.reset();
     this.dockMark();
@@ -429,6 +441,15 @@ export class Game {
       const [rx, ry, rw, rh] = this.chartRect;
       if (x >= rx && y >= ry && x < rx + rw && y < ry + rh) { this.chartTouch.set(id, [x, y]); return; }
     }
+    // A finger on the lab's list takes hold of it: dragged it scrolls the list, and let go where it came down it is
+    // a tap on the line under it (`pointerUp`). It catches the list if it was still running on.
+    if (this.lab && this.labTab === 'lab' && !this.labTouch && this.input.id === null) {
+      const g = this.labGeom();
+      if (x >= g.vx && y >= g.vy && x < g.vx + g.vw && y < g.vy + g.view) {
+        this.labTouch = { id, y0: y, s0: this.labScroll, moved: 0 }; this.labVel = 0; this.labAim = null; this.labPrev = this.labScroll;
+        return;
+      }
+    }
     if (this.input.id !== null) return;
     if (hit) { hit.act(); return; }
     if (this.shop || this.lab) { this.shop = this.lab = false; sfx.tap(); return; }
@@ -437,6 +458,13 @@ export class Game {
   }
   pointerMove(id, x, y) {
     if (this.chartTouch.has(id)) { if (this.lab && this.chartRect) this.chartMove(id, x, y); return; }
+    const t = this.labTouch;
+    if (t && t.id === id) {
+      t.moved = Math.max(t.moved, Math.abs(y - t.y0));
+      // (Under a few pixels it may yet be a tap, and the list does not move.)
+      if (t.moved >= LAB_TAP) this.labScroll = Math.max(0, Math.min(this.labGeom().most, t.s0 - (y - t.y0)));
+      return;
+    }
     const inp = this.input;
     if (inp.id !== id) return;
     inp.px = x; inp.py = y;
@@ -445,8 +473,26 @@ export class Game {
     inp.vx = dx / far; inp.vy = dy / far; inp.m = Math.min(1, (far - 3) / 12);
     if (far > 24) { inp.ax = x - inp.vx * 24; inp.ay = y - inp.vy * 24; }
   }
-  pointerUp(id) { this.chartTouch.delete(id); if (this.input.id === id) { this.input.id = null; this.input.m = 0; } }
-  key(code, down) {
+  pointerUp(id) {
+    this.chartTouch.delete(id);
+    const t = this.labTouch;
+    if (t && t.id === id) {
+      this.labTouch = null;
+      // A finger that did not move is a tap: the line it came down on is chosen (the head of a part is not), and
+      // shown whole. One that moved lets go of the list with the speed it had (`stepLab`).
+      if (t.moved < LAB_TAP && this.lab && this.labTab === 'lab') {
+        const g = this.labGeom(), at = t.y0 - g.vy, i = at < LAB_SEC && this.labScroll > 0 ? -1 : this.labLineAt(at + this.labScroll);
+        if (i >= 0) { this.labSel = LAB[i].key; this.labReveal(i); sfx.tap(); }
+        this.labVel = 0;
+      }
+      return;
+    }
+    if (this.input.id === id) { this.input.id = null; this.input.m = 0; }
+  }
+  // A key held down comes again and again (`repeat`): only the lab's list takes those, to walk on through it.
+  key(code, down, repeat = false) {
+    if (down && this.lab && this.labTab === 'lab' && this.labKey(code, repeat)) return true;
+    if (repeat) return false;
     const dir = { ArrowRight: 0, KeyD: 0, ArrowDown: 1, KeyS: 1, ArrowLeft: 2, KeyA: 2, ArrowUp: 3, KeyW: 3 }[code];
     if (dir !== undefined) {
       if (down) { unlock(); this.shop = this.lab = false; if (!this.input.keys.size) this.drill.armed = true; this.input.keys.add(dir); } else this.input.keys.delete(dir);
@@ -1413,8 +1459,10 @@ export class Game {
     this.effect('dust', 'dust', (x + 0.5) * T, (y + 0.5) * T);
     if (tough >= 2 || k === K.ICE) this.effect('shatter', 'shatter', (x + 0.5) * T, (y + 0.5) * T);
     // (Ploughing, the drill goes through a mineral every second or so: it says so no more often than that.)
-    // (A rare hazard cut into is crushed too, and studied by nobody.)
-    if (k === K.ORE_A || k === K.ORE_B || k === K.STEEL || k === K.PRISM || k === K.RARE || mineral) this.analyse(this.sampleOf(k, row), x, y, row.dig >= PLOUGH || this.time - this.crushedAt >= CRUSH_EVERY);
+    // (A hazard cut into is crushed too, a rare one as much as lava, and is a sample: the lab learns from what goes
+    // off, before it goes off. So is a keystone's iron.)
+    const key = this.sampleOf(k, row);
+    if (k === K.ORE_A || k === K.ORE_B || k === K.STEEL || k === K.PRISM || k === K.RARE || mineral || key) this.analyse(key, x, y, row.dig >= PLOUGH || this.time - this.crushedAt >= CRUSH_EVERY);
     this.shake = Math.max(this.shake, 1 + tough * 0.5);
     // The hazard that was cut into wakes, and a hazard beside the cut: each may open cells (its own; the slate an
     // arc shatters), and every cell opened goes to `changed` together.
@@ -1440,13 +1488,17 @@ export class Game {
 
   // ------------------------------------------------------------ the lab
   // What a cell of this kind in this ground is to the lab: the key of its row in `LAB` (the sheet and frame it is
-  // drawn from, so a cross's rich ore is its donor's here too), or null for what the lab does not study.
+  // drawn from, so a cross's rich ore is its donor's here too and a strain's ore its own: `row.oreKeys`), or null for
+  // what the lab does not study. A hazard is its type's, whatever ground it lies in, and a hazard's cell of a type
+  // its ground has none of is nothing. (Every key is made once, not for each cell asked about.)
   sampleOf(k, row) {
     const P = row.pocket;
-    if (P !== null && k === (P.kind ?? K.MINERAL)) return `minerals:${P.mineral}`;
-    if (k === K.ORE_A) return `${row.items}:oreA`;
-    if (k === K.ORE_B) return `${row.itemsB}:oreB`;
-    if (k === K.STEEL) return `${HAZARDS.lava.sheet}:steel`;
+    if (P !== null && k === (P.kind ?? K.MINERAL)) return MINERAL_SAMPLE[P.mineral] ??= `minerals:${P.mineral}`;
+    if (k === K.ORE_A) return row.oreKeys[0];
+    if (k === K.ORE_B) return row.oreKeys[1];
+    if (k === K.STEEL) return STEEL_SAMPLE;
+    if (k === K.HAZARD || k === K.HAZARD2 || k === K.RARE) return HAZ_SAMPLE[hazOf(k, row)] ?? null;
+    if (k === K.KEY) return KEY_SAMPLE;
     return null;
   }
   // How much more such a cell is worth for what the lab knows of it: a hundredth for each level.
@@ -1470,11 +1522,61 @@ export class Game {
     } else if (say) this.popup(x, y + 0.7, `SAMPLE ${n}/${labNext(n)}`, '#6fa894');
   }
   // The panel is opened and shut by a tap on the bar: at the tab it was left at, or at the lab's notes just after
-  // something was analysed (at the thing last learnt about); a tap on the map names the chart's tab itself.
+  // something was analysed (at the thing last learnt about); a tap on the map names the chart's tab itself. The
+  // lab's list opens with the thing chosen in the middle of its window, as near as the ends allow.
   openLab(open, tab) {
     this.lab = open; this.shop = false; this.chartTouch.clear();
-    if (open) { this.labSel ??= (LAB.find(e => this.S.lab[e.key]) ?? LAB[0]).key; this.labPage = -1; this.labTab = tab ?? (this.labFlash > 0 ? 'lab' : this.labTab); }
+    this.labTouch = null; this.labVel = 0; this.labAim = null;
+    if (open) {
+      this.labSel ??= (LAB.find(e => this.S.lab[e.key]) ?? LAB[0]).key; this.labTab = tab ?? (this.labFlash > 0 ? 'lab' : this.labTab);
+      const g = this.labGeom(), i = Math.max(0, LAB.findIndex(e => e.key === this.labSel));
+      this.labScroll = this.labPrev = Math.max(0, Math.min(g.most, LAB_LIST.at[i] + LAB_RH / 2 - g.view / 2));
+    }
     sfx.tap();
+  }
+  // Which thing's line lies at `y` pixels down the whole list, or -1 for the head of a part or past the end.
+  labLineAt(y) {
+    for (const line of LAB_LIST.lines) if (y >= line.y && y < line.y + line.h) return line.entry ? line.i : -1;
+    return -1;
+  }
+  // The list eases to show thing i's line whole, below the head held at the top of the window (and with its part's
+  // head too, where it is the first of its part): it does not move where the line is in view already.
+  labReveal(i) {
+    const g = this.labGeom(), y = LAB_LIST.at[i], top = y - LAB_SEC, from = this.labAim ?? this.labScroll;
+    let aim = from;
+    if (top < from) aim = top; else if (y + LAB_RH > from + g.view) aim = y + LAB_RH - g.view;
+    aim = Math.max(0, Math.min(g.most, aim));
+    this.labAim = aim === this.labScroll ? null : aim; this.labVel = 0;
+  }
+  // The keys on the lab's list: up and down (or W and S) choose the thing before or after, Page Up and Page Down a
+  // window's worth, Home and End the first and the last; each shows the thing chosen. Returns whether it took the key.
+  labKey(code, repeat) {
+    const at = Math.max(0, LAB.findIndex(e => e.key === this.labSel)), page = Math.max(1, Math.floor(this.labGeom().view / LAB_RH) - 1);
+    const to = { ArrowUp: at - 1, KeyW: at - 1, ArrowDown: at + 1, KeyS: at + 1, PageUp: at - page, PageDown: at + page, Home: 0, End: LAB.length - 1 }[code];
+    if (to === undefined) return false;
+    const i = Math.max(0, Math.min(LAB.length - 1, to));
+    if (i !== at) { this.labSel = LAB[i].key; if (!repeat) sfx.tap(); }
+    this.labReveal(i);
+    return true;
+  }
+  // The list a step on: held, it goes with the finger and the speed it is moving at is kept (smoothed over two
+  // steps); let go, it runs on at that speed, slowing to a twenty-fifth of it in a second and stopping under
+  // LAB_REST pixels a second or at either end; easing to a line shown (`labAim`), it closes most of the way in a
+  // fraction of a second. Nothing here draws from Math.random, and a step makes nothing.
+  stepLab(dt) {
+    if (!this.lab || this.labTab !== 'lab' || !(dt > 0)) return;
+    const most = this.labGeom().most;
+    if (this.labTouch) this.labVel = 0.5 * this.labVel + 0.5 * (this.labScroll - this.labPrev) / dt;
+    else if (this.labAim !== null) {
+      this.labScroll += (this.labAim - this.labScroll) * Math.min(1, 14 * dt);
+      if (Math.abs(this.labAim - this.labScroll) < 0.5) { this.labScroll = this.labAim; this.labAim = null; }
+    } else if (this.labVel) {
+      this.labScroll += this.labVel * dt; this.labVel *= 0.04 ** dt;
+      if (Math.abs(this.labVel) < LAB_REST) this.labVel = 0;
+    }
+    const held = Math.max(0, Math.min(most, this.labScroll));
+    if (held !== this.labScroll) { this.labScroll = held; if (!this.labTouch) this.labVel = 0; }
+    this.labPrev = this.labScroll;
   }
 
   // ------------------------------------------------------------ hauling
@@ -1517,7 +1619,7 @@ export class Game {
       else if (k === K.RARE) {
         const awake = this.swimming(y * N + x);
         rares++; rare = RARE[row.kin] ?? null; if (awake) caught++;
-        lump += round2(income(Math.max(22, far)) * 12) * (awake ? 2 : 1);
+        lump += round2(income(Math.max(22, far)) * 12 * study) * (awake ? 2 : 1);
       }
       // A pocket's mineral pays so many seconds of what cutting out here would earn, and specimens of the
       // direction the pocket lies in.
@@ -2599,6 +2701,7 @@ export class Game {
     if (this.bought) { this.bought.t -= dt; if (this.bought.t <= 0) this.bought = null; }
     if (this.confirmReset > 0) this.confirmReset -= dt;
     if (this.labFlash > 0) this.labFlash -= dt;
+    this.stepLab(dt);
     if (!this.shop && !this.lab) {
       // The clock the ground's own changes are timed by (a cut in the north icing over) stands still with the shop
       // or the lab's notes open, as the lava, the spores and the sparks do: nothing comes due behind them.

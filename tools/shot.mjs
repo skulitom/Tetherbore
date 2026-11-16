@@ -1,7 +1,7 @@
 // Photographs the game, so that ground and art can be judged by eye with no hand on a browser:
 //   node tools/shot.mjs <out.png> [--seed 7] [--at dx,dy] [--reach level] [--size 360x640] [--zoom n] [--frames n] [--lit] [--met] [--wake [type]]
 //                                 [--key] [--pocket] [--haul n] [--cave] [--feel event] [--lv list] [--shop tab] [--buy id] [--steer x,y]
-//                                 [--fire id] [--ladder]
+//                                 [--fire id] [--ladder] [--lab what] [--labsel name] [--scroll px] [--orebook]
 //
 //   --at dx,dy    where the drill stands, in cells from the core: east and south are counted up, so 300 cells north
 //                 is `--at 0,-300`. Away from the core it stands in a small room at the end of a tunnel carved from
@@ -57,6 +57,12 @@
 //   --fire id     a power of what WORKS fits acts at once: mender, arccoil, sporedrive, lavaskin, diamond (steel
 //                 ahead, to cut) or blackbox (the drill wrecked).
 //   --ladder      no world: every level of every row drawn in rows, labelled (`--size 960x720`).
+//   --lab what    the lab's notes open at LAB, with `all` analysed (thing i with 2 ** (i mod 10) samples), the
+//                 first n in the list's order, or `none`: `--lab 20 --size 320x568 --frames 4`.
+//   --labsel n    with --lab, that thing chosen and shown, by its frame (`seracB`) or its name (`FLUORITE`).
+//   --scroll px   with --lab, the list scrolled that many pixels on from there.
+//   --orebook     no world: each ground with ore of its own, a patch of its rock with its dense rock, its two ores
+//                 and its hazard, and its two ores three times the size (`--size 600x900 --zoom 2`).
 //   --browser p   the Edge or Chrome to use, if the installed one is not to be.
 //
 // It serves this checkout on a free loopback port (static files, read only), opens `index.html?shot&...` in an
@@ -78,11 +84,11 @@ import { WORLD_R, HAZARDS } from '../js/world.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
-const usage = 'node tools/shot.mjs <out.png> [--seed 7] [--at dx,dy] [--reach level] [--size 360x640] [--zoom n] [--frames n] [--lit] [--met] [--wake [type]] [--key] [--pocket] [--haul n] [--cave] [--feel event] [--lv list] [--shop tab] [--buy id] [--steer x,y] [--fire id] [--ladder] [--browser path]';
+const usage = 'node tools/shot.mjs <out.png> [--seed 7] [--at dx,dy] [--reach level] [--size 360x640] [--zoom n] [--frames n] [--lit] [--met] [--wake [type]] [--key] [--pocket] [--haul n] [--cave] [--feel event] [--lv list] [--shop tab] [--buy id] [--steer x,y] [--fire id] [--ladder] [--lab what] [--labsel name] [--scroll px] [--orebook] [--browser path]';
 const wrong = why => { console.error(`${why}\n  ${usage}`); process.exit(2); };
 
 // ---------------------------------------------------------------- what was asked for
-const options = { seed: '7', at: '0,0', reach: '', size: '360x640', zoom: '1', frames: '180', lit: false, met: false, wake: '', key: false, pocket: false, haul: '0', cave: false, feel: '', lv: '', shop: '', buy: '', steer: '', fire: '', ladder: false, browser: '' };
+const options = { seed: '7', at: '0,0', reach: '', size: '360x640', zoom: '1', frames: '180', lit: false, met: false, wake: '', key: false, pocket: false, haul: '0', cave: false, feel: '', lv: '', shop: '', buy: '', steer: '', fire: '', ladder: false, lab: '', labsel: '', scroll: '', orebook: false, browser: '' };
 let out = null;
 for (let args = process.argv.slice(2), i = 0; i < args.length; i++) {
   const arg = args[i];
@@ -115,6 +121,9 @@ if (haul && !options.pocket) wrong('--haul brings home nuggets of the pocket the
 const FEELS = ['quake', 'gust', 'drip', 'creak', 'bubble', 'steam', 'trickle', 'stars', 'worm', 'crackle', 'flies', 'icicle', 'rime'];
 if (options.feel && !FEELS.includes(options.feel)) wrong(`--feel is one of ${FEELS.join(', ')}, not ${options.feel}.`);
 if (options.shop && !['rig', 'works', 'map', 'core'].includes(options.shop)) wrong(`--shop is one of rig, works, map, core, not ${options.shop}.`);
+if (options.lab && !/^(all|none|\d+)$/.test(options.lab)) wrong(`--lab is all, none or how many of the list are known, not ${options.lab}.`);
+if ((options.labsel || options.scroll) && !options.lab) wrong('--labsel and --scroll are of the lab\'s notes: say --lab too.');
+if (options.scroll && !Number.isFinite(Number(options.scroll))) wrong(`--scroll is a number of pixels, not ${options.scroll}.`);
 if (options.fire && !['mender', 'arccoil', 'sporedrive', 'lavaskin', 'diamond', 'blackbox'].includes(options.fire)) wrong(`--fire is one of mender, arccoil, sporedrive, lavaskin, diamond, blackbox, not ${options.fire}.`);
 if (!(zoom >= 1 && zoom <= 64)) wrong(`--zoom is a number from 1 to 64, not ${options.zoom}.`);
 const at = options.at.split(',').map(Number), size = options.size.toLowerCase().split('x').map(Number);
@@ -262,8 +271,9 @@ async function take() {
   if (options.cave) query.set('cave', '1');
   if (haul) query.set('haul', String(haul));
   if (options.feel) query.set('feel', options.feel);
-  for (const name of ['lv', 'shop', 'buy', 'steer', 'fire']) if (options[name]) query.set(name, options[name]);
+  for (const name of ['lv', 'shop', 'buy', 'steer', 'fire', 'lab', 'labsel', 'scroll']) if (options[name]) query.set(name, options[name]);
   if (options.ladder) query.set('ladder', '1');
+  if (options.orebook) query.set('orebook', '1');
   await page('Page.navigate', { url: `${origin}/index.html?${query}` });
   await processes();
   // The page says when the view is staged; if its scripts failed it never will, and what it said instead is told.

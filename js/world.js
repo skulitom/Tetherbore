@@ -119,6 +119,10 @@ const KIN_ITEMS = ['lode-items', 'frost-items', 'ember-items', 'mire-items', 'lo
 //   dig                 what multiplies the time to cut a cell
 //   sheet, floor, items the terrain sheet of its rock, of its floor, and the sheet of its dense rock and ores
 //   itemsB              the sheet its rich ore is drawn from, where that is not `items`: a cross's is its donor's
+//   ores                what its two ores are drawn from, [sheet, frame] of its common ore and of its rich ore,
+//                       which is also what the lab knows them by: its direction's sheet (`items`, `itemsB`), or for
+//                       a strain or a deep flank two frames of `ores` of its own; and `oreKeys`, the two as the
+//                       lab's keys, 'sheet:frame', made once
 //   gloom, dark         the colour of its dark, and how deep the dark is (1 as everywhere today)
 //   mote                [colour, drift]: the motes in its air, and whether they 'fall', 'rise', 'sway' or hang 'still'
 //   map, debris         its colour on the map (its sheet's own ground colour) and the three colours of its chips
@@ -187,6 +191,7 @@ export function biome(f) {
   if (!Number.isInteger(id) || id < 0 || id > 255 || typeof name !== 'string') throw new Error(`a ground needs a number from 0 to 255 and a name: ${id} ${name}`);
   for (const need of ['gloom', 'mote', 'map', 'debris']) if (!Array.isArray(f[need])) throw new Error(`${name}: a ground says its ${need}`);
   const [haz, hazT] = laid(f.haz, name), [haz2, haz2T] = laid(f.haz2, name), g = f.gen ?? null, tells = { ...OFF };
+  const items = f.items ?? KIN_ITEMS[kin], itemsB = f.itemsB ?? items, ores = f.ores ?? [[items, 'oreA'], [itemsB, 'oreB']];
   for (const extra of f.extras ?? []) {
     if (!(extra in TELLS)) throw new Error(`${name}: there is no extra called ${extra}`);
     if (!g || (extra === 'grapes' && !haz)) throw new Error(`${name}: ${extra} need ${g ? 'a hazard to hang' : 'standard ground to lie in'}`);
@@ -200,7 +205,7 @@ export function biome(f) {
   return BIOMES[id] = {
     id, name, title: f.title ?? name.toUpperCase(), kin, gemA: f.gemA ?? kin, gemB: f.gemB ?? kin,
     rich: f.rich ?? 1, gemx: f.gemx ?? 1, worth: f.worth ?? 1, dig: f.dig ?? 1,
-    sheet: f.sheet ?? name, floor: f.floor ?? `${name}-floor`, items: f.items ?? KIN_ITEMS[kin], itemsB: f.itemsB ?? f.items ?? KIN_ITEMS[kin],
+    sheet: f.sheet ?? name, floor: f.floor ?? `${name}-floor`, items, itemsB, ores, oreKeys: ores.map(([sheet, frame]) => `${sheet}:${frame}`),
     gloom: f.gloom, dark: f.dark ?? 1, mote: f.mote, map: f.map, debris: f.debris, decor: f.decor ?? null, decor2: f.decor2 ?? null, air: f.air ?? null,
     gen: g, haz: f.haz ?? null, haz2: f.haz2 ?? null, lavaVol: f.lavaVol ?? 5, freeze: f.freeze ?? 0,
     glass: f.glass ?? false, extras: f.extras ?? [], pocket: f.pocket ?? null, cross: f.cross ?? null,
@@ -233,11 +238,13 @@ biome({ id: 3, name: 'mire', kin: B.MIRE, gloom: [14, 6, 26], mote: ['#a5f0a0', 
   gen: { ...GROUND, cave: 0.68, cavern: 0.7 }, haz: { type: 'spore', rate: 1 } });
 biome({ id: 4, name: 'lode', kin: B.LODE, gloom: [22, 13, 4], mote: ['#ffe08a', 'still'], map: [185, 138, 90], debris: ['#b98a5a', '#f0d8a0', '#a57648'],
   gen: { ...GROUND, slate: 0.05 }, haz: { type: 'spark', rate: 1 } });
+// The two ores of a strain or a deep flank, which are its own: frames `<name>A` and `<name>B` of the `ores` sheet.
+const ownOres = name => [['ores', `${name}A`], ['ores', `${name}B`]];
 // Far out, the ground to either side of each direction's middle turns into a richer, meaner kind of the same: more
-// ore, twice the pay, and its hazard nearly twice as thick.
+// ore, twice the pay, and its hazard nearly twice as thick; and two ores of its own, in its direction's colours.
 const deep = (id, name, of, looks) => {
   const { gen, haz, freeze } = BIOMES[of];
-  return biome({ id, name, kin: of, rich: 2, gemx: 2, gen: { ...gen, oreA: 0.6, oreB: 0.66 }, freeze,
+  return biome({ id, name, kin: of, rich: 2, gemx: 2, gen: { ...gen, oreA: 0.6, oreB: 0.66 }, freeze, ores: ownOres(name),
     haz: haz && (haz.type === 'lava' ? { ...haz, rate: 1.8, t: 0.72 } : { ...haz, rate: 1.8 }), ...looks });
 };
 deep(5, 'rime', B.FROST, { gloom: [3, 18, 24], mote: ['#d8fff4', 'fall'], map: [98, 184, 180], debris: ['#62b8b4', '#d8fff4', '#84d4c8'] });
@@ -246,12 +253,13 @@ deep(7, 'bloom', B.MIRE, { gloom: [26, 4, 28], mote: ['#ffa0e0', 'sway'], map: [
 deep(8, 'gilt', B.LODE, { gloom: [24, 18, 2], mote: ['#ffe680', 'still'], map: [110, 90, 52], debris: ['#6e5a34', '#ffe680', '#ffd040'] });
 // Two strains of each direction's ground, laid as provinces from a little way out (`biomeAt`), so that a long flight
 // keeps coming into somewhere else. Each is its direction's ground with a few figures changed and a tell of its own
-// in the shape of the ground; its floor, its dark, its motes, its ore and its hazard's kind are its direction's, so
-// that colour and icon still say whose gems it pays. `rich` follows the danger and the cutting time:
+// in the shape of the ground; its floor, its dark, its motes and its hazard are its direction's, so that colour
+// and icon still say whose gems it pays; its two ores are its own, drawn in its direction's colours, and pay its
+// direction's gems as its direction's ores did. `rich` follows the danger and the cutting time:
 // 1 + 0.4 x (how many times the hazard - 1) + 0.3 x (dig - 1), near enough.
 const strain = (id, name, of, f) => {
   const kin = BIOMES[of];
-  return biome({ id, name, kin: of, floor: kin.floor, gloom: kin.gloom, mote: kin.mote, freeze: kin.freeze, haz: kin.haz, ...f, gen: { ...kin.gen, ...f.gen } });
+  return biome({ id, name, kin: of, floor: kin.floor, gloom: kin.gloom, mote: kin.mote, freeze: kin.freeze, haz: kin.haz, ores: ownOres(name), ...f, gen: { ...kin.gen, ...f.gen } });
 };
 // North. Firn: massive ice with few caves, crossed by long frozen rivers that are quick roads; a cut stays open
 // longer. Serac: shattered by a mesh of brittle lanes, so pieces come loose easily; a cut closes fast.
@@ -582,7 +590,7 @@ export const crossRow = (host, donor, structure) => {
   const own = BIOMES[host], from = BIOMES[donor], [noun, map, patch] = CROSS_LOOKS[host][donor], shape = shaped(host, donor, structure);
   const title = shape ? `${STRUCTURES[shape]} ${noun}` : noun, hazard = from.haz && (from.haz.type === 'lava' ? { type: 'lava', rate: WEAK, t: 0.80 } : { type: from.haz.type, rate: WEAK });
   return biome({ id: crossId(host, donor, structure), name: title.toLowerCase(), title, kin: host, gemB: donor, rich: 1.25,
-    sheet: `x-${own.name}-${from.name}`, floor: own.floor, items: own.items, itemsB: from.items, gloom: own.gloom, mote: own.mote,
+    sheet: `x-${own.name}-${from.name}`, floor: own.floor, items: own.items, itemsB: from.items, ores: [own.ores[0], from.ores[1]], gloom: own.gloom, mote: own.mote,
     map, debris: [own.debris[0], patch, ACCENT[donor]], gen: { ...own.gen, ...SHAPES[shape].gen }, extras: SHAPES[shape].extras,
     haz: own.haz, haz2: hazard, freeze: own.freeze || from.freeze, cross: { host, donor, structure: shape },
     decor: own.decor, decor2: own.decor && from.decor && `${own.decor}-${from.decor}`, air: own.air });

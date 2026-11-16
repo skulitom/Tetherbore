@@ -68,7 +68,7 @@ const floorOf = name => [...FLOORS, ...POCKET_FLOORS].find(r => r.name === name)
 // that is a colour at all (whites, greys and the dark outlines are not), and of the halos' own colours.
 const signals = async row => {
   const out = [], take = async (sheet, frame) => { if (sheets[sheet]?.frames[frame]) for (const [, , r, g, b] of await pixels(sheet, frame)) if (Math.max(r, g, b) - Math.min(r, g, b) >= 64) out.push([r, g, b]); };
-  await take(row.items, 'oreA'); await take(row.items, 'oreB'); await take(row.itemsB, 'oreB');
+  await take(row.items, 'oreA'); await take(row.items, 'oreB'); await take(row.itemsB, 'oreB'); await take(...row.ores[0]); await take(...row.ores[1]);
   for (const haz of [row.haz, row.haz2]) if (haz) {
     const s = HAZARDS[haz.type].sheet;
     await take(s, 'hazard'); await take(s, 'hazard-b');

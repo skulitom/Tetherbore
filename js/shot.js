@@ -49,10 +49,19 @@
 // drive), `lavaskin` (lava under the drill), `diamond` (steel ahead, to cut), `blackbox` (the drill wrecked). And
 // `ladder` shows no world at all: every level of every row, drawn by the game's own drawing in rows, labelled.
 //
+// The lab's notes are staged with four more: `lab` opens them, at LAB and risen, with what the lab knows set first
+// (`all`: everything analysed, thing i with 2 ** (i mod 10) samples; a number n: the first n in the list's order;
+// `none`: nothing); `labsel` chooses a thing, by the frame it is drawn from (`seracB`, `firnA`, `hazard` of a
+// sheet as `bell-items:hazard`) or by its name (`FLUORITE`), and shows it as a choice does; `scroll` scrolls the
+// list that many pixels on from there. None of them saves anything. And `orebook`, as `ladder`, shows no world:
+// for each ground that has ore of its own (home, the four directions, the eight strains and the four deep flanks)
+// its name, a patch of its rock with its dense rock, its two ores and its hazard as the game draws them, and its
+// two ores three times the size.
+//
 // The view is held still: `tetherbore.advance(ms)` steps it, `tetherbore.resume()` lets it play.
 import * as world from './world.js';
 import { T, UPGRADES, BOOST } from './game.js';
-import { ROWS, EARLY } from './shop.js';
+import { ROWS, EARLY, LAB } from './shop.js';
 import { draw, frameAt, sheets, text } from './atlas.js';
 import { TETHERS, CORE_IDLE, DISH, REFINERY, CUTTER, BOX, ORBIT } from './fit.js';
 
@@ -305,6 +314,16 @@ export function stage(game, query) {
     else if (fire === 'blackbox') { game.S.lv.blackbox ||= 1; game.dents = game.val('hull') - 1; game.shield = 0; game.hit(0.3); }
   }
   if (query.has('ladder') && query.get('ladder') !== '0') game.render = () => ladder(game);
+  if (query.has('orebook') && query.get('orebook') !== '0') game.render = () => orebook(game);
+  // The lab's notes (above): what it knows, then the panel opened at the thing chosen, once the view has its size.
+  const lab = query.get('lab');
+  if (lab !== null && lab !== '0') {
+    game.S.lab = {};
+    LAB.forEach((e, i) => { if (lab === 'all' || i < Math.floor(number('lab', 0))) game.S.lab[e.key] = 2 ** (i % 10); });
+    const want = (query.get('labsel') ?? '').trim(), chosen = want && LAB.find(e => e.key === want || e.key.split(':')[1] === want || e.name === want.toUpperCase());
+    if (chosen) game.labSel = chosen.key;
+  }
+  const staged = lab !== null && lab !== '0';
 
   let shown = 1;                                // the zoom as it came out: no canvas is made wider than MOST
   return {
@@ -324,6 +343,13 @@ export function stage(game, query) {
       w.see(cx, cy, radius);
       for (let y = cy - radius; y <= cy + radius; y++) for (let x = cx - radius; x <= cx + radius; x++) game.spot(y * N + x);
       game.version++;
+      // (The lab's list is laid out for the screen it is seen on, so it is opened once the screen has its size.)
+      if (staged) {
+        game.labRise = 1; game.openLab(true, 'lab'); game.labRise = 1;
+        const i = LAB.findIndex(e => e.key === game.labSel), g = game.labGeom();
+        if (query.get('labsel')) { game.labReveal(i); if (game.labAim !== null) game.labScroll = game.labAim; game.labAim = null; }
+        game.labScroll = Math.max(0, Math.min(g.most, game.labScroll + number('scroll', 0)));
+      }
     },
     // What the view shows, for the tool to say.
     facts() {
@@ -344,6 +370,27 @@ export function stage(game, query) {
       };
     },
   };
+}
+
+// For each ground with ore of its own, its name, a patch of its rock as the game draws it (two rows of four cells:
+// plain rock, dense rock, its common ore, its rich ore; its common ore, its hazard, its rich ore, plain rock), and
+// its two ores again at three times the size. A direction's ground that has no hazard of its own (the north's) shows
+// its direction's rare one. In one column or two, as the page has room. (No world is drawn: a page of pictures.)
+const OREBOOK = [0, 1, 2, 3, 4, 17, 18, 19, 20, 21, 22, 23, 24, 5, 6, 7, 8];
+function orebook(game) {
+  const ctx = game.ctx, cols = Math.max(1, Math.min(3, Math.floor(game.W / 196))), rowH = 62, colW = Math.floor(game.W / cols);
+  ctx.globalAlpha = 1; ctx.fillStyle = '#100e18'; ctx.fillRect(0, 0, game.W, game.H);
+  game.overCtx?.clearRect(0, 0, game.over.width, game.over.height);
+  const frame = (sheet, name, x, y, size = 16) => { const s = sheets[sheet], r = s?.frames[name]; if (r) ctx.drawImage(s.image, r[0], r[1], r[2], r[3], x, y, size, size); };
+  const rock = (row, x, y, n, size = 16) => { const r = sheets[row.sheet].tiles[255][n % sheets[row.sheet].tiles[255].length]; ctx.drawImage(sheets[row.sheet].image, r[0], r[1], r[2], r[3], x, y, size, size); };
+  OREBOOK.forEach((id, n) => {
+    const row = world.BIOMES[id], x0 = 4 + Math.floor(n / Math.ceil(OREBOOK.length / cols)) * colW, y0 = 4 + (n % Math.ceil(OREBOOK.length / cols)) * rowH;
+    const haz = row.haz ? [world.HAZARDS[row.haz.type].sheet, 'hazard'] : world.RARE[row.kin] ? [world.HAZARDS[world.RARE[row.kin]].sheet, 'hazard'] : null;
+    text(ctx, `${row.title}  ${row.ores[0][1]} / ${row.ores[1][1]}`, x0, y0, '#bcb4cc');
+    const cells = [null, [row.items, 'dense'], row.ores[0], row.ores[1], row.ores[0], haz, row.ores[1], null];
+    cells.forEach((what, c) => { const x = x0 + (c % 4) * 16, y = y0 + 12 + Math.floor(c / 4) * 16; rock(row, x, y, c); if (what) frame(what[0], what[1], x, y); });
+    [row.ores[0], row.ores[1]].forEach((what, c) => { const x = x0 + 72 + c * 52, y = y0 + 11; rock(row, x, y, c, 48); frame(what[0], what[1], x, y, 48); });
+  });
 }
 
 // Every level of every row, drawn by the game's own drawing, in rows: the bit spinning and hot, the ram with its

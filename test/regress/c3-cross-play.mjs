@@ -95,8 +95,9 @@ for (const row of BIOMES.filter(row => row?.cross)) {
   check(same(game.overlay(K.HAZARD, row), game.overlay(K.HAZARD, own)) && same(game.overlay(K.HAZARD2, row), from.haz ? game.overlay(K.HAZARD, from) : null), `${row.name}: its hazards are drawn as ${game.overlay(K.HAZARD, row)} and ${game.overlay(K.HAZARD2, row)}`);
   check(game.debris(K.SOFT, id) === row.debris && game.debris(K.SOFT, id) !== own.debris, `${row.name}: its chips are not its own colours`);
 }
-// Hand-made ground draws its rich ore from its own ore's sheet, as ever.
-for (const id of [1, 2, 3, 4, 5, 8, 17, 20, 22, 24]) check(same(game.overlay(K.ORE_B, BIOMES[id]), [BIOMES[id].items, 'oreB']), `${BIOMES[id].name}: its rich ore is drawn from ${game.overlay(K.ORE_B, BIOMES[id])}`);
+// Hand-made ground draws its rich ore as its own: a direction's own ground from its sheet, as ever, and a strain or a
+// deep flank from a frame of its own.
+for (const id of [1, 2, 3, 4, 5, 8, 17, 20, 22, 24]) check(same(game.overlay(K.ORE_B, BIOMES[id]), id <= 4 ? [BIOMES[id].items, 'oreB'] : ['ores', `${BIOMES[id].name}B`]), `${BIOMES[id].name}: its rich ore is drawn from ${game.overlay(K.ORE_B, BIOMES[id])}`);
 
 // ---- a frame of each: a patch of every cross, with ore, both hazards, slate and ice in it, painted and drawn
 {
