@@ -13,7 +13,8 @@
 // worth more. A hazard cut into is analysed and still goes off; a rare hazard's lump takes what is known of it. A
 // game saved with the sixteen first keys loads and counts them, the gem cutter asks for the kinds play set (8, 18,
 // 28 and 36), and its late level for more than there are short of the far ground (the seams and all beyond them:
-// the crosses' rich ores, the deep seams, flanks and strains, and the ancient stone). And the art of the new ores keeps to
+// the crosses' rich ores, the deep seams, flanks and strains, and the ancient stone), 43; LIVE CATCH for 30 and 42
+// (41 before the list came to eighty-nine, which brought a game to 41 up to seven minutes sooner). And the art of the new ores keeps to
 // its rules, read from the sheets as built: outlined in their direction's outline (a seam's rich ore in its other
 // parent's, a deep seam's in its corner's own, a cross's in its donor's), each apart from its neighbours in shape or
 // colour, none in the colour of what hurts in its ground (its direction's hazards, and a seam's or a cross's other
@@ -243,8 +244,11 @@ check(cutter.needs[1].slice(0, 4).every(n => n <= LAB.length), 'the gem cutter a
   const FAR = new Set([...[5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 64, 65, 66, 67].flatMap(id => BIOMES[id].oreKeys), ...PAIRS.map(p => p.key), ...STONE_KEYS]);
   const far = LAB.filter(e => FAR.has(e.key)).length, late = cutter.needs[1][4];
   check(far === 49 && LAB.length - far === 40 && late[0] === 'kinds' && late[1] > LAB.length - far && late[1] <= LAB.length, `the gem cutter's late level asks for ${late}, where ${LAB.length - far} kinds lie short of the ${far} far things`);
+  // As play set them for the list of eighty-nine (js/shop.js, CORE): the cutter's late level at 43, and LIVE CATCH
+  // at 30 and 42, where it asked 41 of the sixty-four.
+  check(late[1] === 43, `the gem cutter's late level asks for ${late[1]} kinds, not 43`);
   const live = CORE.find(u => u.id === 'livecatch');
-  check(live.needs[0] === 'kinds' && live.needs[1].slice(0, 2).every(n => n <= LAB.length), `LIVE CATCH asks for ${live.needs[1].slice(0, 2)} kinds, of ${LAB.length}`);
+  check(live.needs[0] === 'kinds' && live.needs[1].slice(0, 2).join() === '30,42' && live.needs[1].slice(0, 2).every(n => n <= LAB.length), `LIVE CATCH asks for ${live.needs[1].slice(0, 2)} kinds, not 30 and 42 of ${LAB.length}`);
 }
 
 // ---- 6. the art of the new ores

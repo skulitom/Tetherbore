@@ -20,12 +20,18 @@
 //   - A trip goes out along one of twelve spokes (the four directions and thirty degrees to either side of each),
 //     the directions taken in turn, unless a level that the grit is there for wants gems: then to that gem's ground
 //     (the reach's gems before any other level's). A corner's gems are had only in its deep seam, from 900 cells
-//     out on its diagonal, which the twelve pass 260 cells off: a level that wants them sends the trip down a spoke
-//     of its own on the diagonal, from the deep seam's edge on, once the reach goes past 1,000.
+//     out on its diagonal, which the twelve pass 260 cells off: a level that wants them sends the trip down one of
+//     four spokes of its own, beside the diagonal, from the deep seam's edge on, once the reach goes past 1,000.
 //   - Out there it cuts a square ring round a block and flies the ring shut, so the block comes home: a block about
 //     a third of the reach across, 48 cells at the most (the loop the game's prices are worked out from), from four
 //     tenths of the reach out, each block beyond the last on its spoke. Up to three blocks a trip; home sooner when
 //     what has been hauled will buy something.
+//   - Where a level whose grit and gems are in hand waits on nothing but how far out the drill has been, 700 cells
+//     or more (FAR_OUT: the late game's distances, the winch's 700 and the reach's own from 840), the block goes
+//     out there, as a player reads NEEDS 1200/1600 OUT and flies out. Without it the pilot worked its spokes from
+//     the near end out and came to the distances the late game asks only by chance: on worlds 3, 7, 11, 23 and 42
+//     it ended five hours no more than 1,200 to 1,700 cells out, with four to seven late levels held by a distance
+//     alone, two to six of them for an hour and more.
 //   - Once the reach goes round the first keystone slab it cuts a ring round that, slab, crack and keys. Every
 //     fourth trip goes to the nearest pocket not yet visited that the reach goes round, and cuts a ring two thirds
 //     of its radius about its middle.
@@ -52,10 +58,17 @@ const WAYS = ['', 'north', 'south', 'west', 'east', 'north east', 'south east', 
 // The gems banked as they are printed: the four directions', and the corners' after them once there are any.
 const gemsSaid = gems => gems.slice(1, 5).join('/') + (gems.slice(5).some(Boolean) ? ` +${gems.slice(5).join('/')}` : '');
 // The twelve spokes: [x, y, whose direction]. (0.866 and 0.5: thirty degrees off the direction's own line.) And the
-// four diagonals', [x, y, whose gems], taken only for a corner's gems (`wanted`), past CORNER_REACH.
+// corners', [x, y, whose gems, and how far the line lies to the side of the diagonal, x and y], taken only for a
+// corner's gems (`wanted`), past CORNER_REACH: four to a corner, along its diagonal 35 and 104 cells to either side
+// of it (CORNER_LINES). A block 49 cells across lies 35 cells to either side of its middle across a diagonal, so the
+// four cover the deep seam, which runs 64 cells to either side 1,000 out and 127 from 2,000; none lies on the
+// diagonal itself, where the shrine stands 1,400 out. Two rays three degrees off the diagonal gave the north west of
+// world 7 about 86,000 gems from its deep seam's edge out to the last reach, and then had no room: short of the
+// 105,000 its two levels ask, where the seam holds more than twice that.
+const CORNER_LINES = [-104, -35, 35, 104];
 const SPOKES = [[0, -1, 1], [0.5, -0.866, 1], [-0.5, -0.866, 1], [0, 1, 2], [0.5, 0.866, 2], [-0.5, 0.866, 2], [-1, 0, 3], [-0.866, 0.5, 3], [-0.866, -0.5, 3], [1, 0, 4], [0.866, 0.5, 4], [0.866, -0.5, 4],
-  [0.707, -0.707, 5], [0.707, 0.707, 6], [-0.707, 0.707, 7], [-0.707, -0.707, 8]];
-const CORNER_REACH = 1000, { GEM_PAST } = world;
+  ...[[1, -1, 5], [1, 1, 6], [-1, 1, 7], [-1, -1, 8]].flatMap(([x, y, kin]) => CORNER_LINES.map(side => [x * Math.SQRT1_2, y * Math.SQRT1_2, kin, -y * Math.SQRT1_2 * side, x * Math.SQRT1_2 * side]))];
+const CORNER_REACH = 1000, FAR_OUT = 700, { GEM_PAST } = world;
 const compact = n => n < 1000 ? `${Math.floor(n)}` : n < 1e6 ? `${(n / 1000).toFixed(n < 1e4 ? 1 : 0)}K` : n < 1e9 ? `${(n / 1e6).toFixed(n < 1e7 ? 2 : 1)}M` : `${(n / 1e9).toFixed(2)}B`;
 // Every row of every tab, in the shop's order.
 export const ALL = [...UPGRADES, ...WORKS, ...MAPS, ...CORE];
@@ -170,6 +183,9 @@ export async function play(seed = 7, minutes = 40, every = 120, each = null, fau
     for (let f = 0; f < frames && clock.t < limit && !lost(); f++) {
       const dx = tx - d.x, dy = ty - d.y, far = Math.hypot(dx, dy);
       if (far < 0.3 && d.mode === 'free') { game.input.auto = null; return true; }
+      // (Reeled home by the tether on the way, the drill stays put until the thumb lets go: it is let go for a frame
+      // and pressed again, a fresh stroke. Held on, it never left the core again, and the game stood there to its end.)
+      if (d.park) { game.input.auto = null; step(); d.armed = true; continue; }
       let ux = dx / (far || 1), uy = dy / (far || 1);
       if (dodge > 0) { [ux, uy] = [-uy * side, ux * side]; dodge--; }
       game.input.auto = [ux, uy, far > 1.5 || dodge ? 1 : Math.max(0.4, far / 1.5)];
@@ -248,12 +264,23 @@ export async function play(seed = 7, minutes = 40, every = 120, each = null, fau
     }
     return gem;
   };
-  const spokes = SPOKES.map(([ux, uy, kin]) => ({ ux, uy, kin, dom: Math.max(Math.abs(ux), Math.abs(uy)), at: 3.5 }));
+  // How far out the nearest level asks the drill to have been, from FAR_OUT on, where that is all it waits on (its
+  // grit and gems are in hand) and the reach goes past it with room for a block; or 0.
+  const farOut = () => {
+    let least = 0;
+    for (const u of rows) {
+      const c = game.cost(u), q = c && game.need(u);
+      if (!q || q.what !== 'out' || q.need < FAR_OUT || q.have >= q.need || S.grit < c.grit || S.gems[c.gem] < c.gems || q.need + 60 > reach()) continue;
+      if (!least || q.need < least) least = q.need;
+    }
+    return least;
+  };
+  const spokes = SPOKES.map(([ux, uy, kin, ox = 0, oy = 0]) => ({ ux, uy, kin, ox, oy, dom: Math.max(Math.abs(ux), Math.abs(uy)), at: 3.5 }));
   // The next block on a spoke: { cx, cy, q, spoke, e } or null where the reach has no room for one there.
   const blockOn = (spoke, least) => {
     const R = reach(), side = Math.max(3, Math.min(48, Math.round(R / 3)));
     for (let q = Math.max(2, Math.round((side + 1) / 2)); q >= 2; q = q > 8 ? Math.round(q * 0.7) : q - 1) {
-      const e = Math.max(spoke.at, least, 3.5), far = e + q / spoke.dom, cx = Math.round(spoke.ux * far), cy = Math.round(spoke.uy * far);
+      const e = Math.max(spoke.at, least, 3.5), far = e + q / spoke.dom, cx = Math.round(spoke.ux * far + spoke.ox), cy = Math.round(spoke.uy * far + spoke.oy);
       if (fits(cx, cy, q) && inside(cx, cy, q) >= 0.5 * (2 * q - 1) ** 2) return { cx, cy, q, spoke, e };
       if (fits(cx, cy, q)) { spoke.at = e + (2 * q + 1) / spoke.dom; q++; if (spoke.at > R) return null; }
     }
@@ -285,14 +312,16 @@ export async function play(seed = 7, minutes = 40, every = 120, each = null, fau
       tried.add(Z.key); site = { cx, cy, q, what: rowOf(Z.row).name };
       break;
     }
-    // A block on a spoke: of the direction whose gems are wanted, or the directions in turn. (A corner's, down its
-    // diagonal from its deep seam's edge out.)
+    // A block on a spoke: of the direction whose gems are wanted, or the directions in turn (a corner's beside its
+    // diagonal from its deep seam's edge out), and as far out as a level waits on: that block is found on a copy of
+    // its spoke, which is worked on from where it had got to after. (Found on the spoke itself, it would move the
+    // spoke out past all the ground nearer than that for good, never to be cut.)
     if (!site) {
-      const want = wanted(), order = [1, 4, 2, 3], kins = want ? [want, ...order.filter(k => k !== want)] : order.map((k, n) => order[(n + turn) % 4]);
+      const want = wanted(), out = farOut(), order = [1, 4, 2, 3], kins = want ? [want, ...order.filter(k => k !== want)] : order.map((k, n) => order[(n + turn) % 4]);
       if (!want) turn++;
       for (const kin of kins) {
         const list = spokes.filter(s => s.kin === kin).sort((a, b) => a.at - b.at);
-        for (const spoke of list) { site = blockOn(spoke, Math.max(0.4 * R, want === kin ? (kin >= 5 ? GEM_PAST[kin] + 20 : 165) : 0)); if (site) break; }
+        for (const spoke of list) { site = blockOn(out ? { ...spoke } : spoke, Math.max(0.4 * R, out, want === kin ? (kin >= 5 ? GEM_PAST[kin] + 20 : 165) : 0)); if (site) break; }
         if (site) break;
       }
     }

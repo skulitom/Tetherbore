@@ -318,8 +318,11 @@ export const MAPS = [
 // the thousand), each asking besides for much to have been found.
 //   REFINERY   every haul's grit is multiplied
 //   GEM CUTTER every haul's gems are multiplied: it asks for kinds analysed, 8, 18, 28 and 36, set by play when
-//              the list was sixty-four (the twenty-five it has gained since, the deep seams' ores, the crosses' rich
-//              ores and the ancient stone, all lie from 500 cells out). Of those sixty-four a direction and the home
+//              the list was sixty-four and kept when it came to eighty-nine: the twenty-five it gained, the deep
+//              seams' ores, the crosses' rich ores and the ancient stone, all lie from 500 cells out, and played five
+//              hours on five worlds (tools/long-play.mjs --all, and with the hull on two) a game came to 8, 18 and 28
+//              in the same minute as with sixty-four and to 36 in it or up to seven minutes sooner, and 37 would keep
+//              it waiting longer on four of the seven. Of those sixty-four a direction and the home
 //              ground held seventeen to twenty-one between them (the east seventeen, the south twenty-one), most of
 //              them far out: within two hundred cells one direction gives five to eight
 //              (copper and violet quartz, its own two ores, its hazard but in the north, a pocket's mineral, keystone
@@ -338,19 +341,24 @@ export const MAPS = [
 //              52, as first set, it was a wall a long game never came over: played three hours on five worlds
 //              (tools/long-play.mjs --all), a game held to its spokes analyses 40 to 49 kinds, the deep strains'
 //              hardly ever, and waited on it twice as long in all as on 42 before; on 43 it waits no longer than it
-//              did, and a game that has been into a seam comes to it sooner.)
+//              did, and a game that has been into a seam comes to it sooner. Kept at 43 when the list came to
+//              eighty-nine: on world 7 a game comes to 43 with the longer list in the minute it came to it with the
+//              shorter, and 44 would keep it waiting longer.)
 //   LAMP       the drill's light reaches further (cells), and sees across open ground as far as it reaches, as the
 //              scan sees through rock. (It cost what the levels round it do, and gave a light that lit no more than
 //              a phone's screen showed: it is a third of that now.)
 //   BLACK BOX  when the drill is lost, this share of the grit the trip had earned is kept
 //   LIVE CATCH a rare hazard hauled while it is awake (a bell tolling, a fumarole between its jets, a lodestone
 //              humming) pays its lump this many times over; a glowworm swimming pays twice with none, as it always
-//              has. Paid in the west's gems, and asks for kinds analysed: thirty and forty-one, as many as a game has
+//              has. Paid in the west's gems, and asks for kinds analysed: thirty and forty-two, as many as a game has
 //              by the time it has been out to the rare hazards (from 450 cells) and past them. (It asked thirty and
 //              forty when the lab knew forty-eight things. Asked thirty-four and forty-six, as first set when the
 //              seams' and deep strains' sixteen came, a game played three hours on five worlds waited on its first
 //              level two and a half times as long in all as before, since a game held to its spokes meets a seam
-//              late or not at all; on thirty and forty-one none waits longer than it did.)
+//              late or not at all; on thirty and forty-one none waits longer than it did. Forty-one became forty-two
+//              when the list came to eighty-nine, the crosses' rich ores, met from 500 cells, bringing a game to
+//              forty-one up to seven minutes sooner: on forty-two none of seven games of five hours waits on it more
+//              than about half a minute longer than on forty-one with the shorter list, and three wait less.)
 //   TROPHY LINE a foe at rest (a bat clinging after its swoop, a leech on the floor, a spitter sagging) caught in a
 //              loop of the tether pays this many specimens of its ground's direction. Paid in the south's gems, and
 //              asks for kinds of creature met (js/fauna.js)
@@ -363,7 +371,7 @@ export const CORE = [
     // (From its third level it keeps what a lost trip learnt, as well as its grit: js/game.js, `keepLore`.)
     says: l => l === 2 ? 'KEEPS WHAT IT LEARNT' : null },
   // (The live catch's value is what a woken rare's lump is multiplied by: 1, by nothing, before it is bought.)
-  { id: 'livecatch', pic: 'mire', name: 'LIVE CATCH', what: 'WOKEN RARES PAY MORE', values: [1, 2, 3], gem: B.MIRE, needs: ['kinds', [30, 41]], ...deep([[6.5, 1.5], [7.5, 2]], [1500, 4000]), show: v => v > 1 ? `ALL x${v}` : 'WORM x2',
+  { id: 'livecatch', pic: 'mire', name: 'LIVE CATCH', what: 'WOKEN RARES PAY MORE', values: [1, 2, 3], gem: B.MIRE, needs: ['kinds', [30, 42]], ...deep([[6.5, 1.5], [7.5, 2]], [1500, 4000]), show: v => v > 1 ? `ALL x${v}` : 'WORM x2',
     says: l => l ? `WOKEN RARES PAY x${CORE[4].values[l + 1]}` : 'BELLS, VENTS, STONES' },
   { id: 'trophy', pic: 'spec-ember', name: 'TROPHY LINE', what: 'LOOPS CATCH FOES', values: [0, 2, 3], gem: B.EMBER, needs: ['beasts', [6, 10]], ...deep([[6, 1], [7, 1.5]], [1000, 3000]), show: v => v ? `${v} SPEC` : 'OFF',
     says: l => `A FOE PAYS ${CORE[5].values[l + 1]} SPEC` },
