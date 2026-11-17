@@ -3,7 +3,7 @@
 // from its rules: js/game.js copies them onto the game as they are, so `this` in them is the game. Nothing here is a
 // rule of play: what these methods keep on the game is what was drawn and where (the pieces of ground, the chart's
 // picture and view, what can be tapped this frame).
-import { N, C, K, B, DX, DY, BIOMES, HAZARDS, CRUSH, ZONE, FIND, rowOf, hazOf, cellHash, RELIC_R, HOME_R } from './world.js';
+import { N, C, K, B, DX, DY, BIOMES, HAZARDS, CRUSH, ZONE, FIND, rowOf, hazOf, cellHash, RELIC_R, HOME_R, SEAMS, SHRINES, CORNER_HERALDS, fossilKin } from './world.js';
 import { sheets, draw, drawScaled, frameAt, duration, slice9, text, textWidth, tinted } from './atlas.js';
 import { decorAt, markAt, natural, framesOf, placeOf } from './decor.js';
 import { sfx, isMuted, setMuted, isMusic, setMusic } from './audio.js';
@@ -90,7 +90,7 @@ export const GEM_WHERE = [null, 'NORTH', 'SOUTH', 'WEST', 'EAST'];
 // thing is for.
 export const SPOT = {
   cache: ['CACHE', '#ffe14a'], geode: ['GEODE', '#f4ecd8'], wreck: ['WRECK', '#ff9a3a'], key: ['KEYSTONE', '#a4acbc'], prism: ['PRISM', '#ffffff'],
-  relic: ['RELIC', '#ffffff'], mineral: ['MINERAL', '#ffffff'],
+  relic: ['RELIC', '#ffffff'], mineral: ['MINERAL', '#ffffff'], shrine: ['SHRINE', '#fff0c8'],
   bell: ['RIME BELL', '#bff4ff'], vent: ['FUMAROLE', '#ff9a3c'], worm: ['GLOWWORM', '#c8ff5a'], lodestone: ['LODESTONE', '#b48cff'],
 };
 // A place's name is written in the colour it has on the map, as bright as that colour goes.
@@ -124,7 +124,32 @@ const PART_CROP = { refinery: [0, 1], cutter: [48, 47], blackbox: [0, 45] };
 // The finds the map in the corner marks on its rim, past its edge, at the most: the nearest so many (`drawMap`), in
 // lists made once.
 const RIM = 8, RIM_FAR = new Float64Array(RIM), RIM_OF = new Int32Array(RIM);
-const NO_DASH = [], NO_FINDS = [];              // (a line with no dashes, and no finds: the one list each, given each time)
+const NO_DASH = [], NO_FINDS = [];
+// How ground not yet seen is shown on the map and the chart (`drawMap`): its row's colour on the map, as dark as a
+// third of it, but never darker than a luminance of UNSEEN_LUM (a deep flank's colours, a third as bright, were
+// nearly black, and a wedge of one ground read as a hole in the world) nor brighter than UNSEEN_MOST of it (which
+// the darkest colour there is, obsidian's, needs to reach UNSEEN_LUM); and in
+// UNSEEN_GRAIN of the squares of 8 cells, its second chip's colour (`debris`), a little brighter (UNSEEN_GRAIN_LUM),
+// so that no ground is one flat tone. Both worked out once a row (`unseen`), into tables made once. On the chart,
+// where ground changes the pixel is a quarter darker (EDGE), so the grounds' borders show.
+export const UNSEEN_LUM = 34, UNSEEN_MOST = 0.65, UNSEEN_GRAIN_LUM = 46, UNSEEN_GRAIN = 0.35, EDGE = 0.75;
+const UNSEEN_SHADE = new Float32Array(256).fill(-1), GRAIN_SHADE = new Float32Array(256), GRAIN_RGB = new Uint8Array(256 * 3);
+const lum = (r, g, b) => 0.3 * r + 0.59 * g + 0.11 * b;
+export const unseenShade = row => {
+  const id = row.id;
+  if (UNSEEN_SHADE[id] < 0) {
+    const [r, g, b] = row.map, hex = row.debris?.[1] ?? '#808080', gr = parseInt(hex.slice(1, 3), 16), gg = parseInt(hex.slice(3, 5), 16), gb = parseInt(hex.slice(5, 7), 16);
+    UNSEEN_SHADE[id] = Math.min(UNSEEN_MOST, Math.max(0.3, UNSEEN_LUM / Math.max(1, lum(r, g, b))));
+    GRAIN_SHADE[id] = Math.min(UNSEEN_MOST, Math.max(0.2, UNSEEN_GRAIN_LUM / Math.max(1, lum(gr, gg, gb))));
+    GRAIN_RGB[id * 3] = gr; GRAIN_RGB[id * 3 + 1] = gg; GRAIN_RGB[id * 3 + 2] = gb;
+  }
+  return UNSEEN_SHADE[id];
+};
+// What is drawn over a twin stone, a fossil's bone (its species' head, body or tail: by direction, then which bone),
+// a fault, and a shrine's heart (by corner) (`overlay`): made once, not for each cell.
+const CAP_OVER = ['minerals', 'cap'], LANTERN_OVER = ['minerals', 'lantern'], TWIN_OVER = ['finds', 'twin'], BONE_OVER = ['finds', 'bone'], FAULT_OVER = ['cracks', 'crack-2'];
+const FOSSIL_OVER = [0, 1, 2, 3, 4].map(kin => ['head', 'body', 'tail'].map(part => ['finds', `fossil-${kin}-${part}`]));
+const SHRINE_OVER = [0, 1, 2, 3].map(d => ['shrines', `shrine-${d}`]);              // (a line with no dashes, and no finds: the one list each, given each time)
 const ROUND = 3.5, BRAID = 4;                    // on the fine canvas: how wide a rope rounds a corner, and the length of one turn of its braid, in the game's pixels
 const LIGHT_STEP = [[1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, -1, 1], [1, 1, 1.41], [-1, 1, 1.41], [1, -1, 1.41], [-1, -1, 1.41]];
 // How far light goes to each of those neighbours, in a flat array: the flood of light reads it eight times for
@@ -187,8 +212,11 @@ function replay(ops, ctx) {
 const sketch = new Sketch();
 
 export class Drawing {
+  // (Glass and a hairline fault are drawn from sheets of their own, in whatever ground they lie: glass, until its
+  // sheet is drawn, as ice, which it cuts like; a fault as its ground's rock, with a crack over it, `overlay`.)
   rockSheet(k, b) {
-    return k === K.BEDROCK ? 'bedrock' : k === K.SLATE ? 'slate' : k === K.VAULT || k === K.RELIC ? 'vault' : k === K.ICE ? 'ice' : k === K.BASALT ? 'basalt' : rowOf(b).sheet;
+    return k === K.BEDROCK ? 'bedrock' : k === K.SLATE ? 'slate' : k === K.VAULT || k === K.RELIC ? 'vault' : k === K.ICE ? 'ice' : k === K.BASALT ? 'basalt'
+      : k === K.GLASS ? (sheets.glass?.tiles ? 'glass' : 'ice') : k === K.FAULT && sheets.fault?.tiles ? 'fault' : rowOf(b).sheet;
   }
   // The colours of the chips that fly off a cell of kind `k` in ground `b`.
   debris(k, b) {
@@ -210,7 +238,9 @@ export class Drawing {
   overlay(k, row, i) {
     const P = row.pocket;
     // (A grotto's cap before it is lit.)
-    if (k === K.CAP) return sheets.minerals?.frames.cap ? ['minerals', 'cap'] : null;
+    if (k === K.CAP) return sheets.minerals?.frames.cap ? CAP_OVER : null;
+    // (And lit, outside a grotto, on a mycelium's rims: a grotto's lantern.)
+    if (k === K.CAP_LIT && P === null) return sheets.minerals?.frames.lantern ? LANTERN_OVER : null;
     if (P !== null && (k === K.NODE || k === (P.kind ?? K.MINERAL))) {
       if (k === (P.kind ?? K.MINERAL)) return this.mineralOf(row) ? ['minerals', P.mineral] : null;
       const w = this.world, joins = j => { const q = w.k(j); return q === K.NODE || q === (P.kind ?? K.MINERAL); };
@@ -223,6 +253,21 @@ export class Drawing {
     if (k === K.HAZARD || k === K.HAZARD2 || k === K.RARE) { const haz = hazOf(k, row); return haz ? [HAZARDS[haz].sheet, 'hazard'] : null; }
     // Slag and the steel it is quenched to are the lava's, drawn from the lava's sheet whatever ground they lie in.
     if (k === K.SLAG || k === K.STEEL) return [HAZARDS.lava.sheet, k === K.SLAG ? 'slag' : 'steel'];
+    // Twin stones and a fossil's bones are the finds' (until their frames are drawn, a twin stone as its ground's
+    // rich ore and a bone as its dense rock); a fault with no sheet of its own, a crack in its ground's rock.
+    if (k === K.TWIN) return sheets.finds?.frames.twin ? TWIN_OVER : row.ores[1];
+    if (k === K.FOSSIL) {
+      // (Which bone of its fossil this is, the sector's record says: js/world.js, `findAt`.)
+      const w = this.world, x = i % N, y = Math.floor(i / N);
+      if (i !== undefined && sheets.finds?.frames['fossil-1-head'] && w.findAt(x, y) === K.FOSSIL) {
+        const S = w.sector;
+        for (let n = 0; n < S.n; n++) if (S.fx + S.bx[n] === x && S.fy + S.by[n] === y) return FOSSIL_OVER[fossilKin(S.fx, S.fy)][n === 0 ? 0 : n === S.n - 1 ? 2 : 1];
+      }
+      return sheets.finds?.frames.bone ? BONE_OVER : [row.items, 'dense'];
+    }
+    if (k === K.FAULT) return sheets.fault?.tiles ? null : FAULT_OVER;
+    // (A shrine's heart is a relic's kind, drawn as its corner's shrine.)
+    if (k === K.RELIC && i !== undefined && sheets.shrines) { const d = this.world.shrineAt.indexOf(i); if (d >= 0) return SHRINE_OVER[d]; }
     // A keystone is an iron staple across its block of rock; a prism turns through the gems' colours (`render`).
     return k === K.RELIC ? [rowOf(row.kin).items, 'relic'] : k === K.CACHE ? ['finds', 'cache'] : k === K.WRECK ? ['finds', 'part']
       : k === K.KEY ? ['finds', 'key'] : k === K.PRISM ? ['finds', 'prism'] : null;
@@ -256,13 +301,18 @@ export class Drawing {
     }
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
       const k = w.peek(x, y);
-      if (k !== K.HAZARD && k !== K.HAZARD2 && k !== K.RARE && k !== K.RELIC && k !== K.STEEL && k !== K.PRISM) continue;
+      if (k !== K.HAZARD && k !== K.HAZARD2 && k !== K.RARE && k !== K.RELIC && k !== K.STEEL && k !== K.PRISM && k !== K.TWIN) continue;
       const i = y * N + x, row = w.row(i), m = w.mask(x, y), ux = x * T - ox - ((m & 4) ? 0 : 1), uy = y * T - oy - ((m & 16) ? 0 : 1);
-      // A prism turns through the gems' colours, each in its own time.
+      // A prism turns through the gems' colours, each in its own time; a twin stone glints.
       if (k === K.PRISM) { draw(ctx, 'finds', frameAt('finds', 'prism', now + cellHash(x, y, 4) * 720), ux, uy); continue; }
+      if (k === K.TWIN) { if (sheets.finds.animations.twin) draw(ctx, 'finds', frameAt('finds', 'twin', now + cellHash(x, y, 4) * 900), ux, uy); continue; }
       // Steel glints now and then, each bar in its own time, and is white for a moment as it is quenched.
       if (k === K.STEEL) { const items = HAZARDS.lava.sheet; draw(ctx, items, this.quenched.has(i) ? 'quench' : frameAt(items, 'steel', now + cellHash(x, y, 4) * 1140), ux, uy); continue; }
-      if (k === K.RELIC) { const rs = rowOf(DIR_BIOME[w.relicAt.indexOf(i)] ?? row.kin).items; draw(ctx, rs, frameAt(rs, 'relic', now), ux, uy); continue; }
+      if (k === K.RELIC) {
+        const shrine = sheets.shrines ? w.shrineAt.indexOf(i) : -1;
+        if (shrine >= 0) { draw(ctx, 'shrines', frameAt('shrines', SHRINE_OVER[shrine][1], now), ux, uy); continue; }
+        const rs = rowOf(DIR_BIOME[w.relicAt.indexOf(i)] ?? row.kin).items; draw(ctx, rs, frameAt(rs, 'relic', now), ux, uy); continue;
+      }
       // A hazard looks as its type does, whatever ground it lies in.
       const haz = hazOf(k, row);
       if (!haz) continue;
@@ -410,7 +460,9 @@ export class Drawing {
     }
     // Spore clouds.
     for (const c of this.clouds) {
-      ctx.globalAlpha = Math.min(1, (c.life - c.t) * 2) * 0.85;
+      // (A pod that rimed leaves no cloud, and one burnt off a thin one: js/game.js, `trigger`.)
+      if (c.rime) continue;
+      ctx.globalAlpha = Math.min(1, (c.life - c.t) * 2) * (c.burnt ? 0.4 : 0.85);
       const f = frameAt('spore', 'area', (c.t * 1000) % (duration('spore', 'area') * 0.8));
       if (f) draw(ctx, 'spore', f, (c.x + 0.5) * T - ox - f[2] / 2, (c.y + 0.5) * T - oy - f[3] / 2);
       ctx.globalAlpha = 1;
@@ -1356,11 +1408,17 @@ export class Drawing {
       // a lone cache or hazard is not lost between the cells the pixels' middles fall on. A cell more a pixel is
       // looked at only where the lens has anything to tell apart.)
       const spread = !big && per >= 3 && lens > 0;
-      for (let v = 0; v < size; v++) for (let u = 0; u < size; u++) {
-        const wx = Math.floor(mx0 + (u - size / 2 + 0.5) * per), wy = Math.floor(my0 + (v - size / 2 + 0.5) * per), o = (v * size + u) * 4, k = w.peek(wx, wy), row = rowOf(w.biomeKnown(wx, wy));
+      // (The chart's borders: the grounds of the line of pixels above, made once for its size, and of the pixel to
+      // the left, so no ground is asked of the world twice.)
+      const line = big ? (M.mapLine?.length === size ? M.mapLine : (M.mapLine = new Int32Array(size))) : null;
+      for (let v = 0, left = -1; v < size; v++) for (let u = 0; u < size; u++) {
+        const wx = Math.floor(mx0 + (u - size / 2 + 0.5) * per), wy = Math.floor(my0 + (v - size / 2 + 0.5) * per), o = (v * size + u) * 4, k = w.peek(wx, wy), row = rowOf(w.biomeKnown(wx, wy)), id = row.id;
         let [r, g, b] = row.map;
         const inside = Math.hypot(wx - C, wy - C) <= R;
-        let shade = (k < 0 ? 0.3 : k === K.EMPTY ? 0.12 : 0.85) * (inside ? 1 : 0.45);
+        let shade = (k < 0 ? unseenShade(row) : k === K.EMPTY ? 0.12 : 0.85);
+        if (k < 0 && cellHash(wx >> 3, wy >> 3, id) < UNSEEN_GRAIN) { r = GRAIN_RGB[id * 3]; g = GRAIN_RGB[id * 3 + 1]; b = GRAIN_RGB[id * 3 + 2]; shade = GRAIN_SHADE[id]; }
+        if (line !== null) { if ((u > 0 && left !== id) || (v > 0 && line[u] !== id)) shade *= EDGE; line[u] = id; left = id; }
+        shade *= inside ? 1 : 0.45;
         // What the lens tells apart is drawn in its own colour, at full strength.
         let L = k === K.RARE ? RARE_LENS[row.kin] : k > 0 ? LENS[k] : undefined, lit = inside;
         if (L !== undefined && L[0] > lens) L = undefined;
@@ -1397,6 +1455,23 @@ export class Drawing {
       if (this.S.relics[dir]) continue;
       const [mx, my] = at(HX + DX[dir] * RELIC_R, HY + DY[dir] * RELIC_R);
       ctx.fillStyle = GEM_COLOR[DIR_BIOME[dir]]; ctx.fillRect(Math.round(mx) - 1, Math.round(my) - 1, 3, 3);
+    }
+    // And what each corner hides, a shrine (where it is laid: js/world.js, `shrine`), from the start as a relic is:
+    // a cross in its two parents' colours, until it is hauled.
+    for (let c = 0; c < 4; c++) {
+      if (this.S.shrines?.[c] || !w.shrine(c)) continue;
+      const [mx, my] = at(HX + SHRINES[c][0], HY + SHRINES[c][1]), row = rowOf(SEAMS[c][0]), ax = Math.round(mx), ay = Math.round(my);
+      ctx.fillStyle = GEM_COLOR[row.gemA]; ctx.fillRect(ax - 1, ay, 3, 1); ctx.fillRect(ax, ay - 1, 1, 3);
+      ctx.fillStyle = GEM_COLOR[row.gemB]; ctx.fillRect(ax, ay, 1, 1);
+    }
+    // A corner's herald (js/world.js: CORNER_HERALDS) is rung in its rare hazard's colour once the finder reaches it,
+    // within the tether's reach, until its heart has been seen.
+    const level = this.val('mapfinder');
+    if (level > 0) for (const [hx, hy, type] of this.cornerSites()) {
+      if (w.peek(hx, hy) >= 0 || Math.hypot(hx + 0.5 - HX, hy + 0.5 - HY) > R || Math.hypot(hx + 0.5 - d.x, hy + 0.5 - d.y) > FINDER[level]) continue;
+      const [mx, my] = at(hx + 0.5, hy + 0.5);
+      ctx.fillStyle = SPOT[type][1];
+      for (let a = 0; a < 6.283; a += 0.8) ctx.fillRect(Math.round(mx + Math.cos(a) * 3 - 0.5), Math.round(my + Math.sin(a) * 3 - 0.5), 1, 1);
     }
     // The first keystone slab, a ring of its own size, until it hangs by no key: somewhere to go, once it is near
     // enough to lie on the map (or on the chart, which shows the whole reach).
@@ -1489,7 +1564,9 @@ export class Drawing {
       for (let sy = y0; sy <= y1 && M.laid.length < 200; sy++) for (let sx = x0; sx <= x1; sx++) {
         // (Asked without an array a sector: in the corner the finder's whole range is asked.)
         const what = w.findName(sx, sy), fx = w.asked.fx, fy = w.asked.fy;
-        if (what === null || !(FOUND[what] <= level) || Math.hypot(fx - C, fy - C) > R || Math.hypot(fx + 0.5 - d.x, fy + 0.5 - d.y) > far) continue;
+        // (Twin stones and a fossil are named in their bands everywhere, and have cells only where the world says they
+        // are laid, `asked.laid`: far out, in generation 2.)
+        if (what === null || !(FOUND[what] <= level) || ((what === 'twin' || what === 'fossil') && !w.asked.laid) || Math.hypot(fx - C, fy - C) > R || Math.hypot(fx + 0.5 - d.x, fy + 0.5 - d.y) > far) continue;
         const laid = w.kindAt(fx, fy, w.biomeAt(fx, fy));
         if ((what === 'cache' && laid !== K.CACHE) || (what === 'prism' && laid !== K.PRISM) || rowOf(w.biomeAt(fx, fy)).pocket !== null) continue;
         // (With a cell of it that the seed laid solid, and what it laid there: a big geode's heart is hollow, so the
@@ -1511,6 +1588,15 @@ export class Drawing {
       M.found = into;
     }
     return M.found;
+  }
+  // The hearts of the corners' heralds in this world, [x, y, type] each: asked of the world's sites once a game
+  // (`begin` forgets them, as a game loaded may lay its corners by other rules).
+  cornerSites() {
+    if (this.cornersFor !== this.S.seed) {
+      this.cornersFor = this.S.seed; this.corners = [];
+      for (const [sx, sy] of CORNER_HERALDS) { const S = this.world.siteOf(sx, sy); if (S !== null && S.corner >= 0) this.corners.push([S.cx, S.cy, S.type]); }
+    }
+    return this.corners;
   }
   // The pockets the map marks: those whose middles lie within the tether's reach and that the drill has not been
   // into, the PIPS nearest the drill. One whose ground was made before pockets were laid (an older saved game's:
@@ -1617,6 +1703,9 @@ export class Drawing {
     const out = Math.floor(S.out ?? 0), load = WINCH_LOAD[lv.winch], live = this.val('livecatch'), spin = this.val('flywheel'), foe = this.val('trophy');
     const beasts = S.fauna?.met ? Object.keys(S.fauna.met).length : 0, places = Object.keys(S.met).length, chart = this.val('chart') > 0, finder = this.val('mapfinder');
     const refine = this.val('refinery'), cut = this.val('cutter'), specs = [1, 2, 3, 4].map(k => this.specs(k)), keeps = Math.round(this.val('blackbox') * 100), PLACES = places === 1 ? 'PLACE' : 'PLACES';
+    // (The corners' shrines held and the fossils found whole, once there is one: on a line of its own, and the lamp
+    // said on the scanner's line then, so the panel is no longer for it.)
+    const shrines = (S.shrines ?? []).filter(Boolean).length, fossils = [0, 1, 2, 3].filter(n => (S.fossils ?? 0) & (1 << n)).length, deep = shrines + fossils > 0;
     // (A rare hazard alive in a loop pays more with the live catch, said on its own line.)
     const rare = (name, does) => live > 1 ? [...first([name, `${does}, x${live} LIVE`], [name, `${does} x${live} LIVE`], [name, `x${live} LIVE`]), true] : [name, does, false];
     return [
@@ -1625,7 +1714,7 @@ export class Drawing {
       ['BIT', `MK${this.val('drill')}, CUTS x${CUT[lv.drill]}${lv.drill >= 5 ? ' PLOUGH' : ''}`, lv.drill >= 5 || undefined],
       ['SPEED', `x${this.val('momentum')}`],
       ['WINCH', `x${this.val('winch')}, LOAD ${load < 10000 ? load : compact(load)}`],
-      ['SCAN', `${this.val('scanner')} CELLS`],
+      deep ? [...first(['SCAN', `${this.val('scanner')} CELLS, LAMP ${this.val('lamp')}`], ['SCAN', `${this.val('scanner')}, LAMP ${this.val('lamp')}`]), S.lv.lamp > 0 || undefined] : ['SCAN', `${this.val('scanner')} CELLS`],
       ['HULL', `${this.hull}/${this.val('hull')} PIPS`],
       ['MENDS', `1 PIP / ${mender} S`, this.S.lv.mender > 0],
       ['LAVA', this.swims ? lv.lavaskin >= 2 ? 'SWIMS, SMELTS' : 'SWIMS IN IT' : 'BURNS', this.swims],
@@ -1640,7 +1729,7 @@ export class Drawing {
       beasts ? [...first(['MET', `${places} ${PLACES}, ${beasts}/${KINDS} BEASTS`], ['MET', `${places} ${PLACES}, ${beasts} ${beasts === 1 ? 'BEAST' : 'BEASTS'}`]), !!S.fauna.pal] : ['MET', `${places} ${PLACES}`],
       // (What the refinery and the gem cutter multiply: on the narrowest phone the refinery's own is plainly grit.)
       [...first(['REFINERY', `GRIT x${refine}, GEMS x${cut}`], ['REFINERY', `GRIT x${refine} GEMS x${cut}`], ['REFINERY', `x${refine}, GEMS x${cut}`]), S.lv.refinery + S.lv.cutter > 0],
-      ['LAMP', `${this.val('lamp')} CELLS`, S.lv.lamp > 0],
+      ...(deep ? [first(['CORNERS', `${shrines}/4, FOSSILS ${fossils}/4`], ['CORNERS', `${shrines}/4 FOSSILS ${fossils}/4`], ['SHRINES', `${shrines}/4 BONES ${fossils}/4`])] : [['LAMP', `${this.val('lamp')} CELLS`, S.lv.lamp > 0]]),
       // (From its third level the black box keeps what a lost trip learnt as well: js/game.js, `keepLore`.)
       lv.blackbox >= 3 ? [...first(['BLACK BOX', `KEEPS ${keeps}% +LORE`], ['BLACK BOX', `${keeps}% +LORE`]), true] : ['BLACK BOX', keeps ? `KEEPS ${keeps}%` : 'NONE', S.lv.blackbox > 0],
       known ? [...first(['ANALYSED', `${known}/${LAB.length}, UP TO +${best}%`], ['ANALYSED', `${known}/${LAB.length}, +${best}%`]), true] : ['ANALYSED', `0/${LAB.length}`, false],

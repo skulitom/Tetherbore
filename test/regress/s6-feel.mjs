@@ -25,6 +25,12 @@
 //     into a cave's piece leaves it drawn as a fresh painting has it, and the feel looks at the cell again; a cross
 //     has both its grounds' quirks; within forty cells of the core nothing comes by itself and nothing gives light;
 //     and the sounds that come by themselves come no more than one in 1.2 seconds.
+//   - The seams and the deep (generation 2, each at a place of world 7 where it lies): every one has a feel of its
+//     own, apart from its deep's; in a glacier's halls motes stream the way the air flows where each is born and
+//     the wind is told, in a caldera they rise in its thermals and nowhere else, and in ground whose air is still
+//     there are none; a fault zipping sparks and rings a note of its run, the further the higher, heard only near
+//     the drill; and a seam's reaction bursts in its two parents' colours, three a frame at the most, with its own
+//     sound.
 //   - The layers over the screen: all their pictures are made in a game's first second, none in the frame a ground
 //     is come into.
 //   node test/regress/s6-feel.mjs
@@ -37,7 +43,7 @@ const { BIOMES, B } = world;
 const fails = [], check = (ok, what) => { if (!ok) fails.push(what); };
 
 // ---------------------------------------------------------------- rows
-const own = [0, 1, 2, 3, 4, 5, 6, 7, 8, 17, 18, 19, 20, 21, 22, 23, 24, 32, 33, 34, 35, 36, 37, 38];
+const own = [0, 1, 2, 3, 4, 5, 6, 7, 8, 17, 18, 19, 20, 21, 22, 23, 24, 32, 33, 34, 35, 36, 37, 38, 9, 10, 11, 12, 13, 14, 15, 16, 64, 65, 66, 67];
 for (const id of own) check(!!FEELS[BIOMES[id].name], `${BIOMES[id].name} has no feel of its own`);
 const told = own.map(id => JSON.stringify(FEELS[BIOMES[id].name]));
 check(new Set(told).size === own.length, 'two hand-made grounds have the same feel');
@@ -68,10 +74,20 @@ check(JSON.stringify(feelOf(made)) === JSON.stringify(feelOf(BIOMES[B.EMBER])), 
 let draws = 0, stream = null;
 const plain = Math.random;
 Math.random = () => { draws++; return stream(); };
-const PLACES = [['frost', 60, -150], ['ember', 0, 150], ['mire', -150, 0], ['lode', 150, 0], ['rime', -380, -800], ['magma', -332, 800], ['serac', 150, -320],
-  ['tangle', -260, -260], ['loess', 300, 0], ['sporefall', -260, -124], ['thaw', -128, -1408], ['scoria', 0, 300]];
-const FORCE = ['quake', 'gust', 'drip', 'creak', 'bubble', 'steam', 'trickle', 'stars', 'worm', 'crackle', 'flies', 'icicle', 'rime'];
+// (Places on world 7 where each ground lies all about, found with tools/field.mjs: `node tools/field.mjs --seed 7
+// --at 416,-912` and so on. The seams and the deep strains are laid by generation 2, which a new game is.)
+const PLACES = [['frost', 60, -150], ['ember', 0, 150], ['mire', -150, 0], ['lode', 150, 0], ['rime', 416, -912], ['magma', -432, 816], ['serac', 150, -320],
+  ['tangle', -576, 368], ['loess', 300, 0], ['sporefall', -260, -124], ['thaw', -128, -1408], ['scoria', -176, 336],
+  ['hoarstone', 496, -480], ['skarn', 752, -768], ['glassdune', 544, 560], ['obsidian', 848, 832], ['cinderfen', -448, 432], ['tarpit', -896, 880],
+  ['frostfen', -608, -608], ['muskeg', -704, -720], ['glacier', -608, -832], ['caldera', -640, 1312], ['mycelium', -1328, -816], ['druse', 1088, -496]];
+const GROUND_PLACES = [['crust', 80, 40], ['bloom', -784, 544], ['gilt', 800, 448], ['firn', -160, -352], ['forge', 112, 320], ['redrock', 560, -48]];
+const FORCE = ['quake', 'gust', 'drip', 'creak', 'bubble', 'steam', 'trickle', 'stars', 'worm', 'crackle', 'flies', 'icicle', 'rime', 'flow'];
 const metAll = game => { for (const row of BIOMES) if (row) game.S.met[row.id] = 1; };
+{
+  stream = random(5);
+  const w = (await makeGame(7)).world;
+  for (const [name, x, y] of [...PLACES, ...GROUND_PLACES]) check(BIOMES[w.biomeAt(C + x, C + y)]?.name === name, `world 7 has not ${name} at ${x},${y} (it has ${BIOMES[w.biomeAt(C + x, C + y)]?.name})`);
+}
 for (const [name, x, y] of PLACES) {
   const games = [];
   for (let g = 0; g < 2; g++) {
@@ -111,7 +127,7 @@ Math.random = plain;
 // (A count of the calls on the canvas that the feel's passes make.)
 let calls = 0;
 const counting = ctx => new Proxy(ctx, { get: (t, k) => { const v = t[k]; return typeof v === 'function' ? (...args) => { calls++; return v.apply(t, args); } : v; }, set: (t, k, v) => { t[k] = v; return true; } });
-const GROUNDS = [...PLACES, ['crust', 80, 40], ['bloom', -700, 500], ['gilt', 800, -340], ['firn', 0, -300], ['forge', 44, 260], ['redrock', 260, -212]];
+const GROUNDS = [...PLACES, ...GROUND_PLACES];
 const worst = { live: 0, flies: 0, pieces: 0, lit: 0, work: 0, calls: 0 };
 for (const [name, x, y] of GROUNDS) {
   const game = await makeGame(7, { tether: 9, drill: 3 }), f = game.feel;
@@ -402,6 +418,72 @@ const cellsAbout = (w, i) => { let h = 0; for (let v = -12; v <= 12; v++) for (l
   sfx.drip = keep; sfx.blub = keep2;
   const closest = Math.min(...at.slice(1).map((t, n) => t - at[n]));
   check(at.length >= 10 && closest >= 1.2 - 1e-6, `in thirty seconds of drips and bubbles made to come five times a second, ${at.length} were heard, the closest ${closest.toFixed(2)} s apart`);
+}
+
+// ---------------------------------------------------------------- the air that flows, faults and reactions
+{
+  // In a glacier's halls motes stream the way the world's flow goes where each is born, over open ground of a
+  // ground whose air flows, and the wind is heard as the flow at the drill and the ground open round it say; in a
+  // caldera they rise, in its thermals and nowhere else, and its wind is the heat's; in the rime, whose air does
+  // not flow, there are none and no wind.
+  const FLOW = 16, rec = { x: 0, y: 0 };
+  for (const [name, x, y, kind] of [['glacier', -608, -832, 'wind'], ['caldera', -700, 1350, 'heat'], ['rime', 416, -912, null]]) {
+    const game = await stage(x, y), f = game.feel, w = game.world;
+    let motes = 0, wrong = 0, loud = 0;
+    for (let n = 0; n < 8 * 60; n++) {
+      game.update(1 / 60);
+      loud = Math.max(loud, f.windLevel);
+      for (let i = 0; i < 160; i++) {
+        if (f.kind[i] !== FLOW || f.t[i] > 1 / 60 + 1e-6) continue;
+        motes++;
+        const cx = Math.floor((f.x[i] - f.vx[i] / 60) / T), cy = Math.floor((f.y[i] - f.vy[i] / 60) / T), row = f.rowAt(w, cx, cy), fl = w.flowAt(cx, cy, kind ?? 'wind', rec);
+        const along = kind === 'heat' ? f.vx[i] === 0 && f.vy[i] < 0 && fl.y < 0 : (f.vx[i] * fl.x + f.vy[i] * fl.y) / Math.hypot(f.vx[i], f.vy[i]) > 0.98;
+        if (!along || row?.current !== kind || w.peek(cx, cy) !== K.EMPTY) wrong++;
+      }
+    }
+    if (kind) check(motes > 20 && wrong <= motes * 0.03, `in ${name} ${motes} motes of its ${kind} were born in eight seconds, ${wrong} of them not going the way the air goes where they were born, or not over its open ground`);
+    else check(motes === 0 && loud === 0, `in ${name}, whose air does not flow, ${motes} motes of a flow were born and the wind was heard at ${loud.toFixed(2)}`);
+    if (kind === 'wind') check(loud >= 0.3 && f.windKind === 'wind', `in a glacier's hall the wind was heard at ${loud.toFixed(2)} at the most (${f.windKind})`);
+    if (kind === 'heat') check(f.windKind === 'heat', `in a caldera the air the feel told of is ${f.windKind}`);
+  }
+}
+{
+  // A fault zipping: sparks from each cell, and a note of the run each, the further along the higher, heard only
+  // near the drill; and nothing in the game changes.
+  const game = await stage(-1328, -816), f = game.feel, d = game.drill, zips = [], keep = sfx.zip;
+  sfx.zip = (...args) => zips.push(args);
+  run(game, 0.5);
+  const i = Math.floor(d.y) * N + Math.floor(d.x) + 2, live = f.live, version = game.version, grit = game.S.grit;
+  const zip = (...args) => typeof f.zip === 'function' && f.zip(...args);
+  check(typeof f.zip === 'function', 'the feel has no zip for a fault to call');
+  for (let n = 0; n < 6; n++) zip(game, i, n);
+  const near = zips.length;
+  zip(game, i + 40, 9);
+  sfx.zip = keep;
+  check(f.live - live >= 18 && near === 6 && zips.length === 6 && zips.every(([n, loud], k) => n === k && loud > 0.5), `six cells of a fault zipped beside the drill made ${f.live - live} particles and were heard ${near} times as ${JSON.stringify(zips)}, and one forty cells off ${zips.length - near} times`);
+  check(game.version === version && game.S.grit === grit, 'a fault zipping changed the game');
+}
+{
+  // A seam's reaction, in each corner: a burst in the two parents' colours, heard as its own sound, no more than
+  // three bursts a frame; and none in ground with no reaction.
+  for (const [name, x, y] of [['hoarstone', 496, -480], ['glassdune', 544, 560], ['cinderfen', -448, 432], ['frostfen', -608, -608], ['rime', 416, -912]]) {
+    const game = await stage(x, y), f = game.feel, w = game.world, d = game.drill, row = w.row(game.di), said = [];
+    run(game, 0.5);
+    const was = row.react && sfx[row.react];
+    if (row.react) sfx[row.react] = (...args) => said.push(args);
+    f.kind.fill(0); f.live = 0; f.flies = 0; f.nv = 0;
+    let shown = 0;
+    check(typeof f.react === 'function', 'the feel has no react for a seam to call');
+    for (let n = 0; n < 6; n++) if (f.react?.(game, game.di + (n % 3) - 1)) shown++;
+    if (row.react) sfx[row.react] = was;
+    const inks = new Set(), ox = Math.round(game.cam.x - game.W / 2), oy = Math.round(game.cam.y - (game.H - 44) / 2);
+    const ctx = new Proxy({}, { get: (t, k) => k in t ? t[k] : () => {}, set: (t, k, v) => { if (k === 'fillStyle') inks.add(v); t[k] = v; return true; } });
+    f.dust(game, ctx, ox, oy); f.glow({ W: game.W, H: game.H, drill: d, world: w, sparks: new Map(), daylight: true, scale: 1 }, ctx, ox, oy);
+    if (!row.react) { check(shown === 0 && f.live === 0, `${name} has no reaction, and a burst of one showed ${f.live} particles`); continue; }
+    const a = BIOMES[row.kin].mote[0], b = BIOMES[row.gemB].mote[0];
+    check(shown === 3 && f.live >= 25 && inks.has(a) && inks.has(b), `in ${name} six reactions in a frame showed ${shown} bursts (three are meant), ${f.live} particles, drawn in ${[...inks].join(' ')} (its parents' ${a} and ${b} are meant)`);
+    check(said.length === 3 && said.every(([near]) => near > 0.8), `in ${name} a reaction beside the drill was heard as ${row.react} ${said.length} times at ${said.map(([n]) => n?.toFixed?.(2)).join(', ')}`);
+  }
 }
 
 console.log(fails.length ? `DEFECT:\n  ${fails.join('\n  ')}` : `no defect: every ground has a feel of its own and every cross its host's with its donor's mark; with the feel or without, ${PLACES.length} flights went the same way; at the most ${worst.live} particles, ${worst.flies} fireflies, ${worst.work} cells looked at and ${worst.calls} calls on the canvas a frame; and each quirk came`);

@@ -122,9 +122,12 @@ for (const row of rows) {
 
 // ---- 3. what has a piece: a pure answer, only where the seed left a cave, gone with its rock
 // (Places on world 7 where each ground lies all about. The north's deep flank was counted at -613,-747, where the
-// north-west seam lies now: `node tools/field.mjs --seed 7 --at -440,-960`.)
+// north-west seam lies now: `node tools/field.mjs --seed 7 --at -440,-960`. The seams and the deep strains, which
+// a new game lays (generation 2), at the places tools/field.mjs shows the most of each about.)
 const PLACES = { 1: [-86, -170], 2: [92, 150], 3: [-160, 64], 4: [160, 64], 5: [-440, -960], 6: [-418, 781], 7: [-763, 510], 8: [795, 425], 17: [-149, -360], 18: [67, -335],
-  19: [-34, 340], 20: [57, 288], 21: [-564, 377], 22: [-320, -64], 23: [351, 288], 24: [281, -85], 178: [1123, 341], 163: [-1231, -373] };
+  19: [-34, 340], 20: [57, 288], 21: [-564, 377], 22: [-320, -64], 23: [351, 288], 24: [281, -85], 178: [1123, 341], 163: [-1231, -373],
+  9: [496, -480], 10: [544, 560], 11: [-448, 432], 12: [-608, -608], 13: [752, -768], 14: [848, 832], 15: [-896, 880], 16: [-704, -720],
+  64: [-608, -832], 65: [-640, 1312], 66: [-1328, -816], 67: [1088, -496] };
 const game = await makeGame(7), w = game.world;
 const memo = new Map(), wild = i => { let v = memo.get(i); if (v === undefined) memo.set(i, v = natural(w, i, i % N, Math.floor(i / N))); return v; };
 const anchored = j => [K.SOFT, K.DENSE, K.ORE_A, K.ORE_B, K.SLATE, K.VAULT, K.ICE, K.BASALT, K.SLAG, K.STEEL, K.BEDROCK, K.FAULT, K.GLASS].includes(w.k(j)) && w.s(j) > 0;

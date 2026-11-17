@@ -12,6 +12,11 @@
 //   - in the world's own pieces the cells are there, where no slab, wreck, vault or shrine is laid over them;
 //   - a find whose middle's piece is of generation 1 lays nothing anywhere, and one whose middle's piece is of
 //     generation 2 lays nothing in a piece of generation 1 beside it.
+// And what they pay (js/game.js: `payOf`, `haul`, TWIN_LUMP, BONE_LUMP, TWIN_SPEC, BONE_SPEC), on world 7: twin
+// stones both in one haul a lump of TWIN_LUMP seconds of what cutting where they lie earns and a specimen of their
+// direction, called TWIN STONES!; one alone, its cells' grit and no more; a fossil whole BONE_LUMP seconds a bone
+// and two specimens, called by its species, and counted found by its direction (`fossils`); one with a bone left
+// behind, its cells' grit. The game's part fails on the game before they paid: no lump, no title, nothing found.
 //   node test/regress/c10-deep-finds.mjs
 import { World, N, C, K, FIND, TWIN_R, FOSSIL_R, FOSSILS, fossilKin, rowOf } from '../../js/world.js';
 
@@ -97,5 +102,45 @@ check(sums.laidInWorld > 300 && sums.notInWorld === 0, `in the world's own piece
   check(tried >= 10 && wrong === 0, `of ${tried} finds across the edge of their middle's piece, ${wrong} cells are laid where a piece of generation 1 is`);
 }
 
-console.log(fails.length ? `DEFECT: ${fails.join('\n        ')}` : 'ok: twin stones past 800 cells out and fossils past 1,200, laid as written, of their direction, and only in ground of generation 2');
+// What they pay.
+{
+  const { makeGame } = await import('../harness.mjs');
+  const { income, round2 } = await import('../../js/shop.js');
+  const game = await makeGame(7, { tether: 9 }), w = game.world, S = game.S;
+  // Twin stones and fossils of world 7 that are laid, with their cells.
+  const twins = [], fossils = [];
+  for (let sy = -48; sy < 48 && (twins.length < 3 || fossils.length < 2); sy++) for (let sx = -48; sx < 48; sx++) {
+    const what = w.findName(sx, sy), fx = w.asked.fx, fy = w.asked.fy, n = w.asked.n;
+    if ((what !== 'twin' && what !== 'fossil') || !w.asked.laid) continue;
+    const kind = what === 'twin' ? K.TWIN : K.FOSSIL, cells = [], bed = [];
+    for (let y = fy - 4; y <= fy + 4; y++) for (let x = fx - 4; x <= fx + 4; x++) { const k = w.at(x, y); if (k === kind) cells.push(y * N + x); else if (k === K.DENSE) bed.push(y * N + x); }
+    const one = { fx, fy, cells, bed, kin: fossilKin(fx, fy), far: Math.hypot(fx - C, fy - C) };
+    if (what === 'twin' && cells.length === 2) twins.push(one);
+    if (what === 'fossil' && cells.length === n) fossils.push(one);
+  }
+  check(twins.length >= 3 && fossils.length >= 2, `world 7 has ${twins.length} twin stones and ${fossils.length} fossils laid whole`);
+  const haul = cells => { const spec = S.spec.slice(), pay = game.payOf(cells); game.haul(cells); return { pay, title: game.hauled.title, spec: S.spec.map((v, k) => +(v - spec[k]).toFixed(3)) }; };
+  // Twin stones both in one haul, with their rings.
+  {
+    const t = twins[0], got = haul([...t.cells, ...t.bed]);
+    check(got.pay.twins === 1 && got.pay.lump === round2(income(Math.max(22, t.far)) * 16), `twin stones hauled together: ${got.pay.twins} pairs, a lump of ${got.pay.lump}`);
+    check(got.title === 'TWIN STONES!' && got.spec[t.kin] === 1 && got.spec.reduce((a, b) => a + b, 0) === 1, `twin stones hauled together are called ${got.title} and pay the specimens ${got.spec}`);
+  }
+  // One alone: its cells' grit and no more.
+  {
+    const t = twins[1], got = haul([t.cells[0]]);
+    check(got.pay.twins === 0 && got.pay.lump === 0 && got.title !== 'TWIN STONES!' && got.spec.every(v => v === 0), `a twin stone alone: ${got.pay.twins} pairs, a lump of ${got.pay.lump}, called ${got.title}, specimens ${got.spec}`);
+  }
+  // A fossil whole, and one with a bone left behind.
+  {
+    const f = fossils[0], got = haul([...f.cells, ...f.bed]);
+    check(got.pay.fossil === f.kin && got.pay.lump === round2(income(Math.max(22, f.far)) * 4 * f.cells.length), `a fossil whole of ${f.cells.length} bones: its species ${got.pay.fossil}, a lump of ${got.pay.lump}`);
+    check(got.title === `${FOSSILS[f.kin]}!` && got.spec[f.kin] === 2 && S.fossils === 1 << (f.kin - 1), `a fossil whole is called ${got.title}, pays the specimens ${got.spec}, and the fossils found are ${S.fossils}`);
+    check(game.hauled.sub === 'FOSSIL, WHOLE', `a fossil whole's banner says '${game.hauled.sub}' under it`);
+    const g = fossils[1], before = S.fossils, part = haul(g.cells.slice(1));
+    check(part.pay.fossil === 0 && part.pay.lump === 0 && part.spec.every(v => v === 0) && S.fossils === before, `a fossil with a bone left: its species ${part.pay.fossil}, a lump of ${part.pay.lump}, specimens ${part.spec}, the fossils found ${S.fossils}`);
+  }
+}
+
+console.log(fails.length ? `DEFECT: ${fails.join('\n        ')}` : 'ok: twin stones past 800 cells out and fossils past 1,200, laid as written, of their direction, and only in ground of generation 2; twin stones together and a fossil whole pay, and no less of them');
 process.exit(fails.length ? 1 : 0);

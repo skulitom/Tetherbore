@@ -279,9 +279,9 @@ check(await open('', 'example.org') === undefined, 'away from localhost an ordin
   const bare = await open('?shot&seed=7');
   check(!bare.game.lab && Object.keys(bare.game.S.lab).length === 0, 'a view staged without lab opened the notes or knew something');
   const all = await open('?shot&seed=7&lab=all'), A = all.game;
-  check(A.lab && A.labTab === 'lab' && A.labRise === 1 && Object.keys(A.S.lab).length === 48 && A.S.lab[Object.keys(A.S.lab)[11]] === 2, `lab=all: the notes ${A.lab ? 'open' : 'shut'} at ${A.labTab}, ${Object.keys(A.S.lab).length} known`);
+  check(A.lab && A.labTab === 'lab' && A.labRise === 1 && Object.keys(A.S.lab).length === 64 && A.S.lab[Object.keys(A.S.lab)[11]] === 2, `lab=all: the notes ${A.lab ? 'open' : 'shut'} at ${A.labTab}, ${Object.keys(A.S.lab).length} known`);
   // (And the bar's count of them, which it keeps rather than counting the book each frame.)
-  check(A.known === 48, `lab=all: the bar counts ${A.known} kinds analysed, not 48`);
+  check(A.known === 64, `lab=all: the bar counts ${A.known} kinds analysed, not 64`);
   const some = await open('?shot&seed=7&lab=20&labsel=seracB'), S = some.game, g = S.labGeom();
   check(S.known === 20, `lab=20: the bar counts ${S.known} kinds analysed, not 20`);
   check(Object.keys(S.S.lab).length === 20 && S.labSel === 'ores:seracB' && S.labScroll > 0 && S.labScroll <= g.most, `lab=20&labsel=seracB: ${Object.keys(S.S.lab).length} known, ${S.labSel} chosen, scrolled ${S.labScroll}`);

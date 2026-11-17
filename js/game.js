@@ -1,6 +1,6 @@
 // Tetherbore: the game. A drill flies free on a tether from a fixed core, cuts whatever ground it is pushed into,
 // and reels in any piece of ground it has drawn the tether round.
-import { World, CellBook, N, C, K, B, HARD, GRIT, GEMS, DX, DY, HAZARDS, RARE, CRUSH, ZONE, FIND, rowOf, hazOf, gemKin, digTime, cellHash, sight, cellsAlong, HOME_R, GEN } from './world.js';
+import { World, CellBook, N, C, K, B, HARD, GRIT, GEMS, DX, DY, HAZARDS, RARE, CRUSH, ZONE, FIND, rowOf, hazOf, gemKin, digTime, cellHash, sight, cellsAlong, HOME_R, GEN, SEAMS, SHRINE_R, FOSSILS, fossilKin } from './world.js';
 import { sheets, frameAt, duration } from './atlas.js';
 import { sfx, unlock, setAmbience } from './audio.js';
 import { richness, haulBonus, overload, income, round2, NEEDS, UPGRADES, LAB, LAB_OF, labLevel, labNext, CORE, ROWS, REACH, CUT } from './shop.js';
@@ -44,6 +44,8 @@ export const isHalf = (n, area) => area >= HALF * 0.9 && n >= HALF * 0.4;
 const PLACE_HAULS = {
   hive: 'HONEYCOMB!', drift: 'SKYFALL!', ash: 'ASHFALL!', grotto: 'LANTERN HAUL!', tinder: 'KINDLED!', glaze: 'SHATTERED!', shale: 'STACKED!',
   rime: 'DEEP FREEZE!', magma: 'MOLTEN HAUL!', bloom: 'FULL BLOOM!', gilt: 'GILDED!',
+  hoarstone: 'HOARFROST!', skarn: 'SKARN!', glassdune: 'SANDBLASTED!', obsidian: 'GLASS HEART!', cinderfen: 'SMOKED OUT!', tarpit: 'TARPIT!', frostfen: 'FROZEN FEN!', muskeg: 'MUSKEG!',
+  glacier: 'GLACIAL!', caldera: 'CALDERA!', mycelium: 'UNDERGROWTH!', druse: 'DRUSE!',
   firn: 'FROZEN RIVER!', serac: 'ICEFALL!', scoria: 'FROTHING!', forge: 'FORGED!', tangle: 'TANGLED UP!', sporefall: 'SPORE STORM!', redrock: 'RED LETTER!', loess: 'SILTSLIDE!',
 };
 // (Rows 5 to 31 are the flanks, the seams and the strains, and 64 to 127 the deep strains and what comes after.)
@@ -58,14 +60,19 @@ export const giantOf = (n, area = 0) => isHalf(n, area) ? GIANTS.length + 1 : GI
 // told before any size, as they are rarer than any; a cache and a rare hazard are told before any but a giant's,
 // a rare hazard caught awake with the live catch bought as caught live (`live`); and a haul that is a link in the
 // flywheel's run of two or more before it (`spin`, how many) by that before the place it lies in or its size.
-export function haulTitle(n, { relic = -1, parts = 0, caches = 0, rare = null, live = false, spin = 0 } = {}, row = null, area = 0) {
+// A shrine is told as a relic is, and a fossil whole (`fossil`: the direction whose species it is) and twin stones
+// both in one haul (`twins`) as a rare hazard is.
+export function haulTitle(n, { relic = -1, parts = 0, caches = 0, rare = null, live = false, spin = 0, shrine = -1, fossil = 0, twins = 0 } = {}, row = null, area = 0) {
   const giant = giantOf(n, area), place = n >= 30 ? placeHaul(row) : null;
   if (giant > GIANTS.length) return ['HALF THE WORLD!', giant, false];
   if (relic >= 0) return ['RELIC!', giant, false];
+  if (shrine >= 0) return ['SHRINE!', giant, false];
   if (parts) return ['WRECK PART! PAY +10%', giant, false];
   if (giant) return [GIANTS[giant - 1][1], giant, false];
   if (caches) return ['CACHE!', 0, false];
   if (rare) return [live ? 'CAUGHT LIVE!' : `${SPOT[rare][0]}!`, 0, false];
+  if (fossil) return [`${FOSSILS[fossil]}!`, 0, false];
+  if (twins) return ['TWIN STONES!', 0, false];
   if (spin >= 2) return [`SPIN x${spin}`, 0, false];
   if (place) return [place, 0, true];
   return [SIZES.find(([at]) => n >= at)?.[1] ?? 'HAUL', 0, false];
@@ -145,6 +152,37 @@ export const BELL = { fuse: 1.2, knock: 2.5, freeze: 7, cool: 4 };
 export const VENT = { pulses: [1.2, 2.0, 2.8], run: 14, bore: 4, knock: 0.6, show: 0.35, cool: 10 };
 export const WORM = { uncoil: 0.4, soft: 0.5, hard: 0.8, wander: 1, flee: 8, leash: 10, bite: 1.4, awake: 30, lose: 32, tween: 0.35, trail: 0.4 };
 export const STONE = { hum: 0.6, every: 0.3, reach: 6.5, clump: 9, most: 24, for: 10, knock: 0.8, fly: 0.2, cool: 4 };
+// What the seams do (js/world.js: a row's `react`), each in the ground of a seam whose row says so and in no other,
+// so the crosses, whose rows say nothing, play as they always have. Everything a reaction opens it opens as an arc
+// does (`openShattered`), within the tether's reach and in no pocket, and everything it closes closes as moss does:
+// never in the drill's cell or the eight round it, never where the tether lies.
+//   THAW   an arc in hoarstone or skarn opens the ice within REACT cells of the crystal (a frozen cut thaws)
+//   GLASS  an arc in glassdune or obsidian wakes the lava within REACT of the crystal, and lava there that comes to
+//          rest sets as glass, not basalt: a road that cuts in a blink
+//   BURN   lava pouring in cinderfen or tarpit sets off the pods beside it: they burn off, a cloud that neither knocks
+//          nor grows moss
+//   RIME   a pod going off in frostfen or muskeg rimes: no cloud, and RIME_SET seconds on, the open ground two
+//          round it closes with ice
+// How long each says so, at the least, between two of one.
+export const REACT = 3, RIME_SET = 0.3, REACT_SAY = 1.5;
+const REACT_SAYS = { thaw: ['THAWED', '#bff4ff'], glass: ['GLASS ROAD', '#c8b8e8'], burn: ['BURNT OFF', '#ff9a3a'], rime: ['ICE RING', '#e0fff4'] };
+// The air of a deep strain whose row has a `current` (js/world.js: `flowAt`): while the thumb is down and the drill
+// flies free in open ground, the flow there leans on where it is steered, by so much of the drill's speed at its
+// momentum, wind and heat. Never on the tether, on hauls or on what is loose, and never while it cuts or with the
+// thumb lifted: the drill does not drift.
+export const CURRENT = { wind: 0.3, heat: 0.25 };
+// A fault cut in ground laced with them (the mycelium's threads: a row whose `lay.threads` is set) runs on along
+// the faults joined to it, ZIP.rate cells a second and ZIP.most at the most from one cut, each opened as an arc's
+// slate is and paying nothing; the cells waiting are kept in a ring of ZIP.ring, made once.
+export const ZIP = { rate: 25, most: 60, ring: 128 };
+// What the deep finds pay (`payOf`), in seconds of what cutting out there would earn: twin stones both in one haul,
+// a fossil whole (for each bone), a shrine; and the specimens of each, its direction's (a shrine's, each of its two
+// parents'). A shrine held makes every gem paid to each of its parents' directions SHRINE_PERK times as many, for
+// good: a direction with both its corners' shrines pays 1.21 times.
+export const TWIN_LUMP = 16, BONE_LUMP = 4, SHRINE_LUMP = 30, TWIN_SPEC = 1, BONE_SPEC = 2, SHRINE_SPEC = 5, SHRINE_PERK = 1.1;
+// The two directions whose ground each corner's seam is made of (its gems' and its rich ore's), north-east,
+// south-east, south-west, north-west.
+export const CORNER_KINS = SEAMS.map(([id]) => [rowOf(id).gemA, rowOf(id).gemB]);
 // What a glowworm swims through, and how long a step into each takes (WORM): nothing else, and no open ground.
 const SWIMS = [];
 for (const k of [K.SOFT, K.ORE_A, K.ORE_B, K.ICE]) SWIMS[k] = WORM.soft;
@@ -311,6 +349,14 @@ export class Game {
     // how many there have been (`payOf`, `haul`): kept apart from the chain a pocket's mineral pays for, and made
     // once, never replaced.
     this.charge = 0; this.spin = { t: -99, n: 0 };
+    // The flow of the air where the drill is (`fly`: `kind` is its row's `current`, or null where there is none),
+    // written in place each frame for the feel and the sound to read; the faults waiting to zip, a ring of cells
+    // (`zip`, from `zipHead`, `zipN` of them) with how many more the thread may open and the time owed to it, and
+    // the cells opened this frame; what the deep finds of a haul are counted by (`payOf`: their sectors, and a
+    // record of a fossil's bones); and when each reaction last said so. All made once.
+    this.flow = { x: 0, y: 0, kind: null };
+    this.zip = new Int32Array(ZIP.ring); this.zipHead = 0; this.zipN = 0; this.zipLeft = 0; this.zipAcc = 0; this.zipRun = 0; this.zipped = [];
+    this.tally = new Map(); this.bones = World.findRecord(); this.saidAt = { thaw: -9, glass: -9, burn: -9, rime: -9 };
     // The last frames that took long (see `frameTook`), kept apart from the game's own save, to find what freezes.
     this.probe = {}; this.stalls = [];
     try { this.stalls = JSON.parse(localStorage.getItem('tetherbore-stalls') ?? '[]'); } catch { this.stalls = []; }
@@ -357,10 +403,12 @@ export class Game {
     this.cam = { x: HX * T, y: HY * T };
     this.band = [[HX, HY], [HX, HY]];
     this.pieces = []; this.pieceOf = new CellBook(); this.taken.length = 0; this.homeKey = ''; this.homeEnd = [HX, HY];
-    this.chain = null; this.hauled = null; this.specLine = null; this.pipsFor = ''; this.drifts.clear(); this.crushedAt = -9;
+    this.chain = null; this.hauled = null; this.specLine = null; this.pipsFor = ''; this.cornersFor = null; this.drifts.clear(); this.crushedAt = -9;
     // The hull is whole on a new game and on a game loaded: what is saved is its level, never its dents.
     this.dents = 0; this.shield = 0; this.tow = null; this.knocked = 0; this.mended = 0; this.notice = null; this.smokeIn = 0; this.boost = 0; this.mendIn = 0;
     this.charge = 0; this.spin.t = -99; this.spin.n = 0;
+    this.flow.x = this.flow.y = 0; this.flow.kind = null; this.zipN = 0; this.zipLeft = 0; this.zipAcc = 0; this.zipRun = 0;
+    for (const what in this.saidAt) this.saidAt[what] = -9;
     w.see(C, C, this.val('scanner') + 4);
     // Where the game begins is where the player already is: its name does not come up, now or as a new place later.
     const here = this.placeAt(this.di);
@@ -1137,6 +1185,7 @@ export class Game {
   }
   fly(dt) {
     const w = this.world, d = this.drill;
+    this.flow.kind = null; this.flow.x = this.flow.y = 0;
     // A wreck is wound home by its tether, whatever the thumb does.
     if (d.mode === 'dead') { this.dying(dt); return; }
     let [ix, iy, m] = this.steer();
@@ -1205,7 +1254,13 @@ export class Game {
     // Speed builds over a long clear run, so far ground is not a long walk.
     // (A leech on the hull drags: `fauna.drag` is 1 but while one is on, js/fauna.js.)
     const top = FLY * this.val('momentum') * (this.boost > 0 ? BOOST.by : 1) * (1 + Math.max(0, d.run - 0.8) * 0.9) * m * this.fauna.drag, ease = Math.min(1, dt * (m > 0 ? 14 : 10));
-    d.vx += (ix * top - d.vx) * ease; d.vy += (iy * top - d.vy) * ease;
+    // In a deep strain whose air flows (`CURRENT`), the flow leans on where the drill is steered: only with the
+    // thumb down and the drill in open ground, so it never drifts on its own, nor while it cuts.
+    const row = w.row(this.di), flow = this.flow, cur = row.current !== null && CURRENT[row.current] !== undefined ? row.current : null;
+    flow.kind = cur; flow.x = flow.y = 0;
+    if (cur !== null) w.flowAt(d.x, d.y, cur, flow);
+    const lean = cur !== null && m > 0 && d.dig < 0 && w.k(this.di) === K.EMPTY ? CURRENT[cur] * FLY * this.val('momentum') : 0;
+    d.vx += (ix * top + flow.x * lean - d.vx) * ease; d.vy += (iy * top + flow.y * lean - d.vy) * ease;
     // Move a little at a time, sliding along whatever stops it. The string follows the small moves (`tend`), so it
     // goes round whatever the drill went round: a move this small never leaves the open ground the drill stands in,
     // where one straight line across a whole frame's flight could pass the far side of a corner.
@@ -1445,9 +1500,10 @@ export class Game {
       // The cell the thing is marked by is one that goes when it is taken: a geode's is a cell of its ore.
       const cell = what === 'geode' && w.k(mid + 1) === K.ORE_B ? mid + 1 : seen, kind = w.k(cell);
       if (kind === K.EMPTY || S.marks.some(m => m[0] === cell)) continue;
-      const row = w.row(seen), dir = w.relicAt.indexOf(seen);
-      const name = what === 'mineral' ? (row.pocket?.mineral ?? SPOT.mineral[0]).toUpperCase() : SPOT[what][0];
-      const colour = what === 'mineral' ? bright(row.map) : what === 'relic' && dir >= 0 ? GEM_COLOR[DIR_BIOME[dir]] : SPOT[what][1];
+      // (A shrine's heart is a relic's kind, and is told as a shrine.)
+      const row = w.row(seen), dir = w.relicAt.indexOf(seen), shrine = what === 'relic' && dir < 0 ? w.shrineAt.indexOf(seen) : -1;
+      const name = what === 'mineral' ? (row.pocket?.mineral ?? SPOT.mineral[0]).toUpperCase() : shrine >= 0 ? SPOT.shrine[0] : SPOT[what][0];
+      const colour = what === 'mineral' ? bright(row.map) : what === 'relic' && dir >= 0 ? GEM_COLOR[DIR_BIOME[dir]] : shrine >= 0 ? SPOT.shrine[1] : SPOT[what][1];
       if (what !== 'wreck' && what !== 'relic') { S.marks.push([cell, kind, colour]); if (S.marks.length > MARKS) S.marks.shift(); }
       if (this.time - (this.calledAt[what] ?? -9) < 3) continue;
       this.calledAt[what] = this.time;
@@ -1553,11 +1609,57 @@ export class Game {
     this.fuses = this.fuses.filter(f => f.at < f.cells.length);
     if (gone.length) { if (this.time - (this.lastFuse ?? 0) > 0.07) { this.lastFuse = this.time; sfx.hiss(); } this.changed(gone); }
   }
+  // A fault cut (the mycelium's threads: ZIP): the faults beside it, side to side or corner to corner, wait their
+  // turn to open, and each that opens sets the faults beside it waiting (`zipOn`), ZIP.most from this cut at the
+  // most. The ring of cells waiting is the game's own, made once: a cell that does not fit waits for nothing.
+  unzip(i) {
+    this.zipLeft = ZIP.most; this.zipRun = 0;
+    this.zipNext(i);
+  }
+  zipNext(i) {
+    const w = this.world;
+    for (let v = -1; v <= 1; v++) for (let u = -1; u <= 1; u++) {
+      const j = i + v * N + u;
+      if (!(u || v) || w.k(j) !== K.FAULT || !(w.row(j).lay?.threads > 0) || this.zipN >= ZIP.ring) continue;
+      this.zip[(this.zipHead + this.zipN) % ZIP.ring] = j; this.zipN++;
+    }
+  }
+  // The faults waiting open, ZIP.rate a second (`updateHazards`, into its `opened`): each as an arc's slate does,
+  // paying nothing, within the tether's reach and in no pocket. A cell waiting twice, or that has gone since, is
+  // passed by. A spark runs along the thread, a note higher each cell.
+  zipOn(dt, opened) {
+    if (!this.zipN) return;
+    const w = this.world, batch = this.zipped;
+    batch.length = 0;
+    this.zipAcc += dt * ZIP.rate;
+    while (this.zipAcc >= 1 && this.zipN > 0 && this.zipLeft > 0) {
+      const j = this.zip[this.zipHead];
+      this.zipHead = (this.zipHead + 1) % ZIP.ring; this.zipN--;
+      if (w.k(j) !== K.FAULT || batch.includes(j) || w.row(j).pocket !== null || !this.within(j % N + 0.5, Math.floor(j / N) + 0.5)) continue;
+      this.zipAcc -= 1; this.zipLeft--;
+      batch.push(j);
+    }
+    if (batch.length) {
+      this.openShattered(batch);
+      for (let n = 0; n < batch.length; n++) {
+        const j = batch[n], x = j % N, y = Math.floor(j / N);
+        opened.push(j);
+        this.zipNext(j);
+        // (The spark that runs along the thread, and its note, a step higher each cell: js/feel.js, `zip`.)
+        if (this.feel.zip) this.feel.zip(this, j, this.zipRun++); else sfx.zip?.(this.zipRun++, this.near(x, y));
+      }
+      w.see(batch[batch.length - 1] % N, Math.floor(batch[batch.length - 1] / N), 1);
+    }
+    // (A thread run out, or with nothing more waiting, owes nothing to the next.)
+    if (!this.zipN || this.zipLeft <= 0) { this.zipN = 0; this.zipAcc = 0; }
+  }
   // In a grotto the dull caps on the walls light as the drill flies by, within two cells of it: each with a note,
   // a step higher than the last while they come less than two seconds apart. A lit cap is the grotto's mineral.
+  // (And so they do on the rims of a ground whose row says its caps glow, the mycelium's: a lit cap there pays as a
+  // cap does, its grit and the west's gems, with no pocket's lump.)
   glow() {
-    const w = this.world, d = this.drill, P = w.row(this.di).pocket;
-    if (!P || P.twist !== 'glow' || d.mode === 'dead') return;
+    const w = this.world, d = this.drill, row = w.row(this.di), P = row.pocket;
+    if (!(row.glow || P?.twist === 'glow') || d.mode === 'dead') return;
     const x0 = Math.floor(d.x), y0 = Math.floor(d.y);
     let lit = false;
     for (let y = y0 - 2; y <= y0 + 2; y++) for (let x = x0 - 2; x <= x0 + 2; x++) {
@@ -1634,6 +1736,8 @@ export class Game {
     }
     if (also.length) { w.see(x, y, 2); this.shake = Math.max(this.shake, 2.5); }
     if (k === K.NODE && row.pocket?.twist === 'fuse') this.burn(i);
+    // A fault cut in ground laced with them runs on along the faults joined to it (`unzip`).
+    if (k === K.FAULT && row.lay?.threads > 0) this.unzip(i);
     // Charged by an arc taken in (the capacitor), the bit lets it go into this cut: the dense rock and slate round the
     // cell shatter, and pay nothing. (Before what the cut wakes: an arc it sets off charges the bit afresh.)
     if (this.charge > 0) {
@@ -1778,7 +1882,11 @@ export class Game {
     const w = this.world, S = this.S, n = cells.length + extra.length, gems = [0, 0, 0, 0, 0], spec = [0, 0, 0, 0, 0], wrecks = [], held = S.wrecks ?? [];
     const chain = 1 + 0.2 * Math.min(5, this.chain && this.time - this.chain.t <= CHAIN ? this.chain.n : 0);
     let grit = 0, lump = 0, relic = -1, caches = 0, minerals = 0, mineral = null, prisms = 0, chains = false, rares = 0, rare = null, caught = 0, live = false;
-    const catches = this.val('livecatch');
+    // (The deep finds: the twin stones and fossils' bones in the haul, counted by their sectors and kind, and the
+    // shrines.)
+    let twins = 0, fossils = 0, fossil = 0, shrine = -1;
+    const catches = this.val('livecatch'), tally = this.tally, shrines = [];
+    tally.clear();
     const one = (k, b, x, y) => {
       const row = rowOf(b), far = Math.hypot(x - C, y - C), rich = richness(far) * row.rich * row.worth, P = row.pocket;
       // Whose gems a cell pays is its kind's and its ground's to say; the home ground pays none.
@@ -1786,7 +1894,16 @@ export class Game {
       const study = 1 + this.studied(k, row);
       grit += GRIT[k] * rich * study; gems[gemKin(k, row)] += GEMS[k] * row.gemx * study;
       if (b === B.CRUST && (k === K.ORE_A || k === K.ORE_B)) grit += (k === K.ORE_B ? 20 : 4) * rich * study;
-      if (k === K.RELIC) relic = w.relicAt.indexOf(y * N + x);
+      if (k === K.RELIC) {
+        const at = w.relicAt.indexOf(y * N + x);
+        if (at >= 0) relic = at;
+        else { const d = w.shrineAt.indexOf(y * N + x); if (d >= 0 && !shrines.includes(d)) shrines.push(d); }
+      }
+      // (A twin stone or a bone: its sector and which, as one number, (sx * 4096 + sy) * 2 + whether it is a bone.)
+      else if (k === K.TWIN || k === K.FOSSIL) {
+        const key = ((Math.floor((x - C) / FIND) + 2048) * 4096 + Math.floor((y - C) / FIND) + 2048) * 2 + (k === K.FOSSIL ? 1 : 0);
+        tally.set(key, (tally.get(key) ?? 0) + 1);
+      }
       // A cache holds what a quarter of a minute's cutting out here would earn; a wreck gives up its part.
       else if (k === K.CACHE) { caches++; lump += round2(income(Math.max(22, far)) * 12); }
       else if (k === K.WRECK) { const which = w.wrecks.findIndex(([wx, wy]) => wx === x && wy === y); if (which >= 0 && !held[which] && !wrecks.includes(which)) wrecks.push(which); }
@@ -1810,6 +1927,22 @@ export class Game {
     };
     for (const i of cells) one(w.k(i), w.b(i), i % N, Math.floor(i / N));
     for (const e of extra) one(e.k, e.b, e.x, e.y);
+    // Twin stones both in one haul pay a lump of TWIN_LUMP seconds and a specimen of their direction; a fossil whole
+    // (every bone the seed laid of it: `find` says how many) BONE_LUMP seconds a bone and two specimens. A twin alone,
+    // or a fossil in part, pays its cells' grit and no more. A shrine pays SHRINE_LUMP seconds of what cutting at its
+    // distance earns, and SHRINE_SPEC specimens of each of its parents' directions.
+    for (const [key, count] of tally) {
+      const bone = key & 1, at = key >> 1, F = this.bones;
+      w.find(Math.floor(at / 4096) - 2048, at % 4096 - 2048, F);
+      if (!F.laid) continue;
+      const far = Math.hypot(F.fx - C, F.fy - C), kin = fossilKin(F.fx, F.fy);
+      if (!bone && count >= 2) { twins++; lump += round2(income(Math.max(22, far)) * TWIN_LUMP); spec[kin] += TWIN_SPEC; }
+      else if (bone && count === F.n) { fossils |= 1 << (kin - 1); fossil = kin; lump += round2(income(Math.max(22, far)) * BONE_LUMP * F.n); spec[kin] += BONE_SPEC; }
+    }
+    for (const d of shrines) {
+      shrine = d; lump += round2(income(SHRINE_R) * SHRINE_LUMP);
+      for (const kin of CORNER_KINS[d]) spec[kin] += SHRINE_SPEC;
+    }
     // Each part brought home from a wreck makes every haul pay a tenth more, the haul that brings it too.
     // (A piece over the winch's load pays less for each cell's own grit, and its banner says so; where the cells
     // are worth nothing themselves, as a loop of ash is, nothing is lost and nothing is said.)
@@ -1821,8 +1954,15 @@ export class Game {
     const fly = this.val('flywheel'), spin = fly > 0 && n >= LIGHT && this.time - this.spin.t <= CHAIN ? this.spin.n : 0, spun = spin ? 1 + Math.min(fly, SPIN_STEP[Math.min(2, S.lv.flywheel)] * spin) : 1;
     // (The station's refinery multiplies a haul's grit, lumps and all; its gem cutter the gems.)
     const refined = this.val('refinery'), cut = this.val('cutter');
-    for (let b = 1; b < 5; b++) gems[b] = Math.round(gems[b] * shine * over * cut);
-    return { n, grit: Math.round((Math.round(grit * mult * spun) + lump) * refined), gems, lump, spec, minerals, mineral, prisms, shine, relic, caches, rares, rare, caught, live, parts, wrecks, mult, over, spin, chain: chains ? chain : 0 };
+    // (And each shrine held makes the gems of both its parents' directions SHRINE_PERK times as many, for good.)
+    const holy = S.shrines;
+    for (let b = 1; b < 5; b++) {
+      let perk = 1;
+      if (holy) for (let d = 0; d < 4; d++) if (holy[d] && (CORNER_KINS[d][0] === b || CORNER_KINS[d][1] === b)) perk *= SHRINE_PERK;
+      gems[b] = Math.round(gems[b] * shine * over * cut * perk);
+    }
+    return { n, grit: Math.round((Math.round(grit * mult * spun) + lump) * refined), gems, lump, spec, minerals, mineral, prisms, shine, relic, caches, rares, rare, caught, live, parts, wrecks, mult, over, spin, chain: chains ? chain : 0,
+      twins, fossils, fossil, shrine, shrines };
   }
   // The tether is round these cells: they go, and what they are worth is on its way home. `area` is how much the
   // loop that took them was round, in cells (`reelIfRound`), where it is known.
@@ -1855,6 +1995,8 @@ export class Game {
     let asked = 0, ground = null;
     for (let at = 0; at < n; at += every, asked++) { const b = w.b(cells[at]); tally.set(b, (tally.get(b) ?? 0) + 1); }
     for (const [b, count] of tally) if (count * 2 > asked) ground = rowOf(b);
+    // A geode hauled in ground whose finds are geodes (a druse) rings: asked of its shell while it still stands.
+    const rang = this.resonant(cells);
     for (const i of cells) w.setK(i, K.EMPTY);
     // (It is plainly gone, wherever it was: the map shows it open without the drill going to look.)
     w.show(cells);
@@ -1874,8 +2016,11 @@ export class Game {
     if (this.val('flywheel') > 0 && n >= LIGHT) { this.spin.n = (this.time - this.spin.t <= CHAIN ? this.spin.n : 0) + 1; this.spin.t = this.time; }
     // Small, and with nothing in it to make a show of, it is a light haul: flight is not stopped for it. (A prism
     // is something to make a show of: the banner says what it did to the gems. So is a rare hazard.)
-    const light = n < LIGHT && relic < 0 && !caches && !parts && !pay.prisms && !pay.rares;
+    const light = n < LIGHT && relic < 0 && !caches && !parts && !pay.prisms && !pay.rares && !pay.twins && !pay.fossils && pay.shrine < 0;
     S.grit += grit; this.pending.grit += grit;
+    // A shrine hauled is held for good (its gems' share, `payOf`), and a fossil whole is counted by its direction.
+    if (pay.shrines.length) { S.shrines ??= [0, 0, 0, 0]; for (const d of pay.shrines) S.shrines[d] = 1; }
+    if (pay.fossils) S.fossils = (S.fossils ?? 0) | pay.fossils;
     for (let b = 1; b < 5; b++) { S.gems[b] += gems[b]; this.pending.gems[b] += gems[b]; }
     // Specimens of a pocket's mineral: a count for each direction, kept to the fraction and shown whole. `specUp`
     // is how far the whole count rose, of the direction that gained most (`specOf`).
@@ -1918,13 +2063,15 @@ export class Game {
     this.effect('haul', 'impact', cx, cy);
     sfx.crack(n, linked);
     for (const sp of sprites) if (count < 60 || cellHash(sp.x, sp.y, 9) < 0.4) this.chips(sp.x, sp.y, sp.debris, 2, null, 0.7);
-    const [title, giant, named] = haulTitle(n, { relic, parts, caches, rare: pay.rare, live: pay.live, spin: pay.spin }, ground, area), half = giant > GIANTS.length;
+    const [title, giant, named] = haulTitle(n, { relic, parts, caches, rare: pay.rare, live: pay.live, spin: pay.spin, shrine: pay.shrine, fossil: pay.fossil, twins: pay.twins }, ground, area), half = giant > GIANTS.length;
+    // (What the banner says under its title: what a shrine gives for good, that a fossil is whole, how many geodes rang.)
+    const sub = half ? 'HALF THE REACH IN ONE HAUL' : pay.shrine >= 0 ? `GEMS x${SHRINE_PERK} FOR GOOD` : pay.fossil ? 'FOSSIL, WHOLE' : rang ? `${rang} ${rang === 1 ? 'GEODE RINGS' : 'GEODES RING'}` : null;
     // What the last haul was and paid (`hauled`). Any but a light one says so across the screen, with a flash and
     // a beat of stillness. A light one says what it paid where it lay, and leaves the banner of a bigger haul up.
     // (A haul named by its place has its title in the place's colour; a giant's stays up longer, and HALF's longest.)
     const mineral = pay.mineral && sheets.minerals?.frames[pay.mineral] ? pay.mineral : null;
     this.hauled = { title, n, mult, over, grit, gems, light, shine: pay.shine, minerals: pay.minerals, mineral, spec: specUp, specOf, chain: pay.chain, spin: pay.spin, live: pay.live, t: 0,
-      life: half ? 7 : 2.2 + Math.min(1.2, n * 0.01) + giant * 0.4, giant, colour: named ? bright(ground.map) : null, sub: half ? 'HALF THE REACH IN ONE HAUL' : null };
+      life: half ? 7 : 2.2 + Math.min(1.2, n * 0.01) + giant * 0.4, giant, colour: named ? bright(ground.map) : null, sub };
     if (light) {
       this.shake = Math.max(this.shake, Math.min(1.5, 0.7 + n * 0.08));
       this.ring(cx, cy, '#fff6c8', 12 + n);
@@ -1958,6 +2105,35 @@ export class Game {
     // A glowworm caught alive says so where it was (and with the live catch, any rare hazard caught awake).
     if (worm >= 0) { this.popup(worm % N, Math.floor(worm / N) - 1, 'CAUGHT', SPOT.worm[1]); this.sparkle((worm % N + 0.5) * T, (Math.floor(worm / N) + 0.5) * T, 8, SPOT.worm[1]); sfx.caught(); }
     if (relic >= 0) { S.relics[relic] = 1; sfx.relic(); if (S.relics.every(Boolean) && !S.won) { S.won = true; this.wonAt = this.time; } }
+    // (A shrine has a chord of its own, a fossil or twin stones the relic's call; geodes that ring, a chime.)
+    if (pay.shrine >= 0) { sfx.shrine?.(pay.shrine); this.ring(cx, cy, GEM_COLOR[CORNER_KINS[pay.shrine][1]], 140, 0.1); }
+    else if (pay.fossil || pay.twins) sfx.relic();
+    if (rang) { sfx.resonate?.(rang); this.ring(cx, cy, '#fff0a0', 200, 0.08, 1.2); if (light) this.popup(mx, my - 1.2, `${rang} RING`, '#fff0a0'); }
+  }
+  // A geode hauled in ground whose finds are geodes (a druse's: a row's `geodes`) rings, once a haul, and the geodes
+  // round it answer: every sector of finds within two sectors (96 cells) of it that holds a geode is shown, the
+  // whole of the geode out to its shell (`seeCell`), so the map marks it (the shell is what is called a geode) until
+  // it is got to. Asked of a cell of slate in the haul that lies within its sector's geode's shell. Returns how many
+  // geodes rang, the hauled one's not counted.
+  resonant(cells) {
+    const w = this.world;
+    for (let at = 0; at < cells.length; at++) {
+      const i = cells[at];
+      if (w.k(i) !== K.SLATE || !w.row(i).geodes) continue;
+      const x = i % N, y = Math.floor(i / N), sx = Math.floor((x - C) / FIND), sy = Math.floor((y - C) / FIND);
+      const [what, fx, fy, size] = w.findSpot(sx, sy);
+      if (what !== 'geode' || (x - fx) ** 2 + (y - fy) ** 2 > size * size) continue;
+      let rang = 0;
+      for (let v = -2; v <= 2; v++) for (let u = -2; u <= 2; u++) {
+        if (!(u || v)) continue;
+        const [far, gx, gy, r] = w.findSpot(sx + u, sy + v);
+        if (far !== 'geode') continue;
+        rang++;
+        for (let b = -r; b <= r; b++) for (let a = -r; a <= r; a++) if (a * a + b * b <= r * r) w.seeCell(gx + a, gy + b);
+      }
+      return rang;
+    }
+    return 0;
   }
   // A point `dist` pixels along a haul's route, from the drill's end toward the core.
   along(h, dist) {
@@ -2107,8 +2283,8 @@ export class Game {
   // ------------------------------------------------------------ hazards
   // A hazard wakes when the drill cuts beside it (or into it: `direct`). Lassoed asleep, it is worth gems.
   // What it does is its type's (`haz`: world.hazAt), whatever ground it lies in. Returns the cells it opened, for
-  // `changed`.
-  trigger(i, haz, direct) {
+  // `changed`. (`burnt`: a pod set off by lava in a seam whose pods burn, `REACT`.)
+  trigger(i, haz, direct, burnt = false) {
     const w = this.world, x = i % N, y = Math.floor(i / N);
     if (haz === 'lava') {
       w.setK(i, K.EMPTY); w.lava.set(i, 9); this.lavaVol.set(i, w.row(i).lavaVol);
@@ -2118,9 +2294,12 @@ export class Game {
       return [i];
     }
     if (haz === 'spore') {
+      // (In a seam whose pods rime the cloud is a moment's, and leaves ice; one burnt off is gone in a moment too.
+      // Each knocks nothing and grows no moss: `updateHazards`.)
+      const rime = !burnt && w.row(i).react === 'rime';
       w.setK(i, K.EMPTY);
-      this.clouds.push({ x, y, t: 0, life: 6 });
-      sfx.puff();
+      this.clouds.push({ x, y, t: 0, life: rime ? RIME_SET : burnt ? 1.2 : 6, burnt, rime, spread: false });
+      if (rime) this.reacted('rime', x, y); else if (burnt) { this.reacted('burn', x, y); if (this.onScreen(x, y)) this.chips(x, y, ['#ff9a3a', '#ffd84a', '#3c2a2e'], 5, null, 0.7); } else sfx.puff();
       return [i];
     }
     if (haz === 'spark') {
@@ -2365,11 +2544,35 @@ export class Game {
       const j = (y + v) * N + x + u;
       if ((u || v) && w.hazAt(j) === 'spark' && !this.sparks.has(j)) this.sparks.set(j, { fuse: 0.3 + cellHash(u, v, 7) * 0.3, cool: 0 });
     }
-    const opened = this.shatters(x, y);
+    const opened = this.shatters(x, y), react = w.row(y * N + x).react;
+    // In a seam whose arcs thaw (`REACT`), the ice round the crystal opens with the slate; in one whose lava sets as
+    // glass, the arc wakes the lava round it.
+    let woke = null;
+    if (react === 'thaw' || react === 'glass') for (let v = -REACT; v <= REACT; v++) for (let u = -REACT; u <= REACT; u++) {
+      const j = (y + v) * N + x + u;
+      if (!(u || v) || w.row(j).react !== react || w.row(j).pocket !== null || !this.within(x + u + 0.5, y + v + 0.5)) continue;
+      if (react === 'thaw' && w.k(j) === K.ICE && !opened.includes(j)) opened.push(j);
+      else if (react === 'glass' && w.hazAt(j) === 'lava') (woke ??= []).push(...this.trigger(j, 'lava', false));
+    }
+    const thawed = react === 'thaw' && opened.some(j => w.k(j) === K.ICE);
     this.openShattered(opened);
+    if (thawed) this.reacted('thaw', x, y);
+    if (woke) opened.push(...woke);
     // An arc lights what it breaks: the ground it opened, and what stood behind, is seen.
     if (opened.length) { sfx.dig(3); w.see(x, y, 2); }
     return opened;
+  }
+  // How near the drill a cell is to be heard: 1 beside it, 0 HEAR cells off and further.
+  near(x, y) { return Math.max(0, 1 - Math.hypot(x + 0.5 - this.drill.x, y + 0.5 - this.drill.y) / HEAR); }
+  // A seam's reaction at (x, y) is shown and heard (js/feel.js: `react`, a burst in the seam's two parents'
+  // colours and its sound), and says so in a word where it happened, if that is on the screen, no more often than
+  // every REACT_SAY seconds of each.
+  reacted(what, x, y) {
+    if (this.feel.react) this.feel.react(this, y * N + x); else sfx[what]?.(this.near(x, y));
+    if (this.time - this.saidAt[what] < REACT_SAY) return;
+    this.saidAt[what] = this.time;
+    const [word, colour] = REACT_SAYS[what];
+    if (this.onScreen(x, y)) this.popup(x, y - 1, word, colour);
   }
   // The slate an arc from the crystal at (x, y) shatters: every cell of slate among the eight round it that the
   // tether can reach. With `dense` (the capacitor's charge let go into a cut there), dense rock too, and never a
@@ -2596,8 +2799,10 @@ export class Game {
       if (flow) {
         const vol = this.lavaVol.get(i) ?? 1, start = (cellHash(x, y, (this.time * 10) | 0) * 4) | 0;
         for (let s = 0; s < 4; s++) {
-          const j = (y + DY[(s + start) % 4]) * N + x + DX[(s + start) % 4];
-          if (w.hazAt(j) === 'lava') { opened.push(...this.trigger(j, 'lava', false)); continue; }
+          const j = (y + DY[(s + start) % 4]) * N + x + DX[(s + start) % 4], haz = w.hazAt(j);
+          if (haz === 'lava') { opened.push(...this.trigger(j, 'lava', false)); continue; }
+          // (In a seam whose pods burn, `REACT`, lava sets off a pod beside it: it burns off.)
+          if (haz === 'spore' && w.row(j).react === 'burn') { opened.push(...this.trigger(j, 'spore', false, true)); continue; }
           if (vol > 1 && w.k(j) === K.EMPTY && !w.lava.has(j) && j !== here && w.s(j) && Math.hypot(x - C, y - C) > 3) {
             w.lava.set(j, 8); this.lavaVol.set(j, vol - 1); this.lavaVol.set(i, 1);
             this.lavaMoved(j);
@@ -2610,8 +2815,11 @@ export class Game {
       w.lava.delete(i); this.lavaVol.delete(i); this.lavaMoved(i);
       // (Nothing closes over in a pocket: lava that ran into one only goes out.)
       if (!lies(i) && Math.abs(dcx - x) + Math.abs(dcy - y) > 1 && w.row(i).pocket === null) {
-        w.setK(i, K.BASALT); closed.push(i);
+        // (In a seam whose lava sets as glass, `REACT`, it does: never in the drill's cell or the eight round it.)
+        const glass = w.row(i).react === 'glass' && Math.max(Math.abs(dcx - x), Math.abs(dcy - y)) > 1;
+        w.setK(i, glass ? K.GLASS : K.BASALT); closed.push(i);
         this.effect('steam', 'smoke-puff', (x + 0.5) * T, (y + 0.5) * T);
+        if (glass) this.reacted('glass', x, y);
       }
     }
     // Spores: a burst pod hangs a cloud that stuns what flies into it, then moss closes the ground round it: soft
@@ -2621,16 +2829,28 @@ export class Game {
     // younger.)
     for (const c of this.clouds) {
       c.t += dt;
-      if (Math.max(Math.abs(dcx - c.x), Math.abs(dcy - c.y)) <= 1 && c.t < 0.2) {
+      // (A pod that rimed or burnt off knocks nothing: `trigger`.)
+      if (!c.rime && !c.burnt && Math.max(Math.abs(dcx - c.x), Math.abs(dcy - c.y)) <= 1 && c.t < 0.2) {
         // (Fitted with the spore drive, the burst drives the drill where it would have knocked it.)
         if (!this.val('sporedrive')) this.hit(JOLT.spore);
         else { if (this.boost < BOOST.time - 0.5) { this.popup(d.x - 0.5, d.y - 1, 'BOOST', '#b8f06a'); sfx.gem(6); } this.boost = BOOST.time; }
       }
       if (!c.spread && c.t >= POD_CHAIN) {
         c.spread = true;
-        for (let v = -1; v <= 1; v++) for (let u = -1; u <= 1; u++) { const j = (c.y + v) * N + c.x + u; if (w.hazAt(j) === 'spore') opened.push(...this.trigger(j, 'spore', false)); }
+        for (let v = -1; v <= 1; v++) for (let u = -1; u <= 1; u++) { const j = (c.y + v) * N + c.x + u; if (w.hazAt(j) === 'spore') opened.push(...this.trigger(j, 'spore', false, c.burnt)); }
       }
       if (c.t < c.life) continue;
+      // A pod burnt off leaves nothing; one that rimed, the open ground two round it closed with ice (but its own
+      // cell): never the drill's cell or the eight round it, never where the tether lies, in no pocket.
+      if (c.burnt) continue;
+      if (c.rime) {
+        for (let v = -2; v <= 2; v++) for (let u = -2; u <= 2; u++) {
+          const j = (c.y + v) * N + c.x + u;
+          if ((u || v) && w.k(j) === K.EMPTY && !lies(j) && !w.lava.has(j) && Math.max(Math.abs(dcx - c.x - u), Math.abs(dcy - c.y - v)) > 1 && w.row(j).pocket === null) { w.setK(j, K.ICE); closed.push(j); }
+        }
+        if (this.onScreen(c.x, c.y)) this.effect('freeze', 'impact', (c.x + 0.5) * T, (c.y + 0.5) * T);
+        continue;
+      }
       // (With the graft, the spore drive's second level, moss that closes beside ore the world laid heals as that
       // ore does under the frost, `veined`: never beside ore that healed, so a graft cannot run on cell by cell; and
       // only within the tether's reach, as the bellows and the capacitor are held. A bunch of pods spreads past the
@@ -2655,6 +2875,7 @@ export class Game {
       else { s.cool -= dt; if (s.cool <= 0) this.sparks.delete(i); }
     }
     this.rareHazards(dt, opened);
+    this.zipOn(dt, opened);
     // Frost: a cut in ground that freezes (the north's) closes over with ice, after as long as its row says, unless
     // the tether lies in it. Beside ore it closes as ore (`veined`).
     this.frostTick = (this.frostTick ?? 0) + dt;

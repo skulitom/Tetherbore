@@ -16,6 +16,8 @@
 //   - The music (at the foot of this file) is eleven sources that sound for as long as it plays, each ground's own
 //     piece: a timer twice a second posts their next notes on the audio clock. No node is made for a note or for a
 //     change of ground, and nothing is done in a frame.
+//   - The wind of the deep (`setWind`) is one layer more that sounds on once it is made, the first time there is
+//     wind: five nodes, never made again, posted to only when what it is told moves enough to hear.
 // `node tools/sounds.mjs` renders every sound in a browser and measures it; test/regress/sound-layers.mjs holds the
 // rules above with no browser.
 
@@ -543,6 +545,105 @@ const quirks = {
 Object.assign(GAP, { creak: 1.2, shatter: 0.12, drip: 0.1, blub: 0.15, quake: 1.5, gust: 2, trickle: 0.4, crackle: 0.2 });
 for (const name of Object.keys(quirks)) sfx[name] = sound(name, quirks[name]);
 
+// ---------------------------------------------------------------- the seams and the deep
+// What the grounds of the diagonals and the deep set off (js/game.js asks for them, and js/feel.js with its bursts).
+// A seam's reaction, each named as its row's `react` is, so that `sfx[row.react](near)` is its sound: the north-east's
+// arc thawing the ice round it (a hiss of steam and a drop of a note), the south-east's lava setting as glass (a
+// ring of glass in the key of the music that plays), the south-west's pods going up in the lava (a soft whoomph and
+// the crackle of them burning), the north-west's pod riming over (a crackle of frost and a high note falling). A
+// fault zipping through the mycelium is a rising run, a note of the key for each cell the spark reaches (`n`, how
+// far along the thread it is), so that a long thread climbs and climbs again. Those two kinds are the ground's own:
+// they are soft, placed (`near`, as the ground's other sounds are), and the small ones give way when many layers
+// sound. What pays rings as rewards do, in the major five-note scale on A, and steps the music back: geodes ringing
+// to a druse's geode hauled (`resonate`, `n` how many ring) and a shrine taken (`shrine`, `corner` 0 to 3, the
+// north-east first, going round with the sun).
+const stings = {
+  thaw(near) {
+    if (crowded()) return;
+    const a = loud(near), f = inKey(vary(1100, 0.06));
+    noise(0.55, { type: 'highpass', freq: 4200, to: 1600, q: 0.7, gain: 0.05 * a, attack: 0.03 });
+    noise(0.3, { freq: 900, to: 520, q: 0.9, gain: 0.025 * a, attack: 0.04, delay: 0.05 });
+    tone(f, 0.18, { type: 'sine', gain: 0.025 * a, to: f * 0.75, delay: 0.12, out: space });
+  },
+  glass(near) {
+    const a = loud(near), f = inKey(vary(1320, 0.04));
+    noise(0.02, { type: 'highpass', freq: 5000, gain: 0.02 * a, attack: 0.001 });
+    tone(f, 0.9, { type: 'glass', gain: 0.035 * a, attack: 0.004, out: space });
+    tone(f * 2, 0.5, { type: 'sine', gain: 0.016 * a, attack: 0.004, delay: 0.01, out: space });
+  },
+  burn(near) {
+    const a = loud(near);
+    noise(0.5, { type: 'lowpass', freq: 260, to: 1100, q: 0.7, gain: 0.09 * a, attack: 0.07, out: room });
+    tone(vary(120, 0.05), 0.36, { type: 'sine', gain: 0.05 * a, to: 74, attack: 0.04, out: room });
+    grains(7, 0.45, { gain: 0.03 * a, freq: 2200, delay: 0.12 });
+  },
+  rime(near) {
+    if (crowded()) return;
+    const a = loud(near), f = inKey(vary(2300, 0.05));
+    grains(10, 0.5, { first: 0.025 * a, gain: 0.035 * a, freq: 5200, q: 2, type: 'bandpass', out: room });
+    tone(f, 0.3, { type: 'sine', gain: 0.022 * a, to: inKey(f * 0.7), attack: 0.01, out: space });
+  },
+  zip(n, near) {
+    if (crowded()) return;
+    const a = loud(near), s = Math.max(0, Math.round(figure(n, 0, 0, 1e6))) % 8, k = PLINK.scale.length;
+    const f = fold(PLINK.base / 2 * 2 ** ((PLINK.scale[s % k] + 12 * Math.floor(s / k)) / 12));
+    tone(f, 0.12, { type: 'triangle', gain: 0.032 * a, to: f * 1.04, attack: 0.003, out: space });
+    noise(0.02, { type: 'highpass', freq: 6000, gain: 0.016 * a, attack: 0.001 });
+  },
+  resonate(n) {
+    const k = Math.min(5, Math.max(1, Math.round(figure(n, 1, 1, 5))));
+    hush(0.45, 1.6);
+    line(Array.from({ length: k + 1 }, (_, i) => note(12 - i)), 0.11, { type: 'keys', gain: 0.08, ring: 1.2 });
+    tone(note(12), 1.6, { type: 'sine', gain: 0.03, attack: 0.02, out: space });
+    tone(note(17), 1.1, { type: 'sine', gain: 0.012, attack: 0.02, delay: 0.05, out: space });
+    noise(0.8, { type: 'highpass', freq: 7000, gain: 0.012, attack: 0.08, out: space });
+  },
+  shrine(corner) {
+    const c = Math.round(figure(corner, 0, 0, 3));
+    hush(0.35, 3);
+    tone(note(0), 2.8, { gain: 0.045, attack: 0.3, out: space });
+    for (const [n, step] of [5, 7, 8].entries()) tone(note(step), 2.6 - 0.2 * n, { type: 'choir', gain: 0.03, attack: 0.25 + 0.08 * n, delay: 0.06 * n, out: space });
+    tone(note(10 + [0, 2, 3, 4][c]), 2, { type: 'choir', gain: 0.018, attack: 0.4, delay: 0.5, out: space });
+    line([5, 7, 8, 10, 12].map(note), 0.12, { gain: 0.07, ring: 1, delay: 0.3 });
+    noise(1.4, { type: 'highpass', freq: 6500, gain: 0.014, attack: 0.3, delay: 0.4, out: space });
+  },
+};
+Object.assign(GAP, { thaw: 0.15, glass: 0.1, burn: 0.2, rime: 0.15, zip: 0.06, resonate: 0.5, shrine: 1 });
+for (const name of Object.keys(stings)) sfx[name] = sound(name, stings[name]);
+// The wind of the deep's halls, and the heat of a caldera's thermals: one layer that sounds for as long as the game
+// does, once it has been asked for, its loudness and its colour following the flow of the air where the drill is
+// (js/feel.js tells it, a tenth of a second at a time: `level` 0, still, to 1, the drill out in a hall of the full
+// wind; `kind` 'wind', a bandpassed whistle that wanders, or 'heat', a low roar). Five nodes, made the first time
+// there is any wind to blow, and nothing made after: a level is posted only when it has moved by a share worth
+// hearing, so a drill hanging in a hall posts nothing. It is soft, under the sounds, through the sounds' own gain.
+// With no context, muted or aside, nothing is made or posted.
+const GALE = 0.05, HEAT = 0.07;
+let gale = null;
+export function setWind(level, kind = 'wind') {
+  if (!ctx || muted || aside) return;
+  const v = Number.isFinite(level) ? Math.min(1, Math.max(0, level)) : 0, heat = kind === 'heat';
+  if (!gale) {
+    if (v < 0.02) return;
+    try {
+      const src = ctx.createBufferSource(), band = ctx.createBiquadFilter(), out = ctx.createGain(), sway = ctx.createOscillator(), depth = ctx.createGain();
+      src.buffer = noiseBuffer; src.loop = true;
+      band.type = 'bandpass'; band.Q.value = 1; band.frequency.value = 500;
+      out.gain.value = 0; sway.type = 'sine'; sway.frequency.value = 0.17; depth.gain.value = 0;
+      src.connect(band); band.connect(out); out.connect(sounds); sway.connect(depth); depth.connect(band.frequency);
+      src.start(); sway.start();
+      gale = { band, out, depth, level: 0, heat: false };
+    } catch (error) { if (!told) { told = true; console.warn('sound wind:', error); } return; }
+  }
+  if (Math.abs(v - gale.level) < 0.04 && heat === gale.heat) return;
+  const t = ctx.currentTime;
+  gale.level = v; gale.heat = heat;
+  gale.out.gain.setTargetAtTime(v * (heat ? HEAT : GALE), t, 0.5);
+  gale.band.frequency.setTargetAtTime(heat ? 150 + 130 * v : 420 + 900 * v, t, 0.8);
+  gale.band.Q.setTargetAtTime(heat ? 0.6 : 1.3, t, 0.8);
+  gale.depth.gain.setTargetAtTime(heat ? 30 : 150 + 200 * v, t, 1);
+}
+export const windNow = () => gale ? { level: gale.level, heat: gale.heat } : null;
+
 // ---------------------------------------------------------------- the voices of the creatures
 // What the creatures of the ground say (js/fauna.js asks for them): small, soft and short, and a few of them
 // warnings, which the player plays by (a bat's chitter and screech, a spitter's wheeze, a leech's drip, the pal's
@@ -849,6 +950,32 @@ const SCORES = {
   sporefall: { of: 'mire', twist: { burst: [3, 1] }, perc: { pattern: '....s.......s...' }, pluck: { chance: 0.5 } },
   redrock: { of: 'lode', twist: { bass: { wave: 'bass', pattern: '0.0.0.0.0.0.0.0.', decay: 0.12, gain: 0.02, oct: 0 } }, perc: { pattern: 'd...w...d...w...' } },
   loess: { of: 'lode', twist: { tempo: 1.2, perc: { pattern: 's.s.s.s.s.s.s.s.', gain: 0.6 } }, pluck: null, lead: { every: 0.2 }, bright: 1900 },
+
+  // The seams, each its own direction's piece with its other parent's voice in it, and each deep seam its seam's
+  // piece gone slower or lower. Hoarstone: the north's glass waltz rung on the east's music box, brighter, a
+  // shaker in it. Skarn: the same a fourth lower and slower still, an organ held under it. Glassdune: the east's
+  // caravan on the scale it all but is, its reed turned to the south's saw, soft. Obsidian: slower and darker, its
+  // pads of glass, a stone drum. Cinderfen: the south's march swung, sung over by the west's choir, a hollow drip
+  // in it. Tarpit: heavier and lower, on a harmonic scale, the drum doubled, the dark closing in. Frostfen: the west's lilt in a bright scale
+  // with the north's glass for its drips. Muskeg: slower, colder, a knock in the bog now and then.
+  hoarstone: { of: 'frost', bell: 'keys', bright: 2800, pluck: { wave: 'keys', pattern: '7.....9...b.', chance: 0.7 }, perc: { pattern: 'h.....s.....' } },
+  skarn: { of: 'hoarstone', bpm: 40, root: 247, bright: 2000, air: [1100, 62], bass: { wave: 'organ', pattern: '0...........', decay: 2.5, gain: 0.016 } },
+  glassdune: { of: 'lode', mode: 'hijaz', bright: 1700, air: [600, 73], lead: { wave: 'sawtooth', gain: 0.008 } },
+  obsidian: { of: 'glassdune', bpm: 50, root: 196, bright: 900, air: [380, 49], pad: { wave: 'glass', gain: 0.013 }, perc: { pattern: 'd.......w.......' } },
+  cinderfen: { of: 'ember', swing: 0.15, pad: { wave: 'choir', gain: 0.014 },
+    pluck: { wave: 'hollow', pattern: '..4.....2.......', chance: 0.5, lp: [2000, 800], q: 0.8, decay: 0.3, gain: 0.011, oct: 1 } },
+  tarpit: { of: 'cinderfen', bpm: 66, root: 131, mode: 'harmonic', bright: 650, air: [200, 38], bass: { decay: 0.25 }, perc: { pattern: 'd...d.w.d...d.w.', gain: 1.1 } },
+  frostfen: { of: 'mire', bell: 'glass', mode: 'lydian', bright: 1700, air: [1100, 62], pluck: { wave: 'glass' } },
+  muskeg: { of: 'frostfen', bpm: 50, swing: 0.1, bright: 1000, air: [900, 60], perc: { pattern: '..........w.....', gain: 0.5 } },
+  // The deep strains, each its flank's piece with one thing of its own. Glacier: the deep north at its stillest,
+  // its glass rarer and its pads slower to swell, a breath of wind for its drum, the bed's wind high (and the wind of its halls a layer of its
+  // own, `setWind`). Caldera: the deep south on a lower root, a low drum each bar and a knock after it, dark.
+  // Mycelium: the deep west's garden quicker, its pads pulsing, its arpeggio climbing all the way, a shaker in it. Druse: the deep east's
+  // procession with a music box chiming high over it (and its geodes ringing, `resonate`).
+  glacier: { of: 'rime', bpm: 36, air: [1400, 70], pad: { rise: 4 }, pluck: { chance: 0.35 }, perc: { pattern: 'h.........h.........', gain: 0.8 } },
+  caldera: { of: 'magma', root: 117, bright: 600, air: [160, 34], perc: { pattern: 'd.......d.w.....' } },
+  mycelium: { of: 'bloom', bpm: 96, bright: 1200, pad: { vib: [1.2, 25] }, pluck: { pattern: '0.2.4.6.8.a.' }, perc: { pattern: 's.....s.s...', gain: 0.7 } },
+  druse: { of: 'gilt', bright: 1700, pluck: { wave: 'keys', pattern: '4...7...b...7...', chance: 0.6, lp: [5000, 2500], q: 0.3, decay: 0.9, gain: 0.011, oct: 2 } },
 
   // The pockets. Where a pocket's own rule rings rewards (the drift's chain, the grotto's caps), its key holds
   // the major five-note scale on A that they ring in.

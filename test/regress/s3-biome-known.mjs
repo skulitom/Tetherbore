@@ -29,19 +29,27 @@ game.drill.x = x - 19.5; game.drill.y = y + 0.5;
 game.S.lv.tether = 9;
 game.drawMap(0, 0);
 const size = 46, R = game.val('tether'), per = 1.5, HX = Math.floor(game.drill.x) + 0.5, HY = Math.floor(game.drill.y) + 0.5;
-let at = -1, beside = -1;
+let at = -1, beside = -1, atW = null, besideW = null;
 for (let v = 0; v < size; v++) for (let u = 0; u < size; u++) {
   const wx = Math.floor(HX + (u - size / 2 + 0.5) * per), wy = Math.floor(HY + (v - size / 2 + 0.5) * per);
   const inPiece = (wx >> 6) === (x >> 6) && (wy >> 6) === (y >> 6);
-  if (at < 0 && inPiece && w.biomeAt(wx, wy) === 17 && Math.hypot(wx - C, wy - C) <= R) at = (v * size + u) * 4;
+  if (at < 0 && inPiece && w.biomeAt(wx, wy) === 17 && Math.hypot(wx - C, wy - C) <= R) { at = (v * size + u) * 4; atW = [wx, wy]; }
   // An unmade cell of firn beside it, for the colour the seed gives.
-  if (!inPiece && beside < 0 && w.biomeAt(wx, wy) === 17 && w.laid(wy * N + wx) === -1 && Math.hypot(wx - C, wy - C) <= R) beside = (v * size + u) * 4;
+  if (!inPiece && beside < 0 && w.biomeAt(wx, wy) === 17 && w.laid(wy * N + wx) === -1 && Math.hypot(wx - C, wy - C) <= R) { beside = (v * size + u) * 4; besideW = [wx, wy]; }
 }
-const px = game.mapData.data, colour = o => [px[o], px[o + 1], px[o + 2]].join(), shaded = map => [map[0] * 0.3 + 8, map[1] * 0.3 + 7, map[2] * 0.3 + 10].map(c => Math.min(255, Math.round(c))).join();
+// (Ground unseen is its row's colour on the map at a luminance of 34 at the least, or in some squares of 8 cells
+// its second chip's: js/drawing.js, `unseenShade`, written out here.)
+const { unseenShade } = await import('../../js/drawing.js');
+const lum = (r, g, b) => 0.3 * r + 0.59 * g + 0.11 * b;
+const px = game.mapData.data, colour = o => [px[o], px[o + 1], px[o + 2]].join(), shaded = (row, [wx, wy]) => {
+  let rgb = row.map, shade = unseenShade(row);
+  if (world.cellHash(wx >> 3, wy >> 3, row.id) < 0.35) { rgb = [1, 3, 5].map(n => parseInt(row.debris[1].slice(n, n + 2), 16)); shade = Math.min(0.65, Math.max(0.2, 46 / lum(...rgb))); }
+  return [rgb[0] * shade + 8, rgb[1] * shade + 7, rgb[2] * shade + 10].map(c => Math.min(255, Math.round(c))).join();
+};
 check(at >= 0 && beside >= 0, 'the map shows no cell of the piece, or no unmade cell of firn');
 if (at >= 0 && beside >= 0) {
-  check(colour(at) === shaded(BIOMES[B.FROST].map), `the map shows a made, unseen cell that holds the north's own ground as ${colour(at)}, not that ground's ${shaded(BIOMES[B.FROST].map)}`);
-  check(colour(beside) === shaded(BIOMES[17].map), `the map shows an unmade cell of firn as ${colour(beside)}, not firn's ${shaded(BIOMES[17].map)}`);
+  check(colour(at) === shaded(BIOMES[B.FROST], atW), `the map shows a made, unseen cell that holds the north's own ground as ${colour(at)}, not that ground's ${shaded(BIOMES[B.FROST], atW)}`);
+  check(colour(beside) === shaded(BIOMES[17], besideW), `the map shows an unmade cell of firn as ${colour(beside)}, not firn's ${shaded(BIOMES[17], besideW)}`);
 }
 check(CH === 64, 'pieces are no longer 64 cells across: the test counts on it');
 {

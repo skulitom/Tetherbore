@@ -37,7 +37,13 @@ const ARGS = {
     [2, 300, 0, -200, 0.02, 5, 'rare'], [3, 300, 0, 200, 0.02, 5, 'rare'], [4, 300, -200, 0, 0.02, 5, 'rare'], [5, 300, 200, 0, 0.02, 5, 'rare'],
     // The east's own ground again with the bit's last level and the diamond tip, which plough the slate of its
     // ribs and the rock round them keeping the drill's run (js/game.js: `ploughs`).
-    [9, 300, 200, 0, 0.02, 7, 'plough']],
+    [9, 300, 200, 0, 0.02, 7, 'plough'],
+    // Inside each seam on world 7, with its own hazards planted (both, where it has two), so that its reaction comes
+    // again and again (js/game.js: REACT): hoarstone's arcs thawing frozen cuts, glassdune's lava setting as glass,
+    // cinderfen's lava burning off pods, frostfen's pods riming; and the mycelium with its pods, where faults zip and
+    // caps light, and the caldera with its lava, under the heat.
+    [7, 300, 624, -632, 0.08, 8], [7, 300, 560, 584, 0.08, 8, 'second'], [7, 300, -568, 544, 0.08, 8, 'second'], [7, 300, -616, -592, 0.08, 8],
+    [7, 300, -1576, 648, 0.08, 9], [7, 300, 824, 1360, 0.08, 9]],
   'f-big': [[71], [250], [205, 'jog'], [150, 'bump']],
   'f-freed-diff': [[1, 4000, 14, 0.55], [5, 6000, 20, 0.62], [9, 3000, 20, 0.62]],
   'f-fuzz-books': [[2, 300], [7, 300], [9, 300], [12, 300]],

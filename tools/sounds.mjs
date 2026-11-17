@@ -62,7 +62,9 @@ if (!await access(path.join(root, options.module)).then(() => true, () => false)
 // A row: its name, how many seconds are rendered, and what is asked for: [seconds from the start, sound, ...arguments].
 // A row may also set `muted`, `music` (the switch; off unless a row turns it on), `bed` ([ground, deep, cells from the
 // core]: the sound of the place is started, as the game starts it), `moves` ([seconds, ground, deep, cells]) and
-// `score` (a ground whose music is played alone, with no bed). A ground is a score's name, a row or a number.
+// `score` (a ground whose music is played alone, with no bed). A ground is a score's name, a row or a number. An
+// event named `wind` is the wind of the deep told its level and kind (the module's `setWind`, which js/feel.js
+// tells).
 const one = (name, seconds, sound, ...args) => ({ name, seconds, events: [[0, sound, ...args]] });
 // (A creature's voice is asked for as `v:` and its name: the module's `voices`, which js/fauna.js asks.)
 const VOICES = ['tick', 'yip', 'coo', 'tug', 'pop', 'flutter', 'wheeze', 'spit', 'splat', 'purr', 'chitter', 'screech', 'whoosh', 'croak', 'squeak', 'caught', 'poof', 'plip', 'slurp', 'skitter', 'trill',
@@ -97,6 +99,15 @@ const rows = [
   one('bellwake', 2, 'bellwake'), one('toll', 4, 'toll'), one('rumble', 2.5, 'rumble'), one('jet', 1.5, 'jet'),
   one('wormwake', 1.5, 'wormwake'), one('gnaw 0', 1, 'gnaw', 0), one('gnaw 1', 1, 'gnaw', 1), one('bite', 1, 'bite'), one('caught', 2, 'caught'),
   one('hum', 2, 'hum'), one('pull', 1, 'pull'), one('gather 1', 2, 'gather', 1), one('gather 6', 2, 'gather', 6),
+  // The seams' reactions, a fault zipping, geodes ringing, a shrine; and the wind of the deep.
+  one('thaw', 1.5, 'thaw', 1), one('thaw far', 1.5, 'thaw', 0), one('glass', 2, 'glass', 1), one('glass far', 2, 'glass', 0), one('burn', 1.5, 'burn', 1), one('burn far', 1.5, 'burn', 0),
+  one('rime', 1.5, 'rime', 1), one('rime far', 1.5, 'rime', 0), one('zip 0', 1, 'zip', 0, 1), one('zip 5 far', 1, 'zip', 5, 0),
+  one('resonate 1', 3, 'resonate', 1), one('resonate 5', 3, 'resonate', 5), one('shrine 0', 4.5, 'shrine', 0), one('shrine 3', 4.5, 'shrine', 3),
+  { name: 'burst: a fault zips 60 cells', seconds: 4, events: every(0.04, 60, 'zip', n => [n, 1 - n / 80]) },
+  { name: 'burst: a thaw, a glass road, a burn and a rime at once', seconds: 3, events: [[0.1, 'thaw', 1], [0.1, 'glass', 1], [0.1, 'burn', 1], [0.1, 'rime', 1], [0.5, 'thaw', 0.6], [0.5, 'burn', 0.6]] },
+  { name: 'wind of a glacier, rising and dropping', seconds: 16, events: [[0, 'wind', 0.3], [2, 'wind', 0.7], [4, 'wind', 1], [7, 'wind', 0.5], [9, 'wind', 0]] },
+  { name: 'heat of a caldera, in and out of a thermal', seconds: 16, events: [[0, 'wind', 0.6, 'heat'], [3, 'wind', 1, 'heat'], [6, 'wind', 0.2, 'heat'], [9, 'wind', 0, 'heat']] },
+  { name: "burst: a minute of a glacier's air", seconds: 60, music: true, bed: ['glacier', false, 1100], events: [[0, 'wind', 0.5], ...every(4, 14, 'wind', n => [0.4 + 0.6 * Math.abs(Math.sin(n))], 2), ...every(12, 4, 'gust', () => [1.6], 5), ...every(14, 4, 'creak', () => [1, 0.6], 8)] },
   // The voices of the creatures (js/fauna.js): each near the drill and at the edge of hearing.
   ...VOICES.flatMap(v => [one(`voice ${v}`, 1.5, `v:${v}`, 1), one(`voice ${v} far`, 1.5, `v:${v}`, 0.02)]),
   { name: 'burst: a roost of bats woken over a pal', seconds: 3, events: [[0, 'v:chitter', 1], [0.3, 'v:screech', 1], [0.31, 'v:yip', 1], [1, 'v:whoosh', 1], [1.25, 'v:whoosh', 1], [1.5, 'v:whoosh', 1], [1.6, 'knock']] },
@@ -123,7 +134,8 @@ const rows = [
   { name: 'music under a run of six hauls', seconds: 20, music: true, bed: [0, false, 40], events: [0, 1, 2, 3, 4, 5].flatMap(n => haul(8 + n * 1.5, 14 + n * 6, n)) },
   { name: 'music turned off at 10 s', seconds: 16, music: true, events: [[10, 'music-off']] },
   ...['crust', 'frost', 'ember', 'mire', 'lode', 'rime', 'magma', 'bloom', 'gilt', 'firn', 'serac', 'scoria', 'forge', 'tangle', 'sporefall', 'redrock', 'loess',
-    'hive', 'drift', 'ash', 'grotto', 'tinder', 'glaze', 'shale', ...CROSSES].map(score => ({ name: `music: ${score.name ?? score}`, seconds: 24, music: true, score, events: [] })),
+    'hive', 'drift', 'ash', 'grotto', 'tinder', 'glaze', 'shale', 'hoarstone', 'skarn', 'glassdune', 'obsidian', 'cinderfen', 'tarpit', 'frostfen', 'muskeg',
+    'glacier', 'caldera', 'mycelium', 'druse', ...CROSSES].map(score => ({ name: `music: ${score.name ?? score}`, seconds: 24, music: true, score, events: [] })),
 ].filter(row => row.name.includes(only));
 if (!rows.length) wrong(`No row's name holds "${only}".`);
 
@@ -159,7 +171,7 @@ async function measure(row, module, wav) {
     window.AudioContext = function () { return spare; };
     const other = await import(`/${module}?row=${++state.serial}`);
     other.unlock();
-    const fn = name.startsWith('v:') ? other.voices?.[name.slice(2)] : other.sfx[name];
+    const fn = name === 'wind' ? other.setWind : name.startsWith('v:') ? other.voices?.[name.slice(2)] : other.sfx[name];
     if (fn) {
       const ask = () => { const t0 = performance.now(); try { fn(...args); } catch { /* the row itself says so */ } took.push((performance.now() - t0) * 1000); };
       ask();
@@ -189,7 +201,7 @@ async function measure(row, module, wav) {
   let unknown = 0;
   for (const [t, name, ...args] of row.events) at(t, () => {
     if (name === 'music-off') { audio.setMusic?.(false); return; }
-    const fn = name.startsWith('v:') ? audio.voices?.[name.slice(2)] : audio.sfx[name];
+    const fn = name === 'wind' ? audio.setWind : name.startsWith('v:') ? audio.voices?.[name.slice(2)] : audio.sfx[name];
     if (!fn) { unknown++; return; }
     const before = state.made, t0 = performance.now();
     try { fn(...args); } catch (error) { thrown.push(`${name}: ${error.message}`); }

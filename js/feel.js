@@ -7,7 +7,11 @@
 // a fog, an edge of dark or of heat from below, rime in the corners. A cross has its host's feel and a touch of its
 // donor's at half strength. Each ground's is a row of `FEELS`, by the ground's name; a ground with none of its own
 // (a row a test makes) has its direction's. And where a ground's caves have icicles (js/decor.js), one that the
-// drill flies under shivers and falls and shatters, and a quake shakes a few loose.
+// drill flies under shivers and falls and shatters, and a quake shakes a few loose. The seams on the diagonals have
+// something of both their parents, and the deep strains each a thing of their own: in a glacier's halls the wind
+// streams past and is heard as loud as the drill is out in it, in a caldera the heat rises in its columns. What the
+// game's own rules set off there is shown here when the game asks (`react`, a seam's reaction, a burst in its two
+// parents' colours; `zip`, a fault's spark running along it), with its sound.
 //
 // It is only feel. What must stay true:
 //   - Nothing here changes a cell, the flight, the hull, the tether, a haul or what anything pays, and nothing
@@ -33,9 +37,9 @@
 //     drill, and none while a wreck ticks, a haul comes in or a banner is up. Those the drill sets off itself are
 //     kept apart only by their own least gap, and are heard only within HEAR cells of it too.
 //   - The layers over the whole screen are not drawn in a lit view (a staged picture of the ground).
-import { N, C, K, BIOMES, rowOf, cellHash } from './world.js';
+import { N, C, K, BIOMES, rowOf, cellHash, hazOf } from './world.js';
 import { sheets, draw } from './atlas.js';
-import { sfx, PLINK } from './audio.js';
+import { sfx, PLINK, setWind } from './audio.js';
 import { framesOf, falls, placeOf } from './decor.js';
 
 const T = 16;                                   // pixels in a cell, as js/drawing.js has it
@@ -50,6 +54,10 @@ const BUILDS = 4;                               // the most pieces it looks at a
 const GRAVITY = 300;                            // pixels a second, a second, for what falls
 const SHIVER = 0.35, LOOSE = 0.3;               // how long an icicle shivers before it falls; the least time between two falling
 const UNDER = 4;                                // how many cells over the drill an icicle falls from as it flies under
+const AIRS = 0.1;                               // how often the air's flow at the drill is asked, and the wind told, in seconds
+const BURSTS = 3;                               // the most bursts of a reaction a frame shows
+// The cells round the drill whose openness says how much of the wind it is out in: a ring three cells out.
+const AROUND = [[3, 0], [-3, 0], [0, 3], [0, -3], [2, 2], [-2, 2], [2, -2], [-2, -2], [3, 1], [-3, 1], [3, -1], [-3, -1], [1, 3], [-1, 3], [1, -3], [-1, -3]];
 
 // ---------------------------------------------------------------- the table
 // A row of FEELS says what a ground does; everything is optional:
@@ -63,19 +71,28 @@ const UNDER = 4;                                // how many cells over the drill
 //   gust     { every, strength, streak, haze? }   the wind gets up for a few seconds: streaks cross the view, and
 //                                             what the feel lets float leans with it (`haze`: the fog thickens by so
 //                                             much while it blows). The game's own motes are drawn leaning with it.
-//   bubble   { every, color }                 gas rises from a floor, wobbles and pops
+//   bubble   { every, color, slow? }          gas rises from a floor, wobbles and pops (`slow`: under ice or
+//                                             tar, a bubble that takes twice as long to rise)
 //   steam    { every, color }                 a puff of steam out of a floor
 //   trickle  { cut, every?, color }           sand pours from the roof over a cut just finished, for `cut`
 //                                             seconds, and from a ceiling by itself every so often
 //   settle   { cut, color? }                  the same, a few crumbs and no sound
 //   stars    { every, color }                 a shooting star crosses the upper half of the view
 //   worm     { every }                        a worm pokes out of a face of soft rock near the drill
-//   crackle  { every }                        a vent in view spits a burst of sparks aloud
+//   crackle  { every }                        a vent in view spits a burst of sparks aloud (or, with no vent in
+//                                             view, a charged crystal seen near the drill)
 //   vent     { p, colors: [crack, spark, spark], rate }   that share of natural cave floors glow and spit sparks
 //   flies    { most, color }                  fireflies, which come to the drill's lamp
 //   fall     { color, rate, speed, sway? }    ash or spores drifting down through the open ground, one every
 //                                             `rate` seconds (`sway`: swaying wide as they go)
 //   glint    { tries, color }                 more glints on ore, crystal and mineral in view
+//   flow     { color, rate, speed }           motes streaming along the air's flow over open ground, one every
+//                                             `rate` seconds, at `speed` pixels a second: only over ground whose
+//                                             row has a `current` ('wind': along the curl the world's `flowAt`
+//                                             gives; 'heat': rising in its thermals' columns), and the wind of it
+//                                             heard (`setWind` in js/audio.js) as loud as the flow at the drill is
+//                                             and as open as the ground round it
+//   zip      { colors: [a, b] }               the sparks a fault gives as it zips (`zip`, which js/game.js asks)
 //   wake     { kind: 'frost'|'heat'|'drip'|'dust', color, strong? }    what the drill gives off
 //   fog      { color: [r, g, b], alpha, speed }                        a slow soft layer over the view
 //   edge     { color, alpha, below?, pulse? }                          the edge of the view darkened (or, `below`,
@@ -128,6 +145,39 @@ export const FEELS = {
     wake: { kind: 'heat', color: '#ff7a3a' }, edge: { color: [255, 120, 40], alpha: 0.32, below: true } },
   glaze: { creak: { every: [6, 12], pitch: 1.8 }, glint: { tries: 2, color: '#a8fff0' }, wake: FROST_WAKE, edge: { color: [120, 200, 255], alpha: 0.36 }, rime: { color: '#e8fbff', build: 25 } },
   shale: { settle: { cut: 1.5, color: '#c8c0a0' }, wake: { kind: 'dust', color: '#a89c78' }, fog: { color: [180, 170, 140], alpha: 0.1, speed: 0.15 } },
+  // The seams: each its own direction's feel with a mark of its other parent's, and each deep seam its seam's made
+  // meaner, with one thing more. Hoarstone: frozen quartz, the north's creak and frost with the east's glints on
+  // its crystals. Skarn: the wind gets up in it and its crystals crackle. Glassdune: fused sand pouring, vents of
+  // heat in its floors, its glass glinting. Obsidian: the ground shakes. Cinderfen: a burnt fen, embers that come
+  // to the lamp, a smoky haze. Tarpit: tar blubbing, thicker smoke, a low shake. Frostfen: a frozen bog, its drips
+  // in the cold, slow bubbles under the ice. Muskeg: the same deeper, colder and darker, a few fireflies.
+  hoarstone: { creak: { every: [9, 20], pitch: 1.1 }, glint: { tries: 2, color: '#ffe08a' }, wake: FROST_WAKE, edge: { color: [220, 240, 255], alpha: 0.4 }, rime: { color: '#e8fbff', build: 40 } },
+  skarn: { creak: { every: [7, 16], pitch: 0.9 }, glint: { tries: 2, color: '#ffe08a' }, gust: { every: [14, 28], strength: 1.2, streak: '#e8fbff' }, crackle: { every: [4, 9] }, wake: FROST_WAKE,
+    edge: { color: [150, 200, 210], alpha: 0.48 }, rime: { color: '#e8fbff', build: 28 } },
+  glassdune: { trickle: { cut: 1.2, every: [6, 12], color: '#f0c070' }, vent: { ...EMBER_VENT, p: 0.04 }, glint: { tries: 2, color: '#c8b8e8' }, wake: { kind: 'dust', color: '#d8a868' },
+    edge: { color: [255, 170, 70], alpha: 0.3 } },
+  obsidian: { trickle: { cut: 1, every: [8, 16], color: '#8a70a8' }, vent: { ...EMBER_VENT, p: 0.06 }, glint: { tries: 3, color: '#c8b8e8' }, quake: { every: [18, 36], power: 1.2 },
+    wake: { kind: 'dust', color: '#6a5080' }, edge: { color: [120, 60, 200], alpha: 0.4 } },
+  cinderfen: { vent: { ...EMBER_VENT, p: 0.05 }, flies: { most: 5, color: '#ff9a3a' }, bubble: { every: [5, 10], color: '#9ad062' }, wake: { kind: 'heat', color: '#ff8a4a' },
+    fog: { color: [90, 60, 60], alpha: 0.12, speed: 0.25 }, edge: { color: [200, 90, 50], alpha: 0.32, below: true } },
+  tarpit: { vent: { ...EMBER_VENT, p: 0.07, rate: 1.5 }, flies: { most: 3, color: '#ff7a2a' }, bubble: { every: [3, 6], color: '#5a4048', slow: true }, quake: { every: [24, 48], power: 0.9 },
+    wake: { kind: 'heat', color: '#ff6a2a', strong: true }, fog: { color: [60, 40, 50], alpha: 0.16, speed: 0.15 }, edge: { color: [120, 40, 60], alpha: 0.42, below: true } },
+  frostfen: { drip: { every: [3, 6], color: '#a8e0d8', step: 2 }, bubble: { every: [7, 14], color: '#b4e8e0', slow: true }, creak: { every: [14, 28], pitch: 1.3 }, wake: { kind: 'drip', color: '#a8e0d8' },
+    fog: { color: [180, 220, 210], alpha: 0.1, speed: 0.2 }, edge: { color: [60, 130, 130], alpha: 0.4 }, rime: { color: '#e0fff4', build: 45 } },
+  muskeg: { drip: { every: [4, 8], color: '#7aa8a0', step: 0 }, bubble: { every: [5, 10], color: '#689690', slow: true }, creak: { every: [10, 20], pitch: 0.7 }, flies: { most: 3, color: '#b4e878' },
+    wake: { kind: 'drip', color: '#7aa8a0' }, fog: { color: [120, 160, 150], alpha: 0.16, speed: 0.15 }, edge: { color: [20, 60, 50], alpha: 0.5 }, rime: { color: '#c8f0e4', build: 30 } },
+  // The deep strains: each its flank's air, and one thing of its own. Glacier: the wind of its halls, streaming
+  // along the flow (`flow`) and getting up in gusts, the ice groaning low. Caldera: the heat of its thermals rising
+  // in columns (`flow`), quakes, vents everywhere, a red fog. Mycelium: spore lights that come to the lamp, worms,
+  // lilac drips in its key, and its faults' sparks (`zip`). Druse: crystals glinting gold all about, and stars.
+  glacier: { gust: { every: [8, 16], strength: 1.6, streak: '#bfe8ff', haze: 0.06 }, creak: { every: [8, 18], pitch: 0.6 }, flow: { color: '#bfe8ff', rate: 0.06, speed: 70 }, wake: FROST_WAKE,
+    fog: { color: [170, 220, 255], alpha: 0.1, speed: 0.4 }, edge: { color: [60, 140, 220], alpha: 0.5 }, rime: { color: '#e8f8ff', build: 20 } },
+  caldera: { vent: { ...EMBER_VENT, p: 0.12 }, quake: { every: [10, 20], power: 2 }, flow: { color: '#ffb060', rate: 0.05, speed: 45 }, wake: { kind: 'heat', color: '#ff6a1a', strong: true },
+    fog: { color: [220, 90, 40], alpha: 0.14, speed: 0.3 }, edge: { color: [255, 120, 30], alpha: 0.5, below: true, pulse: true } },
+  mycelium: { flies: { most: 9, color: '#7af0d0' }, worm: { every: [12, 24] }, drip: { every: [2.5, 5], color: '#c8a0e8', step: 'scale' }, zip: { colors: ['#e8d8f0', '#7af0d0'] },
+    wake: { kind: 'drip', color: '#c8a0e8' }, fog: { color: [170, 120, 210], alpha: 0.1, speed: 0.2 }, edge: { color: [40, 0, 60], alpha: 0.55 } },
+  druse: { glint: { tries: 5, color: '#ffe680' }, stars: { every: [10, 20], color: '#fff0a0' }, trickle: { cut: 1.2, every: [7, 14], color: '#fff0a0' }, wake: { kind: 'dust', color: '#e8c860' },
+    fog: { color: [250, 230, 160], alpha: 0.07, speed: 0.1 }, edge: { color: [255, 220, 90], alpha: 0.3 } },
 };
 // The ground whose feel a direction has, for a row with no feel of its own: by its kin.
 const KIN_FEEL = ['crust', 'frost', 'ember', 'mire', 'lode'];
@@ -147,6 +197,8 @@ const EVENTS = ['drip', 'creak', 'quake', 'gust', 'bubble', 'steam', 'trickle', 
 const PLAIN = { drip: { every: [5, 10], color: '#8a98a6', step: 0 }, creak: { every: [10, 20], pitch: 1 }, quake: { every: [20, 40], power: 1 }, gust: { every: [15, 30], strength: 1, streak: '#d8d0c0' },
   bubble: { every: [5, 10], color: '#8ac070' }, steam: { every: [4, 8], color: '#d8c4c4' }, trickle: { cut: 1.2, every: [5, 10], color: '#f0d8a0' }, stars: { every: [6, 14], color: '#bfe8ff' },
   worm: { every: [14, 28] }, crackle: { every: [2, 5] } };
+// (And the flow's motes, made to come where the ground says nothing of them.)
+const PLAIN_FLOW = { color: '#d8e8f0', rate: 0.08, speed: 60 };
 
 // A ground's feel, worked out once for each row (and kept by the row itself, so a row a test puts in another's
 // place is worked out afresh): its own, or for a cross its host's with its donor's mark added where the host has
@@ -200,12 +252,13 @@ function wraps(val, gw, gh, fx, fy) {
 // Each kind moves as its own: what falls (a drop, a shard, a grain) falls until the floor worked out when it was
 // born; a flake drifts and sways; a puff and a spark rise; a streak runs with the wind. A drop that lands splashes,
 // and a bubble at the end of its rise pops. Those marked lit are drawn over the dark, adding light.
-const DROP = 1, SPLASH = 2, SHARD = 3, GRAIN = 4, FLAKE = 5, PUFF = 6, SPARK = 7, STREAK = 8, RING = 9, POP = 10, STAR = 11, GLINT = 12, WORM = 13, CRACK = 14, ICICLE = 15;
-const LIT = [false, false, false, false, false, false, false, true, false, false, false, true, true, false, false, false];
+const DROP = 1, SPLASH = 2, SHARD = 3, GRAIN = 4, FLAKE = 5, PUFF = 6, SPARK = 7, STREAK = 8, RING = 9, POP = 10, STAR = 11, GLINT = 12, WORM = 13, CRACK = 14, ICICLE = 15, FLOW = 16;
+const LIT = [false, false, false, false, false, false, false, true, false, false, false, true, true, false, false, false, false];
 // Every colour a particle can be, by number, so that a particle holds a number and not a string.
 const INKS = [], INK = new Map();
 const ink = color => { let n = INK.get(color); if (n === undefined) { n = INKS.length; INKS.push(color); INK.set(color, n); } return n; };
 const WHITE = ink('#ffffff'), BREATH = ink('#e8f4ff'), WORMS = [ink('#c88a7a'), ink('#a86a5c')], CRYSTAL = ink('#e0c8ff');
+const SMOKE = ink('#4a3c3c'), ZIP = ['#e8d8f0', '#7af0d0'];
 
 export class Feel {
   constructor() {
@@ -234,6 +287,7 @@ export class Feel {
     this.fallen = new Set();                    // the cells whose icicle has fallen (the game's `fallen`, which the drawing reads)
     this.loose = new Int32Array(8);             // the icicles a quake may shake loose, while it chooses
     this.told = new Map();                      // the cuts about to close over that have creaked: by cell, when each was cut
+    this.flow = { x: 0, y: 0 };                 // what the world's `flowAt` last said to the feel (its own record, not the game's)
     this.reset(7);
   }
   reset(seed) {
@@ -250,6 +304,8 @@ export class Feel {
     this.rime = 0; this.layers.length = 0; this.lit = 0; this.forced = null; this.cv = -1;
     this.fallen.clear(); this.icicleNext = 0; this.watchIn = 0; this.drift = 0;
     this.told.clear();
+    this.flowIn = 0; this.flowNext = 0; this.windLevel = 0; this.windKind = 'wind'; this.bursts = 0;
+    setWind(0);
     this.work = 0;                              // cells looked at this frame, for the tests
     this.events = 0;                            // how many events have come since the reset (for the tests)
   }
@@ -399,7 +455,7 @@ export class Feel {
   // ---------------------------------------------------------------- a frame
   step(game, dt) {
     const w = game.world, d = game.drill, row = w.row(game.di), F = feelOf(row), open = !game.shop && !game.lab;
-    this.frame++; this.time += dt; this.work = 0;
+    this.frame++; this.time += dt; this.work = 0; this.bursts = 0;
     if (ART.size < READY.length) for (const l of READY) if (!ART.has(l.key)) { this.texture(l); break; }
     this.view(game);
     this.refresh(game);
@@ -421,11 +477,13 @@ export class Feel {
       if (what === 'flies') this.swarm(game, F.flies ?? { most: 6, color: '#b4f070' }, true);
       else if (what === 'icicle') { if (!this.loosen(game, 1, 5) && !this.loosen(game, 1, 10)) { const i = this.pick(game, false, 4); if (i >= 0) this.icicleFall(game, i); } }
       else if (what === 'rime') this.rime = 1;
+      else if (what === 'flow') for (let n = 0; n < 12; n++) this.stream(game, F.flow ?? PLAIN_FLOW, row.current ?? 'wind');
       else if (EVENTS.includes(what)) this.fire(game, what, F[what] ?? PLAIN[what]);
     }
     this.tells(game, F, open, dt);
     this.watch(game, row, dt);
     this.going(game, F, dt);
+    this.currents(game, row, F, dt);
     this.wake(game, F, dt);
     this.move(game, dt);
     this.atmosphere(game, F, dt);
@@ -480,7 +538,10 @@ export class Feel {
       if (i < 0) return;
       const x = i % N, y = Math.floor(i / N), colour = ink(entry.color);
       // (A bubble keeps where it rose from in its `floor`, and wobbles about it.)
-      if (what === 'bubble') { const p = this.spawn(RING, x * T + 4 + this.rnd() * 8, y * T + T - 3, 0, -(14 + this.rnd() * 10), 1.4 + this.rnd() * 0.8, colour, this.rnd() < 0.4 ? 2 : 1); if (p >= 0) this.floor[p] = this.x[p]; }
+      if (what === 'bubble') {
+        const slow = entry.slow ? 2 : 1, p = this.spawn(RING, x * T + 4 + this.rnd() * 8, y * T + T - 3, 0, -(14 + this.rnd() * 10) / slow, (1.4 + this.rnd() * 0.8) * slow, colour, this.rnd() < 0.4 ? 2 : 1);
+        if (p >= 0) this.floor[p] = this.x[p];
+      }
       // (Steam comes over a little while: each puff waits its turn, a negative age.)
       else for (let n = 0; n < 12; n++) { const p = this.spawn(PUFF, x * T + 5 + this.rnd() * 6, y * T + T - 2, (this.rnd() - 0.5) * 10, -(12 + this.rnd() * 16), 0.9 + this.rnd() * 0.8, colour, n % 3 ? 2 : 3); if (p >= 0) this.t[p] = -this.rnd() * 0.8; }
       // (A bubble sounds as it pops, steam as it comes.)
@@ -503,7 +564,18 @@ export class Feel {
         break;
       }
     } else if (what === 'crackle') {
-      if (!this.nv) return;
+      if (!this.nv) {
+        // (No vent in view: a charged crystal that has been seen near the drill crackles instead, if there is one.)
+        for (let tries = 0; tries < 24; tries++) {
+          const x = Math.floor(d.x) + Math.floor(this.rnd() * 13) - 6, y = Math.floor(d.y) + Math.floor(this.rnd() * 13) - 6, k = w.peek(x, y);
+          if ((k !== K.HAZARD && k !== K.HAZARD2) || hazOf(k, this.rowAt(w, x, y) ?? BIOMES[0]) !== 'spark') continue;
+          for (let s = 0; s < 6; s++) this.spawn(SPARK, x * T + 4 + this.rnd() * 8, y * T + 4 + this.rnd() * 8, (this.rnd() - 0.5) * 50, (this.rnd() - 0.5) * 50, 0.3 + this.rnd() * 0.3, CRYSTAL);
+          const near = this.hear(game, x, y);
+          if (near >= 0) sfx.crackle(near);
+          break;
+        }
+        return;
+      }
       const n = Math.floor(this.rnd() * this.nv), i = this.vents[n], x = i % N, y = Math.floor(i / N);
       for (let s = 0; s < 6; s++) this.spawn(SPARK, x * T + 4 + this.rnd() * 8, y * T + T - 2, (this.rnd() - 0.5) * 40, -(30 + this.rnd() * 40), 0.4 + this.rnd() * 0.4, this.ventInk[n * 3 + 1 + (s & 1)]);
       const near = this.hear(game, x, y);
@@ -636,6 +708,79 @@ export class Feel {
       this.quake = this.rumble > 0 ? 3 * this.power * Math.min(1, into / 0.15) * (this.rumble / this.rumbleOf) : 0;
     } else this.quake = 0;
   }
+  // The air of ground that flows (a row with a `current`: the glacier's wind, the caldera's heat). Motes stream along
+  // it over open ground in view while the drill is in such ground (`flow` in its feel), and the wind is heard as
+  // loud as the flow at the drill is and as open as the ground round it is, so a drill out in a hall hears the
+  // full wind and one in a tunnel of its own cutting a breath of it. The world's `flowAt` is asked into the feel's
+  // own record, of a mote as it is born and of the drill's cell AIRS seconds apart: it makes nothing.
+  currents(game, row, F, dt) {
+    const w = game.world, d = game.drill;
+    if (F.flow && row.current && this.live < POOL - 30 && game.far >= CALM) {
+      this.flowNext -= dt;
+      while (this.flowNext <= 0) { this.flowNext += F.flow.rate; this.stream(game, F.flow, null); }
+    }
+    if ((this.flowIn -= dt) > 0) return;
+    this.flowIn = AIRS;
+    let level = 0, kind = this.windKind;
+    if (row.current && d.mode !== 'dead' && !game.atCore) {
+      kind = row.current;
+      const cx = Math.floor(d.x), cy = Math.floor(d.y), f = w.flowAt(cx, cy, kind, this.flow);
+      let open = 0;
+      for (let n = 0; n < AROUND.length; n++) if (w.peek(cx + AROUND[n][0], cy + AROUND[n][1]) === K.EMPTY) open++;
+      level = Math.hypot(f.x, f.y) * (0.3 + 0.7 * open / AROUND.length);
+    }
+    if (Math.abs(level - this.windLevel) > 0.02 || kind !== this.windKind) { this.windLevel = level; this.windKind = kind; setWind(level, kind); }
+  }
+  // A mote of the flow, `spec` its colour and speed, born over an open cell in view that is of ground whose air
+  // flows (`kind`, where it is not that ground's own: a mote made to come), and going the way the air goes there.
+  // Whether one was born: a cell of heat outside its columns, or of rock, is passed over (three tries).
+  stream(game, spec, kind) {
+    const w = game.world;
+    for (let tries = 0; tries < 3; tries++) {
+      const x = this.x0 + Math.floor(this.rnd() * (this.x1 - this.x0 + 1)), y = this.y0 + Math.floor(this.rnd() * (this.y1 - this.y0 + 1));
+      if (w.peek(x, y) !== K.EMPTY) continue;
+      const current = kind ?? this.rowAt(w, x, y)?.current;
+      if (!current) continue;
+      const f = w.flowAt(x, y, current, this.flow);
+      if (!f.x && !f.y) continue;
+      const speed = spec.speed * (0.75 + 0.5 * this.rnd()), heat = current === 'heat';
+      return this.spawn(FLOW, x * T + this.rnd() * T, y * T + this.rnd() * T, heat ? 0 : f.x * speed, f.y * speed, heat ? 1.4 + this.rnd() * 0.8 : 0.9 + this.rnd() * 0.6,
+        ink(spec.color), heat ? 3 + Math.floor(this.rnd() * 3) : 4 + Math.floor(this.rnd() * 5), this.rnd() * 6.283) >= 0;
+    }
+    return false;
+  }
+  // A fault zips (js/game.js, a cell at a time as the spark runs along the thread): sparks fly from cell `i` in its
+  // ground's colours (`zip`), and a note of the run rings, the `n`th cell of the thread the higher (js/audio.js,
+  // `zip`), heard within HEAR cells of the drill as the drill's own sounds are. It is the drill's doing, so it
+  // comes at any distance from the core and is kept apart only by the sound's own gap.
+  zip(game, i, n = 0) {
+    const w = game.world, x = i % N, y = Math.floor(i / N), colors = feelOf(this.rowAt(w, x, y) ?? BIOMES[0]).zip?.colors ?? ZIP;
+    for (let s = 0; s < 3; s++) this.spawn(SPARK, x * T + 4 + this.rnd() * 8, y * T + 4 + this.rnd() * 8, (this.rnd() - 0.5) * 60, (this.rnd() - 0.5) * 60, 0.3 + this.rnd() * 0.3, ink(colors[s & 1]));
+    this.spawn(GLINT, x * T + 8, y * T + 8, 0, 0, 0.3, ink(colors[0]), 1);
+    const near = 1 - Math.hypot(x + 0.5 - game.drill.x, y + 0.5 - game.drill.y) / HEAR;
+    if (near > 0) sfx.zip(n, near);
+  }
+  // A seam's reaction at cell `i` (js/game.js: its row's `react`), shown in the colours of the seam's two parents
+  // (the motes of its `kin` and of its rich ore's direction, `gemB`) and heard as its own sound (`sfx[react]`):
+  // steam for a thaw, glints and sparks for glass, sparks flying up and smoke for a burn, a ring of frost for rime.
+  // No more than BURSTS a frame are shown (a reaction may take many cells at once), and the sound keeps its own gap.
+  // Whether it showed.
+  react(game, i) {
+    const w = game.world, x = i % N, y = Math.floor(i / N), row = this.rowAt(w, x, y), what = row?.react;
+    if (!what || this.bursts >= BURSTS) return false;
+    this.bursts++;
+    const a = ink(rowOf(row.kin).mote[0]), b = ink(rowOf(row.gemB).mote[0]), cx = x * T + 8, cy = y * T + 8;
+    for (let n = 0; n < 10; n++) {
+      const ang = n / 10 * 6.283 + this.rnd() * 0.5, sp = 20 + this.rnd() * 30, c = n & 1 ? b : a, vx = Math.cos(ang) * sp, vy = Math.sin(ang) * sp;
+      if (what === 'thaw') this.spawn(n < 6 ? PUFF : GLINT, cx + vx * 0.1, cy + vy * 0.1, vx * 0.4, n < 6 ? -10 - this.rnd() * 14 : 0, 0.7 + this.rnd() * 0.5, c, n < 6 ? 2 : 1);
+      else if (what === 'glass') this.spawn(n < 5 ? GLINT : SPARK, cx + vx * 0.15, cy + vy * 0.15, n < 5 ? 0 : vx, n < 5 ? 0 : vy, 0.4 + this.rnd() * 0.3, c, 1);
+      else if (what === 'burn') this.spawn(n < 7 ? SPARK : PUFF, cx + vx * 0.1, cy, vx * 0.6, -25 - this.rnd() * 35, 0.5 + this.rnd() * 0.5, n < 7 ? c : SMOKE, n < 7 ? 1 : 3);
+      else this.spawn(n < 7 ? PUFF : GLINT, cx, cy, vx, vy, 0.5 + this.rnd() * 0.3, c, 1);
+    }
+    const near = 1 - Math.hypot(x + 0.5 - game.drill.x, y + 0.5 - game.drill.y) / HEAR;
+    if (near > 0) sfx[what]?.(near);
+    return true;
+  }
   // What the drill gives off: in the cold its breath standing still and a trail of frost at speed, in the heat a
   // glow under the hull (drawn in `glow`), in the wet drips off it, in dust a cloud behind it.
   wake(game, F, dt) {
@@ -705,6 +850,10 @@ export class Feel {
       } else if (k === PUFF || k === SPARK) {
         this.x[i] += (this.vx[i] + wind * (k === PUFF ? 0.6 : 0.4)) * dt; this.y[i] += this.vy[i] * dt;
         this.vx[i] *= 1 - 1.5 * dt; this.vy[i] *= 1 - (k === PUFF ? 1.2 : 0.6) * dt;
+      } else if (k === FLOW) {
+        // (Heat rises swaying, `floor` its own phase; the wind's motes keep the way they were born to and lean with
+        // a gust.)
+        this.x[i] += (this.vx[i] + wind * 0.3 + (this.vx[i] === 0 ? Math.sin(t * 5 + this.floor[i]) * 8 : 0)) * dt; this.y[i] += this.vy[i] * dt;
       } else if (k === STREAK || k === STAR) { this.x[i] += this.vx[i] * dt; this.y[i] += this.vy[i] * dt; if (k === STREAK) this.vx[i] += (wind * 4.5 - this.vx[i]) * dt; }
       else if (k === RING) { this.y[i] += this.vy[i] * dt; this.x[i] = this.floor[i] + Math.sin(t * 7 + i) * 1.5; }
     }
@@ -871,6 +1020,13 @@ export class Feel {
       } else if (k === PUFF) {
         ctx.globalAlpha = 0.65 * (1 - u) * Math.min(1, this.t[i] * 8);
         ctx.fillRect(px, py, this.size[i], this.size[i]);
+      } else if (k === FLOW) {
+        // A short streak along the way it goes, in two steps (so a slant is drawn as a slant), over open ground only.
+        if (w.peek(Math.floor(this.x[i] / T), Math.floor(this.y[i] / T)) !== K.EMPTY) continue;
+        const v = Math.hypot(this.vx[i], this.vy[i]) || 1, ux = this.vx[i] / v, uy = this.vy[i] / v, n = this.size[i], h = n >> 1;
+        ctx.globalAlpha = 0.45 * Math.min(1, this.t[i] * 4, (this.life[i] - this.t[i]) * 3);
+        if (Math.abs(ux) >= Math.abs(uy)) { ctx.fillRect(px - (ux > 0 ? h : 0), py, h, 1); ctx.fillRect(Math.round(px - ux * h) - (ux > 0 ? n - h : 0), Math.round(py - uy * h), n - h, 1); }
+        else { ctx.fillRect(px, py - (uy > 0 ? h : 0), 1, h); ctx.fillRect(Math.round(px - ux * h), Math.round(py - uy * h) - (uy > 0 ? n - h : 0), 1, n - h); }
       } else if (k === STREAK) {
         // (Brighter over open ground, faint over rock.)
         const open = w.peek(Math.floor(this.x[i] / T), Math.floor(this.y[i] / T)) === K.EMPTY;

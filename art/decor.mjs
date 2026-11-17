@@ -81,7 +81,29 @@ const S = {
   creep: ['ab....', 'abb...', '.a....', '.ab...', 'ab....', 'a.b...', '.a....', 'abb...', 'a.....', '.a....'],
   comb: ['bbbb..', 'b..b..', 'b..bb.', 'b..b..', 'bbbb..', 'b..b..', 'bbb...'],
   mosswall: ['bb....', 'abb...', 'aabb..', 'abb...', 'ab....', 'abb...', 'abbb..', 'ab....'],
-  lichenwall: ['b.....', 'ab....', 'adg...', 'ab.d..', 'a.....', 'abd...', 'adg...', 'a.....'],
+  lichenwall: ['b.....', 'ab....', 'adg...', 'ab.d..', 'a.....', 'abd...', 'adg...', 'a.....'],  // ---- the seams' and the deep strains' (generation 2)
+  // top: frosted quartz points; amber glass run in long drips; blocks of ice hanging (seracs); druse crystals
+  quartz: ['abbaabbbaa.abbba', '.bcb..bcb...bcb.', '.bc....cb...bc..', '..c....c.....c..', '.......c........'],
+  glassdrips: ['abbbaaabbbaabbba', '.bcb...bcb..bcb.', '.bcb....b...bc..', '..c.....c....c..', '..c..........c..', '..b.............'],
+  seracs: ['abbbbba.abbbbbbb', 'abccbba..abccbba', '.bccba...abcba..', '.abba.....bba...', '..ba......ba....', '..b.......b.....'],
+  crystals: ['abbbabbbaabbbabb', '.cb.bc..bcb.cb..', '.c...c...c...c..', '.....c.......c..'],
+  // bottom: cairns with frost on their caps; hoodoos the wind cut; charred reeds; an ember-lit stump; ice mushrooms
+  // (ice on a stem, flat-capped: nothing like a toadstool); slag cones; slime moulds' stalks with lit heads (round,
+  // on a hair of a stalk: nothing like a cap); a druse's crystals standing
+  cairns: ['...cc...........', '..bbbb.....cc...', '...aa.....bbbb..', '..bbbbb....aa...', '.oaaaaao..bbbbb.', 'oaaaaaaaoaaaaaao'],
+  hoodoos: ['..bbb.......bbbb', '..aba........ab.', '...a.........ab.', '..bab.......bab.', '.baaab.....baaab', 'baaaaao...baaaao'],
+  reeds: ['..c......c......', '..b.....bc...c..', '..b..c...b...b..', '.ab..b...b..ab..', '.ab..b..ab..ab..', 'oaaooaooaaooaaoo'],
+  stump: ['....d...........', '...dgd..........', '..bbgbb.........', '..baaab.........', '..baaao.........', '.oaaaaao........'],
+  icecaps: ['.bbcccb....bccb.', '.oaaaao....oaao.', '...ab.......a...', '...ab.......b...', '...ab......bab..', '..baab.....aaa..'],
+  slagcones: ['....b......b....', '...bab....bab...', '..baoab..baoab..', '..baaab..baaaab.', '.baaaaab.baaaaab', 'baaaaaaaobaaaaao'],
+  sporangia: ['..d.......d.....', '.dgd.....dgd....', '..d...d...d.....', '..a..dgd..a.....', '..a...a...a..b..', '.bab..a..bab.ab.'],
+  crystalsUp: ['..c.....c.......', '..cb...bc....c..', '.bcb..bcb...bc..', '.bab.bbab..bbab.', 'baaabaaaab.baaab'],
+  // side: hoar on the wall; glass shards set in it; the wind's scallops; a crust of sulphur; a druse's crystals
+  hoar: ['b.....', 'cb....', 'bcb...', 'b.c...', 'bc....', 'cbc...', 'b..c..', 'bcb...'],
+  shardwall: ['bc....', 'abc...', 'ab....', '......', 'bbc...', 'abbc..', 'ab....'],
+  scallops: ['bb....', '.cb...', '.ab...', 'bb....', '.cb...', '.ab...', 'bb....', '.cb...'],
+  crustwall: ['bc....', 'bbc...', 'ab....', 'abb...', 'bc....', 'abc...', 'a.....'],
+  crystalwall: ['ac....', 'abc...', 'aa....', '......', 'ab....', 'aabc..', 'aa....'],
 };
 // Floor marks: faint, anywhere in the cell, as [x, y, rows]. They are the back wall of the cave showing through.
 const M = {
@@ -138,7 +160,17 @@ export const SETS = [
   { name: 'grotto', floor: 'grotto-floor', rock: 'grotto', top: ['beads', 'threads'], bottom: ['puddle'], side: [], marks: ['wet', 'drops'] },
   { name: 'tinder', floor: 'tinder-floor', rock: 'tinder', top: ['stubs'], bottom: ['twigs'], side: [], marks: ['soot', 'soot'] },
   { name: 'glaze', floor: 'glaze-floor', rock: 'glaze', top: ['frost'], bottom: [], side: [], marks: ['star', 'craze'] },
-  { name: 'shale', floor: 'shale-floor', rock: 'shale', top: [], bottom: ['flakes'], side: [], marks: ['flake', 'grain'] },
+  { name: 'shale', floor: 'shale-floor', rock: 'shale', top: [], bottom: ['flakes'], side: [], marks: ['flake', 'grain'] },  // The seams' and the deep strains' (generation 2: a deep seam has its seam's set). Each glows, if at all, as its
+  // direction's own ground does: the south's sulphur in the cinderfen's stumps and the caldera's fumaroles, and in
+  // the mycelium the rose of the bloom it is a strain of, on the heads of its slime moulds.
+  { name: 'hoarstone', floor: 'hoarstone-floor', rock: 'hoarstone', top: ['quartz', 'frost'], bottom: ['cairns', 'drift'], side: ['hoar'], marks: ['craze', 'star'] },
+  { name: 'glassdune', floor: 'glassdune-floor', rock: 'glassdune', top: ['glassdrips', 'stubs'], bottom: ['hoodoos', 'ripples'], side: ['shardwall'], marks: ['ripple', 'grain'] },
+  { name: 'cinderfen', floor: 'cinderfen-floor', rock: 'cinderfen', top: ['drips', 'roots'], bottom: ['reeds', 'stump', 'heap'], side: [], marks: ['soot', 'bubbles'], glow: 'sulphur' },
+  { name: 'frostfen', floor: 'frostfen-floor', rock: 'frostfen', top: ['frost', 'fringe'], bottom: ['icecaps', 'reeds', 'fern'], side: ['mosswall'], marks: ['star', 'specks'] },
+  { name: 'glacier', floor: 'rime-floor', rock: 'glacier', top: ['seracs', 'icicles'], bottom: ['drift', 'heap'], side: ['scallops'], marks: ['sheets', 'craze'], falls: ['icicles'] },
+  { name: 'caldera', floor: 'magma-floor', rock: 'caldera', top: ['stubs', 'drips'], bottom: ['slagcones', 'fumarole', 'spires'], side: ['crustwall'], marks: ['cracks', 'soot'], glow: 'sulphur' },
+  { name: 'mycelium', floor: 'bloom-floor', rock: 'mycelium', top: ['threads', 'tendrils'], bottom: ['sporangia', 'sprouts'], side: ['shelf'], marks: ['spores', 'hair'], glow: 'rose' },
+  { name: 'druse', floor: 'gilt-floor', rock: 'druse', top: ['crystals', 'stubs'], bottom: ['crystalsUp', 'pebbles'], side: ['crystalwall'], marks: ['grain', 'specks'] },
 ];
 // The crosses' pieces, host by donor: the donor's shapes at the host's brightness. (The four directions' own sets.)
 const KIN_SETS = ['frost', 'ember', 'mire', 'lode'];

@@ -1,7 +1,8 @@
 // The creatures of the ground (js/fauna.js) change nothing but by their deeds, keep to their bounds and their
 // places, and look as the rules of their art say.
 //   1. Two games side by side on one world and one stream of Math.random, flown by the fuzzes' steering in the
-//      north's ground, the south's, the west's, the east's and a cross: one with its creatures left out (`off`),
+//      north's ground, the south's, the west's, the east's, a cross, a seam and a deep strain: one with its
+//      creatures left out (`off`),
 //      the other with them tame (no deed is done) and a creature of every kind set down beside the drill in turn,
 //      each foe woken at once, every frame drawn, and the trophy line bought in three of the five grounds (a foe at
 //      rest the tether goes round is looped, and not caught). Frame by frame the two are the same: the drill, the
@@ -11,7 +12,9 @@
 //   2. Its bounds: no more creatures than FAUNA, NAMED of them above kin, its particles and its arrays the same
 //      ones made at first; what it looks at in a frame bounded; and a game begun again keeps nothing but the pal.
 //   3. Its places, on worlds 1 to 4 out to 1,200 cells, from the seed alone: no den within CALM cells of the core;
-//      no foe within FOE_FROM, in a pocket or in the home ground; each kind only in the grounds its roster gives it.
+//      no foe within FOE_FROM, in a pocket or in the home ground; each kind only in the grounds its roster gives it;
+//      and every ground made by hand that is not a pocket (the directions, their deep flanks, the strains, the
+//      seams and their deep, the deep strains) has a roster of its own.
 //   4. Its art, as built: every frame it draws is in the atlas, ringed in its outline; only a foe's frames have the
 //      foe's eye colour in them, and only foes' eyes are written down as glowing; no colour of a creature is near a
 //      colour of what pays or hurts in any ground it lives in; and the foe's eye colour is kept well away from all
@@ -37,13 +40,20 @@ check(!/Math\.random/.test(source.replace(/\/\/.*$/gm, '')), 'js/fauna.js draws 
 let draws = 0, stream = null;
 const plain = Math.random;
 Math.random = () => { draws++; return stream(); };
-const PLACES = [['frost', 60, -150], ['ember', 0, 150], ['mire', -150, 0], ['lode', 150, 0], ['buzzmire', -640, -640]];
+// (On world 7, found with tools/field.mjs: the cross buzzmire at -912,-304, where the north-west seam has not come;
+// and a seam and a deep strain of a new game's, generation 2, each with its own roster.)
+const PLACES = [['frost', 60, -150], ['ember', 0, 150], ['mire', -150, 0], ['lode', 150, 0], ['buzzmire', -912, -304], ['cinderfen', -448, 432], ['glacier', -608, -832]];
 const STAGE = [['bat', 'fuse'], ['spitter', 'puff'], ['leech', 'latched'], ['puff', 'caught'], ['wren', 'peck'], ['pup', 'pal'], ['moth', ''], ['beetle', ''], ['salamander', ''], ['frog', ''],
   ['skink', ''], ['bee', ''], ['jelly', ''], ['newt', '']];
-// (In three of the grounds the trophy line is bought, so that a foe at rest the tether goes round is caught, but
-// for its being tame; in the other two it is not, as in every game before it was in the shop.)
-const TROPHY = new Set(['frost', 'ember', 'buzzmire']);
+// (In four of the grounds the trophy line is bought, so that a foe at rest the tether goes round is caught, but
+// for its being tame; in the other three it is not, as in every game before it was in the shop.)
+const TROPHY = new Set(['frost', 'ember', 'buzzmire', 'cinderfen']);
 let staged = 0, biggest = 0, worst = 0, looped = 0;
+{
+  stream = random(3);
+  const w = (await makeGame(7)).world;
+  for (const [name, x, y] of PLACES) check(BIOMES[w.biomeAt(C + x, C + y)]?.name === name, `world 7 has not ${name} at ${x},${y} (it has ${BIOMES[w.biomeAt(C + x, C + y)]?.name})`);
+}
 for (const [name, x, y] of PLACES) {
   const games = [];
   for (let g = 0; g < 2; g++) {
@@ -103,6 +113,7 @@ check(worst <= WORK * 3, `the creatures looked at ${worst} cells in one frame`);
 }
 
 // ---- 3. places, from the seed alone (no piece of the world is made for them)
+for (const row of BIOMES) if (row && !row.cross && !row.pocket && row.id > 0) check(ROSTER[row.name], `${row.name} (${row.id}) has no roster of its own`);
 const roster = Object.fromEntries(Object.entries(ROSTER).map(([g, r]) => [g, new Set([...(r.kin ?? []), ...(r.named ?? [])].map(([id]) => id))]));
 let dens = 0, foes = 0;
 const kinds = new Set();

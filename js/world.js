@@ -313,8 +313,9 @@ strain(24, 'loess', B.LODE, { rich: 0.85, dig: 0.5, gen: { dense: 0.76, oreA: 0.
 // a ground of its own made of both. Its first ore pays its own direction's gems (`kin`, the first of the two going
 // round the core with the sun from the north) and its rich ore the other's; it has a hazard or a trait of each, and
 // the reaction between the two that the game plays by (`react`). Past the flanks' own distance from the core it is
-// a deep seam: the same sheets and ores, deep ground's richer, meaner figures (as `deep` makes a flank of its
-// direction's ground) and looks of its own. `rich` follows the danger, as a strain's and a cross's do: a quarter
+// a deep seam: a rock of its own over its seam's floor, ores and caves' pieces (so that coming into it reads as
+// somewhere new, where the seam's sheet alone could not be told from it), deep ground's richer, meaner figures (as
+// `deep` makes a flank of its direction's ground) and looks of its own. `rich` follows the danger, as a strain's and a cross's do: a quarter
 // more than a direction's ground, and a deep seam's twice. The four, by corner:
 //   north-east  HOARSTONE / SKARN       the north's ground, frozen quartz: charged crystals on its slate, and a cut
 //                                       closes with ice (react 'thaw': an arc thaws the ice round it)
@@ -325,15 +326,17 @@ strain(24, 'loess', B.LODE, { rich: 0.85, dig: 0.5, gen: { dense: 0.76, oreA: 0.
 //                                       more caves (react 'burn': lava sets off the pods beside it)
 //   north-west  FROSTFEN / MUSKEG       the west's ground, a frozen bog: pods, and a cut closes with ice, crossed by
 //                                       frozen rivers (react 'rime': a pod that goes off rimes instead)
+// A seam's colour on the map is its rock's, leaned where that alone would be lost among its neighbours on the chart,
+// where a player looks for it: hoarstone a warmer grey than the north's, skarn a greener teal than the rime beside it.
 export const SEAMS = [[9, 13], [10, 14], [11, 15], [12, 16]];
 const seam = (corner, f, under) => {
   const name = f.name, shallow = biome({ id: SEAMS[corner][0], seam: corner, ores: ownOres(name), ...f });
-  biome({ ...f, id: SEAMS[corner][1], seam: corner, deep: true, sheet: name, floor: `${name}-floor`, ores: ownOres(name), rich: 2, gemx: 2,
+  biome({ ...f, id: SEAMS[corner][1], seam: corner, deep: true, sheet: under.name, floor: `${name}-floor`, ores: ownOres(name), rich: 2, gemx: 2,
     gen: { ...shallow.gen, oreA: 0.6, oreB: 0.66 }, haz: deeper(f.haz), haz2: f.haz2 && deeper(f.haz2), ...under });
 };
 seam(0, { name: 'hoarstone', kin: B.FROST, gemA: B.FROST, gemB: B.LODE, rich: 1.25, react: 'thaw', gen: { ...GROUND, slate: 0.05 }, haz: { type: 'spark', rate: 1 }, freeze: 30,
-  gloom: [10, 12, 18], mote: ['#e8fbff', 'fall'], map: [185, 184, 176], debris: ['#6e6c74', '#f4fbff', '#b9b8b0'] },
-{ name: 'skarn', freeze: 20, map: [118, 168, 158], gloom: [6, 16, 22], haz2: null });
+  gloom: [10, 12, 18], mote: ['#e8fbff', 'fall'], map: [196, 182, 160], debris: ['#6e6c74', '#f4fbff', '#b9b8b0'] },
+{ name: 'skarn', freeze: 20, map: [140, 196, 150], gloom: [6, 16, 22], haz2: null });
 seam(1, { name: 'glassdune', kin: B.LODE, gemA: B.LODE, gemB: B.EMBER, rich: 1.25, react: 'glass', gen: { ...GROUND, slate: 0.05 }, haz: { type: 'spark', rate: 1 }, haz2: { type: 'lava', rate: 1, t: 0.78 },
   extras: ['ripples'], gloom: [20, 12, 6], mote: ['#f0c070', 'still'], map: [196, 150, 86], debris: ['#94642e', '#f0c070', '#a8743a'] },
 { name: 'obsidian', figures: { ripples: 0.035 }, map: [64, 44, 84], gloom: [12, 6, 14] });
@@ -636,18 +639,6 @@ const LOOKS = [[0, 'crust', null], [1, 'frost', 'flake'], [2, 'ember', 'ember'],
   [9, 'hoarstone', 'flake'], [10, 'glassdune', 'glint'], [11, 'cinderfen', 'ember'], [12, 'frostfen', 'flake'], [13, 'hoarstone', 'flake'], [14, 'glassdune', 'ember'],
   [15, 'cinderfen', 'ember'], [16, 'frostfen', 'spore'], [64, 'glacier', 'flake'], [65, 'caldera', 'ember'], [66, 'mycelium', 'firefly'], [67, 'druse', 'glint']];
 for (const [id, decor, air] of LOOKS) Object.assign(BIOMES[id], { decor, air });
-// Until the art of the seams and the deep strains is drawn (their rock, floors and ores: art/tiles.mjs and
-// art/sprites.mjs) and their caves' pieces made and rated (art/decor.mjs, js/decor.js), each is drawn from what its
-// own direction's ground has: its rock and floor, its two ores (the first its own direction's, the rich one its
-// other parent's), and its caves' pieces. What the lab knows its ores by (`oreKeys`) is its own already. Each line
-// goes as the art it borrows in place of is built: [ground, rock, floor, ore, rich ore, caves' pieces].
-const BORROWED = [[9, 'frost', 'frost-floor', ['frost-items', 'oreA'], ['lode-items', 'oreB'], 'frost'], [13, 'rime', 'rime-floor', ['ores', 'rimeA'], ['ores', 'giltB'], 'rime'],
-  [10, 'lode', 'lode-floor', ['lode-items', 'oreA'], ['ember-items', 'oreB'], 'lode'], [14, 'gilt', 'gilt-floor', ['ores', 'giltA'], ['ores', 'magmaB'], 'gilt'],
-  [11, 'ember', 'ember-floor', ['ember-items', 'oreA'], ['mire-items', 'oreB'], 'ember'], [15, 'magma', 'magma-floor', ['ores', 'magmaA'], ['ores', 'bloomB'], 'magma'],
-  [12, 'mire', 'mire-floor', ['mire-items', 'oreA'], ['frost-items', 'oreB'], 'mire'], [16, 'bloom', 'bloom-floor', ['ores', 'bloomA'], ['ores', 'rimeB'], 'bloom'],
-  [64, 'rime', 'rime-floor', ['ores', 'rimeA'], ['ores', 'rimeB'], 'rime'], [65, 'magma', 'magma-floor', ['ores', 'magmaA'], ['ores', 'magmaB'], 'magma'],
-  [66, 'bloom', 'bloom-floor', ['ores', 'bloomA'], ['ores', 'bloomB'], 'bloom'], [67, 'gilt', 'gilt-floor', ['ores', 'giltA'], ['ores', 'giltB'], 'gilt']];
-for (const [id, sheet, floor, oreA, oreB, decor] of BORROWED) Object.assign(BIOMES[id], { sheet, floor, ores: [oreA, oreB], decor });
 
 // ---------------------------------------------------------------- generated ground: crosses
 // Everything above is made by hand. A cross is made by rule from three hand-made parts, so that a player who knows

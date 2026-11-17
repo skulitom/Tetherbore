@@ -42,6 +42,21 @@ export const DECOR = {
   tinder: { top: 0.25, bottom: 0.3, side: 0, floor: 0.08 },
   glaze: { top: 0.3, bottom: 0, side: 0, floor: 0.06 },
   shale: { top: 0, bottom: 0.35, side: 0, floor: 0.08 },
+  // The seams' (a deep seam has its seam's) and the deep strains'. Hoarstone: frosted quartz spikes overhead,
+  // ice-capped cairns underfoot, hoar crystals on the walls. Glassdune: amber glass dripping, wind-cut hoodoos,
+  // shards on the walls. Cinderfen: tar drips, and charred reeds and stumps standing thick. Frostfen: frozen reeds
+  // and ice-glazed mushrooms, hoar moss on the walls. Glacier: blue seracs hung thick, drifts of snow, walls the
+  // wind has scalloped. Caldera: slag cones, sulphur crusting its walls, and many cracks in its back wall. Mycelium:
+  // threads hung thick, shelf fungus on the walls, caps on the floors. Druse: crystals clustered on its ceilings
+  // and walls more than on its floors.
+  hoarstone: { top: 0.45, bottom: 0.3, side: 0.1, floor: 0.08 },
+  glassdune: { top: 0.3, bottom: 0.35, side: 0.08, floor: 0.08 },
+  cinderfen: { top: 0.3, bottom: 0.4, side: 0, floor: 0.1 },
+  frostfen: { top: 0.35, bottom: 0.4, side: 0.08, floor: 0.1 },
+  glacier: { top: 0.5, bottom: 0.3, side: 0.12, floor: 0.08 },
+  caldera: { top: 0.25, bottom: 0.4, side: 0.06, floor: 0.12 },
+  mycelium: { top: 0.5, bottom: 0.3, side: 0.14, floor: 0.1 },
+  druse: { top: 0.4, bottom: 0.2, side: 0.14, floor: 0.06 },
 };
 export const DECOR_MIX = 0.3;
 // Nothing within CLEAR cells of the core's middle (the core and its platform stand there).

@@ -13,7 +13,7 @@ import { readFile, writeFile, mkdir, rm } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { ROCKS, STRAINS, POCKETS, CROSSES, CROSS_LOOKS, FLOORS, POCKET_FLOORS, LAVA } from './tiles.mjs';
+import { ROCKS, STRAINS, POCKETS, CROSSES, CROSS_LOOKS, FLOORS, POCKET_FLOORS, OVERLAYS, LAVA } from './tiles.mjs';
 import { RECIPES, appIcon } from './sprites.mjs';
 import { DECOR_RECIPES } from './decor.mjs';
 import { encodePNG } from '../tools/png.mjs';
@@ -51,7 +51,7 @@ async function emit(recipe, name = recipe.name, extra = {}) {
 }
 
 // ---- terrain
-for (const source of [...ROCKS, ...STRAINS, ...POCKETS, ...CROSSES, ...FLOORS, ...POCKET_FLOORS, LAVA]) {
+for (const source of [...ROCKS, ...STRAINS, ...POCKETS, ...CROSSES, ...FLOORS, ...POCKET_FLOORS, ...OVERLAYS, LAVA]) {
   if (!wanted(source.name)) continue;
   const { recipe } = pb.compileAutotile(source);
   await emit(recipe, recipe.name, CROSS_LOOKS[source.name]);

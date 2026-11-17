@@ -4,8 +4,8 @@
 // at that level or its last), with what the levels ask not yet found and found, and with nothing in hand and with
 // everything: the words, the steps, what must be found (`lacks`, without its NEEDS where the line is too narrow
 // for it), the prices and their icons, measured as the glyphs and icons are drawn. And STATS, with every row at its
-// last level, every rare hazard and creature met and thousands of everything, fits above the bar a line a line,
-// and says what the bit and the winch are.
+// last level, every rare hazard and creature met, every shrine and fossil, and thousands of everything, fits above
+// the bar a line a line, and says what the bit and the winch are.
 //   node test/regress/h-shop-fit.mjs
 import '../harness.mjs';
 
@@ -54,6 +54,8 @@ const found = all => {
   S.out = all ? 3000 : 0;
   S.lab = all ? Object.fromEntries(LAB.map(e => [e.key, 999])) : {};
   S.relics = [all, all, all, all].map(Boolean);
+  // (Every corner's shrine and every fossil: STATS says them on a line of its own, and the lamp on the scanner's.)
+  S.shrines = [all, all, all, all].map(Number); S.fossils = all ? 15 : 0;
   S.wrecks = all ? new Array(8).fill(1) : [];
   S.met = all ? Object.fromEntries(Array.from({ length: 40 }, (_, n) => [`place${n}`, 1])) : { crust: 1 };
   S.fauna = all ? { met: Object.fromEntries(Array.from({ length: KINDS }, (_, n) => [`kind${n}`, 1])), pal: { fed: 3 } } : undefined;

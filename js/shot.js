@@ -58,9 +58,9 @@
 // `none`: nothing); `labsel` chooses a thing, by the frame it is drawn from (`seracB`, `firnA`, `hazard` of a
 // sheet as `bell-items:hazard`) or by its name (`FLUORITE`), and shows it as a choice does; `scroll` scrolls the
 // list that many pixels on from there. None of them saves anything. And `orebook`, as `ladder`, shows no world:
-// for each ground that has ore of its own (home, the four directions, the eight strains and the four deep flanks)
-// its name, a patch of its rock with its dense rock, its two ores and its hazard as the game draws them, and its
-// two ores three times the size.
+// for each ground that has ore of its own (home, the four directions, the eight strains, the four seams, the four
+// deep flanks and the four deep strains; a deep seam's ores are its seam's) its name, a patch of its rock with its
+// dense rock, its two ores and its hazard as the game draws them, and its two ores three times the size.
 //
 // The creatures (js/fauna.js) are staged with two more: `fauna=<kind>[:<state>]` sets one down (with the rest of
 // its den) in the nearest place that suits it, a few cells from the drill, once the view is uncovered: `beetle`,
@@ -434,8 +434,8 @@ function faunabook(game) {
 // For each ground with ore of its own, its name, a patch of its rock as the game draws it (two rows of four cells:
 // plain rock, dense rock, its common ore, its rich ore; its common ore, its hazard, its rich ore, plain rock), and
 // its two ores again at three times the size. A direction's ground that has no hazard of its own (the north's) shows
-// its direction's rare one. In one column or two, as the page has room. (No world is drawn: a page of pictures.)
-const OREBOOK = [0, 1, 2, 3, 4, 17, 18, 19, 20, 21, 22, 23, 24, 5, 6, 7, 8];
+// its direction's rare one. In one to three columns, as the page has room. (No world is drawn: a page of pictures.)
+const OREBOOK = [0, 1, 2, 3, 4, 17, 18, 19, 20, 21, 22, 23, 24, 9, 10, 11, 12, 5, 6, 7, 8, 64, 65, 66, 67];
 function orebook(game) {
   const ctx = game.ctx, cols = Math.max(1, Math.min(3, Math.floor(game.W / 196))), rowH = 62, colW = Math.floor(game.W / cols);
   ctx.globalAlpha = 1; ctx.fillStyle = '#100e18'; ctx.fillRect(0, 0, game.W, game.H);

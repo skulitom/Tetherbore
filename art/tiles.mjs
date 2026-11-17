@@ -157,6 +157,113 @@ export const STRAINS = [
     for (const [x, y] of fill.places(5, 3, 2)) fill.line(x, y, x, y + fill.int(1, 2), 'g');
     fill.dots('c', 2, 2);
   }),
+  // ---- the seams (generation 2): where two directions meet on a diagonal, a ground of both. Each keeps the hue
+  // family of the direction whose gems its first ore pays, and takes the mark of the other. They are drawn apart in
+  // lightness and in what lies in them from every ground they meet: its two parents, their strains and the far
+  // flanks.
+  // Hoarstone (north-east): grey quartz gone white with frost, milky veins in it on a slant and hoar feathers of ice
+  // blue on it. Warmer and lighter than slate, greyer than the north's snow.
+  strain('hoarstone', { k: '#2e2c36', D: '#6e6c74', L: '#f4fbff', s: '#0a0a1259', f: '#b9b8b0', a: '#a4a39c', b: '#cfd0cc', c: '#e8fbff', q: '#9a999c', i: '#94c4e4' }, 197, fill => {
+    fill.clumps('a', 0.22, 5).clumps('b', 0.12, 3);
+    // A vein or two of milky quartz, its lower edge in shade.
+    for (const [x, y] of fill.places(2, 6, 2)) { const far = fill.int(4, 7), drop = fill.int(-2, 2); fill.line(x - 2, y, x - 2 + far, y + drop, 'b').line(x - 2, y + 1, x - 2 + far, y + drop + 1, 'q'); }
+    // Hoar feathers: a white pixel with pale blue barbs about it.
+    for (const [x, y] of fill.places(3, 5, 2)) fill.set(x, y, 'c').set(x - 1, y + 1, 'i').set(x + 1, y + 1, 'i').set(x, y + 1, 'i').set(x, y - 1, 'i');
+  }),
+  // Glassdune (south-east): wind-rippled sand gone amber, its ripples in level crests that meet a block's sides at the
+  // same rows in every variant and so run on through the dune, with beads of dark glass in the troughs, each with a
+  // violet glint.
+  strain('glassdune', { k: '#1c0e0a', D: '#5c3a1c', L: '#f0c070', s: '#0c060259', f: '#a8743a', a: '#94642e', b: '#c8925a', c: '#2a2030', g: '#8a72b0', r: '#7c5226' }, 199, fill => {
+    const WAVE = [0, 1, 1, 2, 2, 2, 1, 1, 0, -1, -1, -2, -2, -2, -1, -1];
+    fill.clumps('a', 0.16, 5);
+    for (const row of [2, 7, 12]) for (let x = 0; x < 16; x++) { const y = row + Math.round(WAVE[x] / 2); fill.set(x, y, 'b').set(x, y + 1, 'r'); }
+    for (const [x, y] of fill.places(2, 5, 2)) if (fill.get(x, y) !== 'b') fill.set(x, y, 'c').set(x + 1, y, 'g');
+  }),
+  // Cinderfen (south-west): peat burnt black, upright stubs of charred reed in it, an ember at the head of one now
+  // and then, and lime moss growing back. Darker than the south's basalt and the forge's clinker, and green-flecked.
+  strain('cinderfen', { k: '#120a10', D: '#34242a', L: '#b06a4a', s: '#00000066', f: '#5c4246', a: '#4c3438', b: '#6c5052', c: '#9ad062', r: '#24161c', e: '#b85a36', m: '#5e8a3e' }, 211, (fill, n) => {
+    fill.clumps('a', 0.24, 4).clumps('b', 0.12, 3);
+    for (const [x, y] of fill.places(3, 4, 2)) { const tall = fill.int(3, 5); fill.line(x, y, x, Math.min(14, y + tall), 'r'); if (fill.next() < 0.3) fill.set(x, y, 'e'); }
+    fill.dots('c', 2, 2).dots('m', 2, 1);
+    if (n % 2) fill.stamp(fill.int(3, 10), fill.int(3, 10), ['.r.', 'r.b']);
+  }),
+  // Frostfen (north-west): a bog frozen through, sage under a glaze of ice, the reeds in it frozen leaning one way,
+  // and moss. Greyer and paler than the far north's rime, greener than its glacier.
+  strain('frostfen', { k: '#14262a', D: '#3e6a68', L: '#e0fff4', s: '#02101259', f: '#7aa8a0', a: '#689690', b: '#92bcb0', c: '#b4e878', i: '#c8ece4', r: '#4e7a70' }, 223, fill => {
+    fill.clumps('a', 0.2, 6).clumps('i', 0.08, 4);
+    for (const [x, y] of fill.places(3, 4, 2)) fill.line(x, y, x + 1, y + fill.int(3, 4), 'r');
+    fill.dots('c', 3, 2);
+  }),
+  // The deep seams, past the flanks' distance: each its seam's ground gone further, with a rock of its own so that
+  // coming into it from its seam is plainly coming somewhere new. Each keeps its seam's dark band and is no darker
+  // than its seam, so that the seam's pieces in its caves (a deep seam has its seam's set) still sit between floor
+  // and rock; and they lie over their seams' floors.
+  // Skarn (north-east): the quartz baked through into banded calc-silicate, pale epidote green in level bands with
+  // dark garnets in it.
+  strain('skarn', { k: '#2e2c36', D: '#6e6c74', L: '#f0fff8', s: '#0a0a1259', f: '#a8c4b6', a: '#96b4a6', b: '#bcd4c8', c: '#5a2a38', g: '#8aa898', e: '#d8ece0' }, 263, fill => {
+    const BANDS = 'ffbffaagffbbffag';
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) fill.set(x, y, BANDS[y]);
+    fill.clumps('a', 0.1, 4);
+    // A garnet: dark, a pixel or two, with a pale fleck of the band beside it.
+    for (const [x, y] of fill.places(3, 5, 2)) { fill.set(x, y, 'c').set(x + 1, y - 1, 'e'); if (fill.next() < 0.5) fill.set(x, y + 1, 'c'); }
+  }),
+  // Obsidian (south-east): the dunes gone to black glass, shards of it lying thick in the sand every way, each lit on
+  // one edge in violet; the sand between still amber, so that it is the dune's own country gone hard.
+  strain('obsidian', { k: '#1c0e0a', D: '#5c3a1c', L: '#e8c8f0', s: '#0c060259', f: '#a8743a', a: '#94642e', b: '#bc8848', c: '#1e1426', g: '#9a80c8', h: '#3a2a4a' }, 269, fill => {
+    fill.clumps('a', 0.18, 5).clumps('b', 0.08, 3);
+    const SHARDS = [['.cc', 'chg', 'cg.'], ['cch', 'cg.'], ['gc', '.c'], ['ch', '.g'], ['c', 'g']];
+    fill.places(5, 4, 1).forEach(([x, y], i) => fill.stamp(Math.min(x, 16 - SHARDS[i][0].length), Math.min(y, 16 - SHARDS[i].length), SHARDS[i]));
+  }),
+  // Tarpit (south-west): the fen soaked in pitch, pools of it black and glossy with a light on each, in peat that
+  // has gone a bruised plum.
+  strain('tarpit', { k: '#120a10', D: '#34242a', L: '#c07a7a', s: '#00000066', f: '#64444e', a: '#54363e', b: '#765660', c: '#120c12', w: '#8a7a9a', r: '#2a1c22' }, 271, fill => {
+    fill.clumps('a', 0.22, 5).clumps('b', 0.1, 3);
+    const POOLS = [['.rcc.', 'rcwcc', '.cccr', '..rr.'], ['rcc.', 'cwcc', '.cr.'], ['cc', 'wc'], ['c.', '.c']];
+    fill.places(4, 5, 1).forEach(([x, y], i) => fill.stamp(Math.min(x, 16 - POOLS[i][0].length), Math.min(y, 16 - POOLS[i].length), POOLS[i]));
+  }),
+  // Muskeg (north-west): frozen sphagnum, green-grey hummocks of moss each with frost on its crown, and dark water
+  // frozen between them. Greener than the fen.
+  strain('muskeg', { k: '#14262a', D: '#3e6a68', L: '#e8fff0', s: '#02101259', f: '#88b098', a: '#76a088', b: '#a0c4aa', c: '#e4f8ee', d: '#3e665a', m: '#b4e878' }, 277, fill => {
+    fill.clumps('a', 0.2, 5);
+    const HUMMOCKS = [['.ccc.', 'cbbbc', 'bbbbb', 'd...d'], ['.cc.', 'cbbc', 'd..d'], ['cc', 'dd']];
+    fill.places(3, 6, 1).forEach(([x, y], i) => fill.stamp(Math.min(x, 16 - HUMMOCKS[i][0].length), Math.min(y, 16 - HUMMOCKS[i].length), HUMMOCKS[i]));
+    fill.dots('m', 2, 2);
+  }),
+  // ---- the deep strains (generation 2): a far flank's ground with a thing of its own to do, drawn so that it is
+  // plainly somewhere else from the flank it lies in, over that flank's floor.
+  // Glacier (the north's): ice bluer and deeper than the north's ice that closes a cut, so the sheath of ice that
+  // glazes its halls shows on it, scalloped by the wind into little hollows each lit along its upper lip.
+  strain('glacier', { k: '#0a1a2a', D: '#1e4270', L: '#e8f8ff', s: '#02081459', f: '#4a7cb8', a: '#3a74b0', b: '#6494c8', c: '#ffffff', w: '#b8daf2' }, 227, fill => {
+    fill.clumps('a', 0.22, 6).clumps('b', 0.12, 4);
+    const SCALLOPS = [['.ww.', 'w..w', 'a..a'], ['.www.', 'w...w', 'a...a'], ['ww', 'aa']];
+    fill.places(3, 6, 1).forEach(([x, y], i) => fill.stamp(Math.min(x, 15 - SCALLOPS[i][0].length), Math.min(y, 13), SCALLOPS[i]));
+    fill.dots('c', 1, 2);
+  }),
+  // Caldera (the south's): crust of lava gone cold in ropes, chocolate dark under the magma's red, each rope lit
+  // along its crest and dark in its fold; an ember deep in it here and there.
+  strain('caldera', { k: '#140404', D: '#3a1410', L: '#ffb040', s: '#00000066', f: '#5a2a1c', a: '#4a2014', b: '#6e3424', c: '#ffd060', r: '#965230', o: '#2c0e08' }, 229, (fill, n) => {
+    fill.clumps('a', 0.2, 5).clumps('b', 0.1, 3);
+    const ROPES = [['.rrrr.', 'r....r', 'o....o'], ['.rrr.', 'r...r', 'o...o'], ['rrr.', '...r', 'oo.o'], ['.rr', 'r.o'], ['rr', 'oo']];
+    fill.places(5, 4, 1).forEach(([x, y], i) => fill.stamp(Math.min(x, 16 - ROPES[i][0].length), Math.min(y, 13), ROPES[i]));
+    if (n === 1 || n === 3) fill.dots('c', 1, 2);
+  }),
+  // Mycelium (the west's): dark violet webbed through with pale hyphae, wandering threads that fork, a knot of
+  // them brighter where they meet.
+  strain('mycelium', { k: '#10041a', D: '#3e1858', L: '#ffa0e0', s: '#05000a66', f: '#603c76', a: '#52306a', b: '#724c8a', c: '#f0e4f8', h: '#b498cc' }, 233, fill => {
+    fill.clumps('a', 0.22, 5).clumps('b', 0.12, 4);
+    for (const [x, y] of fill.places(3, 4, 2)) {
+      const dx = fill.next() < 0.5 ? 1 : -1;
+      fill.wander(x, y, [[dx, 1], [0, 1], [dx, 0], [dx, 1]], fill.int(5, 9), 'h');
+    }
+    fill.dots('c', 3, 2);
+  }),
+  // Druse (the east's): honey stone riddled with vugs, each a little hollow lined with white crystal, dark under its
+  // near lip and lit on its far one. Brighter and more golden than gilt.
+  strain('druse', { k: '#1a1404', D: '#4a3a10', L: '#fff0a0', s: '#0c080259', f: '#8a7030', a: '#7a6028', b: '#a08440', c: '#e8f4ff', v: '#2e2208', w: '#a8b8c0' }, 239, fill => {
+    fill.clumps('a', 0.2, 5).clumps('b', 0.16, 4);
+    const VUGS = [['.ww.', 'wvvc', 'wvvc', '.cc.'], ['ww.', 'wvc', '.cc'], ['wv', 'vc'], ['w.', '.c']];
+    fill.places(4, 5, 1).forEach(([x, y], i) => fill.stamp(Math.min(x, 15 - VUGS[i].length), Math.min(y, 15 - VUGS[i].length), VUGS[i]));
+  }),
 ];
 
 // ---- the pockets
@@ -283,6 +390,33 @@ export const FLOORS = [
   floor('ember-floor', { f: '#200c0c', a: '#180808', b: '#301412' }, { color: 'f', speckle: [{ color: 'a', amount: 0.25, size: 5 }, { color: 'b', amount: 0.1, size: 3 }] }, 7),
   floor('mire-floor', { f: '#1e1628', a: '#181120', b: '#243020' }, { color: 'f', speckle: [{ color: 'a', amount: 0.25, size: 5 }, { color: 'b', amount: 0.1, size: 3 }] }, 8),
   floor('lode-floor', { f: '#3a2616', a: '#301e11', b: '#48301c' }, { color: 'f', speckle: [{ color: 'a', amount: 0.25, size: 6 }, { color: 'b', amount: 0.1, size: 3 }] }, 9),
+  // The seams' (a deep seam lies over its seam's): cold slate dark, the dark of the dunes, soot and frozen peat.
+  floor('hoarstone-floor', { f: '#22242e', a: '#1c1e26', b: '#2c2e3a' }, { color: 'f', speckle: [{ color: 'a', amount: 0.25, size: 6 }, { color: 'b', amount: 0.1, size: 3 }] }, 23),
+  floor('glassdune-floor', { f: '#2e1c10', a: '#26170c', b: '#3a2616' }, { color: 'f', speckle: [{ color: 'a', amount: 0.25, size: 6 }, { color: 'b', amount: 0.1, size: 3 }] }, 24),
+  floor('cinderfen-floor', { f: '#1c1014', a: '#160c10', b: '#26161a' }, { color: 'f', speckle: [{ color: 'a', amount: 0.25, size: 5 }, { color: 'b', amount: 0.1, size: 3 }] }, 25),
+  floor('frostfen-floor', { f: '#14282c', a: '#102226', b: '#1c3438' }, { color: 'f', speckle: [{ color: 'a', amount: 0.25, size: 6 }, { color: 'b', amount: 0.1, size: 3 }] }, 26),
+];
+
+// ---- what is laid through a ground and drawn over it whatever ground it is (generation 2)
+// Glass: a ribbon of the dunes fused smooth, smoky violet with long glints aslant in it (glassdune's and obsidian's
+// ripples, and lava that set as glass). Smooth where every rock is grained, so a road of it reads at a glance.
+// Fault: the mycelium's hairline faults, paler than the rock they run through, with a strand of hypha along each
+// that meets a block's sides at their middles in every variant, so that a run of fault cells reads as one thread.
+export const OVERLAYS = [
+  strain('glass', { k: '#1c0e0a', D: '#3a2a40', L: '#c8b8e8', s: '#0c060259', f: '#5a4a70', a: '#52446a', b: '#665880', c: '#a898d0' }, 241, (fill, n) => {
+    fill.clumps('a', 0.18, 8).clumps('b', 0.1, 8);
+    for (const [x, y] of fill.places(2, 6, 3)) { const far = fill.int(2, 4); fill.line(x, y, x + far, y - far, 'b').set(x + far, y - far, 'c'); }
+    if (n % 2) fill.dots('c', 1, 2);
+  }),
+  strain('fault', { k: '#10041a', D: '#2a0c3a', L: '#f0c8f0', s: '#05000a66', f: '#6a4a80', a: '#5e4074', b: '#7a5a90', c: '#f0e4f8', h: '#b898d0' }, 251, (fill, n) => {
+    fill.clumps('a', 0.2, 5).clumps('b', 0.1, 3);
+    // Across from the middle of the west side to the middle of the east, and down from the middle of the north side
+    // to the middle of the south, each bowing a pixel or two on the way, by the variant.
+    const BOW = [[0, 0, 1, 1, 2, 2, 2, 1, 1, 1, 0, 0, -1, -1, 0, 0], [0, 0, -1, -1, -1, 0, 0, 1, 1, 2, 2, 1, 1, 0, 0, 0], [0, 1, 1, 0, 0, -1, -2, -2, -1, -1, 0, 0, 1, 1, 0, 0]];
+    const across = BOW[n % 3], down = BOW[(n + 1) % 3];
+    for (let t = 0; t < 16; t++) fill.set(t, 7 + across[t], 'h').set(7 + down[t], t, 'h');
+    fill.set(fill.int(3, 12), 7 + across[8], 'c').set(7 + down[4], 4, 'c');
+  }),
 ];
 
 // ---- the crosses

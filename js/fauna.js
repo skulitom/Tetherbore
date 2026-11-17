@@ -107,6 +107,21 @@ export const ROSTER = {
   sporefall: { kin: [[FROG, 1]], named: [[LEECHES, 0.5], [PUFFS, 0.5]] }, bloom: { kin: [[FROG, 1]], named: [[LEECHES, 0.5], [PUFFS, 0.5]] },
   lode: { kin: [[SKINK, 1]], named: [[WRENS, 1]] }, redrock: { kin: [[SKINK, 1]], named: [[WRENS, 1]] }, loess: { kin: [[SKINK, 1]] }, gilt: { kin: [[SKINK, 1]], named: [[WRENS, 1]], dense: 2 },
   hive: { kin: [[BEE, 1]] }, drift: { kin: [[JELLY, 1]] }, grotto: { kin: [[NEWTS, 1]] },
+  // The seams, each with something of both its parents, and each deep seam its seam's with a foe more. (Hoarstone
+  // and skarn: the east's skinks and wrens and the north's moths; glassdune and obsidian: the east's skinks and
+  // wrens, thicker deep; cinderfen and tarpit: salamanders and frogs, bats and pufflings or leeches; frostfen and
+  // muskeg: frogs, pufflings and moths, and spitters and leeches deep.) No foe lives in the east's glass: a foe
+  // caught as a trophy pays its ground's direction's specimens, and the east's are not paid so
+  // (test/regress/s8-fauna-budget.mjs); no salamander lives there either, as its colour is too near the east's
+  // lodestones' (test/regress/s8-fauna.mjs).
+  hoarstone: { kin: [[SKINK, 1]], named: [[MOTHS, 0.5], [WRENS, 0.5]] }, skarn: { kin: [[SKINK, 1]], named: [[MOTHS, 0.4], [WRENS, 0.3], [SPITTERS, 0.3]] },
+  glassdune: { kin: [[SKINK, 1]], named: [[WRENS, 1]] }, obsidian: { kin: [[SKINK, 1]], named: [[WRENS, 1]], dense: 1.5 },
+  cinderfen: { kin: [[SALAMANDER, 0.5], [FROG, 0.5]], named: [[BATS, 0.5], [PUFFS, 0.5]] }, tarpit: { kin: [[SALAMANDER, 0.5], [FROG, 0.5]], named: [[BATS, 0.6], [LEECHES, 0.4]] },
+  frostfen: { kin: [[FROG, 1]], named: [[PUFFS, 0.5], [MOTHS, 0.5]] }, muskeg: { kin: [[FROG, 1]], named: [[PUFFS, 0.5], [SPITTERS, 0.25], [LEECHES, 0.25]] },
+  // The deep strains: the glacier's halls thick with moths and a spitter or two, the caldera's salamanders and
+  // bats, the mycelium's newts lighting its caps' rims beside its frogs, the druse's wrens that point at its geodes.
+  glacier: { named: [[MOTHS, 0.7], [SPITTERS, 0.3]], dense: 2 }, caldera: { kin: [[SALAMANDER, 1]], named: [[BATS, 1]], dense: 1.5 },
+  mycelium: { kin: [[NEWTS, 0.5], [FROG, 0.5]], named: [[LEECHES, 0.4], [PUFFS, 0.6]] }, druse: { kin: [[SKINK, 1]], named: [[WRENS, 1]] },
 };
 // The ground whose roster a row with none of its own has: its direction's.
 export const KIN_FAUNA = ['crust', 'frost', 'ember', 'mire', 'lode'];

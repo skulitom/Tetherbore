@@ -11,6 +11,10 @@
 //   - Sounds that come in bursts have a least gap: sixty cuts asked for in a second are at most 26 sounds, thirty
 //     grinds at most 11; and with many layers sounding the small sounds make little or nothing.
 //   - A sound that goes wrong does not throw into the frame that asked for it, and says so once.
+//   - The seams' and the deep's sounds are there by the names the game and the feel ask (a reaction by its row's
+//     `react`), and keep every rule above; the wind of the deep is one layer of five nodes, made the first time
+//     there is wind and never again, through the sounds' own gain, soft, its level and colour posted only when
+//     they move enough to hear, and nothing at all with no context or muted.
 //   - While the page is aside (hidden, or another window has the focus) the context is suspended and no sound makes
 //     anything; a touch then does not wake it, and coming back resumes it.
 //   - The music is made once (26 nodes, eleven sources, one timer), makes no node however long it plays or however
@@ -102,6 +106,14 @@ ASKS.push(['chime', 'hive'], ['chime', { name: 'glaze', kin: 1 }], ['place', 'dr
 ASKS.push(['creak'], ['creak', 0, 1.5], ['creak', NaN, NaN], ['shatter', 1], ['shatter', 0], ['shatter'], ['drip', 1, 0], ['drip', 0, 4], ['drip', 0.5, -2], ['drip', NaN, NaN], ['drip'],
   ['blub', 0.5], ['blub'], ['quake', 1], ['quake', 2], ['quake', NaN], ['quake'], ['gust', 1], ['gust', 0.5], ['gust'], ['trickle', 0.5], ['trickle'], ['crackle', 1], ['crackle']);
 for (const name of ['creak', 'shatter', 'drip', 'blub', 'quake', 'gust', 'trickle', 'crackle']) if (typeof sfx[name] !== 'function') fails.push(`the ground's feel asks for sfx.${name}, and there is none`);
+// (The seams' reactions, a fault's zip, geodes ringing and a shrine: each beside the drill, at the edge of hearing,
+// with nothing and with what is no number.)
+for (const name of ['thaw', 'glass', 'burn', 'rime', 'zip', 'resonate', 'shrine']) if (typeof sfx[name] !== 'function') fails.push(`the seams and the deep ask for sfx.${name}, and there is none`);
+for (const one of [...['thaw', 'glass', 'burn', 'rime'].flatMap(name => [[name, 1], [name, 0], [name], [name, NaN]]),
+  ['zip', 0, 1], ['zip', 7, 0], ['zip', 40, 0.5], ['zip'], ['zip', NaN, NaN], ['resonate', 1], ['resonate', 5], ['resonate', 40], ['resonate'], ['shrine', 0], ['shrine', 3], ['shrine', 9], ['shrine']]) if (typeof sfx[one[0]] === 'function') ASKS.push(one);
+const windy = typeof audio.setWind === 'function' && typeof audio.windNow === 'function';
+if (!windy) fails.push('there is no wind of the deep (setWind, windNow) for the feel to tell');
+const setWind = (...args) => windy && audio.setWind(...args), windNow = () => windy ? audio.windNow() : undefined;
 // (The voices of the creatures, js/fauna.js's: each with nothing, beside the drill, at the edge of hearing, and with
 // what is no number.)
 const VOICES = ['tick', 'yip', 'coo', 'tug', 'pop', 'flutter', 'wheeze', 'spit', 'splat', 'purr', 'chitter', 'screech', 'whoosh', 'croak', 'squeak', 'caught', 'poof', 'plip', 'slurp', 'skitter', 'trill',
@@ -119,6 +131,7 @@ for (const one of ASKS) {
   if (nodes.length) fails.push(`${said(one)} made ${nodes.length} nodes with no context`);
   if (draws !== meant) fails.push(`${said(one)} drew ${draws} from Math.random with no context (${meant} is meant)`);
 }
+{ const from = made.length; setWind(1, 'wind'); if (windy && (made.length !== from || windNow() !== null)) fails.push('the wind made something with no context'); }
 audio.setAmbience(0, false, 12);
 if (audio.isMusic() !== true || audio.isMuted() !== false) fails.push('before anything is set, the music is not on or the game is muted');
 if (timers.size) fails.push('a timer runs before the first touch');
@@ -228,6 +241,29 @@ const paid = [0, 7, 14].map(step => { clock += 1; return done(ask(['tick', step]
 if (!(paid[0] < paid[1] && paid[1] < paid[2])) fails.push(`ticks at the start, middle and end of a haul are at ${paid.map(f => Math.round(f)).join(', ')} Hz: they are meant to climb`);
 const rocks = [1, 2, 3, 4].map(hard => { clock += 1; return done(ask(['dig', hard])).length; }), ore = (clock += 1, done(ask(['dig', 2, 'ore'])).length);
 if (rocks[0] !== 5 || rocks[3] <= rocks[2] || rocks[2] <= rocks[1] || ore <= rocks[1]) fails.push(`cuts in soft, dense, slate and vault are ${rocks.join(', ')} nodes and in ore ${ore}: soft is meant to be 5, and slate, a vault and ore each to have a layer more`);
+
+// ---------------------------------------------------------------- the wind of the deep
+{
+  clock += 10;
+  const from = made.length;
+  setWind(0);
+  if (made.length !== from) fails.push(`the wind asked for at nothing made ${made.length - from} nodes`);
+  setWind(1);
+  const wind = made.slice(from), out = wind.find(node => node.kind === 'gain' && node.outs.includes(sounds));
+  if (wind.length !== 5 || !out || wind.some(node => node.outs.includes(master))) fails.push(`the wind is ${wind.length} nodes (5 are meant), ${out ? '' : 'not '}going through the sounds' own gain`);
+  const posted = () => wind.reduce((n, node) => n + ['gain', 'frequency', 'Q'].reduce((m, key) => m + (node[key]?.events.length ?? 0), 0), 0), was = posted();
+  for (let n = 0; n < 600; n++) { clock += 1 / 60; setWind(1 - 0.03 * Math.sin(n)); }
+  if (posted() !== was) fails.push(`ten seconds of the wind steady but for a wavering too small to hear posted ${posted() - was} changes`);
+  for (const [level, kind] of [[0.5, 'wind'], [0.5, 'heat'], [1, 'heat'], [NaN, 'wind'], [3, 'wind'], [0, 'wind']]) { clock += 1; setWind(level, kind); }
+  if (made.length !== from + 5) fails.push(`the wind changed and changed again made ${made.length - from - 5} nodes more`);
+  if (!(posted() > was + 15)) fails.push(`the wind changed six times and posted ${posted() - was} changes`);
+  for (const e of out?.gain.events ?? []) if (e.kind !== 'target' || !(e.value >= 0 && e.value <= 0.08)) fails.push(`the wind's level goes to ${e.value} (${e.kind})`);
+  if (out?.gain.events.at(-1).value !== 0) fails.push('the wind told to drop does not drop to nothing');
+  for (const node of wind) for (const e of node.frequency?.events ?? []) if (!(e.value >= 100 && e.value <= 2000)) fails.push(`the wind's filter goes to ${e.value} Hz`);
+  const sources = wind.filter(node => node.kind === 'oscillator' || node.kind === 'noise');
+  if (sources.length !== 2 || sources.some(node => !(node.started >= 0) || node.stopped !== undefined)) fails.push('the wind is not two sources that start and sound on');
+  if (windNow()?.level !== 0) fails.push(`the wind says it is at ${windNow()?.level}`);
+}
 
 // ---------------------------------------------------------------- a sound that goes wrong
 clock += 10;
@@ -397,6 +433,11 @@ audio.setMuted(true);
 if (!audio.isMuted() || master.gain.value !== 0 || kept.get('tetherbore-mute') !== '1' || timers.size) fails.push('muted, the master is not at nothing, or the music\'s timer still runs, or the mute is not kept');
 clock += 10;
 for (const one of ASKS) { const nodes = ask(one); if (nodes.length) fails.push(`${said(one)} made ${nodes.length} nodes when muted`); if (draws !== (one[0] === 'chime' ? 1 : 0)) fails.push(`${said(one)} drew ${draws} from Math.random when muted`); }
+{
+  const from = made.length, wind = windNow();
+  setWind(1, 'heat');
+  if (made.length !== from || windNow()?.level !== wind?.level) fails.push('muted, the wind was made or moved');
+}
 from = made.length;
 audio.setMuted(false);
 if (audio.isMuted() || master.gain.value !== level || kept.get('tetherbore-mute') !== '0' || timers.size !== 1 || made.length - from !== 26) fails.push('unmuted, the master is not back at its level or the music is not back');

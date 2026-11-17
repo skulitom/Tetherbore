@@ -8,6 +8,10 @@
 //   - a strain is its direction's piece and not the same; a pocket is not its direction's piece; a cross keeps its
 //     host's key, scale, chords, motif, tempo and metre (a HOLLOW one is slower) and has the donor's own voice in
 //     it as the donor plays it, and is not its host's piece;
+//   - the grounds of generation 2 are each a piece made of another (`of`) and apart from it in two ways at least of
+//     the six: a seam (9 to 12) of its own direction's piece, a deep seam (13 to 16) of its seam's, slower or
+//     lower, and a deep strain (64 to 79) of its flank's; and the twelve are apart from one another in two ways at
+//     least;
 //   - where a pocket's own rule rings rewards (the drift's chain, the grotto's caps), its key holds the major
 //     five-note scale on A that they ring in;
 //   - every score is whole and in bounds: a known scale, waves the music has, patterns of the letters it reads,
@@ -17,7 +21,7 @@
 //     speaker plays it and nothing is shrill, with its shape as written: a phrase is lifted whole, by octaves.
 // What the music sounds like is not held here: `node tools/sounds.mjs music` renders and measures every score.
 //   node test/regress/sound-scores.mjs
-import { BIOMES } from '../../js/world.js';
+import { BIOMES, SEAMS } from '../../js/world.js';
 import { scoreOf, scoreNames, phrasesOf, waveNames } from '../../js/audio.js';
 
 const fails = [], KIN = ['crust', 'frost', 'ember', 'mire', 'lode'], DEEP = ['crust', 'rime', 'magma', 'bloom', 'gilt'], TWIST = [null, 'tangle', 'serac', 'scoria', 'redrock'];
@@ -52,6 +56,20 @@ for (const row of rows.filter(r => r.id >= 17 && r.id <= 31)) {
   if (!same(s.from, [of.name]) || bare(s) === bare(of)) fails.push(`the strain ${row.name} is not its direction's piece changed (from ${JSON.stringify(s.from)})`);
 }
 for (const row of rows.filter(r => r.pocket)) if (bare(scoreOf(row)) === bare(scoreOf(KIN[row.kin]))) fails.push(`the pocket ${row.name} plays its direction's piece`);
+// (The six ways two pieces may be apart.)
+const ways = (a, b) => {
+  const x = looks(scoreOf(a)), y = looks(scoreOf(b));
+  return [Math.abs(x.tempo[0] - y.tempo[0]) >= 8 || x.tempo[1] !== y.tempo[1], x.mode !== y.mode, Math.abs(12 * Math.log2(x.root / y.root)) >= 2, x.waves !== y.waves, x.voices !== y.voices, x.perc !== y.perc].filter(Boolean).length;
+};
+const newer = rows.filter(r => (r.id >= 9 && r.id <= 16) || (r.id >= 64 && r.id <= 79));
+if (newer.length !== 12) fails.push(`${newer.length} grounds of generation 2 were looked at (12 are meant)`);
+for (const row of newer) {
+  const s = scoreOf(row), of = row.deepOf ? DEEP[row.deepOf] : row.deep ? BIOMES[SEAMS[row.seam][0]].name : KIN[row.kin], parent = scoreOf(of);
+  if (!same(s.from, [of]) || s.name !== row.name) fails.push(`${row.name} (${row.id}) is not a piece made of ${of}'s (it is ${s.name}, made of ${JSON.stringify(s.from)})`);
+  else if (ways(row, of) < 2) fails.push(`${row.name} is apart from ${of}, whose piece it is made of, in ${ways(row, of)} ways (two at least are meant)`);
+  if (row.deep && row.seam !== null && !(s.bpm * s.tempo < parent.bpm * parent.tempo || s.root < parent.root)) fails.push(`the deep seam ${row.name} is neither slower nor lower than ${of}`);
+}
+for (let a = 0; a < newer.length; a++) for (let b = a + 1; b < newer.length; b++) if (ways(newer[a], newer[b]) < 2) fails.push(`${newer[a].name} and ${newer[b].name} are apart in ${ways(newer[a], newer[b])} ways (two at least are meant)`);
 // (What a score plays is in its key: if all of it together holds A major's five notes, so does the key.)
 const A_MAJOR = [9, 11, 1, 4, 6], classOf = f => ((Math.round(12 * Math.log2(f / 440)) % 12) + 12 + 9) % 12;
 for (const name of ['drift', 'grotto']) {

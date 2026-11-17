@@ -1,14 +1,17 @@
-// The lab at forty-eight. What the lab can know is forty-eight things in five parts (home and all round, then each
+// The lab at sixty-four. What the lab can know is sixty-four things in five parts (home and all round, then each
 // direction), each drawn from a frame the atlas has; every ground that has ore says what its two ores are (`ores`),
-// and that is both what the cell is drawn as and what the lab knows it by, so a strain's and a deep flank's ores are
-// their own, the four directions' and the crosses' as they were; a hazard of any type and a keystone's iron are
-// samples, an inert hazard and a prism are not. An ore that is its own now pays exactly as the cell paid before,
-// and what is known of it makes it, and nothing else, worth more. A hazard cut into is analysed and still goes off;
-// a rare hazard's lump takes what is known of it. A game saved with the sixteen first keys loads and counts them,
-// and the gem cutter asks for kinds out of the forty-eight. And the art of the new ores keeps to its rules, read
-// from the sheets as built: outlined in their direction's outline, each apart from its neighbours in shape or
-// colour, none in the colour of what hurts in its direction, none lost against its own rock, a common ore in
-// pieces and a rich one in one.
+// and that is both what the cell is drawn as and what the lab knows it by, so a strain's, a seam's, a deep flank's
+// and a deep strain's ores are their own (a deep seam's its seam's), the four directions' and the crosses' as they
+// were; within a direction's part the seam's come after the rare hazard and the deep strain's after the deep
+// flank's, near to far. A hazard of any type and a keystone's iron are samples, an inert hazard and a prism are
+// not. An ore that is its own pays exactly as the cell would with its direction's ore, and what is known of it
+// makes it, and nothing else, worth more. A hazard cut into is analysed and still goes off; a rare hazard's lump
+// takes what is known of it. A game saved with the sixteen first keys loads and counts them, the gem cutter asks
+// for kinds out of the sixty-four, and its late level for more than the near ground holds without the deep
+// flanks' and deep strains' ores. And the art of the new ores keeps to its rules, read from the sheets as built:
+// outlined in their direction's outline (a seam's rich ore in its other parent's, whose gems it pays), each apart from its neighbours in shape or colour, none in the colour of
+// what hurts in its ground (its direction's hazards, and a seam's other hazard), none lost against its own rock, a
+// common ore in pieces and a rich one in one.
 //   node test/regress/l-ores.mjs
 import { readFile } from 'node:fs/promises';
 import { makeGame, N, C, K, world } from '../harness.mjs';
@@ -16,22 +19,34 @@ import { decodePNG } from '../../tools/png.mjs';
 import { ROCKS, STRAINS } from '../../art/tiles.mjs';
 const { LAB, LAB_OF, LAB_KINS, CORE, labLevel } = await import('../../js/shop.js');
 const { sheets } = await import('../../js/atlas.js');
-const { BIOMES, HAZARDS, RARE, B, rowOf, crossRow } = world;
+const { BIOMES, HAZARDS, RARE, B, SEAMS, DEEP_STRAINS, rowOf, crossRow } = world;
 
 const fails = [], check = (ok, what) => { if (!ok) fails.push(what); };
 const atlas = JSON.parse(await readFile(new URL('../../assets/atlas.json', import.meta.url), 'utf8'));
 
-// ---- 1. the forty-eight
+// ---- 1. the sixty-four
 const SIXTEEN = ['lode-items:oreA', 'lode-items:oreB', 'frost-items:oreA', 'frost-items:oreB', 'ember-items:oreA', 'ember-items:oreB', 'ember-items:steel', 'mire-items:oreA', 'mire-items:oreB',
   'minerals:amber', 'minerals:aerolite', 'minerals:tektite', 'minerals:starglass', 'minerals:opal', 'minerals:lantern', 'minerals:agate'];
-const GROUNDS = ['firn', 'serac', 'scoria', 'forge', 'tangle', 'sporefall', 'redrock', 'loess', 'rime', 'magma', 'bloom', 'gilt'];
+const GROUNDS = ['firn', 'serac', 'scoria', 'forge', 'tangle', 'sporefall', 'redrock', 'loess', 'rime', 'magma', 'bloom', 'gilt',
+  'hoarstone', 'glassdune', 'cinderfen', 'frostfen', 'glacier', 'caldera', 'mycelium', 'druse'];
+// (The rows whose ores are their own: the strains, the seams, the deep flanks and the deep strains. A deep seam's
+// are its seam's.)
+const OWN = id => (id >= 5 && id <= 24) || (id >= 64 && id <= 67);
+const SEAM_OF = id => id >= 13 && id <= 16 ? id - 4 : id;
 const NEW_ORES = GROUNDS.flatMap(g => [`ores:${g}A`, `ores:${g}B`]);
-check(LAB.length === 48, `the lab knows ${LAB.length} things, not forty-eight`);
+check(LAB.length === 64, `the lab knows ${LAB.length} things, not sixty-four`);
 check(new Set(LAB.map(e => e.key)).size === LAB.length, 'two things of the lab share a key');
 check(SIXTEEN.every(key => LAB_OF[key]), `the sixteen first keys are not all there: ${SIXTEEN.filter(key => !LAB_OF[key])}`);
 check(NEW_ORES.every(key => LAB_OF[key]), `the strains' and flanks' ores are not all there: ${NEW_ORES.filter(key => !LAB_OF[key])}`);
 const parts = [0, 1, 2, 3, 4].map(kin => LAB.filter(e => e.kin === kin).length);
-check(parts.join() === '4,10,13,12,9', `the parts of the list hold ${parts}, not 4, 10, 13, 12 and 9`);
+check(parts.join() === '4,14,17,16,13', `the parts of the list hold ${parts}, not 4, 14, 17, 16 and 13`);
+// Near to far within a part: the rare hazard (450 cells), the seam (470), the deep flank (800), the deep strain
+// (1,100); and each in the part of the direction whose ground it is.
+for (const kin of [1, 2, 3, 4]) {
+  const seam = BIOMES[SEAMS.find(([id]) => BIOMES[id].kin === kin)[0]], strain = BIOMES[DEEP_STRAINS[kin][0]];
+  const at = key => LAB.findIndex(e => e.key === key), order = [`${HAZARDS[RARE[kin]].sheet}:hazard`, `ores:${seam.name}A`, `ores:${seam.name}B`, `ores:${BIOMES[kin + 4].name}A`, `ores:${BIOMES[kin + 4].name}B`, `ores:${strain.name}A`, `ores:${strain.name}B`];
+  check(order.every((key, i) => at(key) >= 0 && LAB[at(key)].kin === kin && (i === 0 || at(key) > at(order[i - 1]))), `the far things of the ${LAB_KINS[kin][0]} are not in its part from near to far: ${order.map(key => `${key} ${at(key)}`)}`);
+}
 check(LAB.every((e, i) => i === 0 || e.kin >= LAB[i - 1].kin), 'the parts of the list are not each in one run');
 check(LAB_KINS.length === 5 && LAB_KINS.every(([title, icon]) => title && atlas.icons.frames[icon]), 'a part of the list has no title or no icon');
 for (const e of LAB) {
@@ -39,7 +54,7 @@ for (const e of LAB) {
   check(atlas[sheet]?.frames[frame], `${e.name}: the atlas has no ${e.key}`);
   check(e.name && e.at && e.where && e.note && [0, 1, 2, 3, 4].includes(e.kin), `${e.key}: no name, place, where or part`);
 }
-check(atlas.ores && Object.keys(atlas.ores.frames).length === 24, `the ores sheet has ${Object.keys(atlas.ores?.frames ?? {}).length} frames, not 24`);
+check(atlas.ores && Object.keys(atlas.ores.frames).length === 40, `the ores sheet has ${Object.keys(atlas.ores?.frames ?? {}).length} frames, not 40`);
 
 // ---- 2. what a cell is drawn as is what the lab knows it by
 const game = await makeGame(7), w = game.world;
@@ -53,11 +68,11 @@ for (const row of BIOMES) {
     owners.add(key);
   }
   const want = row.id <= 4 ? [`${row.items}:oreA`, `${row.items}:oreB`]
-    : row.id <= 8 || (row.id >= 17 && row.id <= 24) ? [`ores:${row.name}A`, `ores:${row.name}B`]
+    : OWN(row.id) ? [`ores:${BIOMES[SEAM_OF(row.id)].name}A`, `ores:${BIOMES[SEAM_OF(row.id)].name}B`]
     : row.cross ? [`${BIOMES[row.cross.host].items}:oreA`, `${BIOMES[row.cross.donor].items}:oreB`] : null;
   if (want) check(row.oreKeys.join() === want.join(), `${row.name} (${row.id}): its ores are ${row.oreKeys}, not ${want}`);
   // (Where a row's ores are its direction's sheet, they are what `items` and `itemsB` say, so the two cannot drift.)
-  if (!(row.id >= 5 && row.id <= 8) && !(row.id >= 17 && row.id <= 24)) check(row.oreKeys.join() === `${row.items}:oreA,${row.itemsB}:oreB`, `${row.name}: its ores ${row.oreKeys} are not its items' ${row.items}, ${row.itemsB}`);
+  if (!OWN(row.id)) check(row.oreKeys.join() === `${row.items}:oreA,${row.itemsB}:oreB`, `${row.name}: its ores ${row.oreKeys} are not its items' ${row.items}, ${row.itemsB}`);
 }
 check(NEW_ORES.every(key => owners.has(key)), `an ore of the sheet is no ground's: ${NEW_ORES.filter(key => !owners.has(key))}`);
 for (const [type, h] of Object.entries(HAZARDS)) {
@@ -72,14 +87,15 @@ check(game.sampleOf(K.KEY, BIOMES[0]) === 'finds:key' && game.sampleOf(K.KEY, BI
 check(game.sampleOf(K.ORE_A, BIOMES[17]) === game.sampleOf(K.ORE_A, BIOMES[17]) && typeof game.sampleOf(K.ORE_A, BIOMES[17]) === 'string', 'a strain\'s ore has no key');
 
 // ---- 3. it pays as the cell paid before, and only it is worth more for what is known of it
-// A block of each kind staged in each strain and flank, paid with the lab empty, against the same block with the
-// row's ores set back to its direction's sheet (as they were drawn and known before).
+// A block of each kind staged in each strain, seam, flank and deep strain, paid with the lab empty, against the
+// same block with the row's ores set back to its direction's sheet (as a strain's and a flank's were drawn and
+// known before): what pays is the ground and not the name.
 const staged = (id, k, dx = 0) => {
   const row = BIOMES[id], cells = [], x0 = C + 600 + dx, y0 = C;
   for (let y = 0; y < 4; y++) for (let x = 0; x < 6; x++) cells.push((y0 + y) * N + x0 + x);
   return { row, extra: cells.map(i => ({ k, b: id, x: i % N, y: Math.floor(i / N) })) };
 };
-for (const id of [5, 6, 7, 8, 17, 18, 19, 20, 21, 22, 23, 24]) for (const k of [K.ORE_A, K.ORE_B]) {
+for (const id of [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 64, 65, 66, 67]) for (const k of [K.ORE_A, K.ORE_B]) {
   const { row, extra } = staged(id, k), now = game.payOf([], extra);
   const ores = row.ores, keys = row.oreKeys;
   row.ores = [[row.items, 'oreA'], [row.itemsB, 'oreB']]; row.oreKeys = row.ores.map(o => o.join(':'));
@@ -150,6 +166,14 @@ const near = (x, y) => (C + y) * N + C + x;
 const cutter = CORE.find(u => u.id === 'cutter');
 check(cutter.needs[0] === 'kinds' && cutter.needs[1].slice(0, 4).join() === '8,18,28,36', `the gem cutter asks for ${cutter.needs[1].slice(0, 4)} kinds, not 8, 18, 28 and 36`);
 check(cutter.needs[1].slice(0, 4).every(n => n <= LAB.length), 'the gem cutter asks for more kinds than there are');
+// Its late level asks for more kinds than there are short of the deep flanks' and deep strains' ores, and no more
+// than there are; and LIVE CATCH's first two levels for no more than there are.
+{
+  const far = LAB.filter(e => [5, 6, 7, 8, 64, 65, 66, 67].some(id => BIOMES[id].oreKeys.includes(e.key))).length, late = cutter.needs[1][4];
+  check(far === 16 && late[0] === 'kinds' && late[1] > LAB.length - far && late[1] <= LAB.length, `the gem cutter's late level asks for ${late}, where ${LAB.length - far} kinds lie short of the ${far} far ores`);
+  const live = CORE.find(u => u.id === 'livecatch');
+  check(live.needs[0] === 'kinds' && live.needs[1].slice(0, 2).every(n => n <= LAB.length), `LIVE CATCH asks for ${live.needs[1].slice(0, 2)} kinds, of ${LAB.length}`);
+}
 
 // ---- 6. the art of the new ores
 const pictures = {};
@@ -185,24 +209,42 @@ const look = async (sheet, frame, outline) => {
 const differ = (a, b) => a.mask.reduce((n, on, i) => n + (on !== b.mask[i] ? 1 : 0), 0);
 const OUTLINE = { 1: '#22395a', 2: '#160c12', 3: '#1c1426', 4: '#3a2414' };
 const KIN_SHEET = { 1: 'frost-items', 2: 'ember-items', 3: 'mire-items', 4: 'lode-items' };
-const KIN_ROWS = { 1: [1, 17, 18, 5], 2: [2, 19, 20, 6], 3: [3, 21, 22, 7], 4: [4, 23, 24, 8] };
+// (Each direction's grounds with ores of their own: its own, its strains, its deep flank, its seam and its deep
+// strain. A deep seam's ores are its seam's.)
+const KIN_ROWS = { 1: [1, 17, 18, 5, 9, 64], 2: [2, 19, 20, 6, 11, 65], 3: [3, 21, 22, 7, 12, 66], 4: [4, 23, 24, 8, 10, 67] };
 const rockOf = name => [...ROCKS, ...STRAINS].find(r => r.name === name)?.palette;
 for (const kin of [1, 2, 3, 4]) {
   const rows = KIN_ROWS[kin].map(id => BIOMES[id]), mine = [];
-  for (const row of rows) for (const [sheet, frame] of row.ores) mine.push({ row, fresh: sheet === 'ores', ...(await look(sheet, frame, rgb(OUTLINE[kin]))) });
+  // (A seam's rich ore pays its other parent's gems and is drawn in that direction's outline, as a cross's rich ore
+  // is drawn as its donor's; every other ore here is in this direction's.)
+  const lineOf = (row, frame) => OUTLINE[frame.endsWith('B') && row.seam != null ? row.gemB : kin];
+  for (const row of rows) for (const [sheet, frame] of row.ores) mine.push({ row, fresh: sheet === 'ores', line: lineOf(row, frame), ...(await look(sheet, frame, rgb(lineOf(row, frame)))) });
   // What hurts in this direction: every colour of its own hazard as drawn that is a colour at all (its frames, and
   // lava's steel and pools), every colour of lava's slag, dull as it is (a grey lump is what tells of lava, and an
-  // ore must not be one), its outline aside, and the colour its rare hazard is seen as.
-  const hurts = [];
-  const take = async (sheet, frame, all = false) => { if (sheets[sheet]?.frames[frame]) for (const c of (await pixels(sheet, frame)).grid) if (c && (vivid(c) || all && far(c, rgb(OUTLINE[kin])) >= 1)) hurts.push(c); };
-  const own = BIOMES[kin].haz?.type, rare = HAZARDS[RARE[kin]].sheet;
-  if (own) { const s = HAZARDS[own].sheet; await take(s, 'hazard'); await take(s, 'hazard-b'); if (own === 'lava') { await take(s, 'slag', true); for (const f of ['steel', 'steel-glint']) await take(s, f); await take('lava', 'lava-255-a'); await take('lava', 'lava-255-b'); } }
-  hurts.push((await look(rare, 'hazard')).colour);
+  // ore must not be one), its outline aside, and the colour its rare hazard is seen as. And in a ground that has a
+  // hazard its direction has not (a seam's: the hoarstone's crystals, the glassdune's lava, the cinderfen's pods),
+  // that hazard's colours too, for that ground's ores.
+  const take = async (into, sheet, frame, all = false) => { if (sheets[sheet]?.frames[frame]) for (const c of (await pixels(sheet, frame)).grid) if (c && (vivid(c) || all && far(c, rgb(OUTLINE[kin])) >= 1)) into.push(c); };
+  const hazard = async (into, type) => {
+    const s = HAZARDS[type].sheet;
+    await take(into, s, 'hazard'); await take(into, s, 'hazard-b');
+    if (type === 'lava') { await take(into, s, 'slag', true); for (const f of ['steel', 'steel-glint']) await take(into, s, f); await take(into, 'lava', 'lava-255-a'); await take(into, 'lava', 'lava-255-b'); }
+  };
+  const own = BIOMES[kin].haz?.type, rare = HAZARDS[RARE[kin]].sheet, base = [];
+  if (own) await hazard(base, own);
+  base.push((await look(rare, 'hazard')).colour);
+  const hurtsOf = new Map();
+  for (const row of rows) {
+    const hurts = [...base];
+    for (const type of new Set([row.haz?.type, row.haz2?.type])) if (type && type !== own) await hazard(hurts, type);
+    hurtsOf.set(row, hurts);
+  }
   for (const o of mine.filter(m => m.fresh)) {
+    const hurts = hurtsOf.get(o.row);
     const name = `${o.frame} (${o.row.name})`;
-    // (a) outlined: most of its edge is its direction's outline.
-    const k = rgb(OUTLINE[kin]), outlined = o.edge.filter(c => far(c, k) < 1).length / o.edge.length;
-    check(outlined >= 0.6, `${name}: ${(outlined * 100).toFixed(0)} in 100 of its edge is its direction's outline ${OUTLINE[kin]}`);
+    // (a) outlined: most of its edge is its direction's outline (a seam's rich ore, its other parent's).
+    const k = rgb(o.line), outlined = o.edge.filter(c => far(c, k) < 1).length / o.edge.length;
+    check(outlined >= 0.6, `${name}: ${(outlined * 100).toFixed(0)} in 100 of its edge is its direction's outline ${o.line}`);
     // (e) a common ore lies in pieces, a rich one in one.
     if (o.frame.endsWith('A')) check(o.pieces.length >= 2, `${name}: a common ore in ${o.pieces.length} piece`);
     else check(o.pieces[0] / o.all.length >= 0.7, `${name}: a rich ore whose largest piece is ${o.pieces[0]} of ${o.all.length} pixels`);
@@ -222,5 +264,5 @@ for (const kin of [1, 2, 3, 4]) {
   }
 }
 
-console.log(fails.length ? `DEFECT:\n  ${fails.join('\n  ')}` : 'ok: forty-eight things in five parts, every ore drawn as the lab knows it and paying as it did, hazards and keys sampled, old saves counted, and the new ores outlined, apart, safe and seen');
+console.log(fails.length ? `DEFECT:\n  ${fails.join('\n  ')}` : 'ok: sixty-four things in five parts, near to far, every ore drawn as the lab knows it and paying as it did, hazards and keys sampled, old saves counted, and the new ores outlined, apart, safe and seen');
 process.exit(fails.length ? 1 : 0);
