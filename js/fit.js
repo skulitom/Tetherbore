@@ -107,6 +107,8 @@ const ORBIT_R = 46, ORBIT_SPEED = 0.8;
 // stars; and the singularity's crown of the four gems.)
 const ORBIT_COLOURS = [null, null, null, null, null, ['#ffd060', '#ff6a1a'], ['#fff27a', '#c8e0ff'], ['#f0e4ff', '#b08aff']], CROWN_COLOURS = ['#bfe6ff', '#ffffff', '#ffb060', '#b8f06a', '#ffffff', '#d8b8ff'];
 const PING = [0, 6, 5, 4.5, 4, 3.5, 3], BEAM = 3;
+// The hull's plates holding glint in their own metal: cobalt, gold, the aegis's white.
+const PLATE_GLINT = [null, null, null, null, null, '#84dcff', '#ffe14a', '#e6fbff'];
 // The lamp: the small warm glow at the drill's nose and the length of its flare, by level.
 const LAMP_GLOW = [0, 0.1, 0.12, 0.14, 0.16, 0.18], FLARE = [0, 9, 12, 15, 18, 21], WARM = '#ffe0a0';
 // The black box blinks every so many seconds, by level, on the station and the drill.
@@ -601,7 +603,7 @@ export class Fitter {
     }
     // The hull's plates holding while nothing can knock it, from the sixth level.
     if (game.shield > 0 && lv.hull >= 5 && d.mode !== 'dead') {
-      ctx.fillStyle = '#aab4c8'; ctx.globalAlpha = 0.7 * Math.min(1, game.shield);
+      ctx.fillStyle = PLATE_GLINT[Math.min(7, lv.hull)]; ctx.globalAlpha = 0.7 * Math.min(1, game.shield);
       for (let k = 0; k < 12; k++) { const a = game.time * 4 + k * 0.5236; ctx.fillRect(Math.round(dx + Math.cos(a) * 11), Math.round(dy + Math.sin(a) * 11), 1, 1); }
     }
     // The arc coil's crackle: four jagged lines out of the coil.

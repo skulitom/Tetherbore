@@ -88,7 +88,8 @@ export const UPGRADES = [
   // drill keeping its run through ground they cut in a blink, softer ground first, as a cut can take no less than
   // a frame and the run was lost at every cell.
   // (Each level of the bit and of the winch is a thing of its own, drawn so and named so when it is fitted and in
-  // STATS: `tiers`, a name a level, art/sprites.mjs: BIT_SHAPES and WINCHES.)
+  // STATS: `tiers`, a name a level, art/sprites.mjs: BIT_SHAPES and WINCHES; and so is each of the ram and the hull,
+  // RAM_HALVES and PLATES.)
   { id: 'drill', icon: 'drill', name: 'BIT', tiers: ['STEEL', 'BRONZE', 'COBALT', 'GOLD', 'DIAMOND', 'VOID', 'EMBER', 'STAR'], what: 'CUTS FASTER', values: [1, 2, 3, 4, 5], gem: B.LODE, needs: ['out', [0, 40, 130, 400]], ...levels([0.6, 2.2, 4.4, 6.6], 0.6), show: v => `MK${v}`,
     says: l => l < 4 ? `CUTS x${(CUT[l + 1] / CUT[l]).toFixed(1)} FASTER` : ['PLOUGHS SOFT ROCK', 'PLOUGHS DENSE ROCK', 'PLOUGHS SLATE TOO'][l - 4] },
   // The winch: the bonus a haul is paid for its size, and the load it draws in at full pay (WINCH_LOAD), which is
@@ -100,7 +101,7 @@ export const UPGRADES = [
   // Its levels, and the hull's, ask no more than eight tenths of how far the reach they are priced beside goes
   // (the reach after the step of `beside`, rounded up), so that each opens as that reach is flown and not in the
   // same minute as the next reach.
-  { id: 'momentum', icon: 'momentum', name: 'RAM', what: 'FLIES FASTER', values: [1, 1.25, 1.5, 1.8, 2.2], gem: B.EMBER, needs: ['out', [0, 60, 200, 500]], ...levels([0.7, 2.4, 4.2, 6.2], 0.4), show: v => `x${v}` },
+  { id: 'momentum', icon: 'momentum', name: 'RAM', tiers: ['BARE', 'RUNNER', 'FINNED', 'THRUSTER', 'TWIN JET', 'AFTERBURNER', 'COMET'], what: 'FLIES FASTER', values: [1, 1.25, 1.5, 1.8, 2.2], gem: B.EMBER, needs: ['out', [0, 60, 200, 500]], ...levels([0.7, 2.4, 4.2, 6.2], 0.4), show: v => `x${v}` },
   // The hull: how many knocks the drill takes before it is wrecked and wound home (`hit`, `wreck`), a pip a level,
   // each a plate more on the drill. Its first level is priced beside a reach that has only just met hazards and
   // asks no gems; from there on it takes the south's, whose lava is the worst of what it is for. (Its third and
@@ -110,7 +111,7 @@ export const UPGRADES = [
   // cells off, for one trip out crosses both: the hull's 440 is often bought with the bit's 400, its 660 with the
   // winch's 700, the ram's 500 with the eighth reach's 570, and the hull's 280 still with the winch's 300. What it
   // keeps is a level from waiting on the reach after the one it is priced beside.
-  { id: 'hull', icon: 'hull', name: 'HULL', what: 'TAKES MORE KNOCKS', values: [5, 6, 7, 8, 9], gem: B.EMBER, needs: ['out', [150, 280, 440, 660]], ...levels([3.5, 4.5, 5.5, 6.5], 0.5), show: v => `${v}` },
+  { id: 'hull', icon: 'hull', name: 'HULL', tiers: ['BARE', 'BANDED', 'TWIN BAND', 'FRAMED', 'COPPER', 'COBALT', 'GILDED', 'AEGIS'], what: 'TAKES MORE KNOCKS', values: [5, 6, 7, 8, 9], gem: B.EMBER, needs: ['out', [150, 280, 440, 660]], ...levels([3.5, 4.5, 5.5, 6.5], 0.5), show: v => `${v}` },
 ];
 // What the lab can know: each thing the bit can crush, by the sheet and frame it is drawn from (`Game.sampleOf`),
 // with its name, where it lies (`where`, for its note, and `at`, a few words for its line in the list), whose part of

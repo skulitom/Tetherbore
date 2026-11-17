@@ -392,27 +392,25 @@ export const BITS = [
 // over it (the starmetal goes white).
 export const HOT = [null, null, null, { s: '#fff6c8', S: '#ffb060' }, { s: '#ffffff', S: '#ffd84a' }, { s: '#fff0ff', S: '#ff7ad8' }, { s: '#fff6c8', S: '#ff5a2a' }, { s: '#ffffff', S: '#ffffff' }];
 const LONG = level => level >= 5;
-// The ram bolts on to the body: fins, longer fins, a thruster, then a second pair of fins and a lit thruster; then
-// the fins swept back to the bit with a short pair behind them, and last the racer's, blue edged white, its
-// thruster lit blue.
+// The ram bolts on to the body, under it, each level a thing of its own (its top half drawn, rows 0 to 2 and the
+// tail's two columns at rows 4 to 7, and turned over for the bottom): RUNNER, a steel rail along the back; FINNED,
+// red fins swept back; THRUSTER, taller fins and a pair of nozzles at the tail; TWIN JET, the fins tipped gold and the
+// nozzles glowing; AFTERBURNER, ember wings swept back from the tail to the bit, the nozzles ringed hot; and COMET,
+// white and blue wings swept forward past the bit, its nozzles lit blue.
 const blank = () => Array.from({ length: 16 }, () => Array(16).fill('.'));
 const put = (g, y, x0, x1, c) => { for (let x = x0; x <= x1; x++) g[y][x] = c; };
-const RAMS = [1, 2, 3, 4, 5, 6].map(level => {
+const RAM_HALVES = [
+  { top: ['................', '...kkkkk........', '..kPPPPpk.......'] },
+  { top: ['..kk............', '..kLkkk.........', '..krLLrkk.......'] },
+  { top: ['.kkk............', '.kLLkkk.........', '.krrLLrkk.......'], tail: ['kk', 'kP', 'kp', 'kk'] },
+  { top: ['.kkkk...........', '.kyyLkkk........', '.krrrLLrkk......'], tail: ['kk', 'oP', 'op', 'kk'] },
+  { top: ['.kkkkkk.........', '.kyyooodkkk.....', '.krrrdddoooddk..'], tail: ['kk', 'yP', 'yd', 'kk'] },
+  { top: ['.........kkkk...', '.kkkkkkkkRRBBk..', '.kCcccBBBBBBk...'], tail: ['kk', 'RB', 'Bc', 'kk'] },
+];
+const RAMS = RAM_HALVES.map(({ top, tail }) => {
   const g = blank();
-  const fin = level >= 5 ? 8 : level >= 2 ? 7 : 5;
-  put(g, 2, 3, fin, 'r'); put(g, 13, 3, fin, 'r'); put(g, 1, 3, fin - 1, 'k'); put(g, 14, 3, fin - 1, 'k');
-  if (level >= 3) { for (let y = 6; y <= 9; y++) put(g, y, 0, 1, y === 6 || y === 9 ? 'k' : 'r'); }
-  if (level >= 4) { put(g, 1, 3, 5, 'y'); put(g, 14, 3, 5, 'y'); put(g, 0, 3, 4, 'k'); put(g, 15, 3, 4, 'k'); put(g, 7, 0, 0, 'y'); put(g, 8, 0, 0, 'y'); }
-  if (level >= 5) {
-    g[2][8] = 'y'; g[13][8] = 'y'; g[2][9] = 'k'; g[13][9] = 'k';
-    put(g, 3, 0, 0, 'k'); put(g, 3, 1, 2, 'r'); put(g, 12, 0, 0, 'k'); put(g, 12, 1, 2, 'r');
-    put(g, 2, 0, 2, 'k'); put(g, 13, 0, 2, 'k'); put(g, 4, 0, 1, 'k'); put(g, 11, 0, 1, 'k');
-  }
-  if (level >= 6) {
-    for (const y of [2, 3, 12, 13]) for (let x = 0; x < 16; x++) if (g[y][x] === 'r') g[y][x] = 'c';
-    for (const y of [1, 14]) for (let x = 0; x < 16; x++) if (g[y][x] === 'y') g[y][x] = 'R';
-    g[2][8] = 'R'; g[13][8] = 'R'; g[7][0] = 'c'; g[8][0] = 'c'; put(g, 7, 1, 1, 'B'); put(g, 8, 1, 1, 'B');
-  }
+  top.forEach((row, y) => { for (let x = 0; x < 16; x++) if (row[x] !== '.') { g[y][x] = row[x]; g[15 - y][x] = row[x]; } });
+  (tail ?? []).forEach((row, n) => { for (let x = 0; x < 2; x++) { g[4 + n][x] = row[x]; g[11 - n][x] = row[x]; } });
   return g.map(row => row.join(''));
 });
 // Behind a ram with a thruster burns its exhaust at speed, from two nozzles either side of where the tether leaves
@@ -434,19 +432,31 @@ const flame = (tier, short) => {
   }
   return g.map(row => row.join(''));
 };
-// The hull's plates are riveted over the body: a band of steel behind the bit, a second at the tail, then a rim
-// along both flanks, then bright rivets on every band; then a third band between the two (clear of the cockpit's
-// glass), cheek plates at the bit's root with the rivets gilt, and last a white rim along the top and a blue gleam
-// on the tail band.
+// The hull's plates are laid over the body, clear of the cockpit's glass, each level a hull of its own: BANDED, a
+// steel band behind the bit; TWIN BAND, a second at the tail; FRAMED, a steel rim joining them, riveted at the
+// corners; COPPER, the frame clad in copper and riveted all round; COBALT, blue armour with a third band and a plate
+// under the belly; GILDED, gunmetal trimmed in gold with gold cheek plates at the bit's root; and AEGIS, white plates
+// with seams of blue light and guards wrapped round the bit's root.
+const band = (g, x, top, rest) => { for (let y = 4; y <= 11; y++) g[y][x] = y === 4 ? top : rest; };
+const rivets = (g, c, at) => { for (const [x, y] of at) g[y][x] = c; };
+const CORNERS4 = [[3, 4], [9, 4], [3, 11], [9, 11]], ROUND = [[9, 6], [9, 9], [3, 6], [3, 9], [6, 4], [6, 11]];
+const frame4 = (g, light, dark) => { band(g, 9, light, dark); band(g, 3, light, dark); put(g, 4, 3, 9, light); put(g, 11, 3, 9, dark); };
 const PLATES = [1, 2, 3, 4, 5, 6, 7].map(level => {
   const g = blank();
-  for (let y = 4; y <= 11; y++) g[y][9] = y === 4 ? 'P' : 'p';
-  if (level >= 2) for (let y = 4; y <= 11; y++) g[y][3] = y === 4 ? 'P' : 'p';
-  if (level >= 3) { put(g, 4, 3, 9, 'P'); put(g, 11, 3, 9, 'p'); }
-  if (level >= 5) for (let y = 4; y <= 11; y++) g[y][7] = y === 4 ? 'P' : 'p';
-  if (level >= 4) for (const [x, y] of [[9, 6], [9, 9], [3, 6], [3, 9], [6, 4], [6, 11]]) g[y][x] = level >= 6 ? 'y' : 'R';
-  if (level >= 6) for (const [x, y] of [[10, 4], [11, 4], [10, 11], [11, 11]]) g[y][x] = 'P';
-  if (level >= 7) { put(g, 4, 3, 9, 'R'); g[4][6] = 'y'; g[5][3] = 'c'; g[10][3] = 'c'; }
+  if (level === 1) band(g, 9, 'P', 'p');
+  if (level === 2) { band(g, 9, 'P', 'p'); band(g, 3, 'P', 'p'); }
+  if (level === 3) { frame4(g, 'P', 'p'); rivets(g, 'R', CORNERS4); }
+  if (level === 4) { frame4(g, 'n', 'N'); rivets(g, 'R', [...CORNERS4, ...ROUND]); }
+  if (level === 5) { frame4(g, 'B', 'C'); band(g, 7, 'B', 'C'); put(g, 10, 3, 9, 'C'); put(g, 11, 3, 9, 'C'); put(g, 10, 4, 8, 'c'); rivets(g, 'R', [[9, 6], [3, 6], [7, 6]]); }
+  if (level === 6) {
+    frame4(g, 'y', 'q'); band(g, 7, 'y', 'q'); put(g, 10, 3, 9, 'q'); put(g, 11, 3, 9, 'Q'); rivets(g, 'y', [[9, 7], [3, 7], [7, 9]]);
+    for (const [x, y, c] of [[10, 3, 'k'], [11, 3, 'k'], [10, 4, 'y'], [11, 4, 'y'], [10, 11, 'd'], [11, 11, 'd'], [10, 12, 'k'], [11, 12, 'k']]) g[y][x] = c;
+  }
+  if (level === 7) {
+    frame4(g, 'R', 'B'); band(g, 7, 'R', 'B'); put(g, 10, 3, 9, 'B'); put(g, 11, 3, 9, 'R'); put(g, 10, 4, 8, 'c'); put(g, 4, 3, 9, 'R'); g[4][6] = 'c';
+    for (const [x, y, c] of [[10, 2, 'k'], [11, 2, 'k'], [12, 2, 'k'], [10, 3, 'R'], [11, 3, 'R'], [12, 3, 'k'], [10, 4, 'B'], [11, 4, 'B'],
+      [10, 13, 'k'], [11, 13, 'k'], [12, 13, 'k'], [10, 12, 'B'], [11, 12, 'B'], [12, 12, 'k'], [10, 11, 'C'], [11, 11, 'C']]) g[y][x] = c;
+  }
   return g.map(row => row.join(''));
 });
 // What is fitted to the drill shows on it, and each has a lit copy for when it acts: the mender's green lamp (a
@@ -510,7 +520,7 @@ const FITS = {
 export const drill = {
   version: 1, name: 'drill', width: 16, height: 16,
   palette: { k: '#1c1420', b: '#ffd83a', d: '#e08a1c', c: '#3ab8e8', w: '#eafcff', s: '#eef2f8', S: '#8c96a8', r: '#ff5a3a', y: '#ffe14a', p: '#77829a', P: '#aab4c8', R: '#ffffff', m: '#5cc040', M: '#d8ffb0', g: '#8ce060', o: '#ffb060',
-    W: '#fff6c8', B: '#84dcff', C: '#2a7ab8', L: '#ff9a8a', G: '#3a7a2a', v: '#b48cff', V: '#6a4ab8', e: '#e4d4ff', h: '#ffffff' },
+    W: '#fff6c8', B: '#84dcff', C: '#2a7ab8', L: '#ff9a8a', G: '#3a7a2a', v: '#b48cff', V: '#6a4ab8', e: '#e4d4ff', h: '#ffffff', n: '#f0a070', N: '#a8582c', Q: '#5a5470', q: '#38324a' },
   symbols: { ...Object.fromEntries(BITS.flatMap((bit, n) => [[`bit${n}`, bitRows(n)], [`hot${n}`, bitOnly(bitRows(n))]])), ...Object.fromEntries(RAMS.map((rows, n) => [`ram${n + 1}`, rows])), ...Object.fromEntries(PLATES.map((rows, n) => [`plate${n + 1}`, rows])),
     ...Object.fromEntries(Object.entries(FITS).map(([id, rows]) => [`fit-${id}`, rows])), ...Object.fromEntries([1, 2, 3, 4].flatMap(t => [[`flame${t}`, flame(t, false)], [`flame${t}-b`, flame(t, true)]])) },
   frames: [

@@ -127,7 +127,7 @@ for (const coil of [0, 1]) {
   const game = await fitted('lavaskin', 1);
   game.S.lv.tether = 3; game.S.lv.hull = 2; game.dents = 1; game.S.lab['lode-items:oreA'] = 4;
   const said = Object.fromEntries(game.stats().map(([name, value, lit]) => [name, [value, lit]]));
-  check(said.REACH[0] === '160 CELLS' && said.HULL[0] === '6/7 PIPS' && said.MENDS[0] === '1 PIP / 20 S' && said.LAVA[0] === 'SWIMS IN IT' && said.LAVA[1] === true && said.SPORES[0] === 'KNOCK' && said.SPORES[1] === false && said.ANALYSED[0] === '1/48, UP TO +3%', `the stats say ${JSON.stringify(said)}`);
+  check(said.REACH[0] === '160 CELLS' && said.HULL[0] === 'TWIN BAND 6/7 PIPS' && said.MENDS[0] === '1 PIP / 20 S' && said.LAVA[0] === 'SWIMS IN IT' && said.LAVA[1] === true && said.SPORES[0] === 'KNOCK' && said.SPORES[1] === false && said.ANALYSED[0] === '1/48, UP TO +3%', `the stats say ${JSON.stringify(said)}`);
   game.resize(320, 568, 1); game.labTab = 'stats'; game.openLab(true); game.render();
   // (The panel's tabs stand in its header, left to right: STATS, LAB, MENU; and MAP before MENU once the chart is bought.)
   const heads = game.buttons.filter(b => b.h === 20 && b.w < 60 && b.w > 24 && b.y < game.H / 2).sort((a, b) => a.x - b.x);

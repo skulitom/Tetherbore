@@ -1626,12 +1626,12 @@ export class Drawing {
     return [
       // (How far out the drill has been, of how far the tether goes.)
       ['REACH', out > 0 ? `${Math.min(out, this.val('tether'))}/${this.val('tether')} CELLS` : `${this.val('tether')} CELLS`],
-      // (The bit and the winch say which they are where the line has room: `tiers`.)
+      // (The bit, the ram, the winch and the hull say which they are where the line has room: `tiers`.)
       [...first(['BIT', `${tierOf('drill')} MK${this.val('drill')}, x${CUT[lv.drill]}${lv.drill >= 5 ? ' PLOUGH' : ''}`], ['BIT', `MK${this.val('drill')}, CUTS x${CUT[lv.drill]}${lv.drill >= 5 ? ' PLOUGH' : ''}`]), lv.drill >= 5 || undefined],
-      ['SPEED', `x${this.val('momentum')}`],
+      first(['SPEED', `${tierOf('momentum')} RAM x${this.val('momentum')}`], ['SPEED', `x${this.val('momentum')}`]),
       first(['WINCH', `${tierOf('winch')} x${this.val('winch')}, LOAD ${load < 10000 ? load : compact(load)}`], ['WINCH', `x${this.val('winch')}, LOAD ${load < 10000 ? load : compact(load)}`]),
       ['SCAN', `${this.val('scanner')} CELLS`],
-      ['HULL', `${this.hull}/${this.val('hull')} PIPS`],
+      first(['HULL', `${tierOf('hull')} ${this.hull}/${this.val('hull')} PIPS`], ['HULL', `${this.hull}/${this.val('hull')} PIPS`]),
       ['MENDS', `1 PIP / ${mender} S`, this.S.lv.mender > 0],
       ['LAVA', this.swims ? lv.lavaskin >= 2 ? 'SWIMS, SMELTS' : 'SWIMS IN IT' : 'BURNS', this.swims],
       ['SPORES', this.val('sporedrive') ? `SPEED x${BOOST.by}${lv.sporedrive >= 2 ? ', GRAFT' : ''}` : 'KNOCK', this.val('sporedrive') > 0],
