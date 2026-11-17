@@ -166,11 +166,12 @@ const near = (x, y) => (C + y) * N + C + x;
 const cutter = CORE.find(u => u.id === 'cutter');
 check(cutter.needs[0] === 'kinds' && cutter.needs[1].slice(0, 4).join() === '8,18,28,36', `the gem cutter asks for ${cutter.needs[1].slice(0, 4)} kinds, not 8, 18, 28 and 36`);
 check(cutter.needs[1].slice(0, 4).every(n => n <= LAB.length), 'the gem cutter asks for more kinds than there are');
-// Its late level asks for more kinds than there are short of the deep flanks' and deep strains' ores, and no more
-// than there are; and LIVE CATCH's first two levels for no more than there are.
+// Its late level asks for more kinds than there are short of the far ground's ores (the seams', the deep flanks'
+// and the deep strains', twenty-four: a deep seam's are its seam's), and no more than there are; and LIVE CATCH's
+// first two levels for no more than there are.
 {
-  const far = LAB.filter(e => [5, 6, 7, 8, 64, 65, 66, 67].some(id => BIOMES[id].oreKeys.includes(e.key))).length, late = cutter.needs[1][4];
-  check(far === 16 && late[0] === 'kinds' && late[1] > LAB.length - far && late[1] <= LAB.length, `the gem cutter's late level asks for ${late}, where ${LAB.length - far} kinds lie short of the ${far} far ores`);
+  const far = LAB.filter(e => [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 64, 65, 66, 67].some(id => BIOMES[id].oreKeys.includes(e.key))).length, late = cutter.needs[1][4];
+  check(far === 24 && late[0] === 'kinds' && late[1] > LAB.length - far && late[1] <= LAB.length, `the gem cutter's late level asks for ${late}, where ${LAB.length - far} kinds lie short of the ${far} far ores`);
   const live = CORE.find(u => u.id === 'livecatch');
   check(live.needs[0] === 'kinds' && live.needs[1].slice(0, 2).every(n => n <= LAB.length), `LIVE CATCH asks for ${live.needs[1].slice(0, 2)} kinds, of ${LAB.length}`);
 }

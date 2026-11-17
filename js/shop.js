@@ -271,20 +271,26 @@ export const MAPS = [
 //              of three and the last for all four; a long game played round all four came to eight in ten minutes,
 //              eighteen in about thirty-five and twenty-eight in about eighty. (It asked 4, 7, 10 and 12 of
 //              sixteen, which one direction gave within two hundred cells.)
-//              Its first level of the late game asks for 52 kinds, which only the far ground makes up: everything
-//              short of the deep flanks and their deep strains is 48, so four at least of their sixteen ores must
-//              have been analysed. One wall of the late game that is about what has been analysed and not how far
-//              out the drill has been. (It asked 42 of the forty-eight, when the seams' ores, met from 470 cells,
-//              were not there to come sooner.)
+//              Its first level of the late game asks for 43 kinds, which only the far ground makes up: everything
+//              short of the seams, the deep flanks and the deep strains is 40, so three at least of their twenty-four
+//              ores must have been analysed. One wall of the late game that is about what has been analysed and not
+//              how far out the drill has been. (It asked 42 of the forty-eight, two of the deep flanks' eight. Asked
+//              52, as first set, it was a wall a long game never came over: played three hours on five worlds
+//              (tools/long-play.mjs --all), a game held to its spokes analyses 40 to 49 kinds, the deep strains'
+//              hardly ever, and waited on it twice as long in all as on 42 before; on 43 it waits no longer than it
+//              did, and a game that has been into a seam comes to it sooner.)
 //   LAMP       the drill's light reaches further (cells), and sees across open ground as far as it reaches, as the
 //              scan sees through rock. (It cost what the levels round it do, and gave a light that lit no more than
 //              a phone's screen showed: it is a third of that now.)
 //   BLACK BOX  when the drill is lost, this share of the grit the trip had earned is kept
 //   LIVE CATCH a rare hazard hauled while it is awake (a bell tolling, a fumarole between its jets, a lodestone
 //              humming) pays its lump this many times over; a glowworm swimming pays twice with none, as it always
-//              has. Paid in the west's gems, and asks for kinds analysed: thirty-four and forty-six, as many as a
-//              game has by the time it has been out to the rare hazards and the seams (from 450 and 470 cells) and
-//              past them. (It asked thirty and forty when the lab knew forty-eight things.)
+//              has. Paid in the west's gems, and asks for kinds analysed: thirty and forty-one, as many as a game has
+//              by the time it has been out to the rare hazards (from 450 cells) and past them. (It asked thirty and
+//              forty when the lab knew forty-eight things. Asked thirty-four and forty-six, as first set when the
+//              seams' and deep strains' sixteen came, a game played three hours on five worlds waited on its first
+//              level two and a half times as long in all as before, since a game held to its spokes meets a seam
+//              late or not at all; on thirty and forty-one none waits longer than it did.)
 //   TROPHY LINE a foe at rest (a bat clinging after its swoop, a leech on the floor, a spitter sagging) caught in a
 //              loop of the tether pays this many specimens of its ground's direction. Paid in the south's gems, and
 //              asks for kinds of creature met (js/fauna.js)
@@ -297,7 +303,7 @@ export const CORE = [
     // (From its third level it keeps what a lost trip learnt, as well as its grit: js/game.js, `keepLore`.)
     says: l => l === 2 ? 'KEEPS WHAT IT LEARNT' : null },
   // (The live catch's value is what a woken rare's lump is multiplied by: 1, by nothing, before it is bought.)
-  { id: 'livecatch', pic: 'mire', name: 'LIVE CATCH', what: 'WOKEN RARES PAY MORE', values: [1, 2, 3], gem: B.MIRE, needs: ['kinds', [34, 46]], ...deep([[6.5, 1.5], [7.5, 2]], [1500, 4000]), show: v => v > 1 ? `ALL x${v}` : 'WORM x2',
+  { id: 'livecatch', pic: 'mire', name: 'LIVE CATCH', what: 'WOKEN RARES PAY MORE', values: [1, 2, 3], gem: B.MIRE, needs: ['kinds', [30, 41]], ...deep([[6.5, 1.5], [7.5, 2]], [1500, 4000]), show: v => v > 1 ? `ALL x${v}` : 'WORM x2',
     says: l => l ? `WOKEN RARES PAY x${CORE[4].values[l + 1]}` : 'BELLS, VENTS, STONES' },
   { id: 'trophy', pic: 'spec-ember', name: 'TROPHY LINE', what: 'LOOPS CATCH FOES', values: [0, 2, 3], gem: B.EMBER, needs: ['beasts', [6, 10]], ...deep([[6, 1], [7, 1.5]], [1000, 3000]), show: v => v ? `${v} SPEC` : 'OFF',
     says: l => `A FOE PAYS ${CORE[5].values[l + 1]} SPEC` },
@@ -338,7 +344,7 @@ const LATE = {
   arccoil: [[2, 15e6, 0, 0, 60]],
   maprange: [[7, 10e6, 2000, ['out', 1000]], [10, 60e6, 6000, ['out', 1700]]],
   refinery: [[2.5, 80e6, 30000, ['relics', 1]], [3, 450e6, 45000, ['relics', 2]]],
-  cutter: [[2.5, 60e6, 22000, ['kinds', 52]], [3, 330e6, 35000, ['relics', 1]]],
+  cutter: [[2.5, 60e6, 22000, ['kinds', 43]], [3, 330e6, 35000, ['relics', 1]]],
   lamp: [[16, 30e6, 10000, 7], [18, 135e6, 25000, 8]],
   blackbox: [[0.9, 50e6, 15000, ['out', 1600]]],
   livecatch: [[4, 40e6, 12000, ['relics', 1]]],
