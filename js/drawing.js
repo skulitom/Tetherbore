@@ -120,6 +120,8 @@ const RARE_GLINTS = 8, RARE_GLINT = [0.3, 1.5], WORM_GLOW = [0.45, 2.5], JET_LIG
 // fitted lit (`drawShop`). One, made once and filled in for each picture.
 const PREVIEW = { heat: 0, flame: 0, tint: '#ffffff', tintAlpha: 0, lit: 0, spin: 0 };
 // And the frames of the CORE tab's rows: where on the station's sheet each part lies, a cell's worth of it.
+// The names of the levels of the rows that have them (js/shop.js: `tiers`), for STATS.
+const TIERED = Object.fromEntries(ROWS.filter(u => u.tiers).map(u => [u.id, u.tiers]));
 const PART_CROP = { refinery: [0, 1], cutter: [48, 47], blackbox: [0, 45] };
 // The finds the map in the corner marks on its rim, past its edge, at the most: the nearest so many (`drawMap`), in
 // lists made once.
@@ -1615,6 +1617,7 @@ export class Drawing {
     // The panel is no more than 23 lines on the narrowest phone, and every line one line: what a later row adds is
     // said on a line there already, and where two ways of saying a line are given the first that fits is said.
     const room = Math.min(this.W - 8, 200) - 20, first = (...ways) => ways.find(([name, value]) => textWidth(name) + textWidth(value) <= room) ?? ways[ways.length - 1];
+    const tierOf = id => TIERED[id][Math.min(TIERED[id].length - 1, lv[id])];
     const out = Math.floor(S.out ?? 0), load = WINCH_LOAD[lv.winch], live = this.val('livecatch'), spin = this.val('flywheel'), foe = this.val('trophy');
     const beasts = S.fauna?.met ? Object.keys(S.fauna.met).length : 0, places = Object.keys(S.met).length, chart = this.val('chart') > 0, finder = this.val('mapfinder');
     const refine = this.val('refinery'), cut = this.val('cutter'), specs = [1, 2, 3, 4].map(k => this.specs(k)), keeps = Math.round(this.val('blackbox') * 100), PLACES = places === 1 ? 'PLACE' : 'PLACES';
@@ -1623,9 +1626,10 @@ export class Drawing {
     return [
       // (How far out the drill has been, of how far the tether goes.)
       ['REACH', out > 0 ? `${Math.min(out, this.val('tether'))}/${this.val('tether')} CELLS` : `${this.val('tether')} CELLS`],
-      ['BIT', `MK${this.val('drill')}, CUTS x${CUT[lv.drill]}${lv.drill >= 5 ? ' PLOUGH' : ''}`, lv.drill >= 5 || undefined],
+      // (The bit and the winch say which they are where the line has room: `tiers`.)
+      [...first(['BIT', `${tierOf('drill')} MK${this.val('drill')}, x${CUT[lv.drill]}${lv.drill >= 5 ? ' PLOUGH' : ''}`], ['BIT', `MK${this.val('drill')}, CUTS x${CUT[lv.drill]}${lv.drill >= 5 ? ' PLOUGH' : ''}`]), lv.drill >= 5 || undefined],
       ['SPEED', `x${this.val('momentum')}`],
-      ['WINCH', `x${this.val('winch')}, LOAD ${load < 10000 ? load : compact(load)}`],
+      first(['WINCH', `${tierOf('winch')} x${this.val('winch')}, LOAD ${load < 10000 ? load : compact(load)}`], ['WINCH', `x${this.val('winch')}, LOAD ${load < 10000 ? load : compact(load)}`]),
       ['SCAN', `${this.val('scanner')} CELLS`],
       ['HULL', `${this.hull}/${this.val('hull')} PIPS`],
       ['MENDS', `1 PIP / ${mender} S`, this.S.lv.mender > 0],

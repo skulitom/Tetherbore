@@ -123,13 +123,14 @@ for (const [cssW, cssH] of [[320, 568], [360, 640]]) {
   }
 }
 
-// What the bit and the winch are, said on their lines: the bit's cut, and from its sixth level its plough; the
-// winch's load.
+// What the bit and the winch are, said on their lines: which bit, its cut, and from its sixth level its plough;
+// which winch and its load (the last winch's name, SINGULARITY, has no room, and its line says what the others do
+// without it).
 {
   const said = lv => { Object.assign(S.lv, lv); return Object.fromEntries(game.stats().map(([name, value]) => [name, value])); };
   const a = said({ drill: 3, winch: 2 }), b = said({ drill: 5, winch: 8 });
-  check(a.BIT === 'MK4, CUTS x3.6' && a.WINCH === 'x1.6, LOAD 1000', `the bit at MK4 says '${a.BIT}' and the winch at x1.6 '${a.WINCH}'`);
-  check(b.BIT === 'MK6, CUTS x6.5 PLOUGH' && b.WINCH === 'x5, LOAD 100K', `the bit at MK6 says '${b.BIT}' and the winch at its last '${b.WINCH}'`);
+  check(a.BIT === 'GOLD MK4, x3.6' && a.WINCH === 'GEARED x1.6, LOAD 1000', `the bit at MK4 says '${a.BIT}' and the winch at x1.6 '${a.WINCH}'`);
+  check(b.BIT === 'VOID MK6, x6.5 PLOUGH' && b.WINCH === 'x5, LOAD 100K', `the bit at MK6 says '${b.BIT}' and the winch at its last '${b.WINCH}'`);
 }
 // Every row's `says` (and its `what`) fits the narrowest line by itself, as js/shop.js promises.
 for (const u of TABS.flatMap(t => t.rows)) for (let l = 0; l < u.values.length - 1; l++) {

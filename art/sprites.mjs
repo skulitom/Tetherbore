@@ -365,11 +365,28 @@ const DRILL_LONG = [
 const bitOnly = rows => rows.map(row => row.replace(/[^sS]/g, '.'));
 const SPIN = { s: 'S', S: 's' };
 const DIRS = ['right', 'down', 'left', 'up'];
-// Each better bit is a different metal: steel, bronze, blue steel, gold, diamond, then void steel, ember steel and
-// starmetal, on the longer cone.
+// Each better bit is a different metal and a different shape, the five columns in front of the body drawn again
+// (rows 2 to 13; `h` is the bit's own trim, which does not spin): a STEEL cone; a BRONZE auger behind a brass
+// collar; a COBALT fork of two prongs; a GOLD crown of three teeth; a DIAMOND cut in facets that catch the light;
+// then, on the longer cone, a VOID needle through a magenta ring, an EMBER cone with swept fins, and a STARMETAL
+// cone burning to a star at its point.
+const BIT_SHAPES = [
+  { 4: 'kk....', 5: 'ksk...', 6: 'kSsk..', 7: 'ksSsk.', 8: 'ksSsk.', 9: 'kSsk..', 10: 'ksk...', 11: 'kk....' },
+  { 3: '.k....', 4: 'khk...', 5: 'khsk..', 6: 'khSsk.', 7: 'khsSsk', 8: 'khsSsk', 9: 'khSsk.', 10: 'khsk..', 11: 'khk...', 12: '.k....' },
+  { 4: 'kk....', 5: 'kssk..', 6: 'kSsssk', 7: 'ksSkk.', 8: 'ksSkk.', 9: 'kSsssk', 10: 'kssk..', 11: 'kk....' },
+  { 3: 'kkkk..', 4: 'ksssk.', 5: 'kSskk.', 6: 'kSsk..', 7: 'ksSssk', 8: 'ksSssk', 9: 'kSsk..', 10: 'kSskk.', 11: 'ksssk.', 12: 'kkkk..' },
+  { 3: 'kk....', 4: 'khkk..', 5: 'ksShk.', 6: 'kSshsk', 7: 'ksShSk', 8: 'kSsSsk', 9: 'kSsSk.', 10: 'ksSk..', 11: 'kkk...', 12: '......' },
+  { 4: 'kkk...', 5: 'khhk..', 6: 'khSkkk', 7: 'khsSss', 8: 'khSsSs', 9: 'khskkk', 10: 'khhk..', 11: 'kkk...' },
+  { 2: '.k....', 3: 'khk...', 4: 'kkhk..', 5: 'ksskk.', 6: 'kSsssk', 7: 'ksSsSs', 8: 'ksSsSs', 9: 'kSsssk', 10: 'ksskk.', 11: 'kkhk..', 12: 'khk...', 13: '.k....' },
+  { 4: 'kk....', 5: 'ksskh.', 6: 'kSssh.', 7: 'ksSsRh', 8: 'ksSsRh', 9: 'kSssh.', 10: 'ksskh.', 11: 'kk....' },
+];
+const bitRows = level => DRILL.map((row, y) => {
+  const tip = BIT_SHAPES[level][y];
+  return tip ? row.slice(0, 10) + tip : y >= 4 && y <= 11 ? row.slice(0, 11) + '.....' : row;
+});
 export const BITS = [
-  { s: '#eef2f8', S: '#8c96a8' }, { s: '#f4cc94', S: '#b4703a' }, { s: '#bfe4ff', S: '#4a86c8' }, { s: '#fff2a0', S: '#e0a020' }, { s: '#e6fffa', S: '#38dcd0' },
-  { s: '#e4d4ff', S: '#7a52d8' }, { s: '#ffd8c0', S: '#e0482a' }, { s: '#ffffff', S: '#b48cff' },
+  { s: '#eef2f8', S: '#8c96a8' }, { s: '#f4cc94', S: '#b4703a', h: '#ffe8a0' }, { s: '#bfe4ff', S: '#4a86c8' }, { s: '#fff2a0', S: '#e0a020' }, { s: '#e6fffa', S: '#38dcd0', h: '#ffffff' },
+  { s: '#e4d4ff', S: '#7a52d8', h: '#ff7ad8' }, { s: '#ffd8c0', S: '#e0482a', h: '#ffb030' }, { s: '#ffffff', S: '#b48cff', h: '#fff6c8' },
 ];
 // From gold on, the bit glows as it bites into hard ground: the same cone in the colours its metal goes hot, laid
 // over it (the starmetal goes white).
@@ -493,18 +510,18 @@ const FITS = {
 export const drill = {
   version: 1, name: 'drill', width: 16, height: 16,
   palette: { k: '#1c1420', b: '#ffd83a', d: '#e08a1c', c: '#3ab8e8', w: '#eafcff', s: '#eef2f8', S: '#8c96a8', r: '#ff5a3a', y: '#ffe14a', p: '#77829a', P: '#aab4c8', R: '#ffffff', m: '#5cc040', M: '#d8ffb0', g: '#8ce060', o: '#ffb060',
-    W: '#fff6c8', B: '#84dcff', C: '#2a7ab8', L: '#ff9a8a', G: '#3a7a2a', v: '#b48cff', V: '#6a4ab8', e: '#e4d4ff' },
-  symbols: { drill: DRILL, long: DRILL_LONG, hot: bitOnly(DRILL), 'hot-long': bitOnly(DRILL_LONG), ...Object.fromEntries(RAMS.map((rows, n) => [`ram${n + 1}`, rows])), ...Object.fromEntries(PLATES.map((rows, n) => [`plate${n + 1}`, rows])),
+    W: '#fff6c8', B: '#84dcff', C: '#2a7ab8', L: '#ff9a8a', G: '#3a7a2a', v: '#b48cff', V: '#6a4ab8', e: '#e4d4ff', h: '#ffffff' },
+  symbols: { ...Object.fromEntries(BITS.flatMap((bit, n) => [[`bit${n}`, bitRows(n)], [`hot${n}`, bitOnly(bitRows(n))]])), ...Object.fromEntries(RAMS.map((rows, n) => [`ram${n + 1}`, rows])), ...Object.fromEntries(PLATES.map((rows, n) => [`plate${n + 1}`, rows])),
     ...Object.fromEntries(Object.entries(FITS).map(([id, rows]) => [`fit-${id}`, rows])), ...Object.fromEntries([1, 2, 3, 4].flatMap(t => [[`flame${t}`, flame(t, false)], [`flame${t}-b`, flame(t, true)]])) },
   frames: [
-    // (The four turned copies of the first five bits are as they were; the later bits are only ever drawn facing right.)
+    // (The later bits are only ever drawn facing right.)
     ...BITS.flatMap((bit, level) => (LONG(level) ? ['right'] : DIRS).flatMap((dir, i) => [
-      { name: `${dir}-a-${level}`, duration: 70, palette: bit, ops: [{ op: 'stamp', symbol: LONG(level) ? 'long' : 'drill', x: 0, y: 0, ...(i && { rotate: i * 90 }) }] },
-      { name: `${dir}-b-${level}`, duration: 70, palette: bit, ops: [{ op: 'stamp', symbol: LONG(level) ? 'long' : 'drill', x: 0, y: 0, ...(i && { rotate: i * 90 }), remap: SPIN }] },
+      { name: `${dir}-a-${level}`, duration: 70, palette: bit, ops: [{ op: 'stamp', symbol: `bit${level}`, x: 0, y: 0, ...(i && { rotate: i * 90 }) }] },
+      { name: `${dir}-b-${level}`, duration: 70, palette: bit, ops: [{ op: 'stamp', symbol: `bit${level}`, x: 0, y: 0, ...(i && { rotate: i * 90 }), remap: SPIN }] },
     ])),
     ...HOT.flatMap((heat, level) => heat ? [
-      { name: `right-h-a-${level}`, duration: 70, palette: heat, ops: [{ op: 'stamp', symbol: LONG(level) ? 'hot-long' : 'hot', x: 0, y: 0 }] },
-      { name: `right-h-b-${level}`, duration: 70, palette: heat, ops: [{ op: 'stamp', symbol: LONG(level) ? 'hot-long' : 'hot', x: 0, y: 0, remap: SPIN }] },
+      { name: `right-h-a-${level}`, duration: 70, palette: heat, ops: [{ op: 'stamp', symbol: `hot${level}`, x: 0, y: 0 }] },
+      { name: `right-h-b-${level}`, duration: 70, palette: heat, ops: [{ op: 'stamp', symbol: `hot${level}`, x: 0, y: 0, remap: SPIN }] },
     ] : []),
     ...RAMS.flatMap((rows, n) => (n >= 4 ? ['right'] : DIRS).map((dir, i) => ({ name: `ram-${dir}-${n + 1}`, ops: [{ op: 'stamp', symbol: `ram${n + 1}`, x: 0, y: 0, ...(i && { rotate: i * 90 }) }] }))),
     ...PLATES.map((rows, n) => ({ name: `plate-right-${n + 1}`, ops: [{ op: 'stamp', symbol: `plate${n + 1}`, x: 0, y: 0 }] })),
@@ -519,70 +536,198 @@ export const drill = {
 };
 
 // ------------------------------------------------------------------ the core
-// Three cells across: a riveted ring round a lit well, with a socket on each side for what the four directions hide.
-const coreOps = [
-  { op: 'ellipse', x: 2, y: 2, w: 44, h: 44, color: 'k', filled: true },
-  { op: 'ellipse', x: 3, y: 3, w: 42, h: 42, color: 'l', filled: true },
-  { op: 'ellipse', x: 4, y: 4, w: 41, h: 41, color: 'm', filled: true },
-  { op: 'ellipse', x: 6, y: 6, w: 39, h: 39, color: 'M', filled: true },
-  { op: 'ellipse', x: 6, y: 6, w: 37, h: 37, color: 'm', filled: true },
-  { op: 'ellipse', x: 10, y: 10, w: 28, h: 28, color: 'k', filled: true },
-  { op: 'ellipse', x: 11, y: 11, w: 26, h: 26, color: 'D', filled: true },
-  { op: 'ellipse', x: 14, y: 14, w: 20, h: 20, color: 'g', filled: true },
-  { op: 'ellipse', x: 17, y: 17, w: 14, h: 14, color: 'G', filled: true },
-  { op: 'ellipse', x: 20, y: 20, w: 8, h: 8, color: 'w', filled: true },
-  // sockets
-  ...[[20, 1], [20, 39], [1, 20], [39, 20]].flatMap(([x, y]) => [
-    { op: 'rect', x, y, w: 8, h: 8, color: 'k', filled: true },
-    { op: 'rect', x: x + 1, y: y + 1, w: 6, h: 6, color: 'M', filled: true },
-    { op: 'rect', x: x + 2, y: y + 2, w: 4, h: 4, color: 'D', filled: true },
-  ]),
-  // rivets
-  ...[[9, 9], [38, 9], [9, 38], [38, 38]].flatMap(([x, y]) => [
-    { op: 'pixel', x, y, color: 'l' }, { op: 'pixel', x: x + 1, y: y + 1, color: 'k' },
-  ]),
+// Three cells across: a ring round a lit well, with a socket on each side for what the four directions hide. Each
+// level of the winch is a winch of its own, told apart by its shape before its colour: IRON, a plain riveted ring;
+// STEEL, with a bolted lug at each corner; GEARED, a bronze cog with lightening holes and an amber well; FROST, ice
+// with a spike of crystal at each corner and a snowflake in the well; CRYSTAL, a faceted violet ring with a cluster
+// of shards at each corner; MAGMA, basalt split by glowing cracks round a well of lava, with horns of obsidian;
+// STORM, a navy ring with a tesla coil at each corner and lightning across it; GRAVITY, a deep purple ring with a
+// band in orbit about it and a well that turns; and SINGULARITY, black, a burning disc falling into a well with no
+// light in it but its rim, haloed, each of its four sockets lined in the colour of the gem of the direction it
+// faces (letters of their own, N S W E, which nothing else of the core is drawn in). Each is drawn a pixel at a
+// time from where the pixel lies about the middle, lit from the top left.
+export const WINCHES = ['IRON', 'STEEL', 'GEARED', 'FROST', 'CRYSTAL', 'MAGMA', 'STORM', 'GRAVITY', 'SINGULARITY'];
+const CC = 23.5, TAU = Math.PI * 2;
+// (How far an angle is from the nearest of n spokes, the first at `off`, in radians.)
+const spoke = (a, n, off = 0) => { const step = TAU / n; let t = (a - off) / step; t -= Math.round(t); return t * step; };
+const hash = (x, y) => { let h = (x * 374761393 + y * 668265263) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
+// The plain ring every winch is built on: an outline, a lit lip, a groove, an inner lip and the well.
+const ringPixel = ({ d, s }) => {
+  if (d > 22.6) return null;
+  if (d > 21.6) return 'k';
+  if (d > 20.4) return s > 0.3 ? 'l' : s < -0.6 ? 'M' : 'm';
+  if (d > 16.6) return s < -0.7 ? 'M' : 'm';
+  if (d > 15.6) return 'M';
+  if (d > 13.6) return s < -0.25 ? 'm' : 'M';
+  if (d > 12.6) return 'k';
+  if (d > 10.2) return 'D';
+  if (d > 7) return 'g';
+  if (d > 3.6) return 'G';
+  return 'w';
+};
+const ring = d => d > 12.6 && d <= 21.6;
+// A shard standing out from the ring at angle `at`, to a point at `len`, `half` wide where it leaves the ring.
+const shard = (p, at, len, half, lit, dark, tip = 'w') => {
+  const off = spoke(p.a, 1, at) * p.d;
+  if (p.d < 20 || p.d > len) return null;
+  const w = half * Math.min(1, (len - p.d) / (len - 21));
+  if (Math.abs(off) > w) return null;
+  return len - p.d < 1.3 ? tip : off < 0 ? lit : dark;
+};
+const CORNERS = [1, 3, 5, 7].map(n => n * Math.PI / 4);
+const TIERS = [
+  // IRON: eight rivets round the ring.
+  { palette: { l: '#c8ccd8', m: '#8a90a2', M: '#5a6074', D: '#1e2a44', g: '#2a78c8', G: '#5cc4f0', w: '#eafcff' },
+    pixel: p => ring(p.d) && Math.abs(spoke(p.a, 8, Math.PI / 8) * p.d) < 0.8 && Math.abs(p.d - 18.5) < 0.8 ? 'l' : undefined },
+  // STEEL: a bolted lug at each corner, standing out of the ring.
+  { palette: { l: '#e6f0ff', m: '#8aa4c8', M: '#4e6690', D: '#1a2a4c', g: '#3a8ae0', G: '#8ad4ff', w: '#f0fcff' },
+    pixel: p => {
+      for (const c of CORNERS) {
+        const cx = CC + Math.cos(c) * 19.5, cy = CC + Math.sin(c) * 19.5, ux = Math.abs(p.x - cx), uy = Math.abs(p.y - cy);
+        if (ux <= 3.5 && uy <= 3.5) return ux <= 0.5 && uy <= 0.5 ? 'k' : (ux > 2.5 || uy > 2.5) ? 'k' : p.x - cx + p.y - cy < 0 ? 'l' : 'm';
+      }
+    } },
+  // GEARED: a bronze cog, sixteen teeth, eight holes through the ring, an amber well.
+  { palette: { l: '#ffd8a0', m: '#c88a4a', M: '#7a4a24', D: '#3a1e0c', g: '#e08a20', G: '#ffd060', w: '#fff6d0' },
+    pixel: p => {
+      if (p.d > 21.6 && p.d < 25.4 && Math.abs(spoke(p.a, 16, Math.PI / 16) * p.d) < 1.7) return p.s > 0.2 ? 'l' : 'm';
+      if (p.d > 16.8 && p.d < 20.2 && Math.abs(spoke(p.a, 8, Math.PI / 8) * p.d) < 1.6) return 'k';
+    } },
+  // FROST: white ice, a spike of crystal at each corner and a pair of short ones beside it, a snowflake in the well.
+  { palette: { l: '#ffffff', m: '#bfe8ff', M: '#6aa8d8', D: '#103a5a', g: '#2ab8e0', G: '#a8f4ff', w: '#ffffff', a: '#e6faff', A: '#7ac8f0' },
+    pixel: p => {
+      for (const c of CORNERS) {
+        const f = shard(p, c, 30.5, 2.4, 'a', 'A') ?? shard(p, c - 0.42, 26, 1.4, 'a', 'A') ?? shard(p, c + 0.42, 26, 1.4, 'a', 'A');
+        if (f) return f;
+      }
+      if (p.d < 9.5 && p.d > 1.5 && Math.abs(spoke(p.a, 6, Math.PI / 2) * p.d) < 0.55) return 'w';
+      if (ring(p.d) && p.d > 14 && hash(p.x, p.y) < 0.08) return 'l';
+    } },
+  // CRYSTAL: twelve facets, a cluster of three shards at each corner, a magenta well.
+  { palette: { l: '#f4dcff', m: '#b48cff', M: '#6a3ab8', D: '#3a1050', g: '#c050e0', G: '#ff9aff', w: '#ffffff', a: '#ffc8f4', A: '#d050b8' },
+    pixel: p => {
+      for (const c of CORNERS) {
+        const f = shard(p, c, 31, 2.2, 'a', 'A') ?? shard(p, c - 0.32, 27, 1.6, 'a', 'A') ?? shard(p, c + 0.32, 27, 1.6, 'a', 'A');
+        if (f) return f;
+      }
+      if (ring(p.d) && p.d > 13.6) {
+        const facet = Math.floor((p.a + Math.PI) / (TAU / 12)), mid = -Math.PI + (facet + 0.5) * TAU / 12, s = -(Math.cos(mid) + Math.sin(mid)) / Math.SQRT2;
+        if (Math.abs(spoke(p.a, 12, -Math.PI) * p.d) < 0.5) return 'M';
+        return s > 0.35 ? 'l' : s < -0.45 ? 'M' : 'm';
+      }
+    } },
+  // MAGMA: basalt split by glowing cracks, a hot inner rim, eight horns of obsidian, a well of lava.
+  { palette: { l: '#8a7270', m: '#4e3e40', M: '#2c2228', D: '#6a1808', g: '#f04a1a', G: '#ffb030', w: '#fff6c8', a: '#ffd060', A: '#ff6a1a' },
+    pixel: p => {
+      if (p.d > 21 && p.d < 27.4) { const off = spoke(p.a, 8, Math.PI / 8) * p.d, w = 2.6 * Math.min(1, (27.4 - p.d) / 5); if (Math.abs(off) < w) return 27.4 - p.d < 1.6 ? 'a' : 27.4 - p.d < 2.8 ? 'A' : off < 0 ? 'l' : 'm'; }
+      if (ring(p.d) && p.d > 13.6) {
+        if (p.d < 14.8) return 'A';
+        for (let i = 0; i < 10; i++) {
+          const at = i * TAU / 10 + 0.31 + 0.18 * Math.sin(p.d * 1.1 + i * 2.3);
+          if (Math.abs(spoke(p.a, 1, at) * p.d) < 0.55) return p.d < 17.5 ? 'a' : 'A';
+        }
+      }
+    } },
+  // STORM: navy steel, a tesla coil at each corner with a ball of light on it, a bolt across the ring between.
+  { palette: { l: '#c8d4ff', m: '#5a6aa8', M: '#2e3868', D: '#141e5a', g: '#4a7aff', G: '#c0dcff', w: '#ffffff', a: '#fff27a', A: '#d89a2a', c: '#ffffff' },
+    pixel: p => {
+      for (const c of CORNERS) {
+        const off = Math.abs(spoke(p.a, 1, c) * p.d);
+        const ball = Math.hypot(p.x - (CC + Math.cos(c) * 28.2), p.y - (CC + Math.sin(c) * 28.2));
+        if (ball < 2.7) return ball < 1.2 ? 'c' : 'a';
+        if (p.d > 20 && p.d <= 26.5 && off < 2.1) return Math.floor(p.d) % 2 ? 'A' : 'l';
+      }
+      if (ring(p.d) && p.d > 14.2 && p.d < 20.6) for (let k = 0; k < 4; k++) {
+        const at = k * Math.PI / 2 + Math.PI / 4 + 0.32, zig = (Math.floor(p.d) % 4 < 2 ? 0.07 : -0.07) * (k % 2 ? -1 : 1);
+        if (Math.abs(spoke(p.a, 1, at + zig) * p.d) < 0.6) return 'a';
+      }
+    } },
+  // GRAVITY: a deep purple ring with a band in orbit about it, tilted, behind it above and before it below; the
+  // well turns in two arms.
+  { palette: { l: '#c8b8ff', m: '#5a3ca8', M: '#2e1a68', D: '#12062a', g: '#6a2ac8', G: '#c08aff', w: '#ffffff', a: '#f0e4ff', A: '#9a7ae8' },
+    pixel: (p, base) => {
+      const t = -0.62, u = p.dx * Math.cos(t) + p.dy * Math.sin(t), v = -p.dx * Math.sin(t) + p.dy * Math.cos(t), e = (u / 29.5) ** 2 + (v / 8.5) ** 2;
+      if (e > 0.7 && e < 1.0 && (v > 0 || !base || (base === 'k' && p.d > 21.6))) return e > 0.86 ? 'A' : 'a';
+      if (p.d < 10.2 && p.d > 3.6) return ((p.a * 2 + p.d * 0.55) % TAU + TAU) % TAU < Math.PI ? 'g' : 'G';
+    } },
+  // SINGULARITY: a black ring, a disc burning white to red as it falls inward, brighter on the side coming toward
+  // us, and a black well with a bright rim; haloed, and crowned in the four gems.
+  { palette: { l: '#6a5a8a', m: '#2a2040', M: '#160f24', D: '#000000', g: '#ff8a2a', G: '#ffe08a', w: '#ffffff', a: '#ff4a2a', A: '#a81a3a', c: '#fff0d0', h: '#c8a8ff' },
+    pixel: p => {
+      if (p.d > 22.9 && p.d < 23.9) return 'h';
+      if (p.d <= 12.6) return p.d > 11.4 ? 'c' : 'D';
+      if (p.d > 12.6 && p.d < 19.4) {
+        const swirl = Math.sin(p.a * 3 - p.d * 0.9) * 0.9, hot = p.d + swirl - (p.dx < 0 ? 1.2 : -0.4);
+        return hot < 14.2 ? 'w' : hot < 15.6 ? 'G' : hot < 17 ? 'g' : hot < 18.4 ? 'a' : 'A';
+      }
+    } },
 ];
-// A better winch is a better station: iron, steel, bronze, brass, gold, then gold gone radiant; from brass on it
-// grows teeth. Then starmetal, with the radiant ring; aurora, haloed; and last the crown, gold and haloed, each of
-// its four sockets lined in the colour of the gem of the direction it faces (letters of their own, N S W E, which
-// nothing else of the core is drawn in).
-export const HULLS = [
-  { l: '#c8ccd8', m: '#8a90a2', M: '#5a6074' }, { l: '#dce8f8', m: '#8aa4c8', M: '#566e94' }, { l: '#f4cc94', m: '#c48c52', M: '#84582c' },
-  { l: '#ffe8a4', m: '#dcac44', M: '#986e1c' }, { l: '#fff6bc', m: '#f4c434', M: '#b48010' }, { l: '#ffffff', m: '#ffe468', M: '#e49c20' },
-  { l: '#ffffff', m: '#c8e4ff', M: '#6a9ad8' }, { l: '#f0fff8', m: '#9af0d8', M: '#3a9a9a', h: '#9af0d8' }, { l: '#fff6bc', m: '#f4c434', M: '#b48010', h: '#ffe468' },
-];
-const teeth = [[22, 0, 4, 3], [22, 45, 4, 3], [0, 22, 3, 4], [45, 22, 3, 4], [6, 6, 4, 4], [38, 6, 4, 4], [6, 38, 4, 4], [38, 38, 4, 4]]
-  .flatMap(([x, y, w, h]) => [{ op: 'rect', x, y, w, h, color: 'k', filled: true }, { op: 'rect', x: x + (w > 3 ? 1 : 0), y: y + (h > 3 ? 1 : 0), w: Math.min(w, 2), h: Math.min(h, 2), color: 'l', filled: true }]);
-const halo = [{ op: 'ellipse', x: 1, y: 1, w: 46, h: 46, color: 'h' }];
-const crown = [[20, 1, 'N'], [20, 39, 'S'], [1, 20, 'W'], [39, 20, 'E']].map(([x, y, color]) => ({ op: 'rect', x: x + 2, y: y + 2, w: 4, h: 4, color, filled: true }));
-const GLOWS = { a: {}, b: { g: '#3a90dc', G: '#84dcff' }, c: { g: '#5cc4f0', G: '#c8f4ff', D: '#2a4a78' }, flash: { g: '#c8f4ff', G: '#ffffff', D: '#5cc4f0' } };
+const SOCKETS = [[20, 1, 'N'], [20, 39, 'S'], [1, 20, 'W'], [39, 20, 'E']];
+const coreRows = level => {
+  const tier = TIERS[level], g = [];
+  for (let y = 0; y < 48; y++) {
+    const row = [];
+    for (let x = 0; x < 48; x++) {
+      const dx = x - CC, dy = y - CC, d = Math.hypot(dx, dy), p = { x, y, dx, dy, d, a: Math.atan2(dy, dx), s: d ? -(dx + dy) / (d * Math.SQRT2) : 0 };
+      const base = ringPixel(p), own = tier.pixel(p, base);
+      row.push(own ?? base ?? '.');
+    }
+    g.push(row);
+  }
+  // The sockets, lined with the crown's gems at the last.
+  for (const [sx, sy, gem] of SOCKETS) for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
+    const edge = x === 0 || y === 0 || x === 7 || y === 7, rim = x === 1 || y === 1 || x === 6 || y === 6;
+    g[sy + y][sx + x] = edge ? 'k' : rim ? (x + y < 7 ? 'm' : 'M') : level === 8 ? gem : 'D';
+  }
+  // A glint on the well, and an outline round whatever stands out of the ring.
+  if (level < 8) g[19][19] = 'w';
+  const solid = c => c !== '.' && c !== 'h' && c !== 'k';
+  const out = g.map(row => [...row]);
+  for (let y = 0; y < 48; y++) for (let x = 0; x < 48; x++) if (g[y][x] === '.' || g[y][x] === 'h') {
+    if ([[1, 0], [-1, 0], [0, 1], [0, -1]].some(([u, v]) => solid(g[y + v]?.[x + u] ?? '.'))) out[y][x] = 'k';
+  }
+  return out.map(row => row.join(''));
+};
+// The well's glow: breathing in and out, and a flash as something is fitted.
+const mix = (a, b, t) => '#' + [1, 3, 5].map(i => Math.round(parseInt(a.slice(i, i + 2), 16) * (1 - t) + parseInt(b.slice(i, i + 2), 16) * t).toString(16).padStart(2, '0')).join('');
+const glows = ({ D, g, G, w }) => ({ a: {}, b: { g: mix(g, G, 0.4), G: mix(G, w, 0.4) }, c: { g: mix(g, G, 0.7), G: mix(G, w, 0.7), D: mix(D, g, 0.3) },
+  flash: { g: mix(G, '#ffffff', 0.6), G: '#ffffff', D: mix(D, g, 0.7) } });
+export const HULLS = TIERS.map(t => t.palette);
 export const core = {
   version: 1, name: 'core', width: 48, height: 48,
-  palette: { k: '#16121c', l: '#c8ccd8', m: '#8a90a2', M: '#5a6074', D: '#1e2a44', g: '#2a78c8', G: '#5cc4f0', w: '#eafcff', h: '#9af0d8', N: '#bfe6ff', S: '#ffb060', W: '#b8f06a', E: '#d8b8ff' },
-  frames: HULLS.flatMap((hull, level) => Object.entries(GLOWS).map(([glow, lit]) => ({
-    name: `core-${glow}-${level}`, duration: glow === 'flash' ? 80 : 260, palette: { ...hull, ...lit },
-    ops: [...(level >= 7 ? halo : []), ...(level >= 3 ? teeth : []), ...coreOps, ...(level >= 5 ? [{ op: 'ellipse', x: 12, y: 12, w: 24, h: 24, color: 'w' }] : []), ...(level >= 8 ? crown : [])],
-  }))),
-  animations: Object.fromEntries(HULLS.map((hull, level) => [`idle-${level}`, { frames: [`core-a-${level}`, `core-b-${level}`, `core-c-${level}`, `core-b-${level}`] }])),
+  palette: { k: '#16121c', l: '#c8ccd8', m: '#8a90a2', M: '#5a6074', D: '#1e2a44', g: '#2a78c8', G: '#5cc4f0', w: '#eafcff', a: '#ffffff', A: '#888888', c: '#ffffff', h: '#9af0d8',
+    N: '#bfe6ff', S: '#ffb060', W: '#b8f06a', E: '#d8b8ff' },
+  frames: TIERS.flatMap((tier, level) => {
+    const rows = coreRows(level);
+    return Object.entries(glows(tier.palette)).map(([glow, lit]) => ({
+      name: `core-${glow}-${level}`, duration: glow === 'flash' ? 80 : 260, palette: { ...tier.palette, ...lit }, ops: [{ op: 'grid', x: 0, y: 0, rows }],
+    }));
+  }),
+  animations: Object.fromEntries(TIERS.map((tier, level) => [`idle-${level}`, { frames: [`core-a-${level}`, `core-b-${level}`, `core-c-${level}`, `core-b-${level}`] }])),
 };
 
-// The scanner is a dish on the station's shoulder; each level raises the mast and widens the dish. The sixth puts
-// a second, smaller dish on a crossbar beside it, and the seventh lights both dishes' rims and a beacon on top.
-const DISH = { k: '#16121c', s: '#8a90a2', l: '#d8e4f4', c: '#5fe0d0', r: '#ff5a4a' };
+// The scanner is a dish on the station's shoulder; each level raises the mast and widens the dish, a teal bowl with
+// a white rim and a feed glinting in it. The sixth puts a second, smaller dish on a crossbar beside it, and the
+// seventh lights both dishes' rims and a beacon on top.
+const DISH = { k: '#16121c', s: '#8a90a2', S: '#c8ccd8', l: '#e6fffa', c: '#5fe0d0', C: '#2a9a9a', r: '#ff5a4a', w: '#ffffff' };
+const bowl = (x, top, w, deep, rim) => [
+  ...(deep ? [{ op: 'line', x: x - w + 1, y: top - 2, x2: x + w - 1, y2: top - 2, color: 'c' }] : []),
+  { op: 'line', x: x - w + 1, y: top - 1, x2: x + w - 1, y2: top - 1, color: 'C' },
+  { op: 'line', x: x - w, y: top, x2: x + w, y2: top, color: 'c' },
+  { op: 'pixel', x: x - w, y: top - 1, color: rim }, { op: 'pixel', x: x + w, y: top - 1, color: rim },
+  ...(deep ? [{ op: 'pixel', x: x - w, y: top - 2, color: rim }, { op: 'pixel', x: x + w, y: top - 2, color: rim }] : []),
+  { op: 'pixel', x, y: top - (deep ? 2 : 1), color: 'w' },
+];
 const dishOps = level => {
-  const at = Math.min(4, level), h = 4 + at * 2, w = 1 + at, top = 14 - h, rim = level >= 6 ? 'c' : 'l';
+  const at = Math.min(4, level), h = 4 + at * 2, w = 1 + at, top = 14 - h, rim = level >= 6 ? 'w' : 'l';
   return [
     { op: 'line', x: 8, y: 15, x2: 8, y2: top + 1, color: 's' },
-    { op: 'line', x: 8 - w, y: top, x2: 8 + w, y2: top, color: 'l' },
-    { op: 'pixel', x: 8 - w, y: top - 1, color: rim }, { op: 'pixel', x: 8 + w, y: top - 1, color: rim },
-    ...(at >= 2 ? [{ op: 'pixel', x: 8 - w, y: top - 2, color: rim }, { op: 'pixel', x: 8 + w, y: top - 2, color: rim }] : []),
-    { op: 'pixel', x: 8, y: top - 1, color: 'c' },
+    { op: 'line', x: 7, y: 15, x2: 9, y2: 15, color: 's' },
+    ...bowl(8, top, w, at >= 2, rim),
     ...(level >= 5 ? [
-      { op: 'line', x: 9, y: 10, x2: 12, y2: 10, color: 's' },
-      { op: 'line', x: 10, y: 8, x2: 14, y2: 8, color: 'l' },
-      { op: 'pixel', x: 10, y: 7, color: rim }, { op: 'pixel', x: 14, y: 7, color: rim },
+      { op: 'line', x: 9, y: 10, x2: 12, y2: 10, color: 'S' },
       { op: 'pixel', x: 12, y: 9, color: 's' },
-      { op: 'pixel', x: 12, y: 7, color: 'c' },
+      ...bowl(12, 8, 2, false, rim),
     ] : []),
     ...(level >= 6 ? [{ op: 'pixel', x: 8, y: 0, color: 'r' }] : []),
     { op: 'outline', color: 'k', position: 'outside' },
@@ -593,7 +738,7 @@ export const dish = {
   palette: DISH,
   frames: [0, 1, 2, 3, 4, 5, 6].flatMap(level => {
     const ops = dishOps(level);
-    return [{ name: `dish-${level}`, duration: 500, ops }, { name: `dish-${level}-b`, duration: 160, ops, palette: { c: '#ffffff', r: '#ffffff' } }];
+    return [{ name: `dish-${level}`, duration: 500, ops }, { name: `dish-${level}-b`, duration: 160, ops, palette: { w: '#5fe0d0', c: '#a8fff4', r: '#ffffff' } }];
   }),
   animations: Object.fromEntries([0, 1, 2, 3, 4, 5, 6].map(level => [`dish-${level}`, { frames: [`dish-${level}`, `dish-${level}-b`] }])),
 };
@@ -604,15 +749,19 @@ export const dish = {
 // the black box at the bottom left. Each level of each is a picture of its own: the refinery a stack, banded, two,
 // both banded, a crucible across their feet, a third, all gilt; the cutter a bare wheel, a violet stone on it, then
 // one cut stone more on the rack a level (north's, south's, west's, east's), the last glinting each in turn; the
-// black box small and dark, with a mast, armoured and striped, and both. Besides: `well`, a soft disc for the glows
-// over the core's well, and `flare`, the streak and star of the lamp's flare, both white, to be tinted.
+// black box small, with a mast, armoured, and both. Besides: `well`, a soft disc for the glows over the core's well,
+// and `flare`, the streak and star of the lamp's flare, both white, to be tinted.
+// Every part has a colour of its own, so the station reads as so many machines and not one grey heap, and each is
+// outlined and lit from the top left as the core is: the refinery copper with gold bands, the cutter violet, the
+// black box charcoal under yellow and black stripes, the live catch's jaws green on a steel arm, the trophy line's
+// rail and barbs bone with red points (gold at the last), and the dish (its own sheet) teal.
 const box = (x, y, w, h, color) => ({ op: 'rect', x, y, w, h, color, filled: true });
 const stack = (x, top, foot, w, band) => [
-  box(x - 1, top - 1, w + 2, foot - top + 2, 'k'), box(x, top, w, foot - top, 'M'), box(x, top, 1, foot - top, 'l'),
-  box(x, top, w, 1, 'o'), ...(band ? [box(x, top + 3, w, 1, band)] : []),
+  box(x - 1, top - 1, w + 2, foot - top + 2, 'k'), box(x, top, w, foot - top, 'P'), box(x, top, 1, foot - top, 'p'),
+  ...(w >= 3 ? [box(x + w - 1, top, 1, foot - top, 'q')] : []), box(x, top, w, 1, 'o'), ...(band ? [box(x, top + 3, w, 1, band)] : []),
 ];
 // (The stacks' pipe runs under them, between the core's top tooth and its corner tooth, into the ring.)
-const pipe = [box(8, 11, 15, 3, 'k'), box(8, 12, 15, 1, 'M')];
+const pipe = [box(8, 11, 15, 3, 'k'), box(8, 12, 15, 1, 'P')];
 const REFINERY = [
   [...pipe, ...stack(5, 6, 15, 3)],
   [...pipe, ...stack(5, 6, 15, 3, 'y')],
@@ -626,36 +775,42 @@ const REFINERY = [
 export const REFINERY_MOUTHS = [[], [6, 5], [6, 5], [6, 5, 11, 2], [6, 5, 11, 2], [6, 5, 11, 2], [6, 5, 11, 2, 2, 9], [6, 5, 11, 2, 2, 9]];
 // (The cutter's wheel stands clear of the core's tooth at the bottom right; its stones hang on a rack beside it.)
 const STONES = [['n', 60, 51], ['u', 60, 54], ['v', 60, 57], ['e', 60, 60]];
-const wheel = [box(49, 50, 8, 8, 'k'), box(50, 51, 6, 6, 'm'), box(49, 52, 8, 4, 'm'), box(50, 52, 6, 4, 'M'), box(52, 53, 2, 2, 'l'), box(52, 58, 2, 4, 'k'), box(49, 61, 8, 2, 'k')];
+const wheel = [box(49, 50, 8, 8, 'k'), box(50, 51, 6, 6, 'I'), box(49, 52, 8, 4, 'I'), box(50, 52, 6, 4, 'j'), box(50, 51, 2, 1, 'i'), box(49, 52, 1, 2, 'i'), box(52, 53, 2, 2, 'i'),
+  box(51, 58, 4, 4, 'k'), box(52, 58, 2, 3, 'I'), box(49, 61, 8, 2, 'k'), box(50, 61, 6, 1, 'j')];
 const cut = [box(53, 48, 3, 2, 'k'), box(54, 48, 1, 1, 'e')];
-const rack = [box(62, 49, 2, 14, 'k'), box(62, 49, 1, 13, 'M')];
+const rack = [box(62, 49, 2, 14, 'k'), box(62, 49, 1, 13, 'I')];
 const gem = ([color, x, y], glint) => [box(x - 1, y - 1, 3, 2, 'k'), box(x, y - 1, 1, 1, glint ? 'w' : color), box(x - 1, y, 3, 1, color)];
 const CUTTER = [wheel, [...wheel, ...cut], ...[1, 2, 3].map(n => [...wheel, ...cut, ...rack, ...STONES.slice(0, n).flatMap(s => gem(s))])];
+// The black box: charcoal, lit along its top, with a band of yellow and black across it and a red lamp; the armoured
+// box is bigger, its band a chevron.
+const SMALL_BOX = ['kkkkkkkk', 'kBBBBBBk', 'kBbbbbbk', 'kBbbbrbk', 'kykykykk', 'kbbbbbbk', 'kkkkkkkk'];
+const BIG_BOX = ['kkkkkkkkkk', 'kBBBBBBBBk', 'kBbbbbbbbk', 'kBbbbbbbbk', 'kBbbbbrbbk', 'kBbbbbbbbk', 'kyykkyykkk', 'kykkyykkyk', 'kkkkkkkkkk'];
+const mast = (x, top) => [box(x - 1, top + 1, 3, 51 - top, 'k'), box(x, top + 1, 1, 50 - top, 'l'), box(x - 1, top - 1, 3, 3, 'k'), box(x, top, 1, 1, 'r')];
 const BOXES = [
-  [box(3, 52, 8, 7, 'k'), box(4, 53, 6, 5, 'x'), box(4, 53, 6, 1, 'M'), box(8, 55, 1, 1, 'r')],
-  [box(3, 52, 8, 7, 'k'), box(4, 53, 6, 5, 'x'), box(4, 53, 6, 1, 'M'), box(8, 55, 1, 1, 'r'), box(5, 48, 1, 4, 'M'), box(5, 47, 1, 1, 'r')],
-  [box(2, 51, 10, 9, 'k'), box(3, 52, 8, 7, 'M'), box(4, 53, 6, 5, 'x'), box(3, 57, 8, 1, 'y'), box(8, 55, 1, 1, 'r')],
-  [box(2, 51, 10, 9, 'k'), box(3, 52, 8, 7, 'M'), box(4, 53, 6, 5, 'x'), box(3, 57, 8, 1, 'y'), box(8, 55, 1, 1, 'r'), box(5, 54, 1, 1, 'r'), box(4, 47, 1, 4, 'M'), box(4, 46, 1, 1, 'r')],
+  [{ op: 'grid', x: 3, y: 52, rows: SMALL_BOX }],
+  [...mast(5, 47), { op: 'grid', x: 3, y: 52, rows: SMALL_BOX }],
+  [{ op: 'grid', x: 2, y: 51, rows: BIG_BOX }],
+  [...mast(4, 46), { op: 'grid', x: 2, y: 51, rows: BIG_BOX.map((row, y) => y === 3 ? 'kBbrbbbbbk' : row) }],
 ];
 // Where each level's lamps are, on the sheet, for the light they blink.
 export const BOX_LAMPS = [[], [8, 55], [8, 55, 5, 47], [8, 55], [8, 55, 5, 54, 4, 46]];
-// The live catch is a clamp held out from the core's east socket on an arm, at the middle of the right edge, that
-// grows a jaw a level: a hook, then a pair of jaws, then (the late game's) a third prong between them; the tip of
-// each jaw lights as a rare hazard is hauled in awake. The trophy line is a rack slung under the core between two
-// posts, with barbs hung on it, two, four, then (the late game's) six round a plate of gold; each barb's point
-// lights as a foe is caught.
-const JAW = ['.........', '..kkkkkk.', '..kllllMk', '..klkkkMk', '..klk.kvk', '..klk..k.', '..klk....', '..klk....', 'kkkMk....'];
-const ARM = ['lllMk....', 'MMMMk....'], PRONG = ['lllMlllvk', 'MMMMMMMvk'];
+// The live catch is a clamp held out from the core's east socket on a steel arm, at the middle of the right edge,
+// that grows a green jaw a level: a hook, then a pair of jaws, then (the late game's) a third prong between them; the
+// tip of each jaw lights as a rare hazard is hauled in awake. The trophy line is a rack of bone slung under the core
+// between two posts, with barbs hung on it, two, four, then (the late game's) six round a plate of gold; each barb's
+// red point lights as a foe is caught.
+const JAW = ['.........', '..kkkkkk.', '..kffffFk', '..kfkkkFk', '..kfk.kvk', '..kfk..k.', '..kfk....', '..kfk....', 'kkkFk....'];
+const ARM = ['lllMk....', 'MMMMk....'], PRONG = ['lllMfffvk', 'MMMMFFFvk'];
 const CLAMPS = [
   [...JAW, ...ARM, 'kkkkk....'],
   [...JAW, ...ARM, ...[...JAW].reverse()],
-  [...JAW.slice(0, 8), 'kkkMkkkkk', ...PRONG, 'kkkMkkkkk', ...JAW.slice(0, 8).reverse()],
+  [...JAW.slice(0, 8), 'kkkFkkkkk', ...PRONG, 'kkkFkkkkk', ...JAW.slice(0, 8).reverse()],
 ].map(rows => [{ op: 'grid', x: 55, y: 22, rows }]);
-const post = x => [box(x - 1, 48, 3, 10, 'k'), box(x, 49, 1, 8, 'm')];
-const rail = [...post(16), ...post(47), box(14, 56, 36, 4, 'k'), box(15, 57, 34, 1, 'l'), box(15, 58, 34, 1, 'M')];
-const barb = (x, tip) => [{ op: 'grid', x: x - 1, y: 59, rows: ['kMk', 'lMl', 'k' + tip + 'k', '.' + tip + '.'] }];
+const post = x => [box(x - 1, 48, 3, 10, 'k'), box(x, 49, 1, 8, 't')];
+const rail = [...post(16), ...post(47), box(14, 56, 36, 4, 'k'), box(15, 57, 34, 1, 't'), box(15, 58, 34, 1, 'T')];
+const barb = (x, tip) => [{ op: 'grid', x: x - 1, y: 59, rows: ['kTk', 'tTt', 'k' + tip + 'k', '.' + tip + '.'] }];
 const BARBS = [[21, 42], [19, 24, 39, 44], [18, 22, 26, 37, 41, 45]];
-const RACKS = BARBS.map((xs, n) => [...rail, ...xs.flatMap(x => barb(x, n === 2 ? 'o' : 'u')), ...(n === 2 ? [box(29, 59, 6, 5, 'k'), box(30, 60, 4, 3, 'o'), box(31, 60, 1, 1, 'w')] : [])]);
+const RACKS = BARBS.map((xs, n) => [...rail, ...xs.flatMap(x => barb(x, n === 2 ? 'o' : 'r')), ...(n === 2 ? [box(29, 59, 6, 5, 'k'), box(30, 60, 4, 3, 'o'), box(31, 60, 1, 1, 'w')] : [])]);
 const well = [{ op: 'ellipse', x: 20, y: 20, w: 24, h: 24, color: 'a', filled: true }, { op: 'ellipse', x: 24, y: 24, w: 16, h: 16, color: 'A', filled: true },
   { op: 'ellipse', x: 27, y: 27, w: 10, h: 10, color: 'Z', filled: true }, { op: 'ellipse', x: 30, y: 30, w: 4, h: 4, color: 'R', filled: true }];
 const flare = [
@@ -667,7 +822,8 @@ const flare = [
 export const station = {
   version: 1, name: 'station', width: 64, height: 64,
   palette: { k: '#16121c', l: '#c8ccd8', m: '#8a90a2', M: '#5a6074', o: '#ffd84a', y: '#ffe14a', O: '#ffb060', r: '#ff5a4a', x: '#1c1420', w: '#ffffff',
-    n: '#bfe6ff', u: '#ffb060', v: '#b8f06a', e: '#d8b8ff', a: '#ffffff30', A: '#ffffff60', Z: '#ffffffa0', R: '#ffffff' },
+    n: '#bfe6ff', u: '#ffb060', v: '#b8f06a', e: '#d8b8ff', a: '#ffffff30', A: '#ffffff60', Z: '#ffffffa0', R: '#ffffff',
+    p: '#f4a070', P: '#c0603a', q: '#7a3422', i: '#d4b4ff', I: '#8a5ad8', j: '#46287e', b: '#3c3648', B: '#6a6480', f: '#9ae860', F: '#3a9a3a', t: '#f0e4c8', T: '#a08a68' },
   frames: [
     ...REFINERY.map((ops, n) => ({ name: `refinery-${n + 1}`, ops })),
     ...CUTTER.slice(0, 5).map((ops, n) => ({ name: `cutter-${n + 1}`, ops })),
@@ -1827,17 +1983,41 @@ export const ores = {
 export const RECIPES = [finds, cracks, dish, frost, ember, mire, lode, ores, minerals, drill, core, station, icons, upgrades, ui, logo, tough, bell, vent, worm, lodestone, fauna];
 
 // The home-screen icon: the core on dark ground, with the drill out on its tether.
+// (The core as the first winch was drawn before each winch was one of its own, in the colours it had then.)
+const iconCore = [
+  { op: 'ellipse', x: 2, y: 2, w: 44, h: 44, color: 'k', filled: true },
+  { op: 'ellipse', x: 3, y: 3, w: 42, h: 42, color: 'l', filled: true },
+  { op: 'ellipse', x: 4, y: 4, w: 41, h: 41, color: 'm', filled: true },
+  { op: 'ellipse', x: 6, y: 6, w: 39, h: 39, color: 'M', filled: true },
+  { op: 'ellipse', x: 6, y: 6, w: 37, h: 37, color: 'm', filled: true },
+  { op: 'ellipse', x: 10, y: 10, w: 28, h: 28, color: 'k', filled: true },
+  { op: 'ellipse', x: 11, y: 11, w: 26, h: 26, color: 'D', filled: true },
+  { op: 'ellipse', x: 14, y: 14, w: 20, h: 20, color: 'g', filled: true },
+  { op: 'ellipse', x: 17, y: 17, w: 14, h: 14, color: 'G', filled: true },
+  { op: 'ellipse', x: 20, y: 20, w: 8, h: 8, color: 'w', filled: true },
+  // sockets
+  ...[[20, 1], [20, 39], [1, 20], [39, 20]].flatMap(([x, y]) => [
+    { op: 'rect', x, y, w: 8, h: 8, color: 'k', filled: true },
+    { op: 'rect', x: x + 1, y: y + 1, w: 6, h: 6, color: 'M', filled: true },
+    { op: 'rect', x: x + 2, y: y + 2, w: 4, h: 4, color: 'D', filled: true },
+  ]),
+  // rivets
+  ...[[9, 9], [38, 9], [9, 38], [38, 38]].flatMap(([x, y]) => [
+    { op: 'pixel', x, y, color: 'l' }, { op: 'pixel', x: x + 1, y: y + 1, color: 'k' },
+  ]),
+];
 const shift = (ops, dx, dy) => ops.map(op => ({ ...op, x: op.x + dx, y: op.y + dy }));
 export const appIcon = {
   version: 1, name: 'icon', width: 64, height: 64,
-  palette: { ...core.palette, ...drill.palette, k: '#16121c', q: '#0c0a12', e: '#2a211c', E: '#3a2e26', t: '#f4ecd8' },
+  palette: { k: '#16121c', l: '#c8ccd8', m: '#8a90a2', M: '#5a6074', D: '#1e2a44', g: '#2a78c8', G: '#5cc4f0', w: '#eafcff', h: '#9af0d8', N: '#bfe6ff', S: '#ffb060', W: '#b8f06a', E: '#d8b8ff',
+    ...drill.palette, k: '#16121c', q: '#0c0a12', e: '#2a211c', E: '#3a2e26', t: '#f4ecd8' },
   symbols: { drill: DRILL },
   frames: [{ name: 'icon', ops: [
     { op: 'rect', x: 0, y: 0, w: 64, h: 64, color: 'q', filled: true },
     { op: 'rect', x: 0, y: 40, w: 64, h: 24, color: 'e', filled: true },
     { op: 'rect', x: 0, y: 40, w: 64, h: 2, color: 'E', filled: true },
     { op: 'line', x: 26, y: 26, x2: 50, y2: 50, color: 't' },
-    ...shift(coreOps, 2, 2),
+    ...shift(iconCore, 2, 2),
     { op: 'stamp', symbol: 'drill', x: 44, y: 44, rotate: 90 },
   ] }],
 };

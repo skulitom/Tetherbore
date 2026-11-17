@@ -103,7 +103,9 @@ const EXHAUST_COLOURS = [null, null, null, ['#ffb060', '#ff5a3a'], ['#ffe14a', '
 // fast; the scanner: how often its dish pings, while the drill is home, and from which level its beam sweeps.
 export const ORBIT = [0, 0, 0, 0, 0, 2, 3, 4, 6];
 const ORBIT_R = 46, ORBIT_SPEED = 0.8;
-const ORBIT_COLOURS = ['#c8f4ff', '#c8f4ff', '#c8f4ff', '#c8f4ff', '#c8f4ff', '#c8f4ff'], CROWN_COLOURS = ['#bfe6ff', '#ffffff', '#ffb060', '#b8f06a', '#ffffff', '#d8b8ff'];
+// (In each winch's own colours, two to a winch, by turns: the magma's embers, the storm's sparks, the gravity's
+// stars; and the singularity's crown of the four gems.)
+const ORBIT_COLOURS = [null, null, null, null, null, ['#ffd060', '#ff6a1a'], ['#fff27a', '#c8e0ff'], ['#f0e4ff', '#b08aff']], CROWN_COLOURS = ['#bfe6ff', '#ffffff', '#ffb060', '#b8f06a', '#ffffff', '#d8b8ff'];
 const PING = [0, 6, 5, 4.5, 4, 3.5, 3], BEAM = 3;
 // The lamp: the small warm glow at the drill's nose and the length of its flare, by level.
 const LAMP_GLOW = [0, 0.1, 0.12, 0.14, 0.16, 0.18], FLARE = [0, 9, 12, 15, 18, 21], WARM = '#ffe0a0';
@@ -403,7 +405,8 @@ export class Fitter {
     // (A drill part is fitted with a turn on the core only where the drill sits still on it; out in flight it is
     // fitted where the drill is, with no turn.)
     f.still = game.atCore && Math.hypot(d.vx, d.vy) < 2;
-    f.label = `${u.name} ${u.show(u.values[q.level])}`;
+    // (A bit or a winch is named for what it is now: `tiers`, DIAMOND BIT, FROST WINCH.)
+    f.label = u.tiers ? `${u.tiers[q.level]} ${u.name}` : `${u.name} ${u.show(u.values[q.level])}`;
     const last = q.level === u.values.length - 1, tab = TAB_OF.get(u).id;
     f.sub = last ? 'MAX' : tab === 'works' ? 'FITTED' : tab === 'core' ? 'BUILT' : u.show(u.values[q.level]);
     this.gap = GAP;
@@ -464,7 +467,7 @@ export class Fitter {
       this.burst(x, y, 24, c, 90);
       this.flash = 0.3;
       const b = this.banner;
-      b.t = b.life; b.title = f.u.name; b.sub = f.sub; b.colour = f.colour;
+      b.t = b.life; b.title = f.u.tiers ? f.label : f.u.name; b.sub = f.sub; b.colour = f.colour;
     }
   }
   tintOn(colour, alpha, fade = 0.3) { this.tintColour = colour; this.tintAlpha = alpha; this.tint = fade; this.tintFade = fade; }
@@ -560,7 +563,7 @@ export class Fitter {
         const r = ORBIT_R + 14 * ease(this.orbitIn / 0.8), crown = lv.winch >= 8;
         for (let k = 0; k < n; k++) {
           const a = game.time * ORBIT_SPEED + k * 6.2832 / n;
-          ctx.fillStyle = crown ? CROWN_COLOURS[k % 6] : ORBIT_COLOURS[k % 6];
+          ctx.fillStyle = crown ? CROWN_COLOURS[k % 6] : ORBIT_COLOURS[lv.winch][k % 2];
           for (let j = 3; j >= 0; j--) {
             const b = a - j * 0.05;
             ctx.globalAlpha = j ? 0.35 - j * 0.08 : 0.9;
