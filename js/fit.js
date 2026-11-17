@@ -24,14 +24,26 @@ const METALS = [K.STEEL, K.KEY];
 const GEM_COLOR = [null, '#bfe6ff', '#ffb060', '#b8f06a', '#d8b8ff'];
 
 // ---------------------------------------------------------------- how the tether looks
-// At each level of reach: rope, braid, cable, then lines of light. From the seventh, light runs out along it from
-// the core to the drill, as power fed down the cable: a dash of `glow` every `gap` pixels, `run` pixels a second
-// (and at the last, a white dash between each two). `dashes` is the pattern, made once.
+// At each level of reach a tether of its own, and named so (js/shop.js: `tiers`): TWINE; HEMP, a twisted rope;
+// KNOTTED, hemp with a knot every so far; PARACORD, a tight orange weave; STEEL WIRE, fine and twisted; CHAIN, dark
+// with bright links on it; GOLD CABLE; FIBRE, a fine blue line that light races down; PLASMA, a cyan cable in a glow
+// of its own; and STARLINE, violet, in a glow, strung with stars. `a` is the rope, `b` the second strand of its braid
+// in lengths `dash` of each turn, a turn `turn` times the usual and the strand `links` times the rope's width with
+// round ends where it is a chain's; `fine` a thinner rope, `thick` a thicker; `knot`, a knot of that colour every
+// `every` pixels along it; `halo`, a glow about the tether over the dark. From GOLD CABLE, light runs out along it from
+// the core to the drill, as power fed down the cable: a dash of `glow` every `gap` pixels, `run` pixels a second (and
+// at the last, a white dash between each two). `dashes` is the pattern, made once.
 export const TETHERS = [
-  { a: '#e8dcc0', b: '#e8dcc0', dash: 1 }, { a: '#e8dcc0', b: '#b89a6c', dash: 0.5 }, { a: '#f0d890', b: '#b0803a', dash: 0.5 },
-  { a: '#f0b060', b: '#c8442a', dash: 0.5 }, { a: '#d8e0ec', b: '#8a94a8', dash: 0.5 }, { a: '#eef4ff', b: '#6e7c98', dash: 0.25, thick: true },
-  { a: '#ffe89a', b: '#c89020', dash: 0.25, thick: true, glow: '#fff4c0', gap: 60, run: 50 }, { a: '#fff4c0', b: '#e8a020', dash: 0.5, thick: true, glow: '#ffffff', gap: 44, run: 70 },
-  { a: '#a8fff0', b: '#30c8c0', dash: 0.5, thick: true, glow: '#d8fff8', gap: 36, run: 90 }, { a: '#ffc8f4', b: '#b050d0', dash: 0.5, thick: true, glow: '#ffd8f8', gap: 28, run: 120, twin: '#ffffff' },
+  { a: '#e8dcc0', b: '#e8dcc0', dash: 1 },
+  { a: '#d8c49a', b: '#8a6a3e', dash: 0.5 },
+  { a: '#e0cc9c', b: '#a8844e', dash: 0.5, knot: '#6a4a26', every: 9 },
+  { a: '#ffa060', b: '#c8342a', dash: 0.5, turn: 0.5 },
+  { a: '#eef2fa', b: '#5a6884', dash: 0.3, turn: 0.4, fine: true },
+  { a: '#3a4058', b: '#d0d8e4', dash: 0.4, turn: 1.5, links: 1.1, thick: true },
+  { a: '#ffe89a', b: '#c89020', dash: 0.25, thick: true, glow: '#fff4c0', gap: 60, run: 50 },
+  { a: '#4a80d0', b: '#a8d8ff', dash: 0.2, fine: true, glow: '#ffffff', gap: 22, run: 150, halo: '#5cc4f0' },
+  { a: '#a8fff0', b: '#30c8c0', dash: 0.5, thick: true, glow: '#d8fff8', gap: 36, run: 90, halo: '#5fe0d0' },
+  { a: '#ffc8f4', b: '#b050d0', dash: 0.5, thick: true, glow: '#ffd8f8', gap: 28, run: 120, twin: '#ffffff', halo: '#c070ff', knot: '#ffffff', every: 14 },
 ];
 for (const t of TETHERS) if (t.glow) t.dashes = [3, t.gap];
 
@@ -410,7 +422,7 @@ export class Fitter {
     f.still = game.atCore && Math.hypot(d.vx, d.vy) < 2;
     // (A bit or a winch is named for what it is now: `tiers`, DIAMOND BIT, FROST WINCH.)
     // (In another language the name and the value are each turned, as they are said apart in the shop: js/lang.js.)
-    f.label = u.tiers ? `${u.tiers[q.level]} ${u.name}` : `${tr(u.name)} ${tr(u.show(u.values[q.level]))}`;
+    f.label = u.tiers ? `${u.tiers[q.level]} ${u.noun ?? u.name}` : `${tr(u.name)} ${tr(u.show(u.values[q.level]))}`;
     const last = q.level === u.values.length - 1, tab = TAB_OF.get(u).id;
     f.sub = last ? 'MAX' : tab === 'works' ? 'FITTED' : tab === 'core' ? 'BUILT' : u.show(u.values[q.level]);
     this.gap = GAP;

@@ -80,7 +80,7 @@ for (const tab of TABS) {
       names.add(shows[l]); names.add(`${shows[l]} MAX`);
       if (l + 1 < u.values.length) { names.add(`${shows[l]}>${shows[l + 1]}`); names.add(`>${shows[l + 1]}`); const s = u.says?.(l); if (s) names.add(s); }
     }
-    for (const t of u.tiers ?? []) names.add(`${t} ${u.name}`);
+    for (const t of u.tiers ?? []) names.add(`${t} ${u.noun ?? u.name}`);
   }
 }
 for (const what of Object.values(NEEDS)) { names.add(`NEEDS 3/5 ${what}`); names.add(`3/5 ${what}`); }

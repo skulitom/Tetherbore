@@ -578,7 +578,7 @@ export class Drawing {
     for (const r of this.ropes) {
       const pts = r.pts;
       if (pts.length < 2) continue;
-      const wide = r.style.thick ? 2 : 1.4, braid = r.style.b !== r.style.a;
+      const wide = r.style.thick ? 2 : r.style.fine ? 1 : 1.4, braid = r.style.b !== r.style.a, turn = BRAID * (r.style.turn ?? 1);
       // A rope that is no loop is traced only where it crosses the view (`ropeRuns`). Far out nearly all of the
       // tether lies off the screen, and so does nearly all of the rope of every haul on its way home: traced whole,
       // three times each, a dozen hauls a thousand cells out were a dozen ropes twenty thousand pixels long in every
@@ -620,10 +620,18 @@ export class Drawing {
       if (braid) {
         // The second strand of the braid, in short lengths along it: each part of the rope begins its lengths where
         // the whole rope would have them, so the braid stays put on the ground whatever part of it is in view.
-        o.lineCap = 'butt'; o.setLineDash(r.style.braid ??= [BRAID * r.style.dash, BRAID * (1 - r.style.dash)]);
-        o.strokeStyle = r.style.b; o.lineWidth = wide * 0.62;
+        // (A chain's links are the strand drawn wide with round ends.)
+        o.lineCap = r.style.links ? 'round' : 'butt'; o.setLineDash(r.style.braid ??= [turn * r.style.dash, turn * (1 - r.style.dash)]);
+        o.strokeStyle = r.style.b; o.lineWidth = wide * (r.style.links ?? 0.62);
         if (r.loop) { trace(0); o.stroke(); }
-        else for (const run of runs) { o.lineDashOffset = run[2] % BRAID; trace(0, run); o.stroke(); }
+        else for (const run of runs) { o.lineDashOffset = run[2] % turn; trace(0, run); o.stroke(); }
+        o.lineDashOffset = 0; o.setLineDash(NO_DASH);
+      }
+      // Its knots, or its stars, every so far along it, where the whole rope would have them.
+      if (r.style.knot) {
+        o.lineCap = 'round'; o.setLineDash(r.style.knots ??= [0.01, r.style.every]); o.strokeStyle = r.style.knot; o.lineWidth = wide + 1.4;
+        if (r.loop) { trace(0); o.stroke(); }
+        else for (const run of runs) { o.lineDashOffset = run[2] % r.style.every; trace(0, run); o.stroke(); }
         o.lineDashOffset = 0; o.setLineDash(NO_DASH);
       }
       // (The trophy line's barbs, on the tether out to the drill: js/fit.js.)
@@ -648,6 +656,12 @@ export class Drawing {
     for (const r of this.ropes) {
       const style = r.style;
       if (!r.pulse || !style.glow || !r.runs || !r.runs.length) continue;
+      // (A glow about it first, where it has one.)
+      if (style.halo) {
+        o.globalCompositeOperation = 'lighter'; o.globalAlpha = 0.22; o.lineCap = 'round'; o.strokeStyle = style.halo; o.lineWidth = r.wide + 3.5;
+        for (const run of r.runs) { r.trace(0, run); o.stroke(); }
+        o.globalAlpha = 1; o.globalCompositeOperation = 'source-over';
+      }
       const period = 3 + style.gap;
       o.globalCompositeOperation = 'lighter'; o.lineCap = 'butt'; o.setLineDash(style.dashes); o.lineWidth = r.wide + 0.6;
       for (let pass = 0; pass < (style.twin ? 2 : 1); pass++) {
@@ -1627,12 +1641,14 @@ export class Drawing {
     const rare = (name, does) => live > 1 ? [...first([name, `${does}, x${live} LIVE`], [name, `${does} x${live} LIVE`], [name, `x${live} LIVE`]), true] : [name, does, false];
     return [
       // (How far out the drill has been, of how far the tether goes.)
-      ['REACH', out > 0 ? `${Math.min(out, this.val('tether'))}/${this.val('tether')} CELLS` : `${this.val('tether')} CELLS`],
-      // (The bit, the ram, the winch and the hull say which they are where the line has room: `tiers`.)
+      first(['REACH', `${tierOf('tether')} ${out > 0 ? `${Math.min(out, this.val('tether'))}/${this.val('tether')}` : this.val('tether')} CELLS`],
+        ['REACH', out > 0 ? `${Math.min(out, this.val('tether'))}/${this.val('tether')} CELLS` : `${this.val('tether')} CELLS`]),
+      // (The reach, the bit, the ram, the winch, the scanner and the hull say which they are where the line has room:
+      // `tiers`.)
       [...first(['BIT', `${tierOf('drill')} MK${this.val('drill')}, x${CUT[lv.drill]}${lv.drill >= 5 ? ' PLOUGH' : ''}`], ['BIT', `MK${this.val('drill')}, CUTS x${CUT[lv.drill]}${lv.drill >= 5 ? ' PLOUGH' : ''}`]), lv.drill >= 5 || undefined],
       first(['SPEED', `${tierOf('momentum')} RAM x${this.val('momentum')}`], ['SPEED', `x${this.val('momentum')}`]),
       first(['WINCH', `${tierOf('winch')} x${this.val('winch')}, LOAD ${load < 10000 ? load : compact(load)}`], ['WINCH', `x${this.val('winch')}, LOAD ${load < 10000 ? load : compact(load)}`]),
-      ['SCAN', `${this.val('scanner')} CELLS`],
+      first(['SCAN', `${tierOf('scanner')} ${this.val('scanner')} CELLS`], ['SCAN', `${this.val('scanner')} CELLS`]),
       first(['HULL', `${tierOf('hull')} ${this.hull}/${this.val('hull')} PIPS`], ['HULL', `${this.hull}/${this.val('hull')} PIPS`]),
       ['MENDS', `1 PIP / ${mender} S`, this.S.lv.mender > 0],
       ['LAVA', this.swims ? lv.lavaskin >= 2 ? 'SWIMS, SMELTS' : 'SWIMS IN IT' : 'BURNS', this.swims],

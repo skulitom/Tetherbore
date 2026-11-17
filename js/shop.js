@@ -83,20 +83,21 @@ export const UPGRADES = [
   // bought with grit alone, which every ground gives: no one direction's gems and nothing that must be found in
   // one place, so a player may follow a single direction as far out as they like. From the third level it asks that
   // the drill has been three fifths of the way out its tether already goes, in whatever direction.
-  { id: 'tether', icon: 'string', name: 'REACH', what: 'TETHER GOES FURTHER', values: REACH, gem: B.MIRE, needs: ['out', REACH.slice(0, -1).map((R, l) => l < 2 ? 0 : Math.round(R * 0.6))], ...levels(REACH.slice(0, -1).map((R, l) => l), 1), gems: REACH.slice(0, -1).map(() => 0), show: v => `${v}` },
+  { id: 'tether', icon: 'string', name: 'REACH', tiers: ['TWINE', 'HEMP', 'KNOTTED', 'PARACORD', 'STEEL WIRE', 'CHAIN', 'GOLD CABLE', 'FIBRE', 'PLASMA', 'STARLINE'], noun: 'TETHER', what: 'TETHER GOES FURTHER', values: REACH, gem: B.MIRE, needs: ['out', REACH.slice(0, -1).map((R, l) => l < 2 ? 0 : Math.round(R * 0.6))], ...levels(REACH.slice(0, -1).map((R, l) => l), 1), gems: REACH.slice(0, -1).map(() => 0), show: v => `${v}` },
   // The bit: its first four steps cut so many times faster (CUT); its late three (MK6 to MK8) are its plough, the
   // drill keeping its run through ground they cut in a blink, softer ground first, as a cut can take no less than
   // a frame and the run was lost at every cell.
   // (Each level of the bit and of the winch is a thing of its own, drawn so and named so when it is fitted and in
   // STATS: `tiers`, a name a level, art/sprites.mjs: BIT_SHAPES and WINCHES; and so is each of the ram and the hull,
-  // RAM_HALVES and PLATES.)
+  // RAM_HALVES and PLATES; the reach's tether and the scanner too, js/fit.js: TETHERS, art/sprites.mjs: SCANNERS, each
+  // named with its `noun`.)
   { id: 'drill', icon: 'drill', name: 'BIT', tiers: ['STEEL', 'BRONZE', 'COBALT', 'GOLD', 'DIAMOND', 'VOID', 'EMBER', 'STAR'], what: 'CUTS FASTER', values: [1, 2, 3, 4, 5], gem: B.LODE, needs: ['out', [0, 40, 130, 400]], ...levels([0.6, 2.2, 4.4, 6.6], 0.6), show: v => `MK${v}`,
     says: l => l < 4 ? `CUTS x${(CUT[l + 1] / CUT[l]).toFixed(1)} FASTER` : ['PLOUGHS SOFT ROCK', 'PLOUGHS DENSE ROCK', 'PLOUGHS SLATE TOO'][l - 4] },
   // The winch: the bonus a haul is paid for its size, and the load it draws in at full pay (WINCH_LOAD), which is
   // most of what a level does. It takes the west's gems, which have least else to buy.
   { id: 'winch', icon: 'winch', name: 'WINCH', tiers: ['IRON', 'STEEL', 'GEARED', 'FROST', 'CRYSTAL', 'MAGMA', 'STORM', 'GRAVITY', 'SINGULARITY'], what: 'BIGGER LOADS', values: [1, 1.3, 1.6, 2, 2.5, 3], gem: B.MIRE, needs: ['out', [0, 30, 100, 300, 700]], ...levels([0.8, 2, 3.6, 5.4, 7.2], 0.5), show: v => `x${v}`,
     says: l => `LOAD ${WINCH_LOAD[l]}>${WINCH_LOAD[l + 1]}` },
-  { id: 'scanner', icon: 'scanner', name: 'SCAN', what: 'SEES DEEPER IN ROCK', values: [3, 4, 5, 7, 9], gem: B.FROST, needs: ['parts', [0, 1, 2, 4]], ...levels([0.4, 1.6, 3.4, 5.8], 0.3), show: v => `${v}` },
+  { id: 'scanner', icon: 'scanner', name: 'SCAN', tiers: ['ROD', 'YAGI', 'DISH', 'BIG DISH', 'ARRAY', 'RADAR', 'DEEP EYE'], noun: 'SCANNER', what: 'SEES DEEPER IN ROCK', values: [3, 4, 5, 7, 9], gem: B.FROST, needs: ['parts', [0, 1, 2, 4]], ...levels([0.4, 1.6, 3.4, 5.8], 0.3), show: v => `${v}` },
   // The ram takes the south's gems, as the hull does: the two are the pilot's way through the worst of the ground.
   // Its levels, and the hull's, ask no more than eight tenths of how far the reach they are priced beside goes
   // (the reach after the step of `beside`, rounded up), so that each opens as that reach is flown and not in the

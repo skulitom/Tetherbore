@@ -716,33 +716,30 @@ export const core = {
   animations: Object.fromEntries(TIERS.map((tier, level) => [`idle-${level}`, { frames: [`core-a-${level}`, `core-b-${level}`, `core-c-${level}`, `core-b-${level}`] }])),
 };
 
-// The scanner is a dish on the station's shoulder; each level raises the mast and widens the dish, a teal bowl with
-// a white rim and a feed glinting in it. The sixth puts a second, smaller dish on a crossbar beside it, and the
-// seventh lights both dishes' rims and a beacon on top.
-const DISH = { k: '#16121c', s: '#8a90a2', S: '#c8ccd8', l: '#e6fffa', c: '#5fe0d0', C: '#2a9a9a', r: '#ff5a4a', w: '#ffffff' };
-const bowl = (x, top, w, deep, rim) => [
-  ...(deep ? [{ op: 'line', x: x - w + 1, y: top - 2, x2: x + w - 1, y2: top - 2, color: 'c' }] : []),
-  { op: 'line', x: x - w + 1, y: top - 1, x2: x + w - 1, y2: top - 1, color: 'C' },
-  { op: 'line', x: x - w, y: top, x2: x + w, y2: top, color: 'c' },
-  { op: 'pixel', x: x - w, y: top - 1, color: rim }, { op: 'pixel', x: x + w, y: top - 1, color: rim },
-  ...(deep ? [{ op: 'pixel', x: x - w, y: top - 2, color: rim }, { op: 'pixel', x: x + w, y: top - 2, color: rim }] : []),
-  { op: 'pixel', x, y: top - (deep ? 2 : 1), color: 'w' },
+// The scanner stands on the station's shoulder, each level a scanner of its own, and named so: a ROD, a whip of an
+// aerial with a teal tip; a YAGI, a mast of three crossbars; a DISH, a small teal bowl; a BIG DISH, a wide bowl with
+// its feed held over it on struts; an ARRAY, a flat panel of teal cells; a RADAR, a long bar on its mast with a
+// beacon over it; and a DEEP EYE, a violet orb ringed in teal on a tripod. (Its top is at the middle of the frame's
+// top, where the beam and the pings come from: js/fit.js, `PART_AT`.) The second frame of each blinks its lights.
+const DISH = { k: '#16121c', s: '#8a90a2', S: '#c8ccd8', l: '#e6fffa', c: '#5fe0d0', C: '#2a9a9a', r: '#ff5a4a', w: '#ffffff', v: '#b48cff', V: '#6a3ab8', p: '#ffc8ff' };
+const SCANNERS = [
+  ['................', '................', '................', '........c.......', '........s.......', '........s.......', '........s.......', '........s.......',
+    '........s.......', '........s.......', '........s.......', '........s.......', '........s.......', '........s.......', '........s.......', '.......sss......'],
+  ['................', '................', '........c.......', '.......SSS......', '........s.......', '........s.......', '......SSSSS.....', '........s.......',
+    '........s.......', '.....SSSSSSS....', '........s.......', '........s.......', '........s.......', '........s.......', '........s.......', '.......sss......'],
+  ['................', '................', '................', '................', '................', '......l...l.....', '......lCwCl.....', '.......ccc......',
+    '........s.......', '........s.......', '........s.......', '........s.......', '........s.......', '........s.......', '........s.......', '.......sss......'],
+  ['................', '........w.......', '.......S.S......', '......S...S.....', '....lS.....Sl...', '....lCCCCCCCl...', '.....ccccccc....', '......cccc......',
+    '........s.......', '........s.......', '........s.......', '........s.......', '........s.......', '........s.......', '.......sss......', '......sssss.....'],
+  ['................', '.....SSSSSSS....', '.....SccCccS....', '.....ScCcCcS....', '.....SccCccS....', '.....ScCcCcS....', '.....SSSSSSS....', '........s.......',
+    '........s.......', '.......sss......', '........s.......', '........s.......', '........s.......', '........s.......', '.......sss......', '......sssss.....'],
+  ['........r.......', '........s.......', '..SSSSSSSSSSSS..', '..CcccccccccC...', '..ssssssssssss..', '........s.......', '.......sss......', '........s.......',
+    '........s.......', '........s.......', '.......sss......', '........s.......', '........s.......', '........s.......', '.......sss......', '......sssss.....'],
+  ['........r.......', '......vvv.......', '..cc.vpwpv.cc...', '....cVvpvVc.....', '.....VVvVV......', '......VVV.......', '.......s........', '.......s........',
+    '......sss.......', '......s.s.......', '.....s...s......', '.....s...s......', '....s.....s.....', '....s.....s.....', '...s.......s....', '..ss.......ss...'],
 ];
-const dishOps = level => {
-  const at = Math.min(4, level), h = 4 + at * 2, w = 1 + at, top = 14 - h, rim = level >= 6 ? 'w' : 'l';
-  return [
-    { op: 'line', x: 8, y: 15, x2: 8, y2: top + 1, color: 's' },
-    { op: 'line', x: 7, y: 15, x2: 9, y2: 15, color: 's' },
-    ...bowl(8, top, w, at >= 2, rim),
-    ...(level >= 5 ? [
-      { op: 'line', x: 9, y: 10, x2: 12, y2: 10, color: 'S' },
-      { op: 'pixel', x: 12, y: 9, color: 's' },
-      ...bowl(12, 8, 2, false, rim),
-    ] : []),
-    ...(level >= 6 ? [{ op: 'pixel', x: 8, y: 0, color: 'r' }] : []),
-    { op: 'outline', color: 'k', position: 'outside' },
-  ];
-};
+// (The DEEP EYE is drawn a pixel left of the rest; it is moved back so that its orb is over the mast's foot.)
+const dishOps = level => [{ op: 'grid', x: level === 6 ? 1 : 0, y: 0, rows: SCANNERS[level] }, { op: 'outline', color: 'k', position: 'outside' }];
 export const dish = {
   version: 1, name: 'dish', width: 16, height: 16,
   palette: DISH,
