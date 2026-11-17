@@ -1917,13 +1917,13 @@ export class Game {
   // How much more such a cell (at `i`, where that matters) is worth for what the lab knows of it: a hundredth for
   // each level. A thing that has an heir's key (js/shop.js: `heir`: a cross's rich ore, which was known by its donor's
   // before it was a thing of its own, and a deep seam's ores, by its seam's) is known as well as the better of the
-  // two, so what a game had learnt of it under the older name it keeps.
+  // two, so what a game had learnt of it under the older name it keeps. The lab says that count too (`learnt`), in its
+  // list, its notes and its ANALYSED, so what it says a thing is worth more by is what a haul pays.
   studied(k, row, i = -1) { return this.studiedOf(this.sampleOf(k, row, i)); }
-  studiedOf(key) {
-    const e = key && LAB_OF[key];
-    if (!e) return 0;
-    const n = this.S.lab[key] ?? 0;
-    return labLevel(e.heir ? Math.max(n, this.S.lab[e.heir] ?? 0) : n) / 100;
+  studiedOf(key) { return key && LAB_OF[key] ? labLevel(this.learnt(key)) / 100 : 0; }
+  learnt(key) {
+    const e = LAB_OF[key], n = this.S.lab[key] ?? 0;
+    return e?.heir ? Math.max(n, this.S.lab[e.heir] ?? 0) : n;
   }
   // The bit went through something at cell (x, y). The cell says CRUSHED, as it always has (where `say` allows: in
   // ploughed ground no more than once a second). If the lab studies the thing, that was one more sample of it, and
@@ -1934,11 +1934,13 @@ export class Game {
     const e = LAB_OF[key];
     if (say) { this.crushedAt = this.time; this.popup(x, y, 'CRUSHED', '#9a94a8'); }
     if (!e) return;
-    const n = this.S.lab[key] = (this.S.lab[key] ?? 0) + 1;
-    if (n === 1) this.known++;
+    // (A thing with an heir's key counts on from the better of the two (`learnt`), so its first sample is analysed at
+    // what the heir's samples made it worth already, and the next are counted towards the analysis after that.)
+    const was = this.S.lab[key] ?? 0, n = this.S.lab[key] = this.learnt(key) + 1;
+    if (!was) this.known++;
     // (One count on the screen at a time: cutting through a seam of ore, each would lie over the last.)
     this.popups = this.popups.filter(p => !p.label.startsWith('SAMPLE '));
-    if ((n & (n - 1)) === 0) {
+    if (!was || (n & (n - 1)) === 0) {
       this.popup(x, y + 0.7, `ANALYSED +${labLevel(n)}%`, '#8cf2c4');
       this.sparkle((x + 0.5) * T, (y + 0.5) * T, 6, '#8cf2c4');
       sfx.gem(labLevel(n)); this.labSel = key; this.labFlash = 3;
@@ -2054,7 +2056,7 @@ export class Game {
       if (k === K.RELIC) {
         const at = w.relicAt.indexOf(y * N + x);
         if (at >= 0) relic = at;
-        else { const d = w.shrineAt.indexOf(y * N + x); if (d >= 0 && !shrines.includes(d)) shrines.push(d); }
+        else { const d = w.shrineAt.indexOf(y * N + x); if (d >= 0 && !S.shrines?.[d] && !shrines.includes(d)) shrines.push(d); }
       }
       // (A twin stone or a bone: its sector and which, as one number, (sx * 4096 + sy) * 2 + whether it is a bone.)
       else if (k === K.TWIN || k === K.FOSSIL) {
@@ -2093,7 +2095,10 @@ export class Game {
     // Twin stones both in one haul pay a lump of TWIN_LUMP seconds and a specimen of their direction; a fossil whole
     // (every bone the seed laid of it: `find` says how many) BONE_LUMP seconds a bone and two specimens. A twin alone,
     // or a fossil in part, pays its cells' grit and no more. A shrine pays SHRINE_LUMP seconds of what cutting at its
-    // distance earns, and SHRINE_SPEC specimens of each of its parents' directions.
+    // distance earns, and SHRINE_SPEC specimens of each of its parents' directions, once a game, as a wreck's part
+    // is had once: one held already pays its cells' grit and no more. (Where the ground could not be kept, as in a
+    // private window, the game is loaded on a world laid again from its seed, its shrines with it, and each reload
+    // and flight out would have paid 10,000 of a corner's gems.)
     for (const [key, count] of tally) {
       const bone = key & 1, at = key >> 1, F = this.bones;
       w.find(Math.floor(at / 4096) - 2048, at % 4096 - 2048, F);
@@ -3419,8 +3424,9 @@ export class Game {
     if (this.place) { this.place.t += dt; if (this.place.t > this.place.life) this.place = null; }
     if (this.specLine) { this.specLine.t += dt; if (this.specLine.t > this.specLine.life) this.specLine = null; }
     // (A thing's worth is up for its while out in the ground, not under a panel nor at the core, where the shop's
-    // button is; and the next waiting comes after it.)
-    if (!this.shop && !this.lab && !this.atCore) {
+    // button is, nor while the drill lies dead: what waits then is not met, and is met again after the wreck; and the
+    // next waiting comes after it.)
+    if (!this.shop && !this.lab && !this.atCore && d.mode !== 'dead') {
       if (this.eye) { this.eye.t += dt; if (this.eye.t > this.eye.life) this.eye = null; }
       if (!this.eye && this.eyeQueue.length) this.showEye();
     }

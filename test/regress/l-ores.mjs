@@ -6,7 +6,8 @@
 // cross's common ore its host's and its rich ore a stone of the pair's own; a seam's two, its deep seam's two and its
 // shrine's stone are in its corner's part and count toward the direction whose ground it is (the deep seam's taking
 // the seam's samples as their own, `heir`), a cross's rich ore is in its host's part and counts toward its donor,
-// whose rich ore's samples it takes as its own, and within a direction's part the crosses' come after the rare
+// whose rich ore's samples it takes as its own (and the lab, its list, its notes and its ANALYSED, says the level
+// so taken, which is what a haul pays), and within a direction's part the crosses' come after the rare
 // hazard and the deep strain's after the deep flank's, near to far.
 // A hazard of any type and a keystone's iron are samples, an inert hazard and a prism are not. An ore that is its
 // own pays exactly as the cell would with its direction's ore, and what is known of it makes it, and nothing else,
@@ -179,6 +180,36 @@ for (const id of [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21,
   const warm = game.payOf([], skarn).grit;
   game.S.lab = {};
   check(Math.abs(warm - cold * (1 + labLevel(8) / 100)) <= 1, `a block of scheelite pays ${cold} grit known not at all and ${warm} with hoar quartz known 8 times`);
+}
+// And the lab says what it pays (`learnt`): candle quartz first crushed with sunstone known 32 times is ANALYSED at
+// sunstone's +6% and counts on from there, the list and the notes say +6% and its count, and when sunstone is known
+// better after, the list says what candle quartz is paid then; scheelite crushed with hoar quartz known 8 times is
+// ANALYSED +4%. (What is drawn is read back from the glyphs the font draws, a line of text by its row.)
+{
+  const font = sheets.font.glyphs, glyphAt = new Map(Object.entries(font).map(([ch, [gx, gw, gy = 0]]) => [`${gx},${gy},${gw}`, ch]));
+  const drawn = [], ctx = new Proxy({ drawImage(image, sx, sy, sw, sh, dx, dy) { const ch = sh === 10 && glyphAt.get(`${sx},${sy},${sw}`); if (ch) drawn.push([dx, dy, sw, ch]); } }, { get: (t, k) => t[k] ?? (() => ({ data: new Uint8ClampedArray(4), width: 0 })), set: () => true });
+  const lines = () => {
+    const rows = new Map();
+    for (const [x, y, wd, ch] of drawn) { const row = rows.get(y) ?? []; row.push([x, wd, ch]); rows.set(y, row); }
+    const gap = (row, n) => n ? row[n][0] - row[n - 1][0] - row[n - 1][1] : 0;
+    return [...rows.values()].map(row => row.sort((a, b) => a[0] - b[0]).reduce((out, [, , ch], n) => out + (gap(row, n) > 8 ? ' | ' : gap(row, n) > 2 ? ' ' : '') + ch, ''));
+  };
+  const was = game.ctx, CANDLE = 'ores:thawB', SUN = 'ember-items:oreB', name = LAB_OF[CANDLE].name;
+  const shown = () => { game.ctx = ctx; game.resize(320, 568, 1); game.labSel = CANDLE; game.openLab(true, 'lab'); drawn.length = 0; game.render(); game.openLab(false); game.ctx = was; return lines(); };
+  game.S.lab = { [SUN]: 32 }; game.recount(); game.popups.length = 0; game.crushedAt = -9;
+  const known = game.known;
+  game.analyse(CANDLE, C + 10, C + 10);
+  check(game.S.lab[CANDLE] === 33 && game.learnt(CANDLE) === 33 && game.known === known + 1 && game.popups.some(p => p.label === 'ANALYSED +6%'),
+    `candle quartz first crushed with sunstone known 32 times counts ${game.S.lab[CANDLE]}, ${game.known - known} more known, and says ${game.popups.map(p => p.label)}`);
+  const sees = shown();
+  check(sees.some(l => l.startsWith(`${name} | +6%`)) && sees.some(l => l.startsWith('33 SAMPLES')), `with candle quartz at 33 and sunstone 32, the lab says ${JSON.stringify(sees.filter(l => l.includes('%')).slice(0, 12))}`);
+  game.S.lab[SUN] = 64;
+  const later = shown(), pays = game.studiedOf(CANDLE);
+  check(later.some(l => l.startsWith(`${name} | +7%`)) && Math.round(pays * 100) === 7, `with sunstone known 64 times candle quartz is paid +${Math.round(pays * 100)}% and the lab says ${JSON.stringify(later.filter(l => l.startsWith(name)))}`);
+  game.S.lab = { 'ores:hoarstoneA': 8 }; game.recount(); game.popups.length = 0;
+  game.analyse('ores:skarnA', C + 10, C + 10);
+  check(game.popups.some(p => p.label === 'ANALYSED +4%') && Math.round(game.studiedOf('ores:skarnA') * 100) === 4, `scheelite first crushed with hoar quartz known 8 times says ${game.popups.map(p => p.label)}`);
+  game.S.lab = {}; game.recount(); game.popups.length = 0;
 }
 
 // ---- 4. crushed: what the lab counts

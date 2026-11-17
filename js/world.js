@@ -330,7 +330,8 @@ strain(24, 'loess', B.LODE, { rich: 0.85, dig: 0.5, gen: { dense: 0.76, oreA: 0.
 // new, where the seam's sheet alone could not be told from it), two ores of its own (`ownOres` of its own name: its
 // common ore outlined as its first parent's, its rich ore in its corner's own outline and paying its corner's own
 // gems, CORNER_GEM, where the seam's pays its second parent's: no other ore pays them, so the deep seams, from DEEP_R
-// out, are where they are had; its common ore and its hazards still pay its parents'), deep ground's richer, meaner
+// out give or take a hundred cells (from 800 at the nearest), are where they are had; its common ore and its hazards
+// still pay its parents'), deep ground's richer, meaner
 // figures (as `deep` makes a flank of its direction's ground) and looks of its own. `rich` follows the danger, as a
 // strain's and a cross's do: a quarter more than a direction's ground, and a deep seam's twice. The four, by corner:
 //   north-east  HOARSTONE / SKARN       the north's ground, frozen quartz: charged crystals on its slate, and a cut
@@ -729,8 +730,9 @@ const STEP = [1, N, -1, -N], OUTLINE = 600, JOIN = 60000, WALK = 150000, HOLLOW 
 // Plain home ground runs out to HOME_R before any direction's ground begins; the flanks turn strange past DEEP_R;
 // what each direction hides lies RELIC_R out; the world ends at WORLD_R.
 export const HOME_R = 130, DEEP_R = 900, RELIC_R = 2000, WORLD_R = 2400;
-// How far out each gem is first to be had, as the shop says where to find what is short: the directions' past the
-// home ground, the corners' past where the flanks turn deep.
+// How far out each gem is to be had, as the shop says where to find what is short: the directions' past the home
+// ground, the corners' past where the flanks turn deep. (About where, not the least: a deep seam begins where its
+// noise has it, up to a hundred cells either side of DEEP_R, so a corner's gems may be had from 800 out.)
 export const GEM_PAST = [0, HOME_R, HOME_R, HOME_R, HOME_R, DEEP_R, DEEP_R, DEEP_R, DEEP_R];
 // And in generation 2 a shrine on each diagonal SHRINE_R out, in the deep seam there (`SHRINES`: north-east,
 // south-east, south-west, north-west), laid as a relic's vault is: its heart a relic, sealed in ancient stone that

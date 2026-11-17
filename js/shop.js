@@ -391,14 +391,24 @@ export const ROWS = [...UPGRADES, ...WORKS, ...MAPS, ...CORE];
 // Each of them is drawn as a step up on the drill, the tether or the station, as every level above is
 // (js/fit.js). `EARLY` is each row's last level before these, for a picture of a game there.
 // Eight of the dearest, two to a corner, are paid in a corner's gems (G), which only its deep seam's rich ore and its
-// shrine pay, from 900 cells out on the diagonals (js/world.js: `seam`; js/game.js: SHRINE_GEMS): the north east's for
+// shrine pay, from 800 to 1,000 cells out on the diagonals as each seam turns deep (js/world.js: `seam`, `biomeAt`;
+// js/game.js: SHRINE_GEMS, once a game): the north east's for
 // the bit's MK8 and the scanner's 13, the south east's for the ram's x2.8 and the hull's 12, the south west's for the
 // black box's 90% and the lamp's 18, the north west's for the map's range of 10 and the winch's x5. They ask about
 // three times the gems they asked of their row's direction (420 thousand in all where they asked 143 thousand, 95 to
 // 115 thousand a corner): a cell of a deep seam's rich ore pays ten of them (five, twice over, as deep ground's ore
 // pays), and a corner's deep seam holds more than its two prices within 1,500 cells of the core once the gem cutter
 // doubles them. Their grit and what they ask found are as they were, and no level is added or taken away for them,
-// so a game saved before has its levels where they were.
+// so a game saved before has its levels where they were. They are a sink that costs the rest of the late game time:
+// played five hours on worlds 3, 7, 11, 23 and 42 (tools/long-play.mjs --all), the pilot works the deep seams about
+// a thousand cells out from about two hours in, where it went on to two thousand, and a game earns a quarter to
+// nearly half less grit by five hours (7.5 thousand million to 5.5 on world 7, 8.3 to 5.1 on 11, 8.1 to 4.7 on 42),
+// about 0.4 million a second at the end where it earned 0.9; the levels that ask relics (the refinery's last two,
+// the gem cutter's last and LIVE CATCH's) are bought on none of the seven plays, where the game before bought them
+// on five, the pilot no longer reaching the relics 2,000 out; and on world 11 with the hull three of the eight are
+// not bought by 300 minutes. Their prices are kept for the owner's word: the hull's 12 and the winch's x5 at about
+// 50,000 would come some forty minutes sooner. (The pilot works a corner as no player need, CORNER_LINES: how much of
+// this a player would pay is not known.)
 // No two of them ask the same distance, and none what a level of reach asks (900, for 2,300): they open one at a
 // time, forty or fifty cells apart, as the drill goes further out, the first three (the ram, the spore drive's
 // graft and the mender, 760 to 850) while it works its way out to the last reach's 900. (They asked 900, 1,000,

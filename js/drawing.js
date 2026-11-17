@@ -1481,8 +1481,8 @@ export class Drawing {
       text(ctx, label, px + 17, 22, GEM_COLOR[line.kin]);
       ctx.globalAlpha = 1;
     }
-    // A thing of the lab's seen for the first time (js/game.js: `showEye`), out in the ground.
-    if (this.eye && !this.shop && !this.lab && !this.atCore) this.drawEye();
+    // A thing of the lab's seen for the first time (js/game.js: `showEye`), out in the ground, and not over a wreck.
+    if (this.eye && !this.shop && !this.lab && !this.atCore && this.drill.mode !== 'dead') this.drawEye();
     // The map, in the top right corner.
     this.drawMap(W - 52, 6);
     // The shop's button, over the bar, when the drill is home.
@@ -2051,7 +2051,7 @@ export class Drawing {
         ctx.drawImage(sheets[line.sheet].image, f[0] + 2, f[1] + 2, 12, 12, vx + 2, y, 12, 12);
         if (rim) ring(ctx, vx + 2, y, rim);
         text(ctx, e.name, vx + 18, y + 2, on ? '#ffe14a' : '#ffffff');
-        text(ctx, `+${labLevel(n)}%`, RIGHT, y + 2, '#8cf2c4', 1);
+        text(ctx, `+${labLevel(this.learnt(e.key))}%`, RIGHT, y + 2, '#8cf2c4', 1);
       } else {
         // (What is not yet known says where it is found.)
         if (rim) { chip(ctx, vx + 2, y, null, '#1c1a28'); ring(ctx, vx + 2, y, rim); }
@@ -2084,7 +2084,7 @@ export class Drawing {
     const w = this.labWrap ??= { said: '', wide: 0, lines: [] };
     if (w.said !== said || w.wide !== wide) { w.said = said; w.wide = wide; w.lines = wrap(said, wide).slice(0, NOTE_LINES); }
     ctx.fillStyle = '#4a4468'; ctx.fillRect(px + 6, ny - 2, pw - 12, 1);
-    if (n) text(ctx, labCount(n), px + 8, ny + 1, '#bfe6ff');
+    if (n) text(ctx, labCount(this.learnt(sel.key)), px + 8, ny + 1, '#bfe6ff');
     else text(ctx, 'NOT ANALYSED YET', px + 8, ny + 1, '#bcb4cc');
     // (What it is worth, against plain rock out where it lies, known or not.)
     const worth = worthNow[sel.key];

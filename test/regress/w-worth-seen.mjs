@@ -8,7 +8,8 @@
 //     before the first haul;
 //   - one at a time: what comes while one is up waits, three at the most, each shown as the last goes; what came
 //     past those three is passed over and not taken as met, so it comes up when it is next seen; one cut meanwhile
-//     is passed over; none is shown, nor its time run, under a panel or at the core (where the shop's button is);
+//     is passed over; none is shown, nor its time run, under a panel, at the core (where the shop's button is) or
+//     while the drill lies dead, and what waited then is not met;
 //   - where the cell's ground pays more than the thing's own, how much more: steel in the magma HERE x2, a crystal
 //     in a kilnstone cross HERE +25%, sunstone in the south's own ground nothing;
 //   - a game saved before the world said worth takes every thing its lab has analysed as met, and only those; a
@@ -165,6 +166,20 @@ const frames = (game, seconds) => { for (let f = 0; f < Math.round(seconds * 60)
   game.drawHud(0, 0);
   check(game.eye && !game.panels.includes(game.eye.rect), 'sunstone\'s worth was drawn at the core');
   delete game.atCore;
+}
+
+// ---- while the drill lies dead nothing comes up, runs or is drawn, and what waited is not met
+{
+  const { game, to, plant } = await staged(), S = game.S;
+  plant(14, 1, K.ORE_B); plant(14, -1, K.STEEL); to(10); to(11); frames(game, 1 / 60);
+  const up = game.eye?.key, next = game.eyeQueue[0]?.key;
+  check([up, next].sort().join() === [STEEL, SUN].sort().join() && game.eyeQueue.length === 1, `sunstone and steel, one up and one waiting: ${up} ${JSON.stringify(game.eyeQueue)}`);
+  frames(game, 3); game.wreck();
+  const t = game.eye?.t;
+  frames(game, 1.1);
+  check(game.drill.mode === 'dead' && game.eye?.key === up && game.eye.t === t && game.eyeQueue.length === 1 && !S.eyed[next], `the hull gone, ${up}'s worth ran on (${t} to ${game.eye?.t}) or ${next} came up or was met: ${game.eye?.key} ${JSON.stringify(game.eyeQueue)} ${JSON.stringify(S.eyed)}`);
+  game.drawHud(0, 0);
+  check(game.eye && !game.panels.includes(game.eye.rect), 'a worth was drawn over the wreck');
 }
 
 // ---- saved games

@@ -9,9 +9,12 @@
 //   (e) the eight levels paid in them (js/shop.js: LATE) ask for them, as written; a game with every direction's gems
 //       and none of the corner's is refused, and one with that corner's buys and pays them;
 //   (f) a shrine hauled pays SHRINE_GEMS of its corner's gems on top of what its cells pay, not cut by the gem cutter,
-//       and held makes its corner's gems SHRINE_OWN times as many and no other corner's;
+//       and held makes its corner's gems SHRINE_OWN times as many and no other corner's, and is not paid for again
+//       when a world laid again from its seed stands it again;
 //   (g) the bar shows the corners' gems (`cornerBar`) while a corner's level is saved for and out on a diagonal past
 //       CORNER_BAR cells, and not at home, on an axis or nearer in;
+//   (i) a deep seam, and so a corner's gem, is had from no nearer than 800 cells, DEEP_R less a hundred, and some
+//       nearer than the shop's 900;
 //   (h) the station's colours of the gems (js/fit.js) are the screen's (js/drawing.js).
 // Each fails on the game before the corners' gems were paid: the deep seams' rich ores paid their second parents'.
 //   node test/regress/e-corner-gems.mjs
@@ -114,6 +117,16 @@ for (let b = 1; b <= 8; b++) { const paid = game.payOf([], block(b, K.ORE_B)).ge
   const gems = held => { S2.shrines = held; return g2.payOf([], ore).gems; };
   const none = gems([0, 0, 0, 0]), ne = gems([1, 0, 0, 0]);
   check(CORNER_GEM.every(g => none[g] === 240) && Math.abs(ne[G.NE] - none[G.NE] * SHRINE_OWN) <= 1 && [G.SE, G.SW, G.NW].every(g => ne[g] === none[g]), `with the north east's shrine held the corners' gems are ${ne.slice(5)}, with none ${none.slice(5)}`);
+  // A shrine held is paid for once a game: where the ground could not be kept (the harness's store opens on nothing,
+  // as a private window's may), the game loads on its world laid again from the seed, the shrine standing again, and
+  // its heart hauled again pays its cell and no 10,000, no lump and no specimens.
+  S2.shrines = [1, 0, 0, 0];
+  for (let f = 0; f < 1800 && g2.hauls.length; f++) g2.update(1 / 60);
+  g2.save();
+  await new Promise(r => setTimeout(r, 50));
+  const loaded = await g2.restore(), heart = (C + sy) * N + C + sx, laid = g2.world.k(heart) === K.RELIC, again = g2.payOf([heart]);
+  check(loaded && g2.S.shrines[0] === 1 && laid && again.shrine < 0 && !again.shrines.length && again.gems.every(n => n === 0) && again.lump === 0 && again.spec.every(n => n === 0),
+    `the north east's shrine held, loaded ${loaded} on a world laid again (its heart a relic: ${laid}), and hauled again pays shrine ${again.shrine}, gems ${again.gems}, lump ${again.lump}, specimens ${again.spec}`);
 }
 
 // (g) Where the bar shows the corners.
@@ -128,6 +141,22 @@ for (let b = 1; b <= 8; b++) { const paid = game.payOf([], block(b, K.ORE_B)).ge
   S3.lv.momentum = u.values.indexOf(2.8) - 1; S3.out = 3000; S3.grit = 0;
   g3.buy(u);
   check(g3.goal.id === 'momentum' && g3.goal.gem === G.SE && g3.cornerBar?.(), `with the ram's x2.8 saved for, at home, the goal is ${g3.goal.id} in gem ${g3.goal.gem} and the bar shows the corners: ${g3.cornerBar?.()}`);
+}
+
+// (i) How near the corners' gems are had: a deep seam begins where its noise has it, from a hundred cells inside DEEP_R
+// (js/world.js: `biomeAt`), so none of its cells lies nearer than 800, and on world 7 some lie nearer than 900, past
+// which the shop says they are had (GEM_PAST: about where, not the least).
+{
+  const { DEEP_R, GEM_PAST } = world, near = [];
+  SHRINES.forEach(([sx, sy], c) => {
+    let least = Infinity;
+    for (let r = DEEP_R - 160; r <= DEEP_R; r++) for (let a = -0.2; a <= 0.2; a += 0.4 / r) {
+      const t = Math.atan2(sy, sx) + a, x = C + Math.round(r * Math.cos(t)), y = C + Math.round(r * Math.sin(t));
+      if (w.biomeAt(x, y) === SEAMS[c][1]) least = Math.min(least, Math.hypot(x - C, y - C));
+    }
+    near.push(Math.round(least));
+  });
+  check(near.every(r => r >= DEEP_R - 100) && Math.min(...near) < GEM_PAST[G.NE] && CORNER_GEM.every(g => GEM_PAST[g] === DEEP_R), `the deep seams' nearest cells within ${DEEP_R} on world 7 lie ${near} cells out, the shop saying past ${GEM_PAST.slice(5)}`);
 }
 
 // (h)
