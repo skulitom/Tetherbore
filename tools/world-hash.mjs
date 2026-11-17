@@ -9,6 +9,11 @@
 // The pieces, for seeds 1, 7 and 123456: the four round the core's middle; the one holding the cell 200, 600,
 // 1000, 1500 and 2000 cells out along each axis; and the one holding the cell 1000 and 1500 cells out along each
 // diagonal. It asks the world alone (js/world.js: `piece`), so it needs no browser and nothing of the game.
+//
+// Every piece is laid by the rules of one generation (js/world.js: GEN, `genOf`): `lines(gen)` lays all of them by
+// generation `gen`'s, and the record is of generation 1, the world as it was before the seams and the deep strains.
+// Every rule laid since asks the generation, so the record holds whatever is added: that it does is the proof that
+// a newer rule lays nothing in an older game's ground.
 import { readFile, writeFile } from 'node:fs/promises';
 import { World, C, CH, CW, DX, DY } from '../js/world.js';
 
@@ -29,11 +34,12 @@ export const places = () => {
   }
   return list;
 };
-export const lines = () => {
+export const lines = (gen = 1) => {
   const out = [];
   for (const seed of [1, 7, 123456]) {
     const world = new World();
     world.reset(seed);
+    world.genOf.fill(gen);
     for (const [name, dx, dy] of places()) {
       const id = (((C + dy) >> 6) << 8) | ((C + dx) >> 6), p = world.piece(id);
       out.push(`seed ${seed} ${name} (piece ${id % CW - C / CH},${((id / CW) | 0) - C / CH}): kind ${fnv(p.kind)} biome ${fnv(p.biome)}`);
@@ -43,7 +49,7 @@ export const lines = () => {
 };
 
 if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '/').split('/').pop())) {
-  const now = lines(), mode = process.argv[2];
+  const now = lines(1), mode = process.argv[2];
   if (mode === '--write') {
     await writeFile(RECORD, now.join('\n') + '\n');
     console.log(`${now.length} lines recorded in test/world-hash.txt`);

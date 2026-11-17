@@ -608,6 +608,15 @@ const STEP = [1, N, -1, -N], OUTLINE = 600, JOIN = 60000, WALK = 150000, HOLLOW 
 // Plain home ground runs out to HOME_R before any direction's ground begins; the flanks turn strange past DEEP_R;
 // what each direction hides lies RELIC_R out; the world ends at WORLD_R.
 export const HOME_R = 130, DEEP_R = 900, RELIC_R = 2000, WORLD_R = 2400;
+// Which rules of the world a piece of it was laid by: its generation. Every piece made now is laid by the rules of
+// GEN; a piece saved by an older game was laid by those of its day, and is laid by them still (`genOf`, `genAt`),
+// or the ground it saved would no longer be the ground the seed lays there, and every rule that asks what was laid
+// (the finder, the dens, a game judging whose ground a piece is) would be answered wrongly. Generation 1 is the
+// world as it was until the seams and the deep strains; every rule laid since asks `genAt` of the cell, or of the
+// piece its anchor lies in, and lays nothing in a piece of an older generation. An old piece is brought up to the
+// rules of today once, where it was never seen (`migrate`): MIGRATE_NEAR, MIGRATE_SEAM and MIGRATE_FAR bound where a
+// newer rule can lay anything otherwise (MIGRATE_SEAM in the units of the distance from the diagonal, | |dx| - |dy| |).
+export const GEN = 2, MIGRATE_NEAR = 445, MIGRATE_SEAM = 204, MIGRATE_FAR = 790;
 // Things to find. The ground is laid out in sectors FIND cells across, and a sector may hold a geode (a shell of slate
 // round rich ore) or a cache (a crate buried in stone). Eight wrecks lie at set distances, each in a hollow of its
 // own with what is left of its hull; each holds a part of an older machine.
@@ -847,6 +856,7 @@ export class CellBook {
 export class World {
   constructor() {
     this.chunks = new Array(CW * CW);      // each { kind, biome, seen }, made when first looked at
+    this.genOf = new Uint8Array(CW * CW).fill(GEN);      // the generation of the rules each piece is laid by (GEN)
     this.touched = new Set();              // pieces changed since the last save
     // How many times the ground as it is known (what the pieces hold, seen or not) has changed: it goes up beside
     // every `touched.add` and on `reset`, and wherever a piece is written to it must go up too, or the chart (which
@@ -1344,12 +1354,21 @@ export class World {
   slabAt(x, y) { const S = this.slabOf(x, y); return S === null ? OUT : this.slabCell(S, x, y); }
   reset(seed) {
     this.seed = seed;
-    this.chunks = new Array(CW * CW);
+    this.chunks = new Array(CW * CW); this.genOf.fill(GEN);
     this.touched.clear(); this.lava.clear(); this.dug.clear(); this.kept = null; this.stirred++;
     this.made = 0;
     this.spotted.length = 0;
-    this.provincesFor = NaN; this.slabsFor = NaN; this.firstFor = NaN; this.slabLast.seed = NaN; this.zonesFor = NaN; this.zoneLast.seed = NaN;
-    this.sitesFor = NaN; this.siteLast.seed = NaN;
+    this.provincesFor = NaN;
+    this.forget();
+  }
+  // The generation of the rules the piece holding a cell is laid by (GEN).
+  genAt(x, y) { return this.genOf[((y >> 6) << 8) | (x >> 6)]; }
+  // What is kept of the seed's records that a generation can change (which sector holds a pocket, a site, a slab,
+  // a find, and the first slab) is asked again: whenever `genOf` changes, which is only as a game is loaded, before
+  // it begins. (Provinces are the seed's alone: a newer rule asks the generation outside what they keep.)
+  forget() {
+    this.slabsFor = NaN; this.firstFor = NaN; this.slabLast.seed = NaN; this.zonesFor = NaN; this.zoneLast.seed = NaN;
+    this.sitesFor = NaN; this.siteLast.seed = NaN; this.sector.seed = NaN; this.asked.seed = NaN;
   }
 
   // Whose ground a cell is, from the seed alone. The rules, in the order they are asked (docs/CONTENT-PLAN.md S3):
@@ -1515,18 +1534,72 @@ export class World {
     if (p) return p;
     p = this.chunks[id] = { kind: new Uint8Array(CH * CH), biome: new Uint8Array(CH * CH), seen: new Uint8Array(CH * CH) };
     this.made++;
+    this.lay(id, p.kind, p.biome);
+    // (A piece made since the mark was, at the mark, as the seed lays it and unseen.)
+    if (this.kept !== null) this.kept.set(id, { kind: p.kind.slice(), biome: p.biome.slice(), seen: p.seen.slice() });
+    return p;
+  }
+  // What the seed lays in piece `id`, by the rules of the generation it is at, written into `kind` and `biome`.
+  lay(id, kind, biome) {
     const x0 = (id % CW) * CH, y0 = ((id / CW) | 0) * CH, was = this.slabHere;
     // Most pieces have no slab in them, and nearly all the rest have one: which, is asked once for the piece, so
     // that no cell of it has to ask.
     if (was === undefined) this.slabHere = this.slabOver(x0, y0, x0 + CH - 1, y0 + CH - 1);
     for (let v = 0; v < CH; v++) for (let u = 0; u < CH; u++) {
       const b = this.biomeAt(x0 + u, y0 + v);
-      p.biome[v * CH + u] = b; p.kind[v * CH + u] = this.kindAt(x0 + u, y0 + v, b);
+      biome[v * CH + u] = b; kind[v * CH + u] = this.kindAt(x0 + u, y0 + v, b);
     }
     this.slabHere = was;
-    // (A piece made since the mark was, at the mark, as the seed lays it and unseen.)
-    if (this.kept !== null) this.kept.set(id, { kind: p.kind.slice(), biome: p.biome.slice(), seen: p.seen.slice() });
-    return p;
+  }
+  // Whether the rules of GEN could lay any cell of piece `id` otherwise than those of generation 1: a bound, made
+  // generous, on where every newer rule reaches (MIGRATE_NEAR, MIGRATE_SEAM, MIGRATE_FAR). A piece outside it is laid
+  // the same by both, and is never brought up.
+  newer(id) {
+    const x0 = (id % CW) * CH - C, y0 = ((id / CW) | 0) * CH - C, x1 = x0 + CH - 1, y1 = y0 + CH - 1;
+    // (The nearest and furthest of the piece's |dx| and |dy|: a piece across an axis comes to 0 there.)
+    const ax0 = x0 > 0 ? x0 : x1 < 0 ? -x1 : 0, ax1 = Math.max(Math.abs(x0), Math.abs(x1));
+    const ay0 = y0 > 0 ? y0 : y1 < 0 ? -y1 : 0, ay1 = Math.max(Math.abs(y0), Math.abs(y1));
+    const reach = Math.sqrt(ax1 * ax1 + ay1 * ay1);
+    return reach > MIGRATE_FAR || (reach > MIGRATE_NEAR && Math.max(0, ax0 - ay1, ay0 - ax1) <= MIGRATE_SEAM);
+  }
+  // An older game's ground brought up to the rules of GEN where nobody has seen it, once, as a game is loaded and
+  // before it begins (js/game.js: `restore`): the new ground runs up to the edge of what was seen, and what was seen
+  // is as it was. Each piece of an older generation that a newer rule could lay otherwise (`newer`) is laid twice,
+  // first by the rules of its own generation and then, with every such piece taken up together, by GEN's; a cell
+  // takes the second only where it is unseen and still holds what the first laid (a cell cut, grown back or poured
+  // into keeps what it holds). Each piece taken up is GEN's from then on, and is saved so (`touched`): a second
+  // load takes up nothing. (Both layings go into arrays kept for the next game loaded; a structure a newer rule
+  // anchors in a piece of GEN lays nothing in a piece still older, so the first laying is the older rules', whatever
+  // lies round it.) Returns [pieces taken up, cells laid anew]. (It costs two layings a piece taken up: on a
+  // desktop 59 ms for the 24 of test/fixtures/save-93ecb92-ne.json.gz, the first time, and 155 ms for 122 along the
+  // four diagonals, about what a save of three hours holds; a phone four times slower takes under 0.8 s, once.)
+  migrate() {
+    // (What was kept of the seed's records was worked out as the pieces' generations were being set.)
+    this.forget();
+    const ids = [];
+    for (let id = 0; id < CW * CW; id++) if (this.chunks[id] && this.genOf[id] < GEN && this.newer(id)) ids.push(id);
+    if (!ids.length) return [0, 0];
+    const kind = this.layKind ??= new Uint8Array(CH * CH), biome = this.layBiome ??= new Uint8Array(CH * CH);
+    if (!this.layAlike || this.layAlike.length < ids.length * CH * CH) this.layAlike = new Uint8Array(ids.length * CH * CH);
+    const alike = this.layAlike;
+    ids.forEach((id, n) => {
+      const p = this.chunks[id], o = n * CH * CH;
+      this.lay(id, kind, biome);
+      for (let at = 0; at < CH * CH; at++) alike[o + at] = !p.seen[at] && p.kind[at] === kind[at] && p.biome[at] === biome[at] ? 1 : 0;
+    });
+    for (const id of ids) this.genOf[id] = GEN;
+    this.forget();
+    let cells = 0;
+    ids.forEach((id, n) => {
+      const p = this.chunks[id], o = n * CH * CH;
+      this.lay(id, kind, biome);
+      let moved = 0;
+      for (let at = 0; at < CH * CH; at++) if (alike[o + at] && (p.kind[at] !== kind[at] || p.biome[at] !== biome[at])) { p.kind[at] = kind[at]; p.biome[at] = biome[at]; moved++; }
+      if (moved) { p.dull = undefined; cells += moved; }
+      this.touched.add(id);
+    });
+    this.stirred++;
+    return [ids.length, cells];
   }
   // Whether a saved piece of ground (`p`: { kind, biome, seen }, its number `id`) is some other world's: 1 where it
   // plainly is, 0 where it is this one's, and a half where there is too little left in it to say. Looked at on a

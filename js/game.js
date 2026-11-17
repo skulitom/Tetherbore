@@ -1,6 +1,6 @@
 // Tetherbore: the game. A drill flies free on a tether from a fixed core, cuts whatever ground it is pushed into,
 // and reels in any piece of ground it has drawn the tether round.
-import { World, CellBook, N, C, K, B, HARD, GRIT, GEMS, DX, DY, HAZARDS, RARE, CRUSH, ZONE, FIND, rowOf, hazOf, gemKin, digTime, cellHash, sight, cellsAlong, HOME_R } from './world.js';
+import { World, CellBook, N, C, K, B, HARD, GRIT, GEMS, DX, DY, HAZARDS, RARE, CRUSH, ZONE, FIND, rowOf, hazOf, gemKin, digTime, cellHash, sight, cellsAlong, HOME_R, GEN } from './world.js';
 import { sheets, frameAt, duration } from './atlas.js';
 import { sfx, unlock, setAmbience } from './audio.js';
 import { richness, haulBonus, overload, income, round2, NEEDS, UPGRADES, LAB, LAB_OF, labLevel, labNext, CORE, ROWS, REACH, CUT } from './shop.js';
@@ -46,7 +46,8 @@ const PLACE_HAULS = {
   rime: 'DEEP FREEZE!', magma: 'MOLTEN HAUL!', bloom: 'FULL BLOOM!', gilt: 'GILDED!',
   firn: 'FROZEN RIVER!', serac: 'ICEFALL!', scoria: 'FROTHING!', forge: 'FORGED!', tangle: 'TANGLED UP!', sporefall: 'SPORE STORM!', redrock: 'RED LETTER!', loess: 'SILTSLIDE!',
 };
-export const placeHaul = row => !row || !(row.pocket || row.cross || (row.id >= 5 && row.id <= 31)) ? null
+// (Rows 5 to 31 are the flanks, the seams and the strains, and 64 to 127 the deep strains and what comes after.)
+export const placeHaul = row => !row || !(row.pocket || row.cross || (row.id >= 5 && row.id <= 31) || (row.id >= 64 && row.id <= 127)) ? null
   : PLACE_HAULS[row.name] ?? `${row.cross ? row.title.split(' ').pop() : row.title} HAUL!`;
 // Which giant a haul of `n` cells is, made by a loop round `area` cells: 0 none, 1 to GIANTS.length, and one more
 // for HALF.
@@ -331,7 +332,8 @@ export class Game {
   // ------------------------------------------------------------ state
   fresh(seed, quiet = false) {
     this.S = { seed, grit: 0, gems: [0, 0, 0, 0, 0], lv: Object.fromEntries(ROWS.map(u => [u.id, 0])), relics: [0, 0, 0, 0], wrecks: [0, 0, 0, 0, 0, 0, 0, 0],
-      stats: { hauls: 0, best: 0, buys: 0, moves: 0, time: 0 }, won: false, met: {}, marks: [], visited: {}, spec: [0, 0, 0, 0, 0], lab: {}, out: 0, rare: {} };
+      stats: { hauls: 0, best: 0, buys: 0, moves: 0, time: 0 }, won: false, met: {}, marks: [], visited: {}, spec: [0, 0, 0, 0, 0], lab: {}, out: 0, rare: {},
+      gen: GEN, shrines: [0, 0, 0, 0], fossils: 0 };
     this.world.reset(seed);
     this.begin();
     if (!quiet) this.claim();
@@ -407,12 +409,14 @@ export class Game {
     this.rev = (this.rev ?? latestRev()) + 1;
     try { const text = JSON.stringify({ v: 3, rev: this.rev, ...this.S }); localStorage.setItem(SAVE_KEY, text); localStorage.setItem(LATEST, text); } catch { /* the game goes on without saving */ }
     // (The pieces are taken now, as this world's: by the time the database answers, the game may be in another.)
-    const w = this.world, seed = this.S.seed, kept = [...w.touched].map(id => [id, w.chunks[id]]).filter(([, p]) => p);
+    const w = this.world, seed = this.S.seed, kept = [...w.touched].map(id => [id, w.chunks[id], w.genOf[id]]).filter(([, p]) => p);
     if (!kept.length) return;
     w.touched.clear();
     store().then(db => {
       const pieces = db.transaction('pieces', 'readwrite').objectStore('pieces');
-      for (const [id, p] of kept) pieces.put({ kind: p.kind, biome: p.biome, seen: p.seen, seed }, id);
+      // (Each piece says which rules laid it: its own generation, never GEN, as a piece an older game laid and this
+      // one has not brought up is saved again with what it holds and is laid by the older rules still.)
+      for (const [id, p, gen] of kept) pieces.put({ kind: p.kind, biome: p.biome, seen: p.seen, seed, gen }, id);
     }).catch(() => {});
   }
   // The game saved elsewhere since this one last looked is loaded in place of this one, and the game says so.
@@ -453,6 +457,10 @@ export class Game {
       // things seen on the map, the pockets visited, the specimens of each direction, the lab's samples, the rare
       // hazards met.
       S.wrecks ??= [0, 0, 0, 0, 0, 0, 0, 0]; S.met ??= {}; S.marks ??= []; S.visited ??= {}; S.spec ??= [0, 0, 0, 0, 0]; S.lab ??= {}; S.out ??= 0; S.rare ??= {};
+      // And what one saved before the seams and the deep strains lacks: the generation of the world it last played
+      // in (the ground it saved is told apart piece by piece; this says only whether to say the deep has changed),
+      // the corner shrines hauled and the fossils whole.
+      S.gen ??= 1; S.shrines ??= [0, 0, 0, 0]; S.fossils ??= 0;
       for (const u of ROWS) this.S.lv[u.id] = Math.min(this.S.lv[u.id] ?? 0, u.values.length - 1);
       this.world.reset(S.seed);
       // Only this world's ground is taken. A piece says whose it is; one that does not (saved before pieces said)
@@ -462,6 +470,11 @@ export class Game {
       // world's is thrown out of the store, and the store is marked.
       const w = this.world, meta = rows.find(([key]) => key === 'meta')?.[1], pieces = rows.filter(([key]) => key !== 'meta'), gone = [], unsure = [];
       let judged = 0, strange = 0;
+      // (Each piece is laid by the rules of the generation it says, and one that says none by the first's, before
+      // any is judged: a piece of this world an older game saved is the ground those rules lay, and a structure
+      // anchored in one piece may lay cells in its neighbour.)
+      for (const [id, p] of pieces) w.genOf[id] = p.gen ?? 1;
+      w.forget();
       for (const [id, p] of pieces) {
         let own = p.seed === S.seed;
         if (p.seed === undefined) {
@@ -471,6 +484,12 @@ export class Game {
         if (own) w.chunks[id] = { kind: p.kind, biome: p.biome, seen: p.seen }; else gone.push(id);
       }
       if (strange >= judged * 0.2 && strange > 0) for (const id of unsure) { w.chunks[id] = undefined; gone.push(id); }
+      // (Ground thrown out is made afresh, by today's rules.)
+      for (const id of gone) w.genOf[id] = GEN;
+      // The ground an older game saved is brought up to today's rules where it was never seen (`World.migrate`),
+      // and what the finder knew of the seed is asked again.
+      const [, newer] = w.migrate();
+      this.laidFor = ''; if (this.chartMap) this.chartMap.laidFor = '';
       // (The pieces are put in by hand, not through the world: what it counts of changes to the ground goes up here.)
       w.stirred++;
       this.thrownOut = gone.length;
@@ -480,6 +499,9 @@ export class Game {
       }
       this.begin();
       if (gone.length) this.notice = { title: 'GROUND MENDED', sub: `${gone.length} PIECES OF AN OLD WORLD`, colour: '#8ce060', t: 0, life: 5 };
+      // (Said once, to a game saved before the deep changed whose unseen ground was laid anew: it is today's from then.)
+      else if (newer && S.gen < GEN) this.notice = { title: 'NEW GROUND', sub: 'THE DEEP HAS CHANGED', colour: '#8ce060', t: 0, life: 5 };
+      S.gen = GEN;
       return true;
     } catch (error) {
       // A save that is there and cannot be begun is kept aside before a new game is written over it, and the
