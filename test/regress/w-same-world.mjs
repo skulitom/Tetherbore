@@ -22,6 +22,11 @@
 // (docs/CONTENT-PLAN.md), under "Rare hazards' sites" below: which sector of 144 cells holds one, where its heart
 // lies and which it is, the four heralds, and what each lays round its heart, after the caves and in place of all
 // else that is not open.
+// And what generation 2 lays (js/world.js: GEN, `genOf`), under "Generation 2" below: the seams on the diagonals
+// and their set pieces, the flanks' provinces and the deep strains in them, the strains' tells, the corner heralds,
+// twin stones, fossils, a druse's geodes and the shrines, each written out as plainly. The world is read twice: as a
+// new game lays it, every piece of generation 2, and in a second pass at generation 1, as an older game's ground is
+// laid, which must be the world as it was before any of that, cell for cell (`plain(seed, 1)` leaves it all out).
 //   node test/regress/w-same-world.mjs
 import { world } from '../harness.mjs';
 const { World, N, C, CH, CW, K, B, HOME_R, DEEP_R, RELIC_R, WORLD_R, FIND, WRECK_R, DX, DY, base, cellHash: hash } = world;
@@ -55,7 +60,29 @@ const cross = b => {
   const host = 1 + Math.floor((b - 128) / 15), donor = OTHERS[host][Math.floor((b - 128) % 15 / 5)], shape = (b - 128) % 5;
   return { kin: host, ...SHAPE[shape === 2 && host !== 1 && donor !== 1 ? 0 : shape], ...[null, {}, { lava2: 0.80 }, { spore2: 0.6 }, { spark2: 0.6 }][donor] };
 };
-const plain = seed => {
+// ---- Generation 2. The seams: on the north-east diagonal 9 (hoarstone, the north's) and past the flanks' distance
+// 13 (skarn), on the south-east 10 and 14 (glassdune and obsidian, the east's), the south-west 11 and 15 (cinderfen
+// and tarpit, the south's), the north-west 12 and 16 (frostfen and muskeg, the west's). And the deep strains of the
+// flanks far out, 63 + the flank's direction: 64 glacier, 65 caldera, 66 mycelium, 67 druse. Each is laid as the
+// strains are, by the figures written here: whose ground it is, its first hazard where that is not its direction's
+// (`haz`), its second (`lava2`, `spore2`), its thresholds where they are not its direction's, how thick its hazard
+// is (`rate`, `lava`, `rind`), and its tells: ripples of glass (`ripples`), hairline faults (`threads`), a sheath of
+// ice on its halls' walls (`sheath`), caps on its caves' rims (`rims`) and lakes of lava (`lakes`). A deep one's
+// ore is thicker (0.6 and 0.66) and its hazard 1.8 times as thick, as a flank's is.
+const DEEPER = { oreA: 0.6, oreB: 0.66 };
+const NEW = {
+  9: { kin: 1, haz: 'spark', slate: 0.05 }, 13: { kin: 1, haz: 'spark', slate: 0.05, rate: 1.8, ...DEEPER },
+  10: { kin: 4, lava2: 0.78, ripples: 0.02 }, 14: { kin: 4, lava2: 0.72, ripples: 0.035, rate: 1.8, ...DEEPER },
+  11: { kin: 2, cave: 0.74, spore2: 1, bubbles: 0.8 }, 15: { kin: 2, cave: 0.74, spore2: 1, bubbles: 0.8, lava: 0.72, ...DEEPER },
+  12: { kin: 3, rivers: 0.02 }, 16: { kin: 3, rivers: 0.02, rate: 1.8, ...DEEPER },
+  64: { kin: 1, cave: 0.82, cavern: 0.62, sheath: 0.03, ...DEEPER }, 65: { kin: 2, lava: 0.76, rind: 0.14, lakes: 0.76, rate: 1.8, ...DEEPER },
+  66: { kin: 3, rate: 1.4, threads: 0.014, rims: 0.025, ...DEEPER }, 67: { kin: 4, rate: 1.4, geodes: true, ...DEEPER },
+};
+// Deep ground: the flanks, the deep seams and the deep strains (a site's share there is a flank's).
+const DEEP = b => (b >= 5 && b <= 8) || (b >= 13 && b <= 16) || (b >= 64 && b <= 67);
+const ROW = b => STRAIN[b] ?? cross(b) ?? NEW[b] ?? {};
+const SHRINES = [[990, -990], [990, 990], [-990, 990], [-990, -990]], CORNERS = [[3, -3], [3, 3], [-3, 3], [-3, -3]];
+const plain = (seed, gen = 2) => {
   const wrecks = WRECK_R.map((r, n) => {
     const ux = hash(n, 1, seed + 31) - 0.5, uy = hash(n, 2, seed + 31) - 0.5, len = Math.sqrt(ux * ux + uy * uy) || 1;
     return [C + Math.round(ux / len * r), C + Math.round(uy / len * r)];
@@ -71,7 +98,8 @@ const plain = seed => {
   // two kinds may lie, the sector's pocket is the one whose own hash for the sector (100 + its ground's number) is
   // larger. The first pockets are a drift in the north and the east, an ash flat in the south, a hive in the west.
   // (Kept once worked out, as a sector's slab is.)
-  const relics = [0, 1, 2, 3].map(d => [C + DX[d] * RELIC_R, C + DY[d] * RELIC_R]);
+  // (In generation 2 the shrines are kept clear of as the relics are.)
+  const relics = [0, 1, 2, 3].map(d => [C + DX[d] * RELIC_R, C + DY[d] * RELIC_R]).concat(gen >= 2 ? SHRINES.map(([x, y]) => [C + x, C + y]) : []);
   const HERALD = [[14, -165, 0, -1, 33], [-14, 165, 0, 1, 34], [-165, -14, -1, 0, 32], [165, 14, 1, 0, 33]];
   const zones = new Map();
   const zoneOf = (sx, sy) => {
@@ -205,14 +233,41 @@ const plain = seed => {
     }
     return false;
   };
+  // In generation 2, far out: a sector of a druse (its middle's ground) over 900 cells out that would hold nothing,
+  // or twin stones or a fossil, holds a geode. Twin stones (0.74 to 0.80, the middle over 800 out): two cells three
+  // either side of the middle, east and west, north and south, or along one diagonal or the other by hash 34, each
+  // in a ring of dense rock. A fossil (0.80 to 0.86, over 1,200 out): 4 to 7 bones by hash 36, the first three cells
+  // behind the middle along one of the four ways by hash 35 (east, south, west, north), each a cell on from the one
+  // before and a cell to one side, the other, or neither of the one before by its own hash (35, of the sector
+  // that many east), never more than a cell from the line, in a bed of dense rock round each bone.
+  const druse = (sx, sy, what, fx, fy) => gen >= 2 && what >= 0.74 && (fx - C) ** 2 + (fy - C) ** 2 > 900 * 900 && ROW(biomeAt(fx, fy)).geodes === true;
   const findAt = (x, y) => {
-    const sx = Math.floor((x - C) / FIND), sy = Math.floor((y - C) / FIND), what = hash(sx, sy, seed + 21);
-    if (what >= 0.74) return -1;
+    const sx = Math.floor((x - C) / FIND), sy = Math.floor((y - C) / FIND);
+    let what = hash(sx, sy, seed + 21);
     const fx = C + sx * FIND + 8 + Math.floor(hash(sx, sy, seed + 22) * (FIND - 16)), fy = C + sy * FIND + 8 + Math.floor(hash(sx, sy, seed + 23) * (FIND - 16));
+    if (druse(sx, sy, what, fx, fy)) what = 0;
+    if (what >= 0.86 || (what >= 0.74 && gen < 2)) return -1;
     if (Math.hypot(fx - C, fy - C) < 16) return -1;
     // No find where its middle is within five cells of where a pocket's cells can lie.
     if (meets(fx, fy, 5)) return -1;
     const dx = x - fx, dy = y - fy;
+    if (what >= 0.74) {
+      if (Math.hypot(fx - C, fy - C) <= (what < 0.8 ? 800 : 1200)) return -1;
+      const near = [];
+      if (what < 0.8) {
+        const [ux, uy] = [[1, 0], [0, 1], [1, 1], [1, -1]][Math.floor(hash(sx, sy, seed + 34) * 4)];
+        near.push([3 * ux, 3 * uy], [-3 * ux, -3 * uy]);
+      } else {
+        const [ux, uy] = [[1, 0], [0, 1], [-1, 0], [0, -1]][Math.floor(hash(sx, sy, seed + 35) * 4)];
+        let side = 0;
+        for (let k = 0; k < 4 + Math.floor(hash(sx, sy, seed + 36) * 4); k++) {
+          if (k) side = Math.max(-1, Math.min(1, side + Math.floor(hash(sx + k, sy, seed + 35) * 3) - 1));
+          near.push([(k - 3) * ux - side * uy, (k - 3) * uy + side * ux]);
+        }
+      }
+      if (near.some(([u, v]) => u === dx && v === dy)) return what < 0.8 ? K.TWIN : K.FOSSIL;
+      return near.some(([u, v]) => Math.abs(u - dx) <= 1 && Math.abs(v - dy) <= 1) ? K.DENSE : -1;
+    }
     if (what < 0.38) {
       const size = hash(sx, sy, seed + 24) < 0.4 ? 4 : 3, far = Math.sqrt(dx * dx + dy * dy);
       if (far > size - 0.2) return -1;
@@ -233,8 +288,25 @@ const plain = seed => {
     const ax = Math.abs(dx) + (noise(x / 61, y / 61, seed + 1) - 0.5) * far + (noise(x / 9, y / 9, seed + 16) - 0.5) * near;
     const ay = Math.abs(dy) + (noise(x / 61, y / 61, seed + 2) - 0.5) * far + (noise(x / 9, y / 9, seed + 17) - 0.5) * near;
     const b = ax > ay ? (dx > 0 ? B.LODE : B.MIRE) : (dy < 0 ? B.FROST : B.EMBER);
-    const deep = r > DEEP_R + (noise(x / 50, y / 50, seed + 14) - 0.5) * 200
-      && Math.min(Math.abs(dx), Math.abs(dy)) > Math.max(Math.abs(dx), Math.abs(dy)) * 0.36 + (noise(x / 37, y / 37, seed + 15) - 0.5) * 60;
+    const far50 = r > DEEP_R + (noise(x / 50, y / 50, seed + 14) - 0.5) * 200;
+    // Generation 2: a seam, where the borders' long sweeps (with none of their small wobble) leave the two
+    // distances within its half-width of each other, wandering 12 cells either way: 0.12 of the distance from the
+    // core, from 24 to 90 cells, and past the flanks' own distance 0.09 of it, from 90 to 180. Not under 470 cells
+    // out, the start wandering 25 either way.
+    if (gen >= 2 && r <= WORLD_R + 2 && r > 470 + (noise(x / 30, y / 30, seed + 76) - 0.5) * 50) {
+      const px = Math.abs(dx) + (noise(x / 61, y / 61, seed + 1) - 0.5) * far, py = Math.abs(dy) + (noise(x / 61, y / 61, seed + 2) - 0.5) * far;
+      const w = far50 ? Math.min(180, Math.max(90, 0.09 * r)) : Math.min(90, Math.max(24, 0.12 * r));
+      if (Math.abs(px - py) + (noise(x / 40, y / 40, seed + 75) - 0.5) * 24 < w) return (dx > 0 ? (dy < 0 ? 9 : 10) : (dy > 0 ? 11 : 12)) + (far50 ? 4 : 0);
+    }
+    const deep = far50 && Math.min(Math.abs(dx), Math.abs(dy)) > Math.max(Math.abs(dx), Math.abs(dy)) * 0.36 + (noise(x / 37, y / 37, seed + 15) - 0.5) * 60;
+    // Generation 2: the flank in provinces as the near ground's are, and by a province's hash (33) a share of them,
+    // none whose middle is under 1,050 out and a part in 1,000 for each cell further to six tenths, the flank's
+    // deep strain.
+    if (deep && gen >= 2) {
+      const qx = Math.floor((dx + (noise(x / 61, y / 61, seed + 1) - 0.5) * 120) / 256), qy = Math.floor((dy + (noise(x / 61, y / 61, seed + 2) - 0.5) * 120) / 256);
+      const rc = Math.sqrt(((qx + 0.5) * 256) ** 2 + ((qy + 0.5) * 256) ** 2);
+      return hash(qx, qy, seed + 33) < Math.min(0.6, Math.max(0, (rc - 1050) / 1000)) ? 63 + b : b + 4;
+    }
     if (deep) return b + 4;
     // Past the world's edge no province is asked for. Within it, the province the cell lies in, on borders that
     // wander: its direction's own ground if its middle is under 220 out, and by its hash a cross's (a share that
@@ -255,7 +327,7 @@ const plain = seed => {
     return hash(px, py, seed + 300 + two) > hash(px, py, seed + 300 + one) ? two : one;
   };
   // What a ground's great caverns are laid over, on their layer of noise.
-  const cavernOf = b => b === B.CRUST ? 0.76 : (STRAIN[b] ?? cross(b) ?? {}).cavern ?? (((STRAIN[b] ?? cross(b) ?? {}).kin ?? base(b)) === B.MIRE ? 0.7 : 0.78);
+  const cavernOf = b => b === B.CRUST ? 0.76 : ROW(b).cavern ?? ((ROW(b).kin ?? base(b)) === B.MIRE ? 0.7 : 0.78);
   // ---- Keystone slabs. A way from a slab's middle, `q` quarters of a circle round, as a unit vector: within a
   // quarter it is (1 - t t, 2 t) / (1 + t t), t running from -(root 2 - 1) to root 2 - 1.
   const way = q => {
@@ -389,26 +461,29 @@ const plain = seed => {
   // east of it, eight times in all; and where none of those holds one, the sector across its direction's line
   // (4,-1, -4,1, -1,-4, 1,4) is the herald in its place, and where that holds none either, the sector on the line
   // (4,0, -4,0, 0,-4, 0,4). Which hazard a site is, its direction says.
-  const KIN = b => b >= 32 && b < 64 ? -1 : (STRAIN[b] ?? cross(b) ?? {}).kin ?? base(b);
+  const KIN = b => b >= 32 && b < 64 ? -1 : ROW(b).kin ?? base(b);
   const opens = (x, y, b) => {
-    const S = STRAIN[b] ?? cross(b) ?? {}, kin = KIN(b);
+    const S = ROW(b), kin = KIN(b);
     return noise(x / 19, y / 19, seed + 18) > (S.cavern ?? (kin === B.MIRE ? 0.7 : 0.78)) || noise(x / 5, y / 5, seed + 13) > (S.cave ?? (kin === B.MIRE ? 0.68 : 0.8))
       || (S.bubbles && noise(x / 2, y / 2, seed + 67) > S.bubbles);
   };
   // The middle of a sector's find, or null where it holds none.
   const findMiddle = (sx, sy) => {
-    const what = hash(sx, sy, seed + 21);
-    if (what >= 0.86) return null;
-    const fx = C + sx * FIND + 8 + Math.floor(hash(sx, sy, seed + 22) * (FIND - 16)), fy = C + sy * FIND + 8 + Math.floor(hash(sx, sy, seed + 23) * (FIND - 16));
+    const what = hash(sx, sy, seed + 21), fx = C + sx * FIND + 8 + Math.floor(hash(sx, sy, seed + 22) * (FIND - 16)), fy = C + sy * FIND + 8 + Math.floor(hash(sx, sy, seed + 23) * (FIND - 16));
+    if (what >= 0.86 && !druse(sx, sy, what, fx, fy)) return null;
     if (Math.hypot(fx - C, fy - C) < 16 || (what >= 0.7 && what < 0.74 && Math.hypot(fx - C, fy - C) <= 130) || meets(fx, fy, 5)) return null;
     return [fx, fy];
   };
   const TYPE = [null, 'bell', 'vent', 'worm', 'lodestone'], REACH = { bell: 5, vent: 3, worm: 4, lodestone: 6 };
   const HERALDS = [[4, 1, B.LODE], [-4, -1, B.MIRE], [1, -4, B.FROST], [-1, 4, B.EMBER]], ACROSS = [[4, -1], [-4, 1], [-1, -4], [1, 4]], ON = [[4, 0], [-4, 0], [0, -4], [0, 4]];
-  const tryAt = (sx, sy, n, h, herald) => {
+  // In generation 2, a corner's herald too: the sectors 3,-3, 3,3, -3,3 and -3,-3 (north-east, south-east,
+  // south-west, north-west), tried as a herald is, with its ground that corner's seam or deep seam; and where one
+  // holds none, the sector on the same diagonal one further out, and where neither does, the one beyond that. A
+  // seam's share is a cross's, deep ground's a flank's.
+  const tryAt = (sx, sy, n, h, herald, corner = -1) => {
     const cx = C + sx * 144 + Math.floor((hash(sx + 64 * n, sy, seed + 61) - 0.5) * 21), cy = C + sy * 144 + Math.floor((hash(sx + 64 * n, sy, seed + 62) - 0.5) * 21);
     const far = Math.hypot(cx - C, cy - C), b = biomeAt(cx, cy), kin = KIN(b);
-    if (far < 450 || far + 6 > WORLD_R - 100 || kin < 1 || (herald && kin !== herald)) return null;
+    if (far < 450 || far + 6 > WORLD_R - 100 || kin < 1 || (herald && kin !== herald) || (corner >= 0 && b !== 9 + corner && b !== 13 + corner)) return null;
     if ([[7, 0], [-7, 0], [0, 7], [0, -7]].some(([u, v]) => KIN(biomeAt(cx + u, cy + v)) !== kin)) return null;
     if ([...wrecks, ...relics].some(([x, y]) => Math.hypot(cx - x, cy - y) < 44) || meets(cx, cy, 11)) return null;
     for (let fy = Math.floor((cy - 11 - C) / FIND); fy <= Math.floor((cy + 11 - C) / FIND); fy++) for (let fx = Math.floor((cx - 11 - C) / FIND); fx <= Math.floor((cx + 11 - C) / FIND); fx++) {
@@ -417,8 +492,8 @@ const plain = seed => {
     }
     const heart = [[cx, cy], [cx + 1, cy], [cx, cy + 1], [cx - 1, cy], [cx, cy - 1]].find(([x, y]) => KIN(biomeAt(x, y)) === kin && !opens(x, y, biomeAt(x, y)));
     if (!heart) return null;
-    if (!herald) {
-      const share = cross(b) ? 0.1 : b >= 5 && b <= 8 ? 0.06 : far > 1500 ? 0.1 : 0;
+    if (!herald && corner < 0) {
+      const share = cross(b) || (b >= 9 && b <= 16) ? 0.1 : DEEP(b) ? 0.06 : far > 1500 ? 0.1 : 0;
       const plain = [20, 40].every(r => [[r, 0], [-r, 0], [0, r], [0, -r], [0.7 * r, 0.7 * r], [0.7 * r, -0.7 * r], [-0.7 * r, 0.7 * r], [-0.7 * r, -0.7 * r]].every(([u, v]) => biomeAt(cx + Math.round(u), cy + Math.round(v)) === b));
       if (!(h < share || (h < 0.08 && plain))) return null;
     }
@@ -432,8 +507,11 @@ const plain = seed => {
     const herald = first >= 0 ? HERALDS[first][2]
       : second >= 0 && !siteOf(HERALDS[second][0], HERALDS[second][1]) ? HERALDS[second][2]
       : third >= 0 && !siteOf(HERALDS[third][0], HERALDS[third][1]) && !siteOf(ACROSS[third][0], ACROSS[third][1]) ? HERALDS[third][2] : 0;
+    // (Which corner's diagonal the sector is on, and how many sectors out along it: 3, 4 or 5.)
+    const c = gen < 2 || Math.abs(sx) !== Math.abs(sy) || Math.abs(sx) < 3 || Math.abs(sx) > 5 ? -1 : CORNERS.findIndex(([x, y]) => Math.sign(x) === Math.sign(sx) && Math.sign(y) === Math.sign(sy));
+    const corner = c >= 0 && [3, 4, 5].filter(n => n < Math.abs(sx)).every(n => !siteOf(n * Math.sign(sx), n * Math.sign(sy))) ? c : -1;
     let S = null;
-    for (let n = 0; n < (herald ? 8 : 1) && !S; n++) if (herald || h < 0.1) S = tryAt(sx, sy, n, h, herald);
+    for (let n = 0; n < (herald || corner >= 0 ? 8 : 1) && !S; n++) if (herald || corner >= 0 || h < 0.1) S = tryAt(sx, sy, n, h, herald, corner);
     sites.set(id, S);
     return S;
   };
@@ -454,6 +532,47 @@ const plain = seed => {
     const spoke = u === 0 || v === 0 || Math.abs(u) === Math.abs(v);
     return spoke && d2 >= 4 && d2 <= 36 ? (hash(x, y, seed + 74) < 0.75 ? K.ORE_B : K.ORE_A) : -1;
   };
+  // Generation 2: each seam's set piece, at the first cell on the diagonal itself from 480 cells out to 640 whose
+  // ground is the seam's and so is the ground six cells from it each way, with no pocket within six cells and its
+  // reach and no wreck within twelve, and a cave, great or small, or a bubble of the seam's ground at no more than
+  // two of the eight points seven cells round it (and five each way on the diagonals): as `kindAt` lays it below.
+  // (And clear of every slab a sector tries, laid or not: no cell its disc and five more could have, six and a half
+  // for a cobble field, within six cells.)
+  const tried = (x, y) => {
+    for (let sy = -6; sy <= 6; sy++) for (let sx = -6; sx <= 6; sx++) {
+      if (hash(sx, sy, seed + 80) >= 0.22) continue;
+      const p = 8 + Math.floor(hash(sx, sy, seed + 81) * 9), cx = C + sx * 144 + 40 + Math.floor(hash(sx, sy, seed + 82) * 64), cy = C + sy * 144 + 40 + Math.floor(hash(sx, sy, seed + 83) * 64);
+      if (Math.hypot(cx - x, cy - y) < (hash(sx, sy, seed + 85) < 0.35 ? p + 6.5 : p + 5) + 6) return true;
+    }
+    return false;
+  };
+  const sets = [0, 1, 2, 3].map(c => {
+    const ux = c < 2 ? 1 : -1, uy = c === 0 || c === 3 ? -1 : 1;
+    for (let k = 340; k <= 452; k++) {
+      const x = C + k * ux, y = C + k * uy;
+      if ([[0, 0], [6, 0], [-6, 0], [0, 6], [0, -6]].every(([u, v]) => gen >= 2 && biomeAt(x + u, y + v) === 9 + c) && !meets(x, y, 6) && !wrecks.some(([wx, wy]) => Math.hypot(wx - x, wy - y) < 12) && !tried(x, y)
+        && [[7, 0], [5, 5], [0, 7], [-5, 5], [-7, 0], [-5, -5], [0, -7], [5, -5]].filter(([u, v]) => opens(x + u, y + v, 9 + c)).length <= 2) return [x, y];
+    }
+    return null;
+  });
+  // What a set piece lays, by corner, a cell u, v from its middle (d2 = u u + v v): within d2 30, and outside what it
+  // lays, rock with no cave or find in it (`collar`).
+  //   north-east  the first hazard at the middle; ice on the two cells under it; open within d2 4; ice to d2 10
+  //   south-east  the second hazard three cells square; the first at 3, 0
+  //   south-west  the first hazard three cells square; the second at 0, -3; slag two cells out from the middle
+  //   north-west  the first hazard at the middle; dense rock under it; open within d2 2
+  const setPiece = (x, y) => {
+    const c = x > C ? (y < C ? 0 : 1) : (y > C ? 2 : 3), at = sets[c];
+    if (!at) return null;
+    const u = x - at[0], v = y - at[1], d2 = u * u + v * v, edge = Math.max(Math.abs(u), Math.abs(v));
+    if (d2 > 30) return null;
+    const lays = [
+      d2 === 0 ? K.HAZARD : u === 0 && v > 0 && v <= 2 ? K.ICE : d2 <= 4 ? K.EMPTY : d2 <= 10 ? K.ICE : 'collar',
+      edge <= 1 ? K.HAZARD2 : u === 3 && v === 0 ? K.HAZARD : 'collar',
+      edge <= 1 ? K.HAZARD : u === 0 && v === -3 ? K.HAZARD2 : edge === 2 ? K.SLAG : 'collar',
+      d2 === 0 ? K.HAZARD : u === 0 && v === 1 ? K.DENSE : d2 <= 2 ? K.EMPTY : 'collar'];
+    return lays[c];
+  };
   // (`bare`: the ground as it lies with no slab, which is what is asked when one is being tried.)
   const kindAt = (x, y, b, bare = false) => {
     const dx = x - C, dy = y - C, r = Math.sqrt(dx * dx + dy * dy);
@@ -464,6 +583,14 @@ const plain = seed => {
       const edge = Math.max(Math.abs(dx - DX[d] * RELIC_R), Math.abs(dy - DY[d] * RELIC_R));
       if (edge === 0) return K.RELIC;
       if (edge <= 3) return K.VAULT;
+      if (edge <= 5) return K.SOFT;
+    }
+    // Generation 2: a shrine on each diagonal, its heart 990 cells out each way: a relic, in stone that is ore where
+    // its hash (37) is under 0.3 (the plain ore where x + y is odd, the rich ore where it is even), in soft rock.
+    if (gen >= 2) for (const [sx, sy] of SHRINES) {
+      const edge = Math.max(Math.abs(dx - sx), Math.abs(dy - sy));
+      if (edge === 0) return K.RELIC;
+      if (edge <= 3) return hash(x, y, seed + 37) < 0.3 ? ((x + y) % 2 ? K.ORE_A : K.ORE_B) : K.VAULT;
       if (edge <= 5) return K.SOFT;
     }
     for (const [wx, wy] of wrecks) {
@@ -479,12 +606,16 @@ const plain = seed => {
     if (b >= 35 && b <= 38) return [grottoCell, tinderCell, glazeCell, shaleCell][b - 35](zoneOf(Math.floor(dx / 128), Math.floor(dy / 128)), x, y);
     // A slab's crack and joints are open and its keys are keys; its own ground and its collar are the ground of
     // wherever it lies, with no find and no cave in them, and in the slab's own the ore's thresholds are 0.05 lower.
-    const slab = bare ? 'out' : slabAt(x, y), solid = slab !== 'out', lift = slab === 'inside' ? 0.05 : 0;
+    const slab = bare ? 'out' : slabAt(x, y), lift = slab === 'inside' ? 0.05 : 0;
     if (slab === 'gap') return K.EMPTY;
     if (slab === 'key') return K.KEY;
+    // A seam's set piece where no slab is (generation 2), and round it its collar, laid as a slab's ground is.
+    const set = slab === 'out' && gen >= 2 ? setPiece(x, y) : null;
+    if (typeof set === 'number') return set;
+    const solid = slab !== 'out' || set === 'collar';
     const find = r > 12 && !solid ? findAt(x, y) : -1;
     if (find >= 0) return find;
-    const S = STRAIN[b] ?? cross(b) ?? {}, h = hash(x, y, seed + 9), deep = b > 4 && b < 9, kin = S.kin ?? base(b);
+    const S = ROW(b), h = hash(x, y, seed + 9), deep = b > 4 && b < 9, kin = S.kin ?? base(b);
     let k = K.SOFT;
     if (b === B.CRUST) {
       if (r > 5 && noise(x / 4, y / 4, seed + 5) > 0.7) k = K.DENSE;
@@ -495,6 +626,9 @@ const plain = seed => {
       if (!solid && r > 60 && noise(x / 19, y / 19, seed + 18) > 0.76) k = K.EMPTY;
       return k;
     }
+    // The first hazard is the direction's (the south's lava, the west's pods, the east's crystals; the north has
+    // none), but where the row says otherwise (`haz`: a seam's of the north has the east's crystals).
+    const haz = S.haz ?? [null, null, 'lava', 'spore', 'spark'][kin];
     if (noise(x / 4, y / 4, seed + 5) > (S.dense ?? (kin === B.EMBER ? 0.64 : 0.68))) k = K.DENSE;
     // Serac's lanes of ice lie where plain rock would; firn's rivers run through its ore as well.
     if (S.lanes && Math.abs(noise(x / 6, y / 6, seed + 65) - 0.5) < S.lanes) k = K.ICE;
@@ -510,13 +644,13 @@ const plain = seed => {
     if (S.spore2 && hash(x, y, seed + 59) < 0.022 * S.spore2) k = K.HAZARD2;
     if (S.spark2 && (hash(x, y, seed + 59) < 0.026 * S.spark2 || (flank && hash(x, y, seed + 59) < 0.2 * S.spark2))) k = K.HAZARD2;
     const more = S.rate ?? (deep ? 1.8 : 1);
-    if (kin === B.EMBER && noise(x / 2.5, y / 2.5, seed + 8) > (S.lava ?? (deep ? 0.72 : 0.78)) && h > 0.45) k = K.HAZARD;
-    if (kin === B.MIRE && hash(x, y, seed + 10) < 0.022 * more) k = K.HAZARD;
-    if (kin === B.LODE && hash(x, y, seed + 10) < 0.026 * more) k = K.HAZARD;
+    if (haz === 'lava' && noise(x / 2.5, y / 2.5, seed + 8) > (S.lava ?? (deep ? 0.72 : 0.78)) && h > 0.45) k = K.HAZARD;
+    if (haz === 'spore' && hash(x, y, seed + 10) < 0.022 * more) k = K.HAZARD;
+    if (haz === 'spark' && hash(x, y, seed + 10) < 0.026 * more) k = K.HAZARD;
     // Crystals on the flanks of slate, in the east's grounds: one cell in five (as many times that as the ground
     // has crystals) of those within 0.03 beyond the edge of a rib of slate, or of a level bed of redrock's, on the
     // slate's own layer.
-    if (kin === B.LODE && hash(x, y, seed + 10) < 0.2 * more && flank) k = K.HAZARD;
+    if (haz === 'spark' && hash(x, y, seed + 10) < 0.2 * more && flank) k = K.HAZARD;
     // Sporefall's bunches: a square of six cells has one where its hash is over the figure, the bunch's middle
     // cell a cell or more inside the square, and the pods are that cell and those round it that their hash keeps.
     if (S.grapes) {
@@ -532,16 +666,27 @@ const plain = seed => {
     if (!solid && S.bubbles && noise(x / 2, y / 2, seed + 67) > S.bubbles) k = K.EMPTY;
     if (!solid && noise(x / 5, y / 5, seed + 13) > (S.cave ?? (kin === B.MIRE ? 0.68 : 0.8))) k = K.EMPTY;
     if (!solid && noise(x / 19, y / 19, seed + 18) > (S.cavern ?? (kin === B.MIRE ? 0.7 : 0.78))) k = K.EMPTY;
+    // Generation 2's tells on the caves' walls, over all else the caves leave (and in a slab's ground or a set
+    // piece's collar, where the caves are filled, the same): a lake of lava where a layer of noise 14 cells to a step
+    // (78) is over the figure and slag where it is within 0.04 under it; a cap on a cell within the figure under the
+    // caves' threshold or the halls' (on their own layers) where its hash (63) is under 0.3; ice on a cell within the
+    // figure under the halls' threshold where its hash (77) is under a half.
+    if (k !== K.EMPTY) {
+      const hall = noise(x / 19, y / 19, seed + 18), hole = noise(x / 5, y / 5, seed + 13), cavern = S.cavern ?? (kin === B.MIRE ? 0.7 : 0.78), cave = S.cave ?? (kin === B.MIRE ? 0.68 : 0.8);
+      if (S.lakes && noise(x / 14, y / 14, seed + 78) > S.lakes - 0.04) k = noise(x / 14, y / 14, seed + 78) > S.lakes ? K.HAZARD : K.SLAG;
+      if (S.rims && ((hall > cavern - S.rims && hall <= cavern) || (hole > cave - S.rims && hole <= cave)) && hash(x, y, seed + 63) < 0.3) k = K.CAP;
+      if (S.sheath && hall > cavern - S.sheath && hall <= cavern && hash(x, y, seed + 77) < 0.5) k = K.ICE;
+    }
     // A rare hazard's site: what it lays round its heart takes the place of whatever is laid but open ground (and
     // of slag after it), in the cells within its reach of the heart of the cell's own sector's site.
     if (!solid && k !== K.EMPTY && r > 440) {
       const site = siteOf(Math.floor((x - C + 72) / 144), Math.floor((y - C + 72) / 144));
       if (site && (x - site.cx) ** 2 + (y - site.cy) ** 2 <= site.reach ** 2 && shape(site, x, y) >= 0) return shape(site, x, y);
     }
-    // Slag, in the south's grounds, where plain rock is left when all the rest is laid: a rind round each pocket
-    // of lava, where the lava's layer is under the pocket's threshold by less than 0.07 (forge: 0.12), and half
-    // of the plain rock within the pocket.
-    if (kin === B.EMBER && (k === K.SOFT || k === K.DENSE)) {
+    // Slag, in the grounds whose first hazard is lava, where plain rock is left when all the rest is laid: a rind
+    // round each pocket of lava, where the lava's layer is under the pocket's threshold by less than 0.07 (forge:
+    // 0.12, caldera 0.14), and half of the plain rock within the pocket.
+    if (haz === 'lava' && (k === K.SOFT || k === K.DENSE)) {
       const n = noise(x / 2.5, y / 2.5, seed + 8), t = S.lava ?? (deep ? 0.72 : 0.78);
       if (n > t - (S.rind ?? 0.07) && (n <= t || hash(x, y, seed + 68) < 0.5)) k = K.SLAG;
     }
@@ -550,52 +695,82 @@ const plain = seed => {
       const n = noise(x / 2.5, y / 2.5, seed + 58);
       if (n > S.lava2 - 0.07 && (n <= S.lava2 || hash(x, y, seed + 68) < 0.5)) k = K.SLAG;
     }
+    // Generation 2's tells in plain rock, where all else has left it: ribbons of glass, where a layer of noise
+    // stretched twenty cells to a step along and three up (29) is within the figure of its middle; hairline faults
+    // where one fourteen cells to a step (90) is within the figure of its middle and one forty to a step (91) is over
+    // a half.
+    if (S.ripples && (k === K.SOFT || k === K.DENSE) && Math.abs(noise(x / 20, y / 3, seed + 29) - 0.5) < S.ripples) k = K.GLASS;
+    if (S.threads && (k === K.SOFT || k === K.DENSE) && Math.abs(noise(x / 14, y / 14, seed + 90) - 0.5) < S.threads && noise(x / 40, y / 40, seed + 91) > 0.5) k = K.FAULT;
     return k;
   };
-  return { wrecks, biomeAt, kindAt, firstSlab, slabIn, zoneOf, siteOf };
+  return { wrecks, biomeAt, kindAt, firstSlab, slabIn, zoneOf, siteOf, sets };
 };
 
-let pieces = 0, cells = 0, wrong = 0, first = '', slabs = 0, cobbles = 0, pockets = 0, sites = 0;
-const kinds = new Set(), biomes = new Set(), rare = new Set();
-for (const seed of [1, 7, 34, 99991, 123456789]) {
-  const w = new World(); w.reset(seed);
-  const ref = plain(seed), ids = new Set();
+let pieces = 0, cells = 0, wrong = 0, first = '', slabs = 0, cobbles = 0, pockets = 0, sites = 0, corners = 0;
+const kinds = new Set(), biomes = new Set(), rare = new Set(), older = { pieces: 0, kinds: new Set(), biomes: new Set() };
+// One world of seed `seed` laid by generation `gen`'s rules, beside the plain reading of the same: `older` for the
+// second pass, at generation 1, where what is met is kept apart.
+const compare = (seed, gen, met) => {
+  const w = new World(); w.reset(seed); w.genOf.fill(gen);
+  const ref = plain(seed, gen), ids = new Set(), at = gen < 2 ? ` (generation ${gen})` : '';
   const round = (x, y, r = 1) => { for (let v = -r; v <= r; v++) for (let u = -r; u <= r; u++) ids.add((((y >> 6) + v) << 8) | ((x >> 6) + u)); };
-  round(C, C, 3);
-  for (const [wx, wy] of ref.wrecks) round(wx, wy);
-  for (let d = 0; d < 4; d++) { round(C + DX[d] * RELIC_R, C + DY[d] * RELIC_R); round(C + DX[d] * WORLD_R, C + DY[d] * WORLD_R); round(C + DX[d] * 600, C + DY[d] * 600, 0); }
-  for (const [x, y] of [[1700, 1700], [-1700, 1650], [900, -900], [-640, -700], [1000, 420], [-300, 1100], [700, -1900], [-1500, -200], [140, 60], [-90, -120], [1697, 1697]]) round(C + x, C + y);
-  // Provinces: a ring of pieces 320 and 1100 cells out, where strains of every direction lie.
-  // And 1500 and 1900 out, where a third of the provinces that are no deep flank are crosses.
-  for (const far of [320, 1100, 1500, 1900]) for (const [u, v] of [[1, 0], [1, 0.4], [0.4, 1], [0, 1], [-0.4, 1], [-1, 0.4], [-1, 0], [-1, -0.4], [-0.4, -1], [0, -1], [0.4, -1], [1, -0.4]]) round(C + Math.round(u * far), C + Math.round(v * far), 0);
+  // Generation 2's own places: each diagonal at 500, 650, 800, 950 and 1,400 cells (the seams, and the shrines at
+  // 1,400), and the flanks a sixteenth of a circle from each axis at 1,300, 1,700 and 2,100 (the deep strains), and
+  // each seam's set piece. Asked at both generations: at 1 they must be the world as it was.
+  for (const [sx, sy] of [[1, -1], [1, 1], [-1, 1], [-1, -1]]) {
+    for (const r of [500, 650, 800, 950, 1400]) round(C + sx * Math.round(r * Math.SQRT1_2), C + sy * Math.round(r * Math.SQRT1_2), 0);
+    for (const r of [1300, 1700, 2100]) { round(C + sx * Math.round(r * 0.924), C + sy * Math.round(r * 0.383), 0); round(C + sx * Math.round(r * 0.383), C + sy * Math.round(r * 0.924), 0); }
+  }
+  const sets = ref.sets.filter(Boolean);
+  for (const [x, y] of sets) round(x, y, 0);
+  if (gen >= 2 && sets.length < 4) { wrong++; first ||= `seed ${seed}: only ${sets.length} of the four seams has a set piece`; }
+  if (gen < 2 && sets.length) { wrong++; first ||= `seed ${seed}${at}: a seam has a set piece`; }
+  // Twin stones and fossils laid (the first few of each that the game says it has laid: the cells are compared).
+  if (gen >= 2) {
+    let twins = 0, fossils = 0;
+    for (let sy = -45; sy <= 45 && (twins < 3 || fossils < 3); sy += 3) for (let sx = -45; sx <= 45; sx += 3) {
+      const what = w.findName(sx, sy);
+      if (!w.asked.laid || (what === 'twin' ? twins++ >= 3 : what === 'fossil' ? fossils++ >= 3 : true)) continue;
+      round(w.asked.fx, w.asked.fy, 0);
+    }
+  }
+  if (gen >= 2) {
+    round(C, C, 3);
+    for (const [wx, wy] of ref.wrecks) round(wx, wy);
+    for (let d = 0; d < 4; d++) { round(C + DX[d] * RELIC_R, C + DY[d] * RELIC_R); round(C + DX[d] * WORLD_R, C + DY[d] * WORLD_R); round(C + DX[d] * 600, C + DY[d] * 600, 0); }
+    for (const [x, y] of [[1700, 1700], [-1700, 1650], [900, -900], [-640, -700], [1000, 420], [-300, 1100], [700, -1900], [-1500, -200], [140, 60], [-90, -120], [1697, 1697]]) round(C + x, C + y);
+    // Provinces: a ring of pieces 320 and 1100 cells out, where strains of every direction lie.
+    // And 1500 and 1900 out, where a third of the provinces that are no deep flank are crosses.
+    for (const far of [320, 1100, 1500, 1900]) for (const [u, v] of [[1, 0], [1, 0.4], [0.4, 1], [0, 1], [-0.4, 1], [-1, 0.4], [-1, 0], [-1, -0.4], [-0.4, -1], [0, -1], [0.4, -1], [1, -0.4]]) round(C + Math.round(u * far), C + Math.round(v * far), 0);
+  }
   // Keystone slabs: the first, and the slab or cobble field of every sector within four of the core's that has
   // one. The game must lay one in the same sectors as the plain reading, and nowhere else.
   for (let sy = -4; sy < 4; sy++) for (let sx = -4; sx < 4; sx++) {
     const S = ref.slabIn(sx, sy), mine = w.slabIn(sx, sy);
-    if (!S !== !mine || (S && (S.cx !== mine.cx || S.cy !== mine.cy || S.p !== mine.p || S.cobble !== mine.cobble))) { wrong++; first ||= `seed ${seed} sector ${sx},${sy}: the game lays ${mine ? 'a slab' : 'no slab'}, the plain reading ${S ? 'one' : 'none'}`; }
-    if (S) { round(S.cx, S.cy); if (S.cobble) cobbles++; else slabs++; }
+    if (!S !== !mine || (S && (S.cx !== mine.cx || S.cy !== mine.cy || S.p !== mine.p || S.cobble !== mine.cobble))) { wrong++; first ||= `seed ${seed}${at} sector ${sx},${sy}: the game lays ${mine ? 'a slab' : 'no slab'}, the plain reading ${S ? 'one' : 'none'}`; }
+    if (S && gen >= 2) { round(S.cx, S.cy); if (S.cobble) cobbles++; else slabs++; }
   }
-  if (!ref.firstSlab() || !w.firstSlab) { wrong++; first ||= `seed ${seed}: there is no first slab`; }
+  if (!ref.firstSlab() || !w.firstSlab) { wrong++; first ||= `seed ${seed}${at}: there is no first slab`; }
   // Pockets: the four heralds, and the pocket of every sector within six of the core's that has one. The game
   // must lay one in the same sectors as the plain reading, the same size in the same place, and nowhere else; and
-  // every piece of the world one lies in is compared.
-  for (let sy = -6; sy < 6; sy++) for (let sx = -6; sx < 6; sx++) {
+  // every piece of the world one lies in is compared. (And, at generation 2, the sectors round each shrine.)
+  for (const [sx, sy] of [...Array.from({ length: 144 }, (_, n) => [(n % 12) - 6, Math.floor(n / 12) - 6]), ...[[7, -8], [7, 7], [-8, 7], [-8, -8]].flatMap(([x, y]) => [[x, y], [x + 1, y], [x, y + 1], [x + 1, y + 1]])]) {
     const Z = ref.zoneOf(sx, sy), mine = w.zoneOf(sx, sy);
-    if (!Z !== !mine || (Z && (Z.cx !== mine.cx || Z.cy !== mine.cy || Z.rho !== mine.rho || Z.row !== mine.row))) { wrong++; first ||= `seed ${seed} sector ${sx},${sy}: the game lays ${mine ? `a pocket at ${mine.cx - C},${mine.cy - C} of radius ${mine.rho}` : 'no pocket'}, the plain reading ${Z ? `one at ${Z.cx - C},${Z.cy - C} of radius ${Z.rho}` : 'none'}`; }
-    if (!Z) continue;
+    if (!Z !== !mine || (Z && (Z.cx !== mine.cx || Z.cy !== mine.cy || Z.rho !== mine.rho || Z.row !== mine.row))) { wrong++; first ||= `seed ${seed}${at} sector ${sx},${sy}: the game lays ${mine ? `a pocket at ${mine.cx - C},${mine.cy - C} of radius ${mine.rho}` : 'no pocket'}, the plain reading ${Z ? `one at ${Z.cx - C},${Z.cy - C} of radius ${Z.rho}` : 'none'}`; }
+    if (!Z || gen < 2) continue;
     pockets++;
     const most = Math.ceil(Z.rho + 6);
     for (let v = -most; v <= most; v += most) for (let u = -most; u <= most; u += most) round(Z.cx + u, Z.cy + v, 0);
   }
   // Rare hazards' sites: the site of every sector of the world. The game must lay one in the same sectors as the
   // plain reading, of the same type with its heart in the same cell, and nowhere else; and every piece of the
-  // world one lies in is compared.
+  // world one lies in is compared. (At generation 1, those of the sectors round the diagonals.)
   const hearts = [];
   for (let sy = -17; sy <= 17; sy++) for (let sx = -17; sx <= 17; sx++) {
     const S = ref.siteOf(sx, sy), mine = w.siteOf(sx, sy);
-    if (!S !== !mine || (S && (S.cx !== mine.cx || S.cy !== mine.cy || S.type !== mine.type || S.reach !== mine.reach))) { wrong++; first ||= `seed ${seed} site sector ${sx},${sy}: the game lays ${mine ? `a ${mine.type} at ${mine.cx - C},${mine.cy - C}` : 'none'}, the plain reading ${S ? `a ${S.type} at ${S.cx - C},${S.cy - C}` : 'none'}`; }
-    if (!S) continue;
-    sites++; hearts.push(S);
+    if (!S !== !mine || (S && (S.cx !== mine.cx || S.cy !== mine.cy || S.type !== mine.type || S.reach !== mine.reach))) { wrong++; first ||= `seed ${seed}${at} site sector ${sx},${sy}: the game lays ${mine ? `a ${mine.type} at ${mine.cx - C},${mine.cy - C}` : 'none'}, the plain reading ${S ? `a ${S.type} at ${S.cx - C},${S.cy - C}` : 'none'}`; }
+    if (!S || (gen < 2 && Math.abs(Math.abs(sx) - Math.abs(sy)) > 1)) continue;
+    if (gen >= 2) { sites++; hearts.push(S); if (mine.corner >= 0) corners++; }
     for (const [u, v] of [[-6, -6], [6, -6], [-6, 6], [6, 6]]) round(S.cx + u, S.cy + v, 0);
   }
   for (const S of hearts) if (ref.kindAt(S.cx, S.cy, ref.biomeAt(S.cx, S.cy)) === K.RARE) rare.add(S.type);
@@ -603,27 +778,38 @@ for (const seed of [1, 7, 34, 99991, 123456789]) {
   // what the layers remember from the cell before is put to the test.
   for (const id of ids) {
     const p = w.piece(id), x0 = (id % CW) * CH, y0 = ((id / CW) | 0) * CH;
-    pieces++;
+    met.pieces++;
     for (let v = 0; v < CH; v++) for (let u = 0; u < CH; u++) {
       const b = ref.biomeAt(x0 + u, y0 + v), k = ref.kindAt(x0 + u, y0 + v, b);
-      cells++; kinds.add(k); biomes.add(b);
-      if (p.biome[v * CH + u] !== b || p.kind[v * CH + u] !== k) { wrong++; first ||= `seed ${seed} cell ${x0 + u - C},${y0 + v - C}: the game makes kind ${p.kind[v * CH + u]} biome ${p.biome[v * CH + u]}, the plain reading ${k} and ${b}`; }
+      cells++; met.kinds.add(k); met.biomes.add(b);
+      if (p.biome[v * CH + u] !== b || p.kind[v * CH + u] !== k) { wrong++; first ||= `seed ${seed}${at} cell ${x0 + u - C},${y0 + v - C}: the game makes kind ${p.kind[v * CH + u]} biome ${p.biome[v * CH + u]}, the plain reading ${k} and ${b}`; }
     }
     for (let n = 0; n < 300; n++) {
       const x = x0 + ((n * 37) & 63), y = y0 + ((n * 53) & 63), b = ref.biomeAt(x, y), k = ref.kindAt(x, y, b);
-      if (w.biomeAt(x, y) !== b || w.kindAt(x, y, b) !== k) { wrong++; first ||= `seed ${seed} cell ${x - C},${y - C}, asked out of order: differs from the plain reading`; }
+      if (w.biomeAt(x, y) !== b || w.kindAt(x, y, b) !== k) { wrong++; first ||= `seed ${seed}${at} cell ${x - C},${y - C}, asked out of order: differs from the plain reading`; }
     }
   }
-  if (JSON.stringify(w.wrecks) !== JSON.stringify(ref.wrecks)) { wrong++; first ||= `seed ${seed}: the wrecks lie elsewhere`; }
-}
-console.log(JSON.stringify({ pieces, cells, kindsSeen: kinds.size, biomesSeen: biomes.size, slabs, cobbles, pockets, sites, wrong }));
+  if (JSON.stringify(w.wrecks) !== JSON.stringify(ref.wrecks)) { wrong++; first ||= `seed ${seed}${at}: the wrecks lie elsewhere`; }
+};
+const now = { pieces: 0, kinds, biomes };
+for (const seed of [1, 7, 34, 99991, 123456789]) compare(seed, 2, now);
+// And at generation 1, as an older game's ground is laid: the places generation 2 lays anew are the world as it
+// was, and none of what it lays is met.
+for (const seed of [7, 123456789]) compare(seed, 1, older);
+pieces = now.pieces;
+console.log(JSON.stringify({ pieces, older: older.pieces, cells, kindsSeen: kinds.size, biomesSeen: biomes.size, slabs, cobbles, pockets, sites, corners, wrong }));
 console.log(wrong ? `DEFECT: the world a seed makes has changed: ${first}` : 'no defect');
 const crosses = [...biomes].filter(b => b >= 128), donors = new Set(crosses.map(b => OTHERS[cross(b).kin][Math.floor((b - 128) % 15 / 5)])), shapes = new Set(crosses.map(b => (b - 128) % 5));
-if (!wrong && biomes.size - crosses.length < 18) console.log(`DEFECT: only ${biomes.size - crosses.length} of the 18 hand-made grounds were met: ${[...biomes].sort((a, b) => a - b)}`);
+const NEWER = [9, 10, 11, 12, 13, 14, 15, 16, 64, 65, 66, 67], NEW_KINDS = [K.GLASS, K.FAULT, K.TWIN, K.FOSSIL, K.CAP];
+if (!wrong && biomes.size - crosses.length < 30) console.log(`DEFECT: only ${biomes.size - crosses.length} of the 30 hand-made grounds were met: ${[...biomes].sort((a, b) => a - b)}`);
 if (!wrong && (pockets < 40 || !kinds.has(K.MINERAL) || !kinds.has(K.NODE))) console.log(`DEFECT: ${pockets} pockets were met${kinds.has(K.MINERAL) ? '' : ', no mineral'}${kinds.has(K.NODE) ? '' : ', no stalk'}`);
 if (!wrong && ![32, 33, 34].every(b => biomes.has(b))) console.log(`DEFECT: of the three kinds of pocket (grounds 32, 33, 34) only ${[32, 33, 34].filter(b => biomes.has(b))} were met`);
 if (!wrong && (crosses.length < 20 || donors.size < 4 || shapes.size < 5)) console.log(`DEFECT: only ${crosses.length} crosses were met, with ${donors.size} of the 4 donors and ${shapes.size} of the 5 structures: ${crosses.sort((a, b) => a - b)}`);
 if (!wrong && (slabs < 20 || cobbles < 8 || !kinds.has(K.KEY) || !kinds.has(K.PRISM))) console.log(`DEFECT: ${slabs} slabs and ${cobbles} cobble fields were met${kinds.has(K.KEY) ? '' : ', no key'}${kinds.has(K.PRISM) ? '' : ', no prism'}`);
-if (!wrong && (sites < 150 || !kinds.has(K.RARE) || rare.size < 4)) console.log(`DEFECT: ${sites} rare hazards' sites were met, with ${rare.size} of the 4 types at their hearts: ${[...rare]}`);
-process.exit(wrong || sites < 150 || !kinds.has(K.RARE) || rare.size < 4 || slabs < 20 || cobbles < 8 || !kinds.has(K.KEY) || !kinds.has(K.PRISM) || kinds.size < 14 || biomes.size - crosses.length < 18 || crosses.length < 20 || donors.size < 4 || shapes.size < 5
-  || pockets < 40 || !kinds.has(K.MINERAL) || !kinds.has(K.NODE) || ![32, 33, 34].every(b => biomes.has(b)) ? 1 : 0);
+if (!wrong && (sites < 150 || !kinds.has(K.RARE) || rare.size < 4 || corners < 16)) console.log(`DEFECT: ${sites} rare hazards' sites were met (${corners} of them corners' heralds), with ${rare.size} of the 4 types at their hearts: ${[...rare]}`);
+const missing = [...NEWER.filter(b => !biomes.has(b)).map(b => `ground ${b}`), ...NEW_KINDS.filter(k => !kinds.has(k)).map(k => `kind ${k}`)];
+if (!wrong && missing.length) console.log(`DEFECT: of what generation 2 lays, not met: ${missing.join(', ')}`);
+const leaked = [...NEWER.filter(b => older.biomes.has(b)).map(b => `ground ${b}`), ...NEW_KINDS.filter(k => k !== K.CAP && older.kinds.has(k)).map(k => `kind ${k}`)];
+if (!wrong && (leaked.length || older.pieces < 100)) console.log(`DEFECT: at generation 1, ${older.pieces} pieces met ${leaked.join(', ') || 'nothing of generation 2'}`);
+process.exit(wrong || sites < 150 || corners < 16 || !kinds.has(K.RARE) || rare.size < 4 || slabs < 20 || cobbles < 8 || !kinds.has(K.KEY) || !kinds.has(K.PRISM) || kinds.size < 19 || biomes.size - crosses.length < 30 || crosses.length < 20 || donors.size < 4 || shapes.size < 5
+  || pockets < 40 || !kinds.has(K.MINERAL) || !kinds.has(K.NODE) || ![32, 33, 34].every(b => biomes.has(b)) || missing.length || leaked.length || older.pieces < 100 ? 1 : 0);

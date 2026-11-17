@@ -24,8 +24,9 @@ const ROWS = {
   23: { name: 'redrock', kin: B.LODE, rich: 1, gen: { slate: 0 }, extras: ['strata'], map: [168, 90, 58] },
   24: { name: 'loess', kin: B.LODE, rich: 0.85, dig: 0.5, haz: { rate: 0.5 }, gen: { dense: 0.76, oreA: 0.72, oreB: 0.80, slate: 0.02 }, map: [228, 220, 200] },
 };
-check(same(TELLS, { rivers: 0.02, lanes: 0.085, bubbles: 0.8, grapes: 0.85, strata: 0.05 }), `the figures the tells are laid by are ${JSON.stringify(TELLS)}`);
-const OFF = { rivers: 0, lanes: 0, bubbles: 2, grapes: 2, strata: 0 };
+check(same(TELLS, { rivers: 0.02, lanes: 0.085, bubbles: 0.8, grapes: 0.85, strata: 0.05, ripples: 0.02, sheath: 0.03, lakes: 0.76, threads: 0.014, rims: 0.025 }), `the figures the tells are laid by are ${JSON.stringify(TELLS)}`);
+// (And the tells of the seams and the deep strains, laid since: none of them in a strain or a cross.)
+const OFF = { rivers: 0, lanes: 0, bubbles: 2, grapes: 2, strata: 0, ripples: 0, sheath: 0, lakes: 2, threads: 0, rims: 0 };
 for (const [id, want] of Object.entries(ROWS)) {
   const row = BIOMES[id], own = BIOMES[want.kin], name = want.name;
   if (!row) { check(false, `ground ${id} (${name}) has no row`); continue; }

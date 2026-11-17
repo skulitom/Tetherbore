@@ -9,7 +9,10 @@ const [seed = 7, turns = 120] = process.argv.slice(2).map(Number);
 const problems = [];
 const note = (where, what) => { if (problems.length < 20) problems.push(`${where}: ${what}`); };
 
-for (const [name, sx, sy, reach] of [['home', 0, 0, 4], ['north', 0, -260, 6], ['south', 0, 260, 6], ['west', -260, 0, 6], ['east', 260, 0, 6], ['far north-east', 700, -700, 8], ['far south', 0, 1300, 9]]) {
+// (The far north-east is the north's deep flank: first flown from 700,-700, where the north-east's deep seam lies
+// now. And the seam there, and the glacier in the north's flank further out.)
+for (const [name, sx, sy, reach] of [['home', 0, 0, 4], ['north', 0, -260, 6], ['south', 0, 260, 6], ['west', -260, 0, 6], ['east', 260, 0, 6], ['far north-east', 640, -752, 8], ['far south', 0, 1300, 9],
+  ['north-east seam', 624, -632, 8], ['glacier', -480, -1248, 8]]) {
   const game = await makeGame(seed, { tether: reach, drill: 3 });
   const d = game.drill, rnd = random(seed + sx * 3 + sy * 7);
   if (sx || sy) farStart(game, sx, sy);

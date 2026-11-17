@@ -121,8 +121,9 @@ for (const row of rows) {
 }
 
 // ---- 3. what has a piece: a pure answer, only where the seed left a cave, gone with its rock
-// (Places on world 7 where each ground lies all about.)
-const PLACES = { 1: [-86, -170], 2: [92, 150], 3: [-160, 64], 4: [160, 64], 5: [-613, -747], 6: [-418, 781], 7: [-763, 510], 8: [795, 425], 17: [-149, -360], 18: [67, -335],
+// (Places on world 7 where each ground lies all about. The north's deep flank was counted at -613,-747, where the
+// north-west seam lies now: `node tools/field.mjs --seed 7 --at -440,-960`.)
+const PLACES = { 1: [-86, -170], 2: [92, 150], 3: [-160, 64], 4: [160, 64], 5: [-440, -960], 6: [-418, 781], 7: [-763, 510], 8: [795, 425], 17: [-149, -360], 18: [67, -335],
   19: [-34, 340], 20: [57, 288], 21: [-564, 377], 22: [-320, -64], 23: [351, 288], 24: [281, -85], 178: [1123, 341], 163: [-1231, -373] };
 const game = await makeGame(7), w = game.world;
 const memo = new Map(), wild = i => { let v = memo.get(i); if (v === undefined) memo.set(i, v = natural(w, i, i % N, Math.floor(i / N))); return v; };

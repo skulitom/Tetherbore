@@ -102,7 +102,7 @@ export const pays = (t, row) => {
 // them); and the least share of a seed's cells in the ring that is hand-made.
 export const RINGS = [[220, 500], [500, 750], [750, 1000], [1000, 1375], [1375, 1800], [1800, 2300]];
 export const shares = (seeds = 40, step = 16) => {
-  const w = new World(), rings = RINGS.map(([from, to]) => ({ from, to, cells: 0, cross: 0, strain: 0, own: 0, deep: 0, provinces: 0, crossed: 0, rule: 0, least: 1 }));
+  const w = new World(), rings = RINGS.map(([from, to]) => ({ from, to, cells: 0, cross: 0, strain: 0, own: 0, deep: 0, seam: 0, provinces: 0, crossed: 0, rule: 0, least: 1 }));
   for (let seed = 1; seed <= seeds; seed++) {
     w.reset(seed);
     const each = RINGS.map(() => [0, 0]);
@@ -111,7 +111,9 @@ export const shares = (seeds = 40, step = 16) => {
       if (n < 0) continue;
       const b = w.biomeAt(C + x, C + y), t = rings[n];
       t.cells++; each[n][0]++;
-      if (BIOMES[b]?.cross) { t.cross++; each[n][1]++; } else if (b >= 17) t.strain++; else if (b >= 5) t.deep++; else t.own++;
+      // (Deep ground: a flank and its deep strains. A seam, deep or not, is neither a flank nor a province.)
+      if (BIOMES[b]?.cross) { t.cross++; each[n][1]++; } else if (BIOMES[b]?.seam !== null && BIOMES[b]?.seam !== undefined) t.seam++;
+      else if ((b >= 5 && b <= 8) || BIOMES[b]?.deepOf) t.deep++; else if (b >= 17) t.strain++; else t.own++;
     }
     each.forEach(([cells, cross], n) => { rings[n].least = Math.min(rings[n].least, 1 - cross / cells); });
     for (const [, , kin, ground, rc] of provinces(w, 2300)) {

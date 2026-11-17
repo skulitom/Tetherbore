@@ -1,6 +1,6 @@
 // A map of whose ground lies where: a square of the world round a point, a pixel a cell, each cell in the map
 // colour of its ground (its biome id), for checking where provinces and pockets lie.
-//   node tools/field.mjs <out.png> [--seed 7] [--at dx,dy] [--size 512] [--step 1] [--ground]
+//   node tools/field.mjs <out.png> [--seed 7] [--at dx,dy] [--size 512] [--step 1] [--ground] [--gen 2]
 //
 //   --at dx,dy   the middle of the square, in cells from the core: east and south are counted up (north is -dy).
 //   --size n     the square is n cells on a side.
@@ -8,6 +8,9 @@
 //                whole world in 1200 pixels.
 //   --ground     open ground is drawn dark, as on the game's own map. (This makes every piece of world in the
 //                square, where the plain map only asks whose each cell is.)
+//   --gen n      the world laid by the rules of generation n (js/world.js: GEN, `genOf`): 1 is the world as it
+//                was before the seams and the deep strains, as an older game's ground is laid. The game's own
+//                generation, the latest, unless it is given.
 //
 // It asks the world itself (js/world.js: `biomeAt`, and `k` for --ground) and draws nothing of the game, so it
 // needs no browser. A colour is the ground's own on the game's map: its row's `map` in the world's table of
@@ -17,13 +20,13 @@
 // path that was written.
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { World, N, C, K, WORLD_R, BIOMES } from '../js/world.js';
+import { World, N, C, K, WORLD_R, BIOMES, GEN } from '../js/world.js';
 import { encodePNG } from './png.mjs';
 
-const usage = 'node tools/field.mjs <out.png> [--seed 7] [--at dx,dy] [--size 512] [--step 1] [--ground]';
+const usage = 'node tools/field.mjs <out.png> [--seed 7] [--at dx,dy] [--size 512] [--step 1] [--ground] [--gen 2]';
 const wrong = why => { console.error(`${why}\n  ${usage}`); process.exit(2); };
 
-const options = { seed: '7', at: '0,0', size: '512', step: '1', ground: false };
+const options = { seed: '7', at: '0,0', size: '512', step: '1', ground: false, gen: String(GEN) };
 let out = null;
 for (let args = process.argv.slice(2), i = 0; i < args.length; i++) {
   const arg = args[i];
@@ -43,13 +46,14 @@ const whole = (name, least, most) => {
   if (!Number.isInteger(n) || n < least || n > most) wrong(`--${name} is a whole number from ${least} to ${most}, not ${options[name]}.`);
   return n;
 };
-const seed = whole('seed', 0, 2 ** 31 - 1), size = whole('size', 16, 2 * WORLD_R + 400), step = whole('step', 1, 64);
+const seed = whole('seed', 0, 2 ** 31 - 1), size = whole('size', 16, 2 * WORLD_R + 400), step = whole('step', 1, 64), gen = whole('gen', 1, GEN);
 const at = options.at.split(',').map(Number);
 if (at.length !== 2 || !at.every(Number.isInteger) || Math.hypot(...at) > WORLD_R + 200) wrong(`--at is two whole numbers of cells, dx,dy, within the world (${WORLD_R} cells from the core), not ${options.at}.`);
 out = path.resolve(out);
 
 const world = new World();
 world.reset(seed);
+world.genOf.fill(gen);
 const colourOf = b => BIOMES[b]?.map ?? [64 + (b * 97) % 160, 64 + (b * 57) % 160, 64 + (b * 151) % 160];
 const nameOf = b => BIOMES[b]?.name ?? '?';
 const side = Math.ceil(size / step), x0 = C + at[0] - (size >> 1), y0 = C + at[1] - (size >> 1), middle = step >> 1;
@@ -78,7 +82,7 @@ await mkdir(path.dirname(out), { recursive: true });
 await writeFile(out, encodePNG(side, side, rgba));
 
 const hex = c => `#${c.map(v => Math.round(v).toString(16).padStart(2, '0')).join('')}`;
-console.log(`seed ${seed}: ${size} x ${size} cells round ${at.join(',')}${step > 1 ? `, ${step} cells a pixel` : ''}; x ${x0 - C} to ${x0 - C + size - 1}, y ${y0 - C} to ${y0 - C + size - 1} (north is -y)`);
+console.log(`seed ${seed}${gen < GEN ? ` at generation ${gen}` : ''}: ${size} x ${size} cells round ${at.join(',')}${step > 1 ? `, ${step} cells a pixel` : ''}; x ${x0 - C} to ${x0 - C + size - 1}, y ${y0 - C} to ${y0 - C + size - 1} (north is -y)`);
 for (const [b, f] of [...found].sort((p, q) => p[0] - q[0])) {
   console.log(`  ${String(b).padStart(3)} ${nameOf(b).padEnd(12)} ${hex(colourOf(b))}  ${(f.n / (side * side) * 100).toFixed(1).padStart(5)}%  x ${f.x0} to ${f.x1}, y ${f.y0} to ${f.y1}; nearest the middle at ${f.at.join(',')}`);
 }

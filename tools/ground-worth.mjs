@@ -10,17 +10,20 @@
 // In each ring (200, 400, 700, 1,000, 1,500 and 2,000 cells out, forty cells to either side) and each direction
 // (the quarter of the ring nearest north, south, west and east) `--cells` cells are asked about on each of the
 // worlds 1 to `--seeds`: whose ground each is (`biomeAt`) and what it is (`kindAt`). The same cells are asked of
-// the world six times over, with what the build laid added a part at a time:
+// the world seven times over, with what the build laid added a part at a time:
 //   before     grounds 0 to 8 alone, as they were: no slag, no crystals on slate, no provinces, slabs, prisms, pockets
 //   rules      with the rind of slag round lava and the crystals on the flanks of slate (content item 2)
 //   strains    with the provinces of hand-made strains (item 1)
 //   crosses    with the provinces of generated crosses (item 3)
 //   slabs      with keystone slabs, cobble fields and prisms (item 5)
-//   now        with pockets (items 6 and 7) and the sites of the four rare hazards: the world as it is
+//   now        with pockets (items 6 and 7) and the sites of the four rare hazards: the world of generation 1
+//   depth      with the rules of generation 2 (js/world.js: GEN): the seams, the deep strains, the corner heralds,
+//              twin stones, fossils, the druse's geodes and the shrines. The world as a new game has it
+// (Every stage but the last lays its pieces by generation 1's rules, as an older game's world is laid.)
 // What is printed:
 //   solid      the share of the cells that are ground (not open, not bedrock)
 //   worth      the mean over solid cells of the kind's grit times its ground's `rich` and `worth`: what the rule
-//              is about, at each of the six, and how far `now` has moved from `before`
+//              is about, at each of the seven, and how far the last has moved from `before`
 //   an area    the same sum over every cell asked about, open ones too: a loop frees an area, and ground with more
 //              open in it (bubbles, great caves, a drift) frees fewer cells for the same cut
 //   + lumps    the area's figure with what is paid as a lump counted in: a cache, and a cell of a pocket's mineral,
@@ -38,12 +41,13 @@ import { resolve } from 'node:path';
 
 export const RINGS = [200, 400, 700, 1000, 1500, 2000], BAND = 40, MOST = 0.15;
 export const WAYS = [['north', 0, -1], ['south', 0, 1], ['west', -1, 0], ['east', 1, 0]];
-export const STAGES = ['before', 'rules', 'strains', 'crosses', 'slabs', 'now'];
+export const STAGES = ['before', 'rules', 'strains', 'crosses', 'slabs', 'now', 'depth'], LAST = STAGES[STAGES.length - 1];
 const CACHE_SECONDS = 12;                       // js/game.js, payOf: a cache holds twelve seconds of income
 
 // The world with only so much of what the build laid: `on` says which parts.
 class Staged extends World {
   constructor(on) { super(); this.on = on; }
+  reset(seed) { super.reset(seed); this.genOf.fill(this.on.depth ? 2 : 1); }
   zoneOf(sx, sy) { return this.on.pockets ? super.zoneOf(sx, sy) : null; }
   siteOf(sx, sy) { return this.on.sites ? super.siteOf(sx, sy) : null; }
   province(px, py, kin) {
@@ -57,7 +61,8 @@ class Staged extends World {
   }
 }
 const PARTS = { before: {}, rules: { rules: 1 }, strains: { rules: 1, strains: 1 }, crosses: { rules: 1, strains: 1, crosses: 1 },
-  slabs: { rules: 1, strains: 1, crosses: 1, slabs: 1 }, now: { rules: 1, strains: 1, crosses: 1, slabs: 1, pockets: 1, sites: 1 } };
+  slabs: { rules: 1, strains: 1, crosses: 1, slabs: 1 }, now: { rules: 1, strains: 1, crosses: 1, slabs: 1, pockets: 1, sites: 1 },
+  depth: { rules: 1, strains: 1, crosses: 1, slabs: 1, pockets: 1, sites: 1, depth: 1 } };
 // Grounds 2, 4, 6 and 8 as they were laid before the direction rules: the same rows with no rind and no ribs.
 // (Copies stand in the table while `before` is asked, and the rows themselves are put back.)
 const bare = () => {
@@ -142,7 +147,7 @@ const whole = list => list.reduce((sum, s) => ({ asked: sum.asked + s.asked, sol
 export function worst(sums) {
   let most = { ring: 0, way: 'all', moved: 0 };
   RINGS.forEach((R, r) => {
-    const was = whole(sums.before[r]), now = whole(sums.now[r]), moved = now.grit / now.solid / (was.grit / was.solid) - 1;
+    const was = whole(sums.before[r]), now = whole(sums[LAST][r]), moved = now.grit / now.solid / (was.grit / was.solid) - 1;
     if (Math.abs(moved) > Math.abs(most.moved)) most = { ring: R, way: 'all', moved };
   });
   return most;
@@ -159,9 +164,9 @@ if (process.argv[1] && import.meta.url.endsWith('/' + process.argv[1].replace(/\
   const flagged = [];
   RINGS.forEach((R, r) => {
     const line = (name, at, was) => {
-      const per = stage => at(stage).grit / at(stage).solid, moved = per('now') / per('before') - 1;
+      const per = stage => at(stage).grit / at(stage).solid, moved = per(LAST) / per('before') - 1;
       if (Math.abs(moved) > MOST) flagged.push(`${R} ${name} ${pc(moved)}`);
-      console.log(`${String(R).padStart(4)}  ${name.padEnd(6)}        ${(at('before').solid / at('before').asked * 100).toFixed(1).padStart(5)}% ${(at('now').solid / at('now').asked * 100).toFixed(1).padStart(5)}%        ${STAGES.map(s => f(per(s)).padStart(7)).join(' ')}  ${pc(moved).padStart(6)}${Math.abs(moved) > MOST ? ' !' : ''}`
+      console.log(`${String(R).padStart(4)}  ${name.padEnd(6)}        ${(at('before').solid / at('before').asked * 100).toFixed(1).padStart(5)}% ${(at(LAST).solid / at(LAST).asked * 100).toFixed(1).padStart(5)}%        ${STAGES.map(s => f(per(s)).padStart(7)).join(' ')}  ${pc(moved).padStart(6)}${Math.abs(moved) > MOST ? ' !' : ''}`
         + (was ? `   ${f(was.grit / was.solid)}${Math.abs(was.grit / was.solid - per('before')) > 1e-9 ? ' (differs from `before`)' : ''}` : ''));
     };
     WAYS.forEach(([name], d) => line(name, stage => sums[stage][r][d], old?.[r][d]));
@@ -170,7 +175,7 @@ if (process.argv[1] && import.meta.url.endsWith('/' + process.argv[1].replace(/\
   console.log(`\nby the area asked about (open cells too), and with what is paid as a lump counted in as a plain cell's grit`);
   console.log(`ring   an area: before     now   moved     + lumps: before     now   moved`);
   RINGS.forEach((R, r) => {
-    const was = whole(sums.before[r]), now = whole(sums.now[r]), a = was.grit / was.asked, b = now.grit / now.asked, la = (was.grit + was.lumps) / was.asked, lb = (now.grit + now.lumps) / now.asked;
+    const was = whole(sums.before[r]), now = whole(sums[LAST][r]), a = was.grit / was.asked, b = now.grit / now.asked, la = (was.grit + was.lumps) / was.asked, lb = (now.grit + now.lumps) / now.asked;
     console.log(`${String(R).padStart(4)}            ${f(a).padStart(7)} ${f(b).padStart(7)}  ${pc(b / a - 1).padStart(6)}              ${f(la).padStart(7)} ${f(lb).padStart(7)}  ${pc(lb / la - 1).padStart(6)}`);
   });
   if (process.argv.includes('--rows')) {
@@ -178,7 +183,7 @@ if (process.argv[1] && import.meta.url.endsWith('/' + process.argv[1].replace(/\
     RINGS.forEach((R, r) => {
       const rows = [];
       let asked = 0;
-      for (const s of sums.now[r]) { asked += s.asked; s.rows.forEach((n, b) => { rows[b] = (rows[b] ?? 0) + n; }); }
+      for (const s of sums[LAST][r]) { asked += s.asked; s.rows.forEach((n, b) => { rows[b] = (rows[b] ?? 0) + n; }); }
       const shares = rows.map((n, b) => [b, n / asked]).filter(Boolean).filter(([, share]) => share >= 0.005).sort((p, q) => q[1] - p[1]);
       const made = rows.reduce((sum, n, b) => sum + (b >= 128 ? n : 0), 0) / asked;
       console.log(`${String(R).padStart(4)}  ${shares.map(([b, share]) => `${rowOf(b).title.toLowerCase()} ${(share * 100).toFixed(1)}`).join(', ')}${made ? `; generated ${(made * 100).toFixed(1)}` : ''}`);

@@ -15,7 +15,10 @@ const { World, C, K, B, BIOMES, HAZARDS, PROVINCE, biome } = world;
 
 const fails = [], check = (ok, what) => { if (!ok) fails.push(what); };
 check(HAZARDS.lava.rind === 0.07 && !HAZARDS.spore.rind && !HAZARDS.spark.rind, `the rind that goes with lava is ${HAZARDS.lava.rind}`);
-for (const [id, want] of [[2, 0.07], [6, 0.07], [19, 0.07], [20, 0.12]]) check(BIOMES[id].lay.rind === want && BIOMES[id].lay.rind2 === 0, `${BIOMES[id].name}: its rind of slag is ${BIOMES[id].lay.rind}, not ${want}`);
+// (And the seams' and deep strains' of generation 2: cinderfen's and tarpit's lava as their first hazard, the
+// caldera's in a thicker rind, glassdune's and obsidian's as their second.)
+for (const [id, want] of [[2, 0.07], [6, 0.07], [19, 0.07], [20, 0.12], [11, 0.07], [15, 0.07], [65, 0.14]]) check(BIOMES[id].lay.rind === want && BIOMES[id].lay.rind2 === 0, `${BIOMES[id].name}: its rind of slag is ${BIOMES[id].lay.rind}, not ${want}`);
+for (const id of [10, 14]) check(BIOMES[id].lay.rind === 0 && BIOMES[id].lay.rind2 === 0.07, `${BIOMES[id].name}: its second hazard's rind of slag is ${BIOMES[id].lay.rind2}`);
 // (A cross that has lava from the south as its second hazard has the rind with it: test/regress/c3-cross-rows.mjs.)
 for (const row of BIOMES) if (row && row.lay && row.haz?.type !== 'lava') check(row.lay.rind === 0 && row.lay.rind2 === (row.haz2?.type === 'lava' ? 0.07 : 0), `${row.name} has no lava of its own and a rind of ${row.lay.rind}, or ${row.lay.rind2} for its second hazard`);
 // Rows for this test alone: the south's own with no rind, and the west's own with lava as a second hazard.
@@ -28,7 +31,9 @@ const T = () => ({ cells: 0, lava: 0, slag: 0, near: 0, pockets: 0, rinded: 0, m
 const tally = { 2: T(), 6: T(), 19: T(), 20: T(), 121: T() }, elsewhere = {};
 let bareSlag = 0;
 for (let seed = 1; seed <= 6; seed++) {
-  w.reset(seed);
+  // (At generation 1, as an older game's ground is laid: in a new game's the windows on the diagonals deep in the
+  // south are a deep seam's, and the flank's provinces a share of them the caldera's.)
+  w.reset(seed); w.genOf.fill(1);
   // A window in the middle of each province between the core's four and the deep flanks, as tools/strains.mjs
   // counts them, and four in the south's deep flanks. (A window may hold a little of other ground, a pocket's or
   // the next province's: those cells are not this ground's, and are not counted.)

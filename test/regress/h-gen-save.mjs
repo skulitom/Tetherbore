@@ -4,16 +4,15 @@
 // north-east diagonal to 905 cells and across to 600,-300 (test/fixtures/old-save.mjs --north-east says how): what it
 // kept in local storage and the pieces of world it had seen, each of which said its world and none its generation.
 //   node test/regress/h-gen-save.mjs
-// The rules of generation 2 are stood in for here by one laid in this test alone, within the bound `newer` keeps
-// (MIGRATE_NEAR, MIGRATE_SEAM, MIGRATE_FAR): in ground of generation 2, a direction's ground and its flank are
-// another direction's. So what is held is the way an old save is brought up, whatever the newer rules are:
+// The rules of generation 2 are the game's own: the fixture's flight crosses the north-east seam, hoarstone, from
+// where it begins about 470 cells out to 905, and its set piece. What is held is the way an old save is brought up:
 //   - it loads, what was banked is as saved, and what an old save lacks is made (the generation it was played at,
 //     the shrines, the fossils); it says NEW GROUND once;
 //   - every cell it saw is as saved, kind and ground, and so is every cell it changed without seeing;
 //   - every other cell of a piece a newer rule can reach is what generation 2 lays, and the piece is generation 2's
 //     and to be saved; a piece no newer rule can reach (within 445 cells, or far off the diagonal) is as saved and
 //     stays generation 1's;
-//   - ground in pieces never saved is generation 2's;
+//   - ground in pieces never saved is generation 2's: the seam, and the deep seam past it;
 //   - a piece that does not say its world is judged by its own generation's rules (`World.strange`), and kept;
 //   - the dens (js/fauna.js: `lay`) and the finder, which ask the seed, agree with the ground as it lies;
 //   - saved again it says its generation, and a second load brings up nothing and says nothing;
@@ -22,22 +21,13 @@ import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import { makeGame, random, tetherFaults, farStart, C, N, K, world } from '../harness.mjs';
 
-const { World, GEN, CH, CW, MIGRATE_NEAR, MIGRATE_SEAM, MIGRATE_FAR, rowOf } = world, problems = [], note = text => { if (problems.length < 16) problems.push(text); };
+const { World, GEN, CH, CW, MIGRATE_NEAR, SEAMS, rowOf } = world, problems = [], note = text => { if (problems.length < 16) problems.push(text); };
 const save = JSON.parse(gunzipSync(readFileSync(new URL('../fixtures/save-93ecb92-ne.json.gz', import.meta.url))));
 const bytes = text => Uint8Array.from(Buffer.from(text, 'base64'));
 const saved = new Map(save.pieces.map(([id, kind, biome, seen]) => [id, { kind: bytes(kind), biome: bytes(biome), seen: bytes(seen) }]));
 for (const p of saved.values()) for (let n = 0; n < CH * CH; n++) if ((p.biome[n] >= 9 && p.biome[n] <= 16) || (p.biome[n] >= 64 && p.biome[n] < 128)) { note(`the fixture holds ground ${p.biome[n]}, which an old game never laid`); break; }
 
-// The stand-in rule of generation 2: north and east, south and west, and their flanks, swapped, where the bound
-// says a newer rule may reach. (Pockets, strains and crosses are left as they are.)
-const SWAP = [0, 4, 3, 2, 1, 8, 7, 6, 5], plain = World.prototype.biomeAt;
-World.prototype.biomeAt = function (x, y) {
-  const b = plain.call(this, x, y);
-  if (b > 8 || this.genAt(x, y) < 2) return b;
-  const ax = Math.abs(x - C), ay = Math.abs(y - C), r = Math.sqrt(ax * ax + ay * ay);
-  return r > MIGRATE_FAR || (r > MIGRATE_NEAR && Math.abs(ax - ay) <= MIGRATE_SEAM) ? SWAP[b] : b;
-};
-// (And what each migration took up, as [pieces, cells].)
+// (What each migration took up, as [pieces, cells].)
 const took = [], migrate = World.prototype.migrate;
 World.prototype.migrate = function () { const r = migrate.call(this); took.push(r); return r; };
 
@@ -108,16 +98,16 @@ if (wrong) note(`${wrong} cells are not what they should be`);
 if (newer.size < 20 || near < 4 || off < 1 || seenKept < 4000 || changedKept < 50 || laidAnew < 10000) note(`the fixture is not what this test wants: ${newer.size} pieces brought up, ${near} within ${MIGRATE_NEAR} and ${off} off the diagonal left; ${seenKept} cells seen and ${changedKept} changed unseen kept, ${laidAnew} laid anew`);
 if (took[0]?.[0] !== newer.size || took[0]?.[1] !== laidAnew) note(`the migration says it took up ${took[0]}, where ${newer.size} pieces and ${laidAnew} cells were`);
 
-// 3. Ground never saved is generation 2's.
+// 3. Ground never saved is generation 2's: on the diagonal past the flight, the seam and the deep seam.
 let beyond = 0;
-for (const [x, y] of [[720, -720], [800, -560], [560, -800], [1000, -1000], [900, -600]]) {
+for (const [x, y] of [[720, -720], [850, -850], [1000, -1000], [1200, -1200], [1500, -1500]]) {
   const id = pieceOf(x, y);
   if (saved.has(id)) { note(`${x},${y} lies in a saved piece`); continue; }
   const p = w.piece(id), two = lay2(id), one = lay1(id);
   if (p.kind.some((k, n) => k !== two.kind[n]) || p.biome.some((b, n) => b !== two.biome[n])) note(`the piece at ${x},${y}, never saved, is not generation 2's ground`);
-  if (one.biome.some((b, n) => b !== two.biome[n])) beyond++;
+  if (one.biome.some((b, n) => b !== two.biome[n]) && p.biome.some(b => b === SEAMS[0][0] || b === SEAMS[0][1])) beyond++;
 }
-if (beyond < 5) note(`only ${beyond} of 5 pieces never saved are laid otherwise by generation 2: the stand-in rule lays too little`);
+if (beyond < 5) note(`only ${beyond} of 5 pieces never saved on the diagonal are the seam's, where generation 1 lays other ground`);
 
 // 4. The dens and the finder ask the seed: where a cell holds what its own generation laid there and is unseen,
 // they agree with it. (Every den's and every find's middle in the saved pieces.)

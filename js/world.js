@@ -40,7 +40,7 @@ export const K = {
   NODE: kind(16, 'NODE', 1, 0, 0, 0.45),                // a pocket's special cell; its `dig` is its row's `pocket.nodeDig`
   HAZARD2: kind(17, 'HAZARD2', 1, 3, 2, 0.24),          // a ground's second hazard (`haz2`)
   KEY: kind(18, 'KEY', 1, 4, 0, 1.0),
-  FAULT: kind(19, 'FAULT', 1, 1, 0, 0.12),
+  FAULT: kind(19, 'FAULT', 1, 1, 0, 0.12),              // a hairline fault: the mycelium's threads (`TELLS`)
   SLAG: kind(20, 'SLAG', 1, 2, 0, 0.45),                // the dull rind of a pocket of lava
   // Slag that lava has quenched; its gems are the south's. A woken pocket makes about three cells of steel for
   // every four of lava it had (counted in play), so at 4 gems waking a pocket pays half as much again in gems as
@@ -49,9 +49,9 @@ export const K = {
   CAP: kind(22, 'CAP', 1, 1, 1, 0.24),                  // its gems are the west's
   CAP_LIT: kind(23, 'CAP_LIT', 1, 1, 3, 0.24),          // its gems are the west's
   PRISM: kind(24, 'PRISM', 1, 0, 0, 0.6),
-  GLASS: kind(25, 'GLASS', 1, 1, 0, 0.12),
-  TWIN: kind(26, 'TWIN', 1, 2, 0, 0.6),
-  FOSSIL: kind(27, 'FOSSIL', 1, 2, 0, 1.0),
+  GLASS: kind(25, 'GLASS', 1, 1, 0, 0.12),              // a ribbon of glass: glassdune's and obsidian's ripples
+  TWIN: kind(26, 'TWIN', 1, 2, 0, 0.6),                 // one of a pair of twin stones (`find`)
+  FOSSIL: kind(27, 'FOSSIL', 1, 2, 0, 1.0),             // a fossil's bone (`find`)
   // The heart of a rare hazard's site: which of the four, the kin of its ground says (`RARE`). It pays its gems to
   // that direction, and a lump besides (js/game.js: `payOf`).
   RARE: kind(28, 'RARE', 1, 4, 10, 0.6),
@@ -138,6 +138,15 @@ const KIN_ITEMS = ['lode-items', 'frost-items', 'ember-items', 'mire-items', 'lo
 //   cross               of a generated cross, what it was made from: { host, donor, structure } (null: hand-made)
 //   pocket              of a pocket's ground, what the pocket is (see "pockets" below); null for any other
 //   glass               for ground yet to come (docs/CONTENT-PLAN.md S1): nothing reads it yet
+//   seam                of a seam's ground, which of the four diagonals it lies on (0 north-east, 1 south-east,
+//                       2 south-west, 3 north-west); null for any other
+//   deep                whether it is deep ground, laid only far out: a deep flank, a deep seam or a deep strain
+//   deepOf              of a deep strain, whose flank it is a strain of (its kin); 0 for any other
+//   react, current      what its ground does that no other does, for the game to play by (js/game.js): a seam's
+//                       reaction between its two parents' hazards ('thaw', 'glass', 'burn', 'rime'), and the
+//                       flow of its air ('wind', 'heat': `flowAt`); null where it has none
+//   glow, geodes        whether its caps light as the drill flies by, as a grotto's do; whether its sectors of
+//                       finds hold geodes where they would hold nothing (`find`)
 // and `lay`, made from gen, the hazards and the extras: the same numbers as `kindAt` wants them, worked out once.
 export const BIOMES = [];
 const SCATTER = 2, POCKETS = 1;                 // how a hazard is laid: a cell at a time by its hash, or in pockets of noise
@@ -148,13 +157,28 @@ const SCATTER = 2, POCKETS = 1;                 // how a hazard is laid: a cell 
 //   bubbles  open bubbles of one to three cells, everywhere
 //   grapes   the first hazard hung in bunches of three to six
 //   strata   slate in long level beds, a cell or two thick
+//   ripples  thin level ribbons of glass (K.GLASS, quick to cut) where plain rock would lie, a cell high and twenty
+//            or more long, as wind lays them in a dune
+//   sheath   ice glazing the walls of the great halls: a cell of rock just short of the halls' threshold on their
+//            layer of noise is ice where its own hash (77) says, one in two, so every wall cuts quickly and none
+//            stands free
+//   lakes    a few great lakes of lava (the ground's first hazard, which must be lava) on a layer of their own (78),
+//            each in a thick rind of slag: the layer over the figure is lava, and within LAKE_RIND under it slag
+//   threads  hairline faults (K.FAULT) where plain rock would lie, branching through the rock on two layers (90, 91)
+//   rims     caps (K.CAP) on the rims of the caves: a cell of rock just short of the caves' or the halls' threshold
+//            is a cap where its hash (63) is under RIM_CAPS
 // The figure is how far to either side of the middle of its layer of noise the ice or slate lies (rivers, lanes,
-// strata), or what the layer must be over (bubbles, grapes). `OFF` is the figure of a ground with none of that.
+// strata, ripples, threads), how far short of a threshold (sheath, rims), or what the layer must be over (bubbles,
+// grapes, lakes). `OFF` is the figure of a ground with none of that. A row may give a figure of its own for any
+// of its extras (`figures`).
 // The figures were set by counting (tools/strains.mjs) and by eye (tools/shot.mjs): rivers are 5 cells in a hundred
 // of firn, lanes 15 of serac, bubbles 5 of scoria beyond its caves; a square of sporefall in seven has a bunch;
 // redrock has as much slate as the east's own ground, 12 in a hundred, lying level.
-export const TELLS = { rivers: 0.02, lanes: 0.085, bubbles: 0.8, grapes: 0.85, strata: 0.05 };
-const OFF = { rivers: 0, lanes: 0, bubbles: 2, grapes: 2, strata: 0 };
+export const TELLS = { rivers: 0.02, lanes: 0.085, bubbles: 0.8, grapes: 0.85, strata: 0.05, ripples: 0.02, sheath: 0.03, lakes: 0.76, threads: 0.014, rims: 0.025 };
+const OFF = { rivers: 0, lanes: 0, bubbles: 2, grapes: 2, strata: 0, ripples: 0, sheath: 0, lakes: 2, threads: 0, rims: 0 };
+const LAKE_RIND = 0.04, RIM_CAPS = 0.3;
+const ripple = (x, y, seed, w) => Math.abs(noise(x / 20, y / 3, seed + 29, 29) - 0.5) < w;
+const thread = (x, y, seed, w) => Math.abs(noise(x / 14, y / 14, seed + 90, 90) - 0.5) < w && noise(x / 40, y / 40, seed + 91, 91) > 0.5;
 const river = (x, y, seed, w) => Math.abs(noise(x / 40, y / 40, seed + 66, 66) - 0.5) < w;
 const lane = (x, y, seed, w) => Math.abs(noise(x / 6, y / 6, seed + 65, 65) - 0.5) < w;
 const bubble = (x, y, seed, t) => noise(x / 2, y / 2, seed + 67, 67) > t;
@@ -170,7 +194,10 @@ const grape = (x, y, seed, t) => {
 // (How far a cell is from the middle of a level bed, on the bed's layer: under the ground's figure it is slate.)
 const stratum = (x, y, seed) => Math.abs(noise(x / 40, y / 3, seed + 11, 11) - 0.5);
 // The hand-made strains of each direction's ground (grounds 17 to 31), by kin: `biomeAt` lays them as provinces.
+// And the deep strains of each direction's flank (grounds 64 to 79 that say whose flank they are of, `deepOf`),
+// which `flankProvince` lays as provinces of the flank far out.
 const STRAINS = [[], [], [], [], []];
+export const DEEP_STRAINS = [[], [], [], [], []];
 // The pockets a sector may choose among (grounds 32 to 63 that say how they are laid), and what lays each shape of
 // pocket: see "pockets" below.
 const POCKET_ROWS = [], POCKET_SHAPES = {};
@@ -195,10 +222,13 @@ export function biome(f) {
   for (const extra of f.extras ?? []) {
     if (!(extra in TELLS)) throw new Error(`${name}: there is no extra called ${extra}`);
     if (!g || (extra === 'grapes' && !haz)) throw new Error(`${name}: ${extra} need ${g ? 'a hazard to hang' : 'standard ground to lie in'}`);
-    tells[extra] = TELLS[extra];
+    if (extra === 'lakes' && f.haz?.type !== 'lava') throw new Error(`${name}: lakes are of lava, and its first hazard is not`);
+    tells[extra] = f.figures?.[extra] ?? TELLS[extra];
   }
   for (const list of STRAINS) if (list.includes(id)) list.splice(list.indexOf(id), 1);
   if (id >= 17 && id <= 31 && kin) STRAINS[kin].push(id);
+  for (const list of DEEP_STRAINS) if (list.includes(id)) list.splice(list.indexOf(id), 1);
+  if (id >= 64 && id <= 79 && f.deepOf) DEEP_STRAINS[f.deepOf].push(id);
   // (And the pockets a sector may choose among: grounds 32 to 63 that say how they are laid.)
   if (POCKET_ROWS.includes(id)) POCKET_ROWS.splice(POCKET_ROWS.indexOf(id), 1);
   if (id >= 32 && id <= 63 && f.pocket?.shape) { if (!POCKET_SHAPES[f.pocket.shape]) throw new Error(`${name}: there is no pocket shaped ${f.pocket.shape}`); POCKET_ROWS.push(id); POCKET_ROWS.sort((a, b) => a - b); }
@@ -209,6 +239,7 @@ export function biome(f) {
     gloom: f.gloom, dark: f.dark ?? 1, mote: f.mote, map: f.map, debris: f.debris, decor: f.decor ?? null, decor2: f.decor2 ?? null, air: f.air ?? null,
     gen: g, haz: f.haz ?? null, haz2: f.haz2 ?? null, lavaVol: f.lavaVol ?? 5, freeze: f.freeze ?? 0,
     glass: f.glass ?? false, extras: f.extras ?? [], pocket: f.pocket ?? null, cross: f.cross ?? null,
+    seam: f.seam ?? null, deep: f.deep ?? false, deepOf: f.deepOf ?? 0, react: f.react ?? null, current: f.current ?? null, glow: f.glow ?? false, geodes: f.geodes ?? false,
     lay: g && { dense: g.dense, oreA: g.oreA, oreB: g.oreB, slate: g.slate, cave: g.cave, cavern: g.cavern, haz, hazT, haz2, haz2T,
       rind: withIt(f.haz, 'rind'), rind2: withIt(f.haz2, 'rind'), ribs: withIt(f.haz, 'ribs') * (f.haz?.rate ?? 1), ribs2: withIt(f.haz2, 'ribs') * (f.haz2?.rate ?? 1), ...tells },
   };
@@ -242,10 +273,10 @@ biome({ id: 4, name: 'lode', kin: B.LODE, gloom: [22, 13, 4], mote: ['#ffe08a', 
 const ownOres = name => [['ores', `${name}A`], ['ores', `${name}B`]];
 // Far out, the ground to either side of each direction's middle turns into a richer, meaner kind of the same: more
 // ore, twice the pay, and its hazard nearly twice as thick; and two ores of its own, in its direction's colours.
+const deeper = haz => haz && (haz.type === 'lava' ? { ...haz, rate: 1.8, t: 0.72 } : { ...haz, rate: 1.8 });
 const deep = (id, name, of, looks) => {
   const { gen, haz, freeze } = BIOMES[of];
-  return biome({ id, name, kin: of, rich: 2, gemx: 2, gen: { ...gen, oreA: 0.6, oreB: 0.66 }, freeze, ores: ownOres(name),
-    haz: haz && (haz.type === 'lava' ? { ...haz, rate: 1.8, t: 0.72 } : { ...haz, rate: 1.8 }), ...looks });
+  return biome({ id, name, kin: of, deep: true, rich: 2, gemx: 2, gen: { ...gen, oreA: 0.6, oreB: 0.66 }, freeze, ores: ownOres(name), haz: deeper(haz), ...looks });
 };
 deep(5, 'rime', B.FROST, { gloom: [3, 18, 24], mote: ['#d8fff4', 'fall'], map: [98, 184, 180], debris: ['#62b8b4', '#d8fff4', '#84d4c8'] });
 deep(6, 'magma', B.EMBER, { gloom: [30, 5, 3], mote: ['#ffc040', 'rise'], map: [122, 36, 24], debris: ['#7a2418', '#e8743a', '#ffb040'] });
@@ -276,6 +307,65 @@ strain(22, 'sporefall', B.MIRE, { rich: 1.2, haz: { type: 'spore', rate: 0.5 }, 
 // the time and holds little ore: the quick road.
 strain(23, 'redrock', B.LODE, { rich: 1, gen: { slate: 0 }, extras: ['strata'], map: [168, 90, 58], debris: ['#a85a3a', '#bc6e48', '#f0b080'] });
 strain(24, 'loess', B.LODE, { rich: 0.85, dig: 0.5, gen: { dense: 0.76, oreA: 0.72, oreB: 0.80, slate: 0.02 }, haz: { type: 'spark', rate: 0.5 }, map: [228, 220, 200], debris: ['#e4dcc8', '#f0ead8', '#ffffff'] });
+
+// ---------------------------------------------------------------- seams and deep strains (generation 2)
+// The ground on each diagonal from about 470 cells out, where two directions meet (`biomeAt`, rule 4): a seam,
+// a ground of its own made of both. Its first ore pays its own direction's gems (`kin`, the first of the two going
+// round the core with the sun from the north) and its rich ore the other's; it has a hazard or a trait of each, and
+// the reaction between the two that the game plays by (`react`). Past the flanks' own distance from the core it is
+// a deep seam: the same sheets and ores, deep ground's richer, meaner figures (as `deep` makes a flank of its
+// direction's ground) and looks of its own. `rich` follows the danger, as a strain's and a cross's do: a quarter
+// more than a direction's ground, and a deep seam's twice. The four, by corner:
+//   north-east  HOARSTONE / SKARN       the north's ground, frozen quartz: charged crystals on its slate, and a cut
+//                                       closes with ice (react 'thaw': an arc thaws the ice round it)
+//   south-east  GLASSDUNE / OBSIDIAN    the east's ground, fused sand: crystals, and lava in pockets with its slag;
+//                                       glass in level ribbons, quick roads (react 'glass': lava that comes to rest
+//                                       sets as glass)
+//   south-west  CINDERFEN / TARPIT      the south's ground, a burnt fen: lava, and spore pods, in frothy rock with
+//                                       more caves (react 'burn': lava sets off the pods beside it)
+//   north-west  FROSTFEN / MUSKEG       the west's ground, a frozen bog: pods, and a cut closes with ice, crossed by
+//                                       frozen rivers (react 'rime': a pod that goes off rimes instead)
+export const SEAMS = [[9, 13], [10, 14], [11, 15], [12, 16]];
+const seam = (corner, f, under) => {
+  const name = f.name, shallow = biome({ id: SEAMS[corner][0], seam: corner, ores: ownOres(name), ...f });
+  biome({ ...f, id: SEAMS[corner][1], seam: corner, deep: true, sheet: name, floor: `${name}-floor`, ores: ownOres(name), rich: 2, gemx: 2,
+    gen: { ...shallow.gen, oreA: 0.6, oreB: 0.66 }, haz: deeper(f.haz), haz2: f.haz2 && deeper(f.haz2), ...under });
+};
+seam(0, { name: 'hoarstone', kin: B.FROST, gemA: B.FROST, gemB: B.LODE, rich: 1.25, react: 'thaw', gen: { ...GROUND, slate: 0.05 }, haz: { type: 'spark', rate: 1 }, freeze: 30,
+  gloom: [10, 12, 18], mote: ['#e8fbff', 'fall'], map: [185, 184, 176], debris: ['#6e6c74', '#f4fbff', '#b9b8b0'] },
+{ name: 'skarn', freeze: 20, map: [118, 168, 158], gloom: [6, 16, 22], haz2: null });
+seam(1, { name: 'glassdune', kin: B.LODE, gemA: B.LODE, gemB: B.EMBER, rich: 1.25, react: 'glass', gen: { ...GROUND, slate: 0.05 }, haz: { type: 'spark', rate: 1 }, haz2: { type: 'lava', rate: 1, t: 0.78 },
+  extras: ['ripples'], gloom: [20, 12, 6], mote: ['#f0c070', 'still'], map: [196, 150, 86], debris: ['#94642e', '#f0c070', '#a8743a'] },
+{ name: 'obsidian', figures: { ripples: 0.035 }, map: [64, 44, 84], gloom: [12, 6, 14] });
+seam(2, { name: 'cinderfen', kin: B.EMBER, gemA: B.EMBER, gemB: B.MIRE, rich: 1.25, react: 'burn', gen: { ...GROUND, dense: 0.64, cave: 0.74 }, haz: { type: 'lava', rate: 1, t: 0.78 }, haz2: { type: 'spore', rate: 1 },
+  extras: ['bubbles'], gloom: [20, 8, 10], mote: ['#ff9a3a', 'rise'], map: [120, 72, 64], debris: ['#3c2a2e', '#b06a4a', '#9ad062'] },
+{ name: 'tarpit', lavaVol: 7, haz2: { type: 'spore', rate: 1 }, map: [96, 54, 70], gloom: [20, 6, 14] });
+seam(3, { name: 'frostfen', kin: B.MIRE, gemA: B.MIRE, gemB: B.FROST, rich: 1.25, react: 'rime', gen: { ...GROUND, cave: 0.68, cavern: 0.7 }, haz: { type: 'spore', rate: 1 }, freeze: 30,
+  extras: ['rivers'], gloom: [6, 18, 20], mote: ['#e0fff4', 'sway'], map: [122, 168, 160], debris: ['#689690', '#e0fff4', '#b4e878'] },
+{ name: 'muskeg', freeze: 20, map: [70, 110, 96], gloom: [6, 16, 18] });
+// Far out, a flank is broken into provinces (`flankProvince`), and some of them are a deep strain of it: the flank's
+// own ground with a few figures changed, a tell of its own, and ores of its own; its floor and its motes are the
+// flank's, and it pays the flank's gems. Each is something to come on only past 1,100 cells, and more often the
+// further out (`flankProvince`), and none is a strain of the near ground made richer: each has a thing of its own
+// to do there (`current`, `glow`, `geodes`; js/game.js plays them).
+//   GLACIER (the north's)  great halls of wind (`cavern` 0.62) whose walls are glazed with ice (the sheath): every
+//                          wall cuts quickly, nothing stands free in a hall; a cut closes fast
+//   CALDERA (the south's)  a few great lakes of lava in thick rinds of slag, and the heat over them
+//   MYCELIUM (the west's)  hairline faults through the rock, and caps on the rims of its caves that light
+//   DRUSE (the east's)     a field of geodes: a sector of finds that would hold nothing holds one (`find`)
+// `rich` keeps them about where the flank they are made of is (2), so the deep pays as it did: a little under where
+// the ground pays in other ways (the druse's geodes, the caldera's slag), a little over where it is meaner.
+const deepStrain = (id, name, flank, f) => {
+  const of = BIOMES[flank];
+  return biome({ id, name, kin: of.kin, deepOf: of.kin, deep: true, gemx: 2, floor: of.floor, mote: of.mote, freeze: of.freeze, haz: of.haz, ores: ownOres(name), ...f, gen: { ...of.gen, ...f.gen } });
+};
+deepStrain(64, 'glacier', 5, { rich: 1.9, dark: 1.25, freeze: 15, current: 'wind', gen: { cave: 0.82, cavern: 0.62 }, extras: ['sheath'],
+  gloom: [2, 12, 24], mote: ['#bfe8ff', 'fall'], map: [70, 150, 190], debris: ['#5aa0c4', '#e8f8ff', '#84c4e0'] });
+deepStrain(65, 'caldera', 6, { rich: 2.1, current: 'heat', lavaVol: 9, haz: { type: 'lava', rate: 1.8, t: 0.76, rind: 0.14 }, extras: ['lakes'],
+  gloom: [30, 8, 2], map: [176, 84, 36], debris: ['#4a2014', '#ffb040', '#ffd060'] });
+deepStrain(66, 'mycelium', 7, { rich: 2, dark: 1.4, glow: true, haz: { type: 'spore', rate: 1.4 }, extras: ['threads', 'rims'],
+  gloom: [16, 2, 24], map: [196, 170, 214], debris: ['#3e2250', '#ffa0e0', '#e8d8f0'] });
+deepStrain(67, 'druse', 8, { rich: 1.8, geodes: true, haz: { type: 'spark', rate: 1.4 }, gloom: [24, 18, 2], map: [232, 196, 96], debris: ['#7a6028', '#fff0a0', '#e8f4ff'] });
 
 // ---------------------------------------------------------------- pockets (mini zones)
 // A pocket is a small place of its own, a screen or a few across, laid in whatever direction's ground is there: its
@@ -542,8 +632,22 @@ const HERALD_AT = [null, { sx: 0, sy: -2, ux: 0, uy: -1, ox: 1, oy: 0 }, { sx: -
 const LOOKS = [[0, 'crust', null], [1, 'frost', 'flake'], [2, 'ember', 'ember'], [3, 'mire', 'spore'], [4, 'lode', null],
   [5, 'rime', 'flake'], [6, 'magma', 'ember'], [7, 'bloom', 'firefly'], [8, 'gilt', 'glint'], [17, 'firn', 'flake'], [18, 'serac', 'flake'],
   [19, 'scoria', 'ember'], [20, 'forge', 'ember'], [21, 'tangle', 'spore'], [22, 'sporefall', 'spore'], [23, 'redrock', null], [24, 'loess', null],
-  [32, 'hive', 'glint'], [33, null, 'glint'], [34, null, 'ash'], [35, 'grotto', 'spore'], [36, 'tinder', 'ember'], [37, 'glaze', 'flake'], [38, 'shale', null]];
+  [32, 'hive', 'glint'], [33, null, 'glint'], [34, null, 'ash'], [35, 'grotto', 'spore'], [36, 'tinder', 'ember'], [37, 'glaze', 'flake'], [38, 'shale', null],
+  [9, 'hoarstone', 'flake'], [10, 'glassdune', 'glint'], [11, 'cinderfen', 'ember'], [12, 'frostfen', 'flake'], [13, 'hoarstone', 'flake'], [14, 'glassdune', 'ember'],
+  [15, 'cinderfen', 'ember'], [16, 'frostfen', 'spore'], [64, 'glacier', 'flake'], [65, 'caldera', 'ember'], [66, 'mycelium', 'firefly'], [67, 'druse', 'glint']];
 for (const [id, decor, air] of LOOKS) Object.assign(BIOMES[id], { decor, air });
+// Until the art of the seams and the deep strains is drawn (their rock, floors and ores: art/tiles.mjs and
+// art/sprites.mjs) and their caves' pieces made and rated (art/decor.mjs, js/decor.js), each is drawn from what its
+// own direction's ground has: its rock and floor, its two ores (the first its own direction's, the rich one its
+// other parent's), and its caves' pieces. What the lab knows its ores by (`oreKeys`) is its own already. Each line
+// goes as the art it borrows in place of is built: [ground, rock, floor, ore, rich ore, caves' pieces].
+const BORROWED = [[9, 'frost', 'frost-floor', ['frost-items', 'oreA'], ['lode-items', 'oreB'], 'frost'], [13, 'rime', 'rime-floor', ['ores', 'rimeA'], ['ores', 'giltB'], 'rime'],
+  [10, 'lode', 'lode-floor', ['lode-items', 'oreA'], ['ember-items', 'oreB'], 'lode'], [14, 'gilt', 'gilt-floor', ['ores', 'giltA'], ['ores', 'magmaB'], 'gilt'],
+  [11, 'ember', 'ember-floor', ['ember-items', 'oreA'], ['mire-items', 'oreB'], 'ember'], [15, 'magma', 'magma-floor', ['ores', 'magmaA'], ['ores', 'bloomB'], 'magma'],
+  [12, 'mire', 'mire-floor', ['mire-items', 'oreA'], ['frost-items', 'oreB'], 'mire'], [16, 'bloom', 'bloom-floor', ['ores', 'bloomA'], ['ores', 'rimeB'], 'bloom'],
+  [64, 'rime', 'rime-floor', ['ores', 'rimeA'], ['ores', 'rimeB'], 'rime'], [65, 'magma', 'magma-floor', ['ores', 'magmaA'], ['ores', 'magmaB'], 'magma'],
+  [66, 'bloom', 'bloom-floor', ['ores', 'bloomA'], ['ores', 'bloomB'], 'bloom'], [67, 'gilt', 'gilt-floor', ['ores', 'giltA'], ['ores', 'giltB'], 'gilt']];
+for (const [id, sheet, floor, oreA, oreB, decor] of BORROWED) Object.assign(BIOMES[id], { sheet, floor, ores: [oreA, oreB], decor });
 
 // ---------------------------------------------------------------- generated ground: crosses
 // Everything above is made by hand. A cross is made by rule from three hand-made parts, so that a player who knows
@@ -608,6 +712,11 @@ const STEP = [1, N, -1, -N], OUTLINE = 600, JOIN = 60000, WALK = 150000, HOLLOW 
 // Plain home ground runs out to HOME_R before any direction's ground begins; the flanks turn strange past DEEP_R;
 // what each direction hides lies RELIC_R out; the world ends at WORLD_R.
 export const HOME_R = 130, DEEP_R = 900, RELIC_R = 2000, WORLD_R = 2400;
+// And in generation 2 a shrine on each diagonal SHRINE_R out, in the deep seam there (`SHRINES`: north-east,
+// south-east, south-west, north-west), laid as a relic's vault is: its heart a relic, sealed in ancient stone that
+// holds both its parents' ores, in soft rock (`kindAt`). It is laid only where the piece holding its heart is of
+// generation 2, and the pockets, the sites and the slabs keep clear of it as of a relic.
+export const SHRINE_R = 1400, SHRINES = [[990, -990], [990, 990], [-990, 990], [-990, -990]];
 // Which rules of the world a piece of it was laid by: its generation. Every piece made now is laid by the rules of
 // GEN; a piece saved by an older game was laid by those of its day, and is laid by them still (`genOf`, `genAt`),
 // or the ground it saved would no longer be the ground the seed lays there, and every rule that asks what was laid
@@ -622,12 +731,23 @@ export const GEN = 2, MIGRATE_NEAR = 445, MIGRATE_SEAM = 204, MIGRATE_FAR = 790;
 // own with what is left of its hull; each holds a part of an older machine.
 export const FIND = 48, WRECK_R = [45, 90, 160, 300, 500, 800, 1200, 1700];
 // What a sector holds is said by one hash of the sector, and the whole of its range is allotted here once: each
-// find has the band up to its figure from the one before, and what is over the last holds nothing. A geode and a
-// cache are laid by `findAt`. The other three have their bands and nothing laid yet (a prism only where its middle
-// is over PRISM_R cells out): whoever lays one adds its cells to `findAt`, and until then the sector's ground is
-// plain.
+// find has the band up to its figure from the one before, and what is over the last holds nothing. `findAt` lays
+// each: a geode, a cache, a prism (only where its middle is over PRISM_R cells out), and twin stones and a fossil
+// (below: far out, and in generation 2 only; nearer, and in an older game's ground, their sectors' ground is plain).
 export const FINDS = [[0.38, 'geode'], [0.70, 'cache'], [0.74, 'prism'], [0.80, 'twin'], [0.86, 'fossil']];
-const GEODES = FINDS[0][0], CACHES = FINDS[1][0], PRISMS = FINDS[2][0], HELD = FINDS[FINDS.length - 1][0], PRISM_R = 130;
+const GEODES = FINDS[0][0], CACHES = FINDS[1][0], PRISMS = FINDS[2][0], TWINS = FINDS[3][0], HELD = FINDS[FINDS.length - 1][0], PRISM_R = 130;
+// In generation 2 (asked of the piece holding the find's middle, and laid only in pieces of generation 2), twin
+// stones are laid where the middle is over TWIN_R cells out and fossils over FOSSIL_R (nearer, the bands hold nothing,
+// as before); and in ground that has geodes for its finds (a druse: `geodes`) whatever a sector over DRUSE_R out
+// would hold nothing, or twin stones or a fossil, is a geode instead. Twin stones: two cells of K.TWIN TWIN_APART
+// cells to either side of the middle along one of four ways (hash 34), each in a ring of dense rock. A fossil: four to
+// seven bones (36) in a line from three cells behind the middle, along one of the four ways (35), bent a cell to
+// one side or the other as it goes (35, by each bone), in a bed of dense rock. Whose it is, the direction of its
+// middle says, as plainly as a pocket's: `FOSSILS`.
+export const TWIN_R = 800, FOSSIL_R = 1200, DRUSE_R = 900, TWIN_APART = 3;
+export const FOSSILS = [null, 'FROZEN BEAST', 'EMBER RIBS', 'ROOT WYRM', 'AMMONITE'];
+export const fossilKin = (fx, fy) => { const dx = fx - C, dy = fy - C; return Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? B.LODE : B.MIRE) : (dy < 0 ? B.FROST : B.EMBER); };
+const WAYS = [[1, 0], [0, 1], [-1, 0], [0, -1]], TWIN_WAYS = [[1, 0], [0, 1], [1, 1], [1, -1]];
 // How far a find's middle must be from the nearest cell a pocket could have (the biggest find runs four cells).
 const FIND_ROOM = 5;
 // Keystone slabs. A slab is a great disc of ground that a natural crack already runs all the way round (its moat),
@@ -666,6 +786,28 @@ export const PROVINCE = 256;
 // Generated ground (crosses) is a share of the provinces that grows with the distance of a province's middle from
 // the core: none under CROSS_FROM cells out, then a part in 2,500 for each cell further, and never over CROSS_MOST.
 export const CROSS_FROM = 500, CROSS_MOST = 0.35;
+// Seams (generation 2: `biomeAt`, rule 4). On each diagonal from SEAM_FROM cells out, its start wandering SEAM_START
+// to either side on a layer of noise (76), a seam lies along the line where the two directions' wandering borders
+// meet: within a half-width of that line (on the two distances the borders are drawn by, which sweep and wobble as
+// the borders do), the half-width wandering SEAM_WOBBLE to either side on a layer of its own (75). The half-width is
+// SEAM_NEAR's share of the distance from the core, between its least and its most, and past the flanks' own
+// distance (the radial half of their test, layer 14) SEAM_FAR's: 90 cells at 1,000, 126 at 1,400, 180 from 2,000.
+// So a seam takes about a tenth of the ground from 600 cells out, and the deep seams the middle of each flank pair.
+// What each corner's seam is: `SEAMS`. Its start lies past MIGRATE_NEAR, and within MIGRATE_FAR it never runs
+// further than MIGRATE_SEAM from the diagonal (90 of half-width, 12 of wobble and 90 of the borders' sweep).
+export const SEAM_FROM = 470, SEAM_START = 25, SEAM_WOBBLE = 12, SEAM_NEAR = [0.12, 24, 90], SEAM_FAR = [0.09, 90, 180];
+// Each seam's set piece (`setPiece`): something laid by hand where the seam begins, at the first cell from SET_FROM
+// to SET_TO cells out on the diagonal itself where the seam lies, and SET_ROOM cells round it each way, clear of
+// every slab a sector could try (a slab's soundness asks what the ground round it is, and so what a set piece lays
+// there, which cannot be asked while where it lies is being worked out); laid in a
+// collar of rock with no caves SET_COLLAR cells round (as a square of the distance), with solid ground at six or more
+// of the eight points SET_HELD, so that it stands in rock that holds it.
+export const SET_FROM = 480, SET_TO = 640, SET_ROOM = 6, SET_COLLAR = 30, SET_HELD = [[7, 0], [5, 5], [0, 7], [-5, 5], [-7, 0], [-5, -5], [0, -7], [5, -5]];
+// Flank provinces (generation 2: `biomeAt`, rule 5b; `flankProvince`): far out, a flank is laid out in provinces as
+// the near ground is, and a share of them, none whose middle is under FLANK_FROM cells out and rising a part in
+// FLANK_RISE for each cell further to FLANK_MOST, is a deep strain of the flank. So none under about 1,100 cells out,
+// three in ten at 1,350, six in ten from 1,650.
+export const FLANK_FROM = 1050, FLANK_RISE = 1000, FLANK_MOST = 0.6;
 // Rare hazards lie at sites, one at the most to a sector SITE cells across, the sectors laid out with their
 // middles on the corners of the slabs' (`World.siteOf`): a site's middle is within eleven cells of a corner each
 // way, and its heart a cell from that at the most, so every cell of one (none lies over six from its heart) is
@@ -686,6 +828,15 @@ export const SITE_SHARE = { deep: 0.06, cross: 0.1, far: 0.1, plain: 0.08 };
 const SITE_MOST = 0.1, SITE_CLEAR = 44, SITE_ROOM = 11, SITE_TRIES = 8;
 const SITE_ROUND = [20, 40].flatMap(r => { const d = Math.round(0.7 * r); return [[r, 0], [-r, 0], [0, r], [0, -r], [d, d], [d, -d], [-d, d], [-d, -d]]; });
 export const SITE_HERALDS = [[4, 1, B.LODE], [-4, -1, B.MIRE], [1, -4, B.FROST], [-1, 4, B.EMBER], [4, -1, B.LODE], [-4, 1, B.MIRE], [-1, -4, B.FROST], [1, 4, B.EMBER], [4, 0, B.LODE], [-4, 0, B.MIRE], [0, -4, B.FROST], [0, 4, B.EMBER]];
+// And in generation 2, four more, one on each diagonal about 611 cells out (`CORNER_HERALDS`: the sector and the
+// corner, north-east, south-east, south-west, north-west; then for each the sector on the same diagonal one
+// further out, about 815, tried where the first holds none, and last the one beyond that, about 1,018, where neither
+// does: in about one world in ten a pocket takes both of the first two). A corner's herald lies in its seam's ground or its deep
+// seam's, and is the rare hazard of that seam's own direction (`RARE`): the rime bell in the north-east, the
+// lodestone in the south-east, the fumarole in the south-west, the glowworm in the north-west. Kept in a list of
+// its own: the axial heralds' fallbacks are found by their places in theirs. Each is a herald only where the piece
+// holding its sector's middle cell is of generation 2: in an older game's ground the sector is any other.
+export const CORNER_HERALDS = [[3, -3, 0], [3, 3, 1], [-3, 3, 2], [-3, -3, 3], [4, -4, 0], [4, 4, 1], [-4, 4, 2], [-4, -4, 3], [5, -5, 0], [5, 5, 1], [-5, 5, 2], [-5, -5, 3]];
 // What each rare hazard's site lays round its heart, as the ground lies with its caves cut (`kindAt`): a kind for a
 // cell `u`, `v` from the heart, or -1 where the ground is as it would be. A site never opens a cell, so nothing
 // else in the world moves for it. `reach`: how far from the heart a cell of it lies at the most.
@@ -724,8 +875,11 @@ export const cellHash = hash;
 // and 98 a glaze, 95 a shale stack; 55 and 300 + a strain's number, provinces (56 and 57: which cross a province
 // is); 58-59 a second hazard; 60-62 where rare hazards' sites lie, 70-74 what their shapes lay; 64 grapes, 65
 // lanes, 66 rivers, 67 bubbles (strata are on 11, stretched); 68 slag among lava; 80-89 keystone slabs (84 the
-// layer their cracks wander by). docs/CONTENT-PLAN.md (S3) allots the rest: take a number from there, so that no
-// two rules read the same layer.
+// layer their cracks wander by). And generation 2's: 75 and 76 a seam's wobble and its start; 33 and 400 + a deep
+// strain's number, the flanks' provinces; 29 ripples of glass, 77 the glacier's sheath, 78 the caldera's lakes, 90
+// and 91 the mycelium's threads, 63 its caps; 79 the wind and 69 the heat (`flowAt`); 34 twin stones, 35 and 36 a
+// fossil; 37 a shrine's ore. (38, 39, 25 to 28 and 30 are kept for the builders' halls.) docs/CONTENT-PLAN.md (S3)
+// allots the rest: take a number from there, so that no two rules read the same layer.
 const kept = new Float64Array(128 * 7).fill(NaN);
 const noise = (x, y, s, k = s & 127) => {
   const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi, m = k * 7;
@@ -869,10 +1023,13 @@ export class World {
     this.seed = 1;
     this.made = 0;                         // pieces of the world made, and outline sides walked and cells followed by
     this.sides = 0; this.followed = 0;     // `freed` and `pieceIn`: for tests of how much work is done
-    this.sector = { sx: NaN, sy: NaN, seed: NaN, what: 1, fx: 0, fy: 0, size: 3 };      // the sector `findAt` last looked at
-    this.asked = { sx: NaN, sy: NaN, seed: NaN, what: 1, fx: 0, fy: 0, size: 3 };       // and the one `findSpot` did
+    this.sector = World.findRecord();      // the sector `findAt` last looked at
+    this.asked = World.findRecord();       // and the one `findSpot` did
     this.spotted = [];                     // things seen for the first time and not yet called out: `see` adds, the game takes
     this.provinces = new Uint8Array(4096).fill(255);      // the ground of each province and direction asked about (255: not yet)
+    this.flanks = new Uint8Array(4096).fill(255);         // and of each province of a flank (`flankProvince`), likewise
+    this.sets = new Float64Array(8).fill(NaN);            // where each seam's set piece lies (`setPieces`): x, y by corner
+    this.flow = { x: 0, y: 0 };                           // what `flowAt` last said
     this.slabs = new Map();                // the slab of each sector asked about (null: none), and the sector asked last
     this.slabLast = { sx: NaN, sy: NaN, seed: NaN, slab: null };
     // Which slab the cells now being asked about may lie in, where that is known beforehand: null for none (the
@@ -888,7 +1045,16 @@ export class World {
     // How many sites were not laid, of the sectors whose hash could have held one, by what stood against each.
     this.unsited = { far: 0, ground: 0, wreck: 0, pocket: 0, find: 0, heart: 0, share: 0 };
     this.relicAt = [0, 1, 2, 3].map(d => (C + DY[d] * RELIC_R) * N + C + DX[d] * RELIC_R);
+    // The hearts of the four shrines, north-east, south-east, south-west, north-west, whether laid or not (`shrine`).
+    this.shrineAt = SHRINES.map(([x, y]) => (C + y) * N + C + x);
   }
+  // A record of what a sector of finds holds (`find`): one made for each of the two the world keeps, and filled in
+  // place. `laid`: whether the find has cells (twin stones and a fossil have them only far out and in generation 2);
+  // `druse`: whether it is a geode only because its ground is a druse; `way`: which way twin stones lie (TWIN_WAYS);
+  // `n`, `bx`, `by`: a fossil's bones, from its middle.
+  static findRecord() { return { sx: NaN, sy: NaN, seed: NaN, what: 1, fx: 0, fy: 0, size: 3, laid: true, druse: false, way: 0, n: 0, bx: new Int8Array(8), by: new Int8Array(8) }; }
+  // Whether the shrine of corner `d` is laid: the piece holding its heart is of generation 2.
+  shrine(d) { return this.genOf[(((C + SHRINES[d][1]) >> 6) << 8) | ((C + SHRINES[d][0]) >> 6)] >= 2; }
   // Where the eight wrecks lie in this world: [x, y] each, in a direction of its own.
   get wrecks() {
     if (this.wrecksFor !== this.seed) {
@@ -906,20 +1072,37 @@ export class World {
   // its shell; under 0.7 a cache; and so on), or is 1 where it holds nothing; `fx`, `fy` is the middle cell. A sector
   // is its place counted from the core's: (x - C) / FIND, floored.
   find(sx, sy, S) {
-    const seed = this.seed;
-    S.sx = sx; S.sy = sy; S.seed = seed; S.what = hash(sx, sy, seed + 21);
-    if (S.what >= HELD) { S.what = 1; return; }
+    const seed = this.seed, h = hash(sx, sy, seed + 21);
+    S.sx = sx; S.sy = sy; S.seed = seed; S.what = h; S.laid = true; S.druse = false;
     S.fx = C + sx * FIND + 8 + Math.floor(hash(sx, sy, seed + 22) * (FIND - 16)); S.fy = C + sy * FIND + 8 + Math.floor(hash(sx, sy, seed + 23) * (FIND - 16));
     const dx = S.fx - C, dy = S.fy - C, far = dx * dx + dy * dy;
+    // A druse's sector that would hold nothing, or twin stones or a fossil, holds a geode (generation 2).
+    if (h >= PRISMS && far > DRUSE_R * DRUSE_R && this.genAt(S.fx, S.fy) >= 2 && rowOf(this.biomeAt(S.fx, S.fy)).geodes) { S.what = 0; S.druse = true; }
+    else if (h >= HELD) { S.what = 1; return; }
     if (far < 16 * 16 || (S.what >= CACHES && S.what < PRISMS && far <= PRISM_R * PRISM_R)) S.what = 1;
     // No find lies in a pocket, or so near one that any of it would: such a sector holds nothing.
     else if (this.meetsPocket(S.fx, S.fy, FIND_ROOM)) S.what = 1;
     else if (S.what < GEODES) S.size = hash(sx, sy, seed + 24) < 0.4 ? 4 : 3;
+    else if (S.what >= PRISMS) {
+      // Twin stones and fossils: named in their bands everywhere, as they always were, and laid only far out in
+      // generation 2.
+      const now = this.genAt(S.fx, S.fy) >= 2;
+      if (S.what < TWINS) { S.laid = now && far > TWIN_R * TWIN_R; S.way = Math.floor(hash(sx, sy, seed + 34) * 4); return; }
+      S.laid = now && far > FOSSIL_R * FOSSIL_R;
+      if (!S.laid) return;
+      const [ux, uy] = WAYS[Math.floor(hash(sx, sy, seed + 35) * 4)];
+      S.n = 4 + Math.floor(hash(sx, sy, seed + 36) * 4);
+      for (let k = 0, side = 0; k < S.n; k++) {
+        if (k) side = Math.max(-1, Math.min(1, side + Math.floor(hash(sx + k, sy, seed + 35) * 3) - 1));
+        S.bx[k] = (k - 3) * ux - side * uy; S.by[k] = (k - 3) * uy + side * ux;
+      }
+    }
   }
   // What a sector holds, asked without making any of the world: [what, x, y, size], `what` being a name from
   // `FINDS` ('geode', 'cache', 'prism', 'twin', 'fossil') or null, with the find's middle cell and, of a geode, its
   // size. (What is truly there is the world's cells to say: a wreck or a relic's vault laid over a find has taken
-  // its place, and the last three names have no cells laid yet.)
+  // its place; and twin stones and a fossil are named in their bands wherever they lie, but have cells only far out
+  // in generation 2: whether this one has, `asked.laid` says.)
   findSpot(sx, sy) {
     const S = this.asked;
     if (S.sx !== sx || S.sy !== sy || S.seed !== this.seed) this.find(sx, sy, S);
@@ -940,7 +1123,23 @@ export class World {
     const sx = Math.floor((x - C) / FIND), sy = Math.floor((y - C) / FIND), S = this.sector;
     if (S.sx !== sx || S.sy !== sy || S.seed !== this.seed) this.find(sx, sy, S);
     const what = S.what;
-    if (what >= PRISMS) return -1;
+    if (what >= PRISMS) {
+      if (what >= HELD || !S.laid || this.genAt(x, y) < 2) return -1;
+      const dx = x - S.fx, dy = y - S.fy;
+      if (dx > 4 || dx < -4 || dy > 4 || dy < -4) return -1;
+      // Twin stones: each in a ring of dense rock.
+      if (what < TWINS) {
+        const wx = TWIN_WAYS[S.way][0], wy = TWIN_WAYS[S.way][1];
+        for (let t = -TWIN_APART; t <= TWIN_APART; t += 2 * TWIN_APART) { const edge = Math.max(Math.abs(dx - t * wx), Math.abs(dy - t * wy)); if (edge === 0) return K.TWIN; if (edge === 1) return K.DENSE; }
+        return -1;
+      }
+      // A fossil: its bones, in a bed of dense rock.
+      let bed = false;
+      for (let k = 0; k < S.n; k++) { const ex = dx - S.bx[k], ey = dy - S.by[k]; if (ex === 0 && ey === 0) return K.FOSSIL; if (ex <= 1 && ex >= -1 && ey <= 1 && ey >= -1) bed = true; }
+      return bed ? K.DENSE : -1;
+    }
+    // (A druse's geode is laid only in pieces of generation 2.)
+    if (S.druse && this.genAt(x, y) < 2) return -1;
     const dx = x - S.fx, dy = y - S.fy;
     // A prism: one clear crystal, set in plain ore on every side.
     if (what >= CACHES) { const edge = Math.max(Math.abs(dx), Math.abs(dy)); return edge === 0 ? K.PRISM : edge === 1 ? K.ORE_A : -1; }
@@ -970,7 +1169,8 @@ export class World {
   // its middle alone, on no wandering border: the larger of its two distances from the core. Of the pockets that
   // may lie in that direction, that far out (their rows' `kins` and `minR`), it is the one whose own hash for the
   // sector (100 + its number) times its `weight` is largest, so that a pocket made later takes few sectors from
-  // the others; and its radius is brought within that pocket's own `rho`.
+  // the others; and its radius is brought within that pocket's own `rho`. (A shrine that is laid is kept clear of
+  // as a relic's vault is.)
   zoneOf(sx, sy) {
     const seed = this.seed, key = ((sy + 64) << 7) | (sx + 64);
     if (this.zonesFor !== seed) { this.zonesFor = seed; this.zones.clear(); }
@@ -980,6 +1180,7 @@ export class World {
     const wrecks = this.wrecks, near = (cx, cy, r) => {
       for (const [wx, wy] of wrecks) if ((cx - wx) * (cx - wx) + (cy - wy) * (cy - wy) < r * r) return true;
       for (let d = 0; d < 4; d++) { const ex = cx - C - DX[d] * RELIC_R, ey = cy - C - DY[d] * RELIC_R; if (ex * ex + ey * ey < r * r) return true; }
+      for (let d = 0; d < 4; d++) { const ex = cx - C - SHRINES[d][0], ey = cy - C - SHRINES[d][1]; if (ex * ex + ey * ey < r * r && this.shrine(d)) return true; }
       return false;
     };
     let herald = 0;
@@ -1108,24 +1309,30 @@ export class World {
     let S = this.sites.get(key);
     if (S !== undefined) return S;
     const h = hash(sx, sy, seed + 60), at = SITE_HERALDS.findIndex(([x, y]) => x === sx && y === sy);
-    let herald = at >= 0 ? SITE_HERALDS[at][2] : 0;
+    let herald = at >= 0 ? SITE_HERALDS[at][2] : 0, corner = -1;
     for (let k = at - 4; herald && k >= 0; k -= 4) if (this.siteOf(SITE_HERALDS[k][0], SITE_HERALDS[k][1]) !== null) herald = 0;
+    // (A corner's herald, in generation 2: the sector's middle cell says.)
+    const c = CORNER_HERALDS.findIndex(([x, y]) => x === sx && y === sy);
+    if (c >= 0 && this.genAt(C + sx * SITE, C + sy * SITE) >= 2) corner = CORNER_HERALDS[c][2];
+    for (let k = c - 4; corner >= 0 && k >= 0; k -= 4) if (this.siteOf(CORNER_HERALDS[k][0], CORNER_HERALDS[k][1]) !== null) corner = -1;
     S = null;
-    if (herald || h < SITE_MOST) for (let n = 0; n < (herald ? SITE_TRIES : 1) && S === null; n++) S = this.site(sx, sy, n, h, herald);
+    if (herald || corner >= 0 || h < SITE_MOST) for (let n = 0; n < (herald || corner >= 0 ? SITE_TRIES : 1) && S === null; n++) S = this.site(sx, sy, n, h, herald, corner);
     this.sites.set(key, S);
     return S;
   }
-  // A sector's site at its `n`th try (only a herald has more than one), or null.
-  site(sx, sy, n, h, herald) {
+  // A sector's site at its `n`th try (only a herald has more than one), or null. `herald`: the kin an axial herald's
+  // ground must be (0: none); `corner`: the corner whose seam a corner's herald must lie in (-1: none).
+  site(sx, sy, n, h, herald, corner = -1) {
     const seed = this.seed, no = why => { this.unsited[why]++; return null; };
     const cx = C + sx * SITE + Math.floor((hash(sx + 64 * n, sy, seed + 61) - 0.5) * 21), cy = C + sy * SITE + Math.floor((hash(sx + 64 * n, sy, seed + 62) - 0.5) * 21);
     const dx = cx - C, dy = cy - C, far = Math.sqrt(dx * dx + dy * dy);
     if (far < SITE_FROM || far + 6 > WORLD_R - 100) return no('far');
     const b = this.biomeAt(cx, cy), row = rowOf(b), kin = row.kin;
-    if (kin < 1 || kin > 4 || row.pocket !== null || (herald && kin !== herald)) return no('ground');
+    if (kin < 1 || kin > 4 || row.pocket !== null || (herald && kin !== herald) || (corner >= 0 && b !== SEAMS[corner][0] && b !== SEAMS[corner][1])) return no('ground');
     for (let d = 0; d < 4; d++) if (rowOf(this.biomeAt(cx + DX[d] * 7, cy + DY[d] * 7)).kin !== kin) return no('ground');
     for (const [wx, wy] of this.wrecks) if ((cx - wx) * (cx - wx) + (cy - wy) * (cy - wy) < SITE_CLEAR * SITE_CLEAR) return no('wreck');
     for (let d = 0; d < 4; d++) { const ex = cx - C - DX[d] * RELIC_R, ey = cy - C - DY[d] * RELIC_R; if (ex * ex + ey * ey < SITE_CLEAR * SITE_CLEAR) return no('wreck'); }
+    for (let d = 0; d < 4; d++) { const ex = cx - C - SHRINES[d][0], ey = cy - C - SHRINES[d][1]; if (ex * ex + ey * ey < SITE_CLEAR * SITE_CLEAR && this.shrine(d)) return no('wreck'); }
     if (this.meetsPocket(cx, cy, SITE_ROOM)) return no('pocket');
     for (let fy = Math.floor((cy - SITE_ROOM - C) / FIND), y1 = Math.floor((cy + SITE_ROOM - C) / FIND); fy <= y1; fy++) {
       for (let fx = Math.floor((cx - SITE_ROOM - C) / FIND), x1 = Math.floor((cx + SITE_ROOM - C) / FIND); fx <= x1; fx++) {
@@ -1142,12 +1349,13 @@ export class World {
         || (g.lay.bubbles < 1 && bubble(hx, hy, seed, g.lay.bubbles)))) break;
       if (d === 3) return no('heart');
     }
-    if (!herald) {
-      const share = row.cross !== null ? SITE_SHARE.cross : row.id >= 5 && row.id <= 8 ? SITE_SHARE.deep : far > SITE_OUT ? SITE_SHARE.far : 0;
+    if (!herald && corner < 0) {
+      // (A seam is shared out as a cross is; deep ground, a flank, a deep seam or a deep strain, as a flank is.)
+      const share = row.cross !== null || row.seam !== null ? SITE_SHARE.cross : row.deep ? SITE_SHARE.deep : far > SITE_OUT ? SITE_SHARE.far : 0;
       if (h >= share && !(h < SITE_SHARE.plain && SITE_ROUND.every(([u, v]) => this.biomeAt(cx + u, cy + v) === b))) return no('share');
     }
     const type = RARE[kin];
-    return { sx, sy, cx: hx, cy: hy, type, reach: SITE_REACH[type], herald: herald > 0 };
+    return { sx, sy, cx: hx, cy: hy, type, reach: SITE_REACH[type], herald: herald > 0 || corner >= 0, corner };
   }
   // The site whose cells may include a cell, or null: its sector's, kept while cells of the same sector are asked.
   siteAt(x, y) {
@@ -1306,6 +1514,7 @@ export class World {
       let why = far <= 60 || far + p + 6 > WORLD_R - 100 ? 'core' : null;
       if (!why) for (const [wx, wy] of this.wrecks) if (near(wx, wy, most)) why = 'wreck';
       if (!why) for (let d = 0; d < 4; d++) if (near(C + DX[d] * RELIC_R, C + DY[d] * RELIC_R, most)) why = 'wreck';
+      if (!why) for (let d = 0; d < 4; d++) if (near(C + SHRINES[d][0], C + SHRINES[d][1], most) && this.shrine(d)) why = 'wreck';
       if (!why && far < FIRST_R + most + 6) { const first = this.firstSlab; if (first && near(first.cx, first.cy, most + 4)) why = 'first'; }
       // (No cell of it may be a pocket's: a slab's own cells lie up to five cells beyond its radius, a cobble
       // field's collar a cell and a half further.)
@@ -1322,6 +1531,18 @@ export class World {
     }
     this.slabs.set(key, S);
     return S;
+  }
+  // Whether a slab that a sector could try (its hash under SLABS: `slabIn`), laid or not, could have a cell within
+  // `room` cells of a cell: asked of the hashes alone, with nothing of the ground.
+  slabTried(x, y, room) {
+    const seed = this.seed;
+    for (let sy = Math.floor((y - room - 30 - C) / SLAB), y1 = Math.floor((y + room + 30 - C) / SLAB); sy <= y1; sy++) for (let sx = Math.floor((x - room - 30 - C) / SLAB), x1 = Math.floor((x + room + 30 - C) / SLAB); sx <= x1; sx++) {
+      if (hash(sx, sy, seed + 80) >= SLABS) continue;
+      const p = 8 + Math.floor(hash(sx, sy, seed + 81) * 9), reach = hash(sx, sy, seed + 85) < COBBLES ? p + 6.5 : p + 5;
+      const cx = C + sx * SLAB + 40 + Math.floor(hash(sx, sy, seed + 82) * (SLAB - 80)), cy = C + sy * SLAB + 40 + Math.floor(hash(sx, sy, seed + 83) * (SLAB - 80));
+      if ((cx - x) * (cx - x) + (cy - y) * (cy - y) < (reach + room) * (reach + room)) return true;
+    }
+    return false;
   }
   // The slab that has cells in a box of cells, the first or that of a sector the box overlaps: null if none has,
   // undefined if more than one.
@@ -1358,7 +1579,7 @@ export class World {
     this.touched.clear(); this.lava.clear(); this.dug.clear(); this.kept = null; this.stirred++;
     this.made = 0;
     this.spotted.length = 0;
-    this.provincesFor = NaN;
+    this.provincesFor = NaN; this.flanksFor = NaN;
     this.forget();
   }
   // The generation of the rules the piece holding a cell is laid by (GEN).
@@ -1368,7 +1589,7 @@ export class World {
   // it begins. (Provinces are the seed's alone: a newer rule asks the generation outside what they keep.)
   forget() {
     this.slabsFor = NaN; this.firstFor = NaN; this.slabLast.seed = NaN; this.zonesFor = NaN; this.zoneLast.seed = NaN;
-    this.sitesFor = NaN; this.siteLast.seed = NaN; this.sector.seed = NaN; this.asked.seed = NaN;
+    this.sitesFor = NaN; this.siteLast.seed = NaN; this.sector.seed = NaN; this.asked.seed = NaN; this.setsFor = NaN;
   }
 
   // Whose ground a cell is, from the seed alone. The rules, in the order they are asked (docs/CONTENT-PLAN.md S3):
@@ -1376,10 +1597,12 @@ export class World {
   //   1. a pocket, for a cell over POCKET_NEAR cells out: the pocket of its sector, if the cell is that pocket's
   //   2. the home ground
   //   3. which direction's ground, on borders that wander
-  //   4. a seam along a diagonal   (not laid yet. Its place is after the direction is known and before the flanks)
-  //   5. a deep flank: strains and crosses never take the place of one
+  //   4. a seam along a diagonal, in generation 2: past SEAM_FROM, where the two directions' borders meet (`SEAMS`)
+  //   5. a deep flank: strains and crosses never take the place of one; in generation 2 the flank is laid out in
+  //      provinces, and a share of them far out is a deep strain of it (`flankProvince`)
   //   6. the province the cell lies in: a generated cross, a hand-made strain of the direction, or
   //   7. the direction's own ground.
+  // The rules of generation 2 are asked of the cell's own piece (`genOf`): an older game's ground is laid as it was.
   biomeAt(x, y) {
     const seed = this.seed, dx = x - C, dy = y - C, r = Math.sqrt(dx * dx + dy * dy);
     if (r > POCKET_NEAR) { const Z = this.pocketOf(x, y); if (Z !== null && this.inPocket(Z, x, y)) return Z.row; }
@@ -1390,16 +1613,29 @@ export class World {
     const far = Math.min(90, r * 0.2), near = Math.min(8, r * 0.1), n1 = noise(x / 61, y / 61, seed + 1, 1), n2 = noise(x / 61, y / 61, seed + 2, 2);
     const px = Math.abs(dx) + (n1 - 0.5) * far, py = Math.abs(dy) + (n2 - 0.5) * far;
     const alongX = px - py > near + SURE || (py - px <= near + SURE && px + (noise(x / 9, y / 9, seed + 16, 16) - 0.5) * near > py + (noise(x / 9, y / 9, seed + 17, 17) - 0.5) * near);
-    const b = alongX ? (dx > 0 ? B.LODE : B.MIRE) : (dy < 0 ? B.FROST : B.EMBER);
-    if (r > DEEP_R - 100 - SURE) {
-      // The flank's edges wander too, and in the same way each wandering is asked for only where it can move the edge past the cell.
-      const least = Math.min(Math.abs(dx), Math.abs(dy)), flank = Math.max(Math.abs(dx), Math.abs(dy)) * 0.36;
-      if (least > flank - 30 - SURE && (r > DEEP_R + 100 + SURE || r > DEEP_R + (noise(x / 50, y / 50, seed + 14, 14) - 0.5) * 200) && (least > flank + 30 + SURE || least > flank + (noise(x / 37, y / 37, seed + 15, 15) - 0.5) * 60)) return b + 4;
-      if (r > WORLD_R + 2) return b;           // past the world's edge there is only bedrock, and no province is asked for
+    const b = alongX ? (dx > 0 ? B.LODE : B.MIRE) : (dy < 0 ? B.FROST : B.EMBER), now = this.genOf[((y >> 6) << 8) | (x >> 6)] >= 2;
+    // A seam: within its half-width of where the borders meet (|px - py| is how far the cell is from that, on the
+    // borders' own sweeps), and its half-width, its wobble and its start each asked for only where they can matter.
+    if (now && r > SEAM_FROM - SEAM_START - SURE && r <= WORLD_R + 2) {
+      const e = Math.abs(px - py);
+      if (e < SEAM_FAR[2] + SEAM_WOBBLE + SURE) {
+        const deep = r > DEEP_R + 100 + SURE || (r > DEEP_R - 100 - SURE && r > DEEP_R + (noise(x / 50, y / 50, seed + 14, 14) - 0.5) * 200);
+        const w = deep ? Math.min(SEAM_FAR[2], Math.max(SEAM_FAR[1], SEAM_FAR[0] * r)) : Math.min(SEAM_NEAR[2], Math.max(SEAM_NEAR[1], SEAM_NEAR[0] * r));
+        if ((e < w - SEAM_WOBBLE - SURE || (e < w + SEAM_WOBBLE + SURE && e + (noise(x / 40, y / 40, seed + 75, 75) - 0.5) * 2 * SEAM_WOBBLE < w))
+          && (r > SEAM_FROM + SEAM_START + SURE || r > SEAM_FROM + (noise(x / 30, y / 30, seed + 76, 76) - 0.5) * 2 * SEAM_START)) return SEAMS[dx > 0 ? (dy < 0 ? 0 : 1) : (dy > 0 ? 2 : 3)][deep ? 1 : 0];
+      }
     }
     // Provinces are PROVINCE cells across, on borders that wander with the same long sweeps as the directions' do.
     // The four round the core are too near it to be anything but their direction's own ground, and are not asked.
     const u = dx + (n1 - 0.5) * 120, v = dy + (n2 - 0.5) * 120;
+    if (r > DEEP_R - 100 - SURE) {
+      // The flank's edges wander too, and in the same way each wandering is asked for only where it can move the edge past the cell.
+      const least = Math.min(Math.abs(dx), Math.abs(dy)), flank = Math.max(Math.abs(dx), Math.abs(dy)) * 0.36;
+      if (least > flank - 30 - SURE && (r > DEEP_R + 100 + SURE || r > DEEP_R + (noise(x / 50, y / 50, seed + 14, 14) - 0.5) * 200) && (least > flank + 30 + SURE || least > flank + (noise(x / 37, y / 37, seed + 15, 15) - 0.5) * 60)) {
+        return now ? this.flankProvince(Math.floor(u / PROVINCE), Math.floor(v / PROVINCE), b) : b + 4;
+      }
+      if (r > WORLD_R + 2) return b;           // past the world's edge there is only bedrock, and no province is asked for
+    }
     if (u >= -PROVINCE && u < PROVINCE && v >= -PROVINCE && v < PROVINCE) return b;
     return this.province(Math.floor(u / PROVINCE), Math.floor(v / PROVINCE), b);
   }
@@ -1433,6 +1669,83 @@ export class World {
     }
     return this.provinces[at] = b;
   }
+  // What the flank of direction `kin` is in province (px, py), counted as `province` counts them (generation 2):
+  // by the province's own hash (33), a share `X` that is none where its middle is under FLANK_FROM cells out and
+  // rises a part in FLANK_RISE for each cell further, to FLANK_MOST, is a deep strain of the flank, the one of
+  // `DEEP_STRAINS` whose own hash for the province (400 + its number) is largest; the rest is the flank's own
+  // ground. Kept as `province` keeps its answers: what is kept is the seed's alone, and the generation is asked of
+  // the cell before this is (`biomeAt`).
+  flankProvince(px, py, kin) {
+    const seed = this.seed;
+    if (this.flanksFor !== seed) { this.flanksFor = seed; this.flanks.fill(255); }
+    const at = (((py + 16) & 31) << 7) | (((px + 16) & 31) << 2) | (kin - 1), known = this.flanks[at];
+    if (known !== 255) return known;
+    const mx = (px + 0.5) * PROVINCE, my = (py + 0.5) * PROVINCE, rc = Math.sqrt(mx * mx + my * my);
+    let b = kin + 4;
+    if (hash(px, py, seed + 33) < Math.min(FLANK_MOST, Math.max(0, (rc - FLANK_FROM) / FLANK_RISE))) for (let n = 0, most = -1, list = DEEP_STRAINS[kin]; n < list.length; n++) {
+      const h = hash(px, py, seed + 400 + list[n]);
+      if (h > most) { most = h; b = list[n]; }
+    }
+    return this.flanks[at] = b;
+  }
+  // Where each seam's set piece lies, worked out once for the seed (generation 2): x, y of each corner in turn, NaN
+  // where it has none. It is the first cell on the diagonal itself, going out from SET_FROM to SET_TO cells, that is
+  // of the seam's ground and so are the cells SET_ROOM from it each way, with no pocket's cell and no wreck within
+  // SET_ROOM and six, and no more than two of the cells SET_HELD round it opened by the seam's caves, great or
+  // small, or its bubbles. Asked of nothing but where the grounds and the caves lie, so that what a set piece lays can never move
+  // what decides where it lies.
+  setPieces() {
+    if (this.setsFor === this.seed) return this.sets;
+    this.setsFor = this.seed;
+    const sets = this.sets, wrecks = this.wrecks;
+    for (let c = 0; c < 4; c++) {
+      const ux = c < 2 ? 1 : -1, uy = c === 0 || c === 3 ? -1 : 1, row = SEAMS[c][0];
+      sets[2 * c] = sets[2 * c + 1] = NaN;
+      for (let k = Math.ceil(SET_FROM * Math.SQRT1_2); k <= Math.floor(SET_TO * Math.SQRT1_2); k++) {
+        const x = C + k * ux, y = C + k * uy;
+        if (this.biomeAt(x, y) !== row || this.biomeAt(x + SET_ROOM, y) !== row || this.biomeAt(x - SET_ROOM, y) !== row || this.biomeAt(x, y + SET_ROOM) !== row || this.biomeAt(x, y - SET_ROOM) !== row) continue;
+        if (this.meetsPocket(x, y, SET_ROOM) || wrecks.some(([wx, wy]) => (wx - x) * (wx - x) + (wy - y) * (wy - y) < (SET_ROOM + 6) * (SET_ROOM + 6))) continue;
+        const g = BIOMES[row].lay, seed = this.seed;
+        if (this.slabTried(x, y, SET_ROOM)) continue;
+        if (SET_HELD.filter(([u, v]) => noise((x + u) / 19, (y + v) / 19, seed + 18, 18) > g.cavern || noise((x + u) / 5, (y + v) / 5, seed + 13, 13) > g.cave || (g.bubbles < 1 && bubble(x + u, y + v, seed, g.bubbles))).length > 2) continue;
+        sets[2 * c] = x; sets[2 * c + 1] = y;
+        break;
+      }
+    }
+    return sets;
+  }
+  // What a seam's set piece lays in a cell, or -1 where it lays nothing, or -2 where the cell is its collar (within
+  // SET_COLLAR): ground laid with no caves and no find, so that what it has stands in rock (`kindAt`). Laid only in
+  // pieces of generation 2. By corner (each heart is its seam's own hazards, as its row says what K.HAZARD and
+  // K.HAZARD2 are):
+  //   north-east  a charged crystal standing on a stalk of ice in a hollow two cells round, walled with ice
+  //   south-east  a block of lava three cells square, and a crystal two cells off it
+  //   south-west  a block of lava three cells square in its rind of slag, and a pod two cells off it
+  //   north-west  a pod on a stalk of dense rock in a hollow a cell round
+  setPiece(x, y) {
+    const dx = x - C, dy = y - C, c = dx > 0 ? (dy < 0 ? 0 : 1) : (dy > 0 ? 2 : 3), sets = this.setPieces(), u = x - sets[2 * c], v = y - sets[2 * c + 1];
+    if (!(u * u + v * v <= SET_COLLAR) || this.genAt(x, y) < 2) return -1;
+    const d2 = u * u + v * v, edge = Math.max(Math.abs(u), Math.abs(v));
+    if (c === 0) return d2 === 0 ? K.HAZARD : u === 0 && v > 0 && v <= 2 ? K.ICE : d2 <= 4 ? K.EMPTY : d2 <= 10 ? K.ICE : -2;
+    if (c === 1) return edge <= 1 ? K.HAZARD2 : u === 3 && v === 0 ? K.HAZARD : -2;
+    if (c === 2) return edge <= 1 ? K.HAZARD : u === 0 && v === -3 ? K.HAZARD2 : edge === 2 ? K.SLAG : -2;
+    return d2 === 0 ? K.HAZARD : u === 0 && v === 1 ? K.DENSE : d2 <= 2 ? K.EMPTY : -2;
+  }
+  // The flow of the air in a cell of ground whose row's `current` is `kind`, written into `out` (the world's own
+  // record, `flow`, if none is given) as a way and a strength, x and y, and returned. 'wind': the curl of a layer of
+  // noise (79) sixty cells to a step, so that it runs in long streams and never toward a point; of length 1. 'heat':
+  // straight up in columns where a layer (69) is over 0.62, and none elsewhere. Any other: none. (Four reads of noise
+  // at the most and nothing made: the game asks it every frame.)
+  flowAt(x, y, kind, out = this.flow) {
+    const seed = this.seed;
+    out.x = 0; out.y = 0;
+    if (kind === 'wind') {
+      const fx = noise(x / 60, (y + 1) / 60, seed + 79, 79) - noise(x / 60, (y - 1) / 60, seed + 79, 79), fy = noise((x - 1) / 60, y / 60, seed + 79, 79) - noise((x + 1) / 60, y / 60, seed + 79, 79);
+      const len = Math.sqrt(fx * fx + fy * fy);
+      if (len > 0) { out.x = fx / len; out.y = fy / len; }
+    } else if (kind === 'heat' && noise(x / 18, y / 40, seed + 69, 69) > 0.62) out.y = -1;
+    return out;
+  }
   // Whose ground a cell is, as far as is known: what a piece of the world holds where it has been made (a saved
   // game's older pieces may hold ground that is laid otherwise now), and from the seed alone where it has not.
   // Asking never makes a piece.
@@ -1455,6 +1768,15 @@ export class World {
       if (edge <= 3) return K.VAULT;
       if (edge <= 5) return K.SOFT;
     }
+    // And on each diagonal, in generation 2, a shrine: laid as a relic's vault is, but that its stone holds ore
+    // (`SHRINES`). Only in pieces of generation 2, and only where its heart's piece is.
+    if (r > SHRINE_R - 8 && r < SHRINE_R + 8) for (let d = 0; d < 4; d++) {
+      const edge = Math.max(Math.abs(dx - SHRINES[d][0]), Math.abs(dy - SHRINES[d][1]));
+      if (edge > 5 || !this.shrine(d) || this.genAt(x, y) < 2) continue;
+      if (edge === 0) return K.RELIC;
+      if (edge <= 3) return hash(x, y, seed + 37) < 0.3 ? ((x + y) & 1 ? K.ORE_A : K.ORE_B) : K.VAULT;
+      return K.SOFT;
+    }
     if (this.wrecksFor !== seed) this.wrecks;
     for (let n = 0, wx = this.wreckX, wy = this.wreckY; n < wx.length; n++) {
       const ex = x - wx[n], ey = y - wy[n];
@@ -1475,7 +1797,10 @@ export class World {
     const here = this.slabHere, slab = r <= 30 || here === null ? OUT : here !== undefined ? this.slabCell(here, x, y) : this.slabAt(x, y);
     if (slab === GAP) return K.EMPTY;
     if (slab === KEYS) return K.KEY;
-    const bare = slab !== OUT, lift = slab === INSIDE ? LIFT : 0;
+    let bare = slab !== OUT;
+    // A seam's set piece, where no slab is: what it lays, and round that its collar, laid as a slab's is.
+    if (!bare && r > SET_FROM - 10 && r < SET_TO + 10) { const k = this.setPiece(x, y); if (k >= 0) return k; if (k === -2) bare = true; }
+    const lift = slab === INSIDE ? LIFT : 0;
     const find = r > 12 && !bare ? this.findAt(x, y) : -1;
     if (find >= 0) return find;
     const h = hash(x, y, seed + 9), g = row.lay;
@@ -1504,6 +1829,15 @@ export class World {
       // A rare hazard's site has its say over everything laid after the caves, and opens nothing.
       if (r > SITE_FROM - 10) { const S = this.siteAt(x, y); if (S !== null) { const k = SITE_SHAPES[S.type](x - S.cx, y - S.cy, x, y, seed); if (k >= 0) return k; } }
     }
+    // What lies on the walls of the caves and over them: a sheath of ice, caps on the rims, and lakes of lava in
+    // their rind of slag. Each is a cell the caves leave solid, so none opens anything or stands free; and each is
+    // laid in a slab's ground too, where the caves are filled, as all else but the caves is.
+    if (g.sheath > 0) { const n = noise(x / 19, y / 19, seed + 18, 18); if (n > g.cavern - g.sheath && n <= g.cavern && hash(x, y, seed + 77) < 0.5) return K.ICE; }
+    if (g.rims > 0 && hash(x, y, seed + 63) < RIM_CAPS) {
+      const n = noise(x / 19, y / 19, seed + 18, 18), m = noise(x / 5, y / 5, seed + 13, 13);
+      if ((n > g.cavern - g.rims && n <= g.cavern) || (m > g.cave - g.rims && m <= g.cave)) return K.CAP;
+    }
+    if (g.lakes < 1) { const n = noise(x / 14, y / 14, seed + 78, 78); if (n > g.lakes) return K.HAZARD; if (n > g.lakes - LAKE_RIND) return K.SLAG; }
     if (r > 600 && Math.abs(noise(x / 8, y / 8, seed + 12, 12) - 0.5) < 0.028) return K.VAULT;
     // (`flank`: the cell is not slate, and lies within RIB of a rib's edge or a bed's.)
     let flank = false;
@@ -1523,6 +1857,9 @@ export class World {
     // the pocket's threshold by less than `rind`, and half of the plain rock within the pocket.
     if (g.rind > 0) { const n = noise(x / 2.5, y / 2.5, seed + 8, 8); if (n > g.hazT - g.rind && (n <= g.hazT || hash(x, y, seed + 68) < 0.5)) return K.SLAG; }
     if (g.rind2 > 0) { const n = noise(x / 2.5, y / 2.5, seed + 58, 58); if (n > g.haz2T - g.rind2 && (n <= g.haz2T || hash(x, y, seed + 68) < 0.5)) return K.SLAG; }
+    // Ribbons of glass and threads of fault, where plain rock is left.
+    if (g.ripples > 0 && ripple(x, y, seed, g.ripples)) return K.GLASS;
+    if (g.threads > 0 && thread(x, y, seed, g.threads)) return K.FAULT;
     if (noise(x / 4, y / 4, seed + 5, 5) > g.dense) return K.DENSE;
     return K.SOFT;
   }
@@ -1568,11 +1905,13 @@ export class World {
   // first by the rules of its own generation and then, with every such piece taken up together, by GEN's; a cell
   // takes the second only where it is unseen and still holds what the first laid (a cell cut, grown back or poured
   // into keeps what it holds). Each piece taken up is GEN's from then on, and is saved so (`touched`): a second
-  // load takes up nothing. (Both layings go into arrays kept for the next game loaded; a structure a newer rule
-  // anchors in a piece of GEN lays nothing in a piece still older, so the first laying is the older rules', whatever
-  // lies round it.) Returns [pieces taken up, cells laid anew]. (It costs two layings a piece taken up: on a
-  // desktop 59 ms for the 24 of test/fixtures/save-93ecb92-ne.json.gz, the first time, and 155 ms for 122 along the
-  // four diagonals, about what a save of three hours holds; a phone four times slower takes under 0.8 s, once.)
+  // load takes up nothing. (Both layings go into arrays kept for the next game loaded. The first is laid with every
+  // piece of the world at generation 1, as the older game laid it, whatever has been made round it since: a slab or
+  // a site is laid where it is by asking about the ground round it, and that ground may be in a piece of GEN.)
+  // Returns [pieces taken up, cells laid anew]. (It costs two layings a piece taken up: on a
+  // desktop 89 ms for the 24 of test/fixtures/save-93ecb92-ne.json.gz, the first time, and 219 ms for 122 along the
+  // four diagonals, about what a save of three hours holds, with the seams and the deep strains to lay; a phone four
+  // times slower takes under 0.9 s, once.)
   migrate() {
     // (What was kept of the seed's records was worked out as the pieces' generations were being set.)
     this.forget();
@@ -1581,12 +1920,14 @@ export class World {
     if (!ids.length) return [0, 0];
     const kind = this.layKind ??= new Uint8Array(CH * CH), biome = this.layBiome ??= new Uint8Array(CH * CH);
     if (!this.layAlike || this.layAlike.length < ids.length * CH * CH) this.layAlike = new Uint8Array(ids.length * CH * CH);
-    const alike = this.layAlike;
+    const alike = this.layAlike, gens = this.genOf.slice();
+    this.genOf.fill(1);
     ids.forEach((id, n) => {
       const p = this.chunks[id], o = n * CH * CH;
       this.lay(id, kind, biome);
       for (let at = 0; at < CH * CH; at++) alike[o + at] = !p.seen[at] && p.kind[at] === kind[at] && p.biome[at] === biome[at] ? 1 : 0;
     });
+    this.genOf.set(gens);
     for (const id of ids) this.genOf[id] = GEN;
     this.forget();
     let cells = 0;

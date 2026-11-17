@@ -9,12 +9,19 @@
 //     and each direction's two strains about as often as each other;
 //   - what a province is does not depend on what was asked before, and differs from seed to seed;
 //   - a strain added later takes provinces only from the direction's own ground and from the other strains, never
-//     moving a province from one of the older strains to the other.
+//     moving a province from one of the older strains to the other;
+//   - and in generation 2 (js/world.js: GEN): the deep flanks are laid out in provinces too (`flankProvince`), and a
+//     share of them that is none under 1,050 cells out and grows a part in 1,000 for each cell further, to six
+//     tenths from 1,650, is the flank's deep strain, of the flank's own direction; deep ground is a flank's, a deep
+//     strain's or (past the flanks' distance, on a diagonal) a deep seam's, never a strain's or a cross's; and at
+//     generation 1 the flanks are as they were.
 //   node test/regress/s3-provinces.mjs
-import { World, C, BIOMES, B, PROVINCE, HOME_R, DEEP_R, biome } from '../../js/world.js';
+import { World, C, BIOMES, B, PROVINCE, HOME_R, DEEP_R, FLANK_FROM, FLANK_RISE, FLANK_MOST, biome } from '../../js/world.js';
 
 const fails = [], check = (ok, what) => { if (!ok) fails.push(what); };
 const isStrain = b => b >= 17 && b <= 31, isCross = b => b >= 128 && b <= 187;
+// (Deep ground: a flank, a deep strain of one, or a seam, which lies across the flanks on the diagonals.)
+const isDeep = b => (b >= 5 && b <= 8) || BIOMES[b]?.deepOf > 0 || (b >= 9 && b <= 16);
 // (Pockets lie over whatever ground is there, provinces and deep flanks and all: test/regress/s3-pockets.mjs holds
 // where. Here the ground is asked for as it lies without them.)
 class Unpocketed extends World { zoneOf() { return null; } }
@@ -32,7 +39,7 @@ for (const seed of [1, 7, 34]) {
     cells++; met.add(b);
     // Ground that is a deep flank's wherever its borders wander: far enough out, and far enough from the middle
     // line of its direction (the borders wander 100 cells and 30 at the most).
-    if (Math.sqrt(x * x + y * y) > DEEP_R + 101 && Math.min(Math.abs(x), Math.abs(y)) > Math.max(Math.abs(x), Math.abs(y)) * 0.36 + 31 && Math.sqrt(x * x + y * y) < 2390) { deep++; if (b < 5 || b > 8) inDeep++; }
+    if (Math.sqrt(x * x + y * y) > DEEP_R + 101 && Math.min(Math.abs(x), Math.abs(y)) > Math.max(Math.abs(x), Math.abs(y)) * 0.36 + 31 && Math.sqrt(x * x + y * y) < 2390) { deep++; if (!isDeep(b)) inDeep++; }
     // (A cross lies where its host direction's own ground would: never in the home ground or a deep flank either.)
     if (isCross(b)) { if (was === B.CRUST) inHome++; else if (was > 4) inDeep++; else if (BIOMES[b].kin !== was) astray++; continue; }
     if (!strain) { if (b !== was) lost++; continue; }
@@ -112,5 +119,36 @@ for (let kin = 1; kin <= 4; kin++) {
   check(Math.abs(taken / were - 1 / 3) < 0.05, `a third strain of the north took ${taken} of the ${were} provinces that were strains, not a third`);
 }
 
-console.log(fails.length ? `DEFECT: ${fails.join('\n        ')}` : 'ok: provinces lie past the four round the core, never in the home ground or a deep flank; two thirds of what crosses leave are strains of their own direction');
+// ---- the flanks' provinces (generation 2)
+{
+  const bands = [[700, 1050], [1050, 1250], [1250, 1450], [1450, 1650], [1650, 2400]].map(([from, to]) => ({ from, to, n: 0, deep: 0, rule: 0 }));
+  let wrongKin = 0, notDeep = 0, flankCells = 0, strained = 0, older = 0;
+  for (let seed = 1; seed <= 40; seed++) {
+    const w = new Unpocketed(); w.reset(seed);
+    for (let py = -10; py <= 9; py++) for (let px = -10; px <= 9; px++) for (let kin = 1; kin <= 4; kin++) {
+      const mx = (px + 0.5) * PROVINCE, my = (py + 0.5) * PROVINCE, rc = Math.sqrt(mx * mx + my * my), b = w.flankProvince(px, py, kin);
+      if (b !== kin + 4 && BIOMES[b]?.deepOf !== kin) wrongKin++;
+      if (b !== kin + 4 && !(BIOMES[b]?.deep)) notDeep++;
+      const band = bands.find(t => rc >= t.from && rc < t.to);
+      if (!band) { if (rc < 700 && b !== kin + 4) wrongKin++; continue; }
+      band.n++; band.deep += b !== kin + 4; band.rule += Math.min(FLANK_MOST, Math.max(0, (rc - FLANK_FROM) / FLANK_RISE));
+    }
+    // In cells: a deep strain is laid only in its own direction's flank, and an older game's flanks have none.
+    if (seed > 3) continue;
+    const old = new Unpocketed(); old.reset(seed); old.genOf.fill(1);
+    for (let y = -2300; y <= 2300; y += 17) for (let x = -2300; x <= 2300; x += 17) {
+      const b = w.biomeAt(C + x, C + y), was = old.biomeAt(C + x, C + y);
+      if (BIOMES[b]?.deepOf) { strained++; if (was !== BIOMES[b].deepOf + 4) wrongKin++; }
+      if (was >= 5 && was <= 8) flankCells++;
+      if ((was >= 9 && was <= 16) || BIOMES[was]?.deepOf) older++;
+    }
+  }
+  console.log(JSON.stringify({ flank: bands.map(t => `${t.from}-${t.to}: ${(t.deep / t.n * 100).toFixed(1)}% (rule ${(t.rule / t.n * 100).toFixed(1)}%)`), strained, flankCells }));
+  check(wrongKin === 0 && notDeep === 0, `${wrongKin} provinces of a flank are a strain of another direction's, or one where there is none; ${notDeep} are not deep ground`);
+  check(bands[0].deep === 0, `${bands[0].deep} provinces of a flank under 1,050 cells out are a deep strain`);
+  for (const t of bands.slice(1)) check(t.n > 1000 && Math.abs(t.deep / t.n - t.rule / t.n) < 0.03, `${t.from} to ${t.to} cells out: ${(t.deep / t.n * 100).toFixed(1)} provinces of a flank in a hundred are a deep strain, the rule gives ${(t.rule / t.n * 100).toFixed(1)}`);
+  check(strained > flankCells * 0.2 && strained < flankCells * 0.6 && older === 0, `${strained} cells of ${flankCells} of the flanks are a deep strain's, and ${older} of the seams or the deep strains are laid at generation 1`);
+}
+
+console.log(fails.length ? `DEFECT: ${fails.join('\n        ')}` : 'ok: provinces lie past the four round the core, never in the home ground or deep ground; two thirds of what crosses leave are strains of their own direction, and far out a share of the flanks\' provinces deep strains of theirs');
 process.exit(fails.length ? 1 : 0);

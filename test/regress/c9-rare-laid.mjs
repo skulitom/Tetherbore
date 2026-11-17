@@ -1,10 +1,14 @@
 // The four rare hazards as they lie in the ground (js/world.js: `World.siteOf`, SITE_SHAPES, K.RARE), checked on the
 // world's own cells, in every site of worlds 1 to 8:
-//   - how many: 30 to 60 sites a world, four or more of each type, and the four heralds, one of each type, each
-//     in its own direction about 594 cells out;
+//   - how many: 30 to 65 sites a world (60 before the seams and the deep strains, which take a share of their own),
+//     four or more of each type, and the four heralds, one of each type, each
+//     in its own direction about 594 cells out; and in generation 2 (js/world.js: GEN) four more, a corner's
+//     herald on each diagonal about 611 cells out (or 815, or 1,018, where those before hold none), in that corner's seam,
+//     each its seam's direction's type, on every one of 24 worlds; and sites in the seams, shared out as in a
+//     cross, and in the deep strains, as in a flank;
 //   - where: 450 cells out or more, in one direction's ground seven cells each way from the middle (and the type
-//     is that direction's), no pocket's cell, slab's cell or find within reach, 44 cells or more from a wreck or a
-//     relic;
+//     is that direction's), no pocket's cell, slab's cell or find within reach, 44 cells or more from a wreck, a
+//     relic or a shrine;
 //   - the heart is K.RARE, its hazard is the site's type, and seeing it tells of the type once, naming the heart;
 //   - each shape as written: a cell within a site's reach is what its shape lays wherever the ground would be
 //     solid, and as the ground would be wherever it lays nothing; a site opens no cell;
@@ -12,7 +16,7 @@
 //     no sites makes them, but for the sites' own cells.
 // What each cell is, cell for cell, test/regress/w-same-world.mjs holds; where they lie, `node tools/sites.mjs`.
 //   node test/regress/c9-rare-laid.mjs
-import { World, N, C, K, B, CH, CW, FIND, RELIC_R, DX, DY, RARE, HAZARDS, SITE_SHAPES, rowOf, cellHash } from '../../js/world.js';
+import { World, N, C, K, B, CH, CW, FIND, RELIC_R, DX, DY, RARE, HAZARDS, SITE_SHAPES, SEAMS, SHRINES, CORNER_HERALDS, rowOf, cellHash } from '../../js/world.js';
 
 const fails = [], check = (ok, what) => { if (!ok && fails.length < 16) fails.push(what); };
 class NoSite extends World { siteOf() { return null; } }
@@ -32,14 +36,14 @@ check(spread.lodestone === 33 && spread.bell === 1 + 36 + 32 && spread.vent === 
 for (const t of TYPES) check(HAZARDS[t].rare && SITE_SHAPES[t], `${t} is not a rare hazard with a shape`);
 
 const counts = [], totals = Object.fromEntries(TYPES.map(t => [t, 0]));
-let sites = 0, cells = 0, moved = 0, opened = 0, pieces = 0, wrongShape = 0, outside = 0, slabsSame = 0;
+let sites = 0, cells = 0, moved = 0, opened = 0, pieces = 0, wrongShape = 0, outside = 0, slabsSame = 0, inSeams = 0, inStrains = 0;
 for (let seed = 1; seed <= 8; seed++) {
   const w = new World(), bare = new NoSite(); w.reset(seed); bare.reset(seed);
   const list = w.sitesWithin(2400), types = Object.fromEntries(TYPES.map(t => [t, 0]));
   counts.push(list.length);
-  check(list.length >= 30 && list.length <= 60, `seed ${seed}: ${list.length} sites`);
-  // The heralds: one of each type, in its own direction, about 594 cells out.
-  const heralds = list.filter(S => S.herald);
+  check(list.length >= 30 && list.length <= 65, `seed ${seed}: ${list.length} sites`);
+  // The heralds: one of each type, in its own direction, about 594 cells out. (A corner's are below.)
+  const heralds = list.filter(S => S.herald && S.corner < 0);
   check(heralds.length === 4 && TYPES.every(t => heralds.some(S => S.type === t)), `seed ${seed}: the heralds are ${heralds.map(S => S.type)}`);
   for (const S of heralds) {
     const dx = S.cx - C, dy = S.cy - C, kin = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? B.LODE : B.MIRE) : (dy < 0 ? B.FROST : B.EMBER), r = Math.hypot(dx, dy);
@@ -50,8 +54,10 @@ for (let seed = 1; seed <= 8; seed++) {
     sites++; types[S.type]++; totals[S.type]++;
     const dx = S.cx - C, dy = S.cy - C, row = rowOf(w.biomeAt(S.cx, S.cy)), where = `seed ${seed} ${S.type} at ${dx},${dy}`;
     check(Math.hypot(dx, dy) >= 449 && S.reach === REACH[S.type] && RARE[row.kin] === S.type && row.pocket === null, `${where}: ${Math.round(Math.hypot(dx, dy))} out, in ${row.name}`);
-    for (let d = 0; d < 4; d++) check(rowOf(w.biomeAt(S.cx + DX[d] * 8, S.cy + DY[d] * 8)).kin === row.kin, `${where}: the ground beside it is another direction's`);
-    check(![...w.wrecks, ...[0, 1, 2, 3].map(d => [C + DX[d] * RELIC_R, C + DY[d] * RELIC_R])].some(([x, y]) => Math.hypot(S.cx - x, S.cy - y) < 42), `${where}: a wreck or a relic is near`);
+    for (let d = 0; d < 4; d++) check(rowOf(w.biomeAt(S.cx + DX[d] * 7, S.cy + DY[d] * 7)).kin === row.kin, `${where}: the ground beside it is another direction's`);
+    check(![...w.wrecks, ...[0, 1, 2, 3].map(d => [C + DX[d] * RELIC_R, C + DY[d] * RELIC_R]), ...SHRINES.map(([x, y]) => [C + x, C + y])].some(([x, y]) => Math.hypot(S.cx - x, S.cy - y) < 42), `${where}: a wreck, a relic or a shrine is near`);
+    if (row.seam !== null && S.corner < 0) inSeams++;
+    if (row.deepOf) inStrains++;
     for (let fy = Math.floor((S.cy - 12 - C) / FIND); fy <= Math.floor((S.cy + 12 - C) / FIND); fy++) for (let fx = Math.floor((S.cx - 12 - C) / FIND); fx <= Math.floor((S.cx + 12 - C) / FIND); fx++) {
       const [what, x, y, size] = w.findSpot(fx, fy);
       check(!what || Math.hypot(x - S.cx, y - S.cy) > S.reach + size + 1, `${where}: a ${what} lies within reach`);
@@ -94,7 +100,22 @@ for (let seed = 1; seed <= 8; seed++) {
 check(opened === 0 && wrongShape === 0, `of ${cells} cells within the sites' reach, ${opened} were opened and ${wrongShape} are not what the shapes lay`);
 check(outside === 0 && moved > 0, `${outside} of the ${moved} cells that moved lie outside a site, or were opened or closed, or a ground moved`);
 check(K.RARE === 28, 'K.RARE is not kind 28');
+check(inSeams >= 8 && inStrains >= 8, `on worlds 1 to 8, ${inSeams} sites lie in the seams (besides the corners' heralds) and ${inStrains} in the deep strains`);
+// A corner's herald on each diagonal of 24 worlds, and none in an older game's ground.
+let far = 0;
+for (let seed = 1; seed <= 24; seed++) {
+  const w = new World(), old = new World(); w.reset(seed); old.reset(seed); old.genOf.fill(1);
+  for (let c = 0; c < 4; c++) {
+    const found = CORNER_HERALDS.map(([sx, sy]) => w.siteOf(sx, sy)).filter(S => S && S.corner === c);
+    const S = found[0], b = S && w.biomeAt(S.cx, S.cy), r = S ? Math.hypot(S.cx - C, S.cy - C) : 0, near = r > 580 && r < 640;
+    if (S && !near) far++;
+    check(found.length === 1 && (b === SEAMS[c][0] || b === SEAMS[c][1]) && S.type === RARE[rowOf(b).kin] && (near || (r > 790 && r < 840) || (r > 995 && r < 1040)) && Math.sign(S.cx - C) === (c < 2 ? 1 : -1) && Math.sign(S.cy - C) === (c === 0 || c === 3 ? -1 : 1),
+      `seed ${seed}: corner ${c} has ${found.length} heralds${S ? `, a ${S.type} at ${S.cx - C},${S.cy - C} in ground ${b}` : ''}`);
+    check(CORNER_HERALDS.every(([sx, sy]) => old.siteOf(sx, sy)?.corner !== c), `seed ${seed}: corner ${c} has a herald at generation 1`);
+  }
+}
+check(far < 24, `${far} of the 96 corners' heralds lie at the second try`);
 
-console.log(JSON.stringify({ sites, perWorld: counts, ...totals, cells, moved, pieces, slabsSame }));
+console.log(JSON.stringify({ sites, perWorld: counts, ...totals, cells, moved, pieces, slabsSame, inSeams, inStrains, cornersAtTheSecondTry: far }));
 console.log(fails.length ? `DEFECT: ${fails.join('\n        ')}` : `ok: ${sites} sites on worlds 1 to 8 (${Math.min(...counts)} to ${Math.max(...counts)} a world), every type four times or more and a herald of each, each shaped as written, and nothing outside them moved`);
 process.exit(fails.length ? 1 : 0);

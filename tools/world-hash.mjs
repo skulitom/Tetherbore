@@ -11,9 +11,12 @@
 // diagonal. It asks the world alone (js/world.js: `piece`), so it needs no browser and nothing of the game.
 //
 // Every piece is laid by the rules of one generation (js/world.js: GEN, `genOf`): `lines(gen)` lays all of them by
-// generation `gen`'s, and the record is of generation 1, the world as it was before the seams and the deep strains.
-// Every rule laid since asks the generation, so the record holds whatever is added: that it does is the proof that
-// a newer rule lays nothing in an older game's ground.
+// generation `gen`'s. The record is first of generation 1, the world as it was before the seams and the deep
+// strains: every rule laid since asks the generation, so those 96 lines hold whatever is added, and that they do is
+// the proof that a newer rule lays nothing in an older game's ground. Then of generation 2 (`GEN2_PLACES`), where
+// its rules lay ground of their own: each diagonal at 500, 650, 1,000, 1,500 and 2,000 cells (the seams, their set
+// pieces and the deep seams); the flanks a sixteenth of a circle either side of each diagonal at 1,500 and 2,000
+// (the deep strains); and each diagonal's shrine. 216 lines in all.
 import { readFile, writeFile } from 'node:fs/promises';
 import { World, C, CH, CW, DX, DY } from '../js/world.js';
 
@@ -34,13 +37,23 @@ export const places = () => {
   }
   return list;
 };
-export const lines = (gen = 1) => {
+// (The flanks' places: a sixteenth of a circle, 22.5 degrees, from each axis toward each diagonal, as 0.924 and 0.383.)
+export const GEN2_PLACES = () => {
+  const list = [], corner = ['north-east', 'south-east', 'south-west', 'north-west'], SX = [1, 1, -1, -1], SY = [-1, 1, 1, -1];
+  for (let c = 0; c < 4; c++) for (const r of [500, 650, 1000, 1500, 2000]) { const leg = Math.round(r * Math.SQRT1_2); list.push([`gen 2 ${corner[c]} ${r}`, SX[c] * leg, SY[c] * leg]); }
+  for (let c = 0; c < 4; c++) for (const r of [1500, 2000]) for (const [a, b, what] of [[0.924, 0.383, 'by the axis'], [0.383, 0.924, 'by the other axis']]) {
+    list.push([`gen 2 ${corner[c]} flank ${what} ${r}`, SX[c] * Math.round(r * a), SY[c] * Math.round(r * b)]);
+  }
+  for (let c = 0; c < 4; c++) list.push([`gen 2 ${corner[c]} shrine`, SX[c] * 990, SY[c] * 990]);
+  return list;
+};
+export const lines = (gen = 1, at = places) => {
   const out = [];
   for (const seed of [1, 7, 123456]) {
     const world = new World();
     world.reset(seed);
     world.genOf.fill(gen);
-    for (const [name, dx, dy] of places()) {
+    for (const [name, dx, dy] of at()) {
       const id = (((C + dy) >> 6) << 8) | ((C + dx) >> 6), p = world.piece(id);
       out.push(`seed ${seed} ${name} (piece ${id % CW - C / CH},${((id / CW) | 0) - C / CH}): kind ${fnv(p.kind)} biome ${fnv(p.biome)}`);
     }
@@ -49,7 +62,7 @@ export const lines = (gen = 1) => {
 };
 
 if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '/').split('/').pop())) {
-  const now = lines(1), mode = process.argv[2];
+  const now = [...lines(1), ...lines(2, GEN2_PLACES)], mode = process.argv[2];
   if (mode === '--write') {
     await writeFile(RECORD, now.join('\n') + '\n');
     console.log(`${now.length} lines recorded in test/world-hash.txt`);

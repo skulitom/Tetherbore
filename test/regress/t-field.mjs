@@ -1,6 +1,8 @@
 // tools/field.mjs, run as it is run by hand: every pixel of the map is the map colour of the ground the world says
 // is there (checked where two grounds meet), the core is a white dot, and the last line printed is the path
-// written. The maps go in a folder of their own under the system's temp folder, removed after.
+// written. The maps go in a folder of their own under the system's temp folder, removed after. And `--gen`: on the
+// north-east diagonal 600 cells out the field shows the seam there as a new game lays it, and at generation 1 the
+// ground as an older game's is laid, with none of it.
 import { spawnSync } from 'node:child_process';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import os from 'node:os';
@@ -35,6 +37,23 @@ try {
     const core = decodePNG(await readFile(home)), o = (32 * 64 + 32) * 4;
     check(core.data[o] === 255 && core.data[o + 1] === 255 && core.data[o + 2] === 255, 'the core is not a white dot on the field');
   }
+  // The seam, and the ground before it.
+  const seen = {};
+  for (const gen of [1, 2]) {
+    const file = path.join(folder, `seam-${gen}.png`), said = run('field.mjs', file, '--seed', '7', '--at', '424,-424', '--size', '64', '--gen', String(gen));
+    check(said.status === 0, `tools/field.mjs --gen ${gen} failed: ${(said.stdout + said.stderr).trim().slice(-300)}`);
+    if (said.status !== 0) continue;
+    const map = decodePNG(await readFile(file)), world = new World(), grounds = seen[gen] = new Set();
+    world.reset(7); world.genOf.fill(gen);
+    let wrongAt = null;
+    for (let v = 0; v < 64 && !wrongAt; v++) for (let u = 0; u < 64; u++) {
+      const b = world.biomeAt(C + 424 - 32 + u, C - 424 - 32 + v), o = (v * 64 + u) * 4;
+      grounds.add(b);
+      if (map.data[o] !== BIOMES[b].map[0] || map.data[o + 1] !== BIOMES[b].map[1] || map.data[o + 2] !== BIOMES[b].map[2]) { wrongAt = [u - 32, v - 32]; break; }
+    }
+    check(!wrongAt, `at generation ${gen} the field's pixel ${wrongAt} from the diagonal's is not its ground's map colour`);
+  }
+  check(seen[2]?.has(9) && seen[1] && !seen[1].has(9), `the field of the north-east diagonal shows ${[...(seen[2] ?? [])]} as a new game lays it, and ${[...(seen[1] ?? [])]} at generation 1: the seam (9) in the first and not the second`);
 } finally {
   await rm(folder, { recursive: true, force: true }).catch(() => {});
 }

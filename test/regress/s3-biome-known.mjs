@@ -2,6 +2,9 @@
 // world holds where it has been made, and from the seed alone where it has not, asked without making any piece.
 // The map reads it, so a saved game whose older pieces hold ground that is laid otherwise now (a province that was
 // its direction's own ground when the piece was made) never shows a place on its map that its ground does not have.
+// And a piece laid by an older generation's rules (js/world.js: `genOf`): on the north-east diagonal, where
+// generation 2 lays a seam, a piece of generation 1 is known as generation 1 lays it, made or not, and the piece
+// beside it, of generation 2, as the seam.
 //   node test/regress/s3-biome-known.mjs
 import { makeGame, world, C, N } from '../harness.mjs';
 const { B, BIOMES, CH } = world;
@@ -41,6 +44,16 @@ if (at >= 0 && beside >= 0) {
   check(colour(beside) === shaded(BIOMES[17].map), `the map shows an unmade cell of firn as ${colour(beside)}, not firn's ${shaded(BIOMES[17].map)}`);
 }
 check(CH === 64, 'pieces are no longer 64 cells across: the test counts on it');
+{
+  const ox = C + 424, oy = C - 424, id = ((oy >> 6) << 8) | (ox >> 6), next = (((oy - 64) >> 6) << 8) | ((ox + 64) >> 6), was = w.made;
+  check(w.biomeAt(ox, oy) === 9 && w.biomeAt(ox + 64, oy - 64) === 9 && !w.chunks[id] && !w.chunks[next], `the cells 600 and 690 out to the north-east on seed 7 are not hoarstone in pieces nothing has looked at: pick others`);
+  w.genOf[id] = 1;
+  const old = w.biomeKnown(ox, oy);
+  check((old === B.FROST || old === B.LODE || (old >= 17 && old <= 24)) && w.made === was, `an unmade piece of generation 1 on the diagonal is known as ground ${old}, or was made by asking`);
+  const p = w.piece(id);
+  check(p.biome[((oy & 63) << 6) | (ox & 63)] === old && w.biomeKnown(ox, oy) === old, 'made, a piece of generation 1 holds and is known as other ground than its rules lay');
+  check(w.biomeKnown(ox + 64, oy - 64) === 9 && w.made === was + 1, 'the unmade piece beside it, of generation 2, is not known as the seam');
+}
 
 console.log(fails.length ? `DEFECT: ${fails.join('\n        ')}` : 'ok: the map shows the ground a made piece holds, and the ground the seed gives where none is made');
 process.exit(fails.length ? 1 : 0);

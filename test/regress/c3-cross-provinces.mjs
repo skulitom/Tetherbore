@@ -10,7 +10,9 @@
 //     direction's own ground and every other province is what it was; and a single pair switched off (the eye's
 //     verdict, `CROSS_OK`) gives its provinces back to the host's own ground and moves no other;
 //   - in cells: generated ground is never in the home ground or a deep flank, and hand-made ground is never
-//     under 65 in a hundred of any ring of any seed's world (the owner: "make as many as we can manually").
+//     under 65 in a hundred of any ring of any seed's world (the owner: "make as many as we can manually"). The
+//     shares are of the ground that is neither a deep flank (nor a deep strain in one) nor a seam: neither is a
+//     province of the near ground, and no cross is laid in either.
 //   node test/regress/c3-cross-provinces.mjs
 import { World, BIOMES, B, PROVINCE, WORLD_R, DONORS, CROSS_OK, CROSS_FROM, CROSS_MOST, crossId } from '../../js/world.js';
 import { shares } from '../../tools/crosses.mjs';
@@ -93,16 +95,18 @@ for (let host = 1; host <= 4; host++) {
 // ---- cells: how much of each ring is generated
 {
   const rings = shares(SEEDS);
-  said.rings = rings.map(t => `${t.from}-${t.to}: ${(t.cross / t.cells * 100).toFixed(1)}% of all, ${(t.cross / (t.cells - t.deep) * 100).toFixed(1)}% of no deep flank, least hand-made ${(t.least * 100).toFixed(1)}%`);
+  said.rings = rings.map(t => `${t.from}-${t.to}: ${(t.cross / t.cells * 100).toFixed(1)}% of all, ${(t.cross / (t.cells - t.deep - t.seam) * 100).toFixed(1)}% of no deep flank or seam, least hand-made ${(t.least * 100).toFixed(1)}%`);
   for (const t of rings) {
     check(t.least >= 0.65, `${t.from} to ${t.to} cells out: on one seed only ${(t.least * 100).toFixed(1)} cells in a hundred are hand-made`);
-    check(t.cross / (t.cells - t.deep) <= CROSS_MOST + 0.04, `${t.from} to ${t.to} cells out: ${(t.cross / (t.cells - t.deep) * 100).toFixed(1)} in a hundred of the ground that is no deep flank is generated`);
+    check(t.cross / (t.cells - t.deep - t.seam) <= CROSS_MOST + 0.04, `${t.from} to ${t.to} cells out: ${(t.cross / (t.cells - t.deep - t.seam) * 100).toFixed(1)} in a hundred of the ground that is no deep flank or seam is generated`);
   }
+  // The seams are laid from about 470 cells out (the first ring runs to 500), and are a tenth or less of each ring.
+  check(rings[0].seam / rings[0].cells < 0.03 && rings.slice(1).every(t => t.seam / t.cells > 0.05), `the seams are ${rings.map(t => (t.seam / t.cells * 100).toFixed(1))} in a hundred of the rings`);
   // Near the core there is next to none (a province whose middle is just over 500 out reaches in to 330), and far
   // out about a third of what is no deep flank.
   check(rings[0].cross / rings[0].cells < 0.01, `220 to 500 cells out: ${(rings[0].cross / rings[0].cells * 100).toFixed(1)} cells in a hundred are generated`);
-  const far = rings[4].cross + rings[5].cross, of = rings[4].cells - rings[4].deep + rings[5].cells - rings[5].deep;
-  check(Math.abs(far / of - 0.35) < 0.04, `from 1,375 cells out: ${(far / of * 100).toFixed(1)} in a hundred of the ground that is no deep flank is generated, not 35`);
+  const far = rings[4].cross + rings[5].cross, of = rings[4].cells - rings[4].deep - rings[4].seam + rings[5].cells - rings[5].deep - rings[5].seam;
+  check(Math.abs(far / of - 0.35) < 0.04, `from 1,375 cells out: ${(far / of * 100).toFixed(1)} in a hundred of the ground that is no deep flank or seam is generated, not 35`);
 }
 // (That no cell of the home ground or of a deep flank is a cross's, test/regress/s3-provinces.mjs holds, with the
 // strains.)

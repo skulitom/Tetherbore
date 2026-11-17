@@ -32,7 +32,8 @@ const NAMES = {
 };
 const WORDS = ['', 'HOLLOW', 'CRAZED', 'FROTHY', 'BANDED'], ACCENT = { 1: '#e8fbff', 2: '#ff8a3a', 3: '#b4e878', 4: '#ffe08a' };
 const TRAIT = { 1: null, 2: { type: 'lava', rate: 0.6, t: 0.80 }, 3: { type: 'spore', rate: 0.6 }, 4: { type: 'spark', rate: 0.6 } };
-const OFF = { rivers: 0, lanes: 0, bubbles: 2, grapes: 2, strata: 0 };
+// (And the tells of the seams and the deep strains, laid since: none of them in a strain or a cross.)
+const OFF = { rivers: 0, lanes: 0, bubbles: 2, grapes: 2, strata: 0, ripples: 0, sheath: 0, lakes: 2, threads: 0, rims: 0 };
 const hex = rgb => '#' + rgb.map(c => c.toString(16).padStart(2, '0')).join('');
 
 check(CROSS === 128 && WEAK === 0.6 && same(STRUCTURES, WORDS), `crosses begin at ${CROSS}, the donor's trait is at ${WEAK}, the structures are ${STRUCTURES}`);

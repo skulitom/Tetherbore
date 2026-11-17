@@ -2,8 +2,8 @@
 // the smoke test, and the rope fuzz on seeds 11 to 18 from the core, from a start 200 cells out each way and from
 // inside a province of each strain of ground, from a deep flank, from inside provinces of generated crosses, from
 // the cracks of keystone slabs, and from inside amber hives, pumice drifts and ash flats (most on world 7, some of
-// each on worlds 19 and 23 as well), and from beside a rare hazard's site of each kind; and the slabs themselves, as
-// they lie in 200 worlds (slab-moat.mjs).
+// each on worlds 19 and 23 as well), from beside a rare hazard's site of each kind, and from inside each seam and
+// each deep strain; and the slabs themselves, as they lie in 200 worlds (slab-moat.mjs).
 //   node test/all.mjs [only: a word the test's name must hold]
 // One line a test, and the last line of a failing test's own output under it. Exits 1 if any failed. Tests run side by
 // side, as many as the machine has cores to spare, and the whole run takes a few minutes.
@@ -28,8 +28,9 @@ const ARGS = {
     [8, 300, 200, 0, 0.02],
     // Inside provinces of generated crosses (`node tools/crosses.mjs --where 7` says where), with both of a cross's
     // hazards planted: smoulder (pods and lava), kilnstone (crystals and lava), buzzmire (pods and crystals), thaw
-    // (lava in ground that freezes) and mouldstone (crystals and pods).
-    [7, 300, -1152, -384, 0.08, 8, 'second'], [7, 300, 1152, 384, 0.08, 8, 'second'], [7, 300, -640, -640, 0.08, 8, 'second'],
+    // (lava in ground that freezes) and mouldstone (crystals and pods). (Buzzmire was flown from -640,-640, which the
+    // north-west seam has taken since: `node tools/field.mjs --seed 7 --at -900,-300` says where it lies now.)
+    [7, 300, -1152, -384, 0.08, 8, 'second'], [7, 300, 1152, 384, 0.08, 8, 'second'], [7, 300, -912, -304, 0.08, 8, 'second'],
     [7, 300, -128, -1408, 0.08, 9, 'second'], [7, 300, 1920, 640, 0.08, 9, 'second'],
     // Each direction's rare hazard planted thickly, with no site round it: rime bells (in the north, which has no
     // other hazard), fumaroles, glowworms and lodestones.
@@ -42,12 +43,14 @@ const ARGS = {
   'f-fuzz-books': [[2, 300], [7, 300], [9, 300], [12, 300]],
   'f-wreck': [[7, 0], [32, 0], [61, 0], [63, 0]],
   'g-far-wreck': [[7, 5, 60], [7, 7, 60]],
-  'i-fuzz-play': [[45, 500, 5, 0, 0, 30], [33, 400, 5, 60, 210, 60], [60, 400, 5, 141, 141, 60], [50, 400, 5, 60, 210, 60], [57, 260, 9, -1061, 1061, 'mix'],
+  // (The deep flank on world 57, first flown from -1061,1061, where the south-west's deep seam lies now.)
+  'i-fuzz-play': [[45, 500, 5, 0, 0, 30], [33, 400, 5, 60, 210, 60], [60, 400, 5, 141, 141, 60], [50, 400, 5, 60, 210, 60], [57, 260, 9, -936, 1296, 'mix'],
     [39, 260, 1, 0, 0, 60, 'lowdrill,home'], [51, 260, 5, 141, 141, 60, 'forceshop'],
     // From a start inside a province of each strain (`node tools/strains.mjs --where 7` and `--where 11` say where):
-    // firn, serac, scoria, forge, tangle, sporefall, redrock, loess.
+    // firn, serac, scoria, forge, tangle, sporefall, redrock, loess. (Redrock on world 11 was flown from 384,-384,
+    // where the north-east seam begins now.)
     [7, 300, 7, -128, -384, 60], [7, 300, 7, 128, -384, 'mix'], [7, 300, 7, -128, 384, 60], [7, 300, 7, 128, 384, 60],
-    [11, 300, 7, -384, 128, 60], [7, 300, 7, -384, -128, 60], [11, 300, 7, 384, -384, 60], [7, 300, 7, 384, -128, 30],
+    [11, 300, 7, -384, 128, 60], [7, 300, 7, -384, -128, 60], [11, 300, 7, 432, -320, 60], [7, 300, 7, 384, -128, 30],
     // The east's own ground, where arcs shatter slate (at mixed frame lengths too), the south's own,
     // where lava quenches its slag to steel, and the north's own, where a cut beside ore heals as ore.
     [21, 300, 5, 190, 10, 60], [23, 300, 5, 190, 10, 'mix'], [22, 300, 5, 20, 180, 60], [24, 300, 5, 10, -190, 60],
@@ -56,7 +59,7 @@ const ARGS = {
     // From a start inside a province of a generated cross, one of each host with each donor between them and
     // each structure: buzzmire, hollow flashrock, thaw, crazed rimemoss, crazed quench, kilnstone, crazed tundra,
     // mouldstone, frothy hailstone, banded kilnstone.
-    [7, 300, 8, -640, -640, 60], [7, 300, 8, 384, 1152, 'mix'], [7, 300, 9, -128, -1408, 60], [7, 300, 9, -1408, -128, 60],
+    [7, 300, 8, -912, -304, 60], [7, 300, 8, 384, 1152, 'mix'], [7, 300, 9, -128, -1408, 60], [7, 300, 9, -1408, -128, 60],
     [7, 300, 9, -128, 1920, 60], [7, 300, 8, 1152, 384, 30], [7, 300, 9, 384, -1408, 'mix'], [7, 300, 9, 1920, 640, 60],
     [7, 300, 9, -128, -1920, 60], [7, 300, 9, 1408, 384, 60],
     // Other flights in the north's own ground, the south's and the west's, and on the first reach but one from
@@ -82,8 +85,8 @@ const ARGS = {
     // both fuzzes, and all were clean; these are kept): crosses of hosts, donors and structures the flights above
     // have not (crazed thaw, banded flashrock, frothy sootfen, hollow kilnstone), a cobble
     // field of thirty-two blocks, a hive 21 cells in radius, a drift rich in aerolite with trips home, and a
-    // great ash flat.
-    [19, 300, 9, 128, -1408, 60], [19, 300, 8, -384, 640, 60], [23, 300, 8, -640, 640, 'mix'], [23, 300, 8, 1152, 384, 60],
+    // great ash flat. (Frothy sootfen on world 23 was flown from -640,640, where the south-west seam lies now.)
+    [19, 300, 9, 128, -1408, 60], [19, 300, 8, -384, 640, 60], [23, 300, 8, -552, 696, 'mix'], [23, 300, 8, 1152, 384, 60],
     [23, 300, 6, -310, 49, 'mix'], [23, 300, 6, -330, -54, 60], [19, 300, 6, 300, -171, 30, 'home'], [19, 300, 7, -212, 341, 'mix'],
     // From beside the site of a rare hazard (`node tools/sites.mjs --where 7` and `--where 11` say where they lie),
     // which is woken at the start and every twelve seconds it is asleep: the first rime bell, fumarole, glowworm
@@ -94,7 +97,12 @@ const ARGS = {
     // With the creatures (js/fauna.js) about the flight and more set down beside the drill every few seconds, foes
     // woken: in the north's own ground, loess, sporefall, magma, serac and the home ground.
     [7, 300, 5, 60, -150, 60, 'fauna'], [7, 300, 6, 300, 0, 'mix', 'fauna'], [7, 300, 7, -260, -124, 60, 'fauna'], [7, 300, 7, -332, 800, 60, 'fauna'],
-    [7, 300, 7, 128, -384, 30, 'fauna'], [7, 260, 3, -60, 20, 60, 'fauna']],
+    [7, 300, 7, 128, -384, 30, 'fauna'], [7, 260, 3, -60, 20, 60, 'fauna'],
+    // From inside each seam on world 7 (`node tools/field.mjs --seed 7 --at 600,-600` and so on say where): hoarstone,
+    // glassdune, cinderfen and frostfen; and each deep strain: the glacier's halls, the caldera's lakes, the
+    // mycelium's faults and the druse's geodes.
+    [7, 300, 8, 624, -632, 60], [7, 300, 8, 560, 584, 'mix'], [7, 300, 8, -568, 544, 60], [7, 300, 8, -616, -592, 30],
+    [7, 300, 8, -480, -1248, 60], [7, 300, 9, 824, 1360, 'mix'], [7, 300, 9, -1576, 648, 60], [7, 300, 8, 1264, -472, 60]],
 };
 const tests = [];
 for (const file of readdirSync(here + 'regress').filter(name => name.endsWith('.mjs')).sort()) {
@@ -114,7 +122,7 @@ for (const [seed, x, y, strain] of [[7, -128, -384, 'firn'], [7, 128, -384, 'ser
 
 // And from inside provinces of generated crosses, with each structure among them: great caves, lanes of ice,
 // bubbles and level beds for the string to lie on.
-for (const [x, y, reach, cross] of [[-640, -640, 8, 'buzzmire'], [384, 1152, 8, 'hollow flashrock'], [384, -1408, 9, 'crazed tundra'], [-128, -1920, 9, 'frothy hailstone'], [1408, 384, 9, 'banded kilnstone'], [-1408, -384, 9, 'banded rimemoss']]) {
+for (const [x, y, reach, cross] of [[-912, -304, 8, 'buzzmire'], [384, 1152, 8, 'hollow flashrock'], [384, -1408, 9, 'crazed tundra'], [-128, -1920, 9, 'frothy hailstone'], [1408, 384, 9, 'banded kilnstone'], [-1408, -384, 9, 'banded rimemoss']]) {
   tests.push({ name: `rope-fuzz.mjs 7 400 ${reach} ${x} ${y} (${cross})`, run: ['rope-fuzz.mjs', 7, 400, reach, x, y] });
 }
 
@@ -148,8 +156,16 @@ for (const [x, y, what] of [[141, -576, 'a rime bell'], [-139, 565, 'a fumarole'
   tests.push({ name: `rope-fuzz.mjs 7 400 6 ${x} ${y} (${what})`, run: ['rope-fuzz.mjs', 7, 400, 6, x, y] });
 }
 
-// And in a deep flank, where the crystals and the lava are thickest.
-tests.push({ name: 'rope-fuzz.mjs 31 400 9 1000 1000 (deep south-east)', run: ['rope-fuzz.mjs', 31, 400, 9, 1000, 1000] });
+// And in a deep flank, where the crystals and the lava are thickest. (Flown first from 1000,1000, on the diagonal,
+// where the south-east's deep seam lies now.)
+tests.push({ name: 'rope-fuzz.mjs 31 400 9 768 1024 (deep south)', run: ['rope-fuzz.mjs', 31, 400, 9, 768, 1024] });
+
+// And from inside each seam, where two directions' ground and hazards meet, and each deep strain: the glacier's
+// halls sheathed in ice, the caldera's lakes in their slag, the mycelium's faults and caps, the druse's geodes.
+for (const [x, y, reach, what] of [[624, -632, 8, 'hoarstone'], [560, 584, 8, 'glassdune'], [-568, 544, 8, 'cinderfen'], [-616, -592, 8, 'frostfen'],
+  [-480, -1248, 8, 'glacier'], [824, 1360, 9, 'caldera'], [-1576, 648, 9, 'mycelium'], [1264, -472, 8, 'druse']]) {
+  tests.push({ name: `rope-fuzz.mjs 7 400 ${reach} ${x} ${y} (${what})`, run: ['rope-fuzz.mjs', 7, 400, reach, x, y] });
+}
 
 const queue = tests.filter(test => test.name.includes(only)), began = Date.now();
 let failed = 0, done = 0;
