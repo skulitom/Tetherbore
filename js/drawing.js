@@ -7,7 +7,7 @@ import { N, C, K, B, DX, DY, BIOMES, HAZARDS, CRUSH, ZONE, FIND, rowOf, hazOf, c
 import { sheets, draw, drawScaled, frameAt, duration, slice9, text, textWidth, tinted } from './atlas.js';
 import { tr, words, LANGS, lang, chooseLang } from './lang.js';
 import { decorAt, markAt, natural, framesOf, placeOf } from './decor.js';
-import { sfx, isMuted, setMuted, isMusic, setMusic } from './audio.js';
+import { sfx, soundVolume, musicVolume, setSoundVolume, setMusicVolume, STEPS_OF_VOLUME } from './audio.js';
 import { WORKS, MAPS, TABS, LAB, LAB_OF, LAB_KINS, labLevel, labNext, ROWS, FOUND, FINDER, CUT, WINCH_LOAD } from './shop.js';
 import { pickGoal, goalShare } from './goal.js';
 import { TETHERS, BODY, BODY_A, HOT, HOT_A, RAM, PLATE, FLAME, FLAME_TIER, FITS, FIT_BIT, CORE_IDLE, CORE_C, CORE_FLASH, DISH, REFINERY, CUTTER, BOX, ORBIT, BEACON, STATION_PARTS } from './fit.js';
@@ -20,6 +20,11 @@ import { HX, HY, BOOST, DEATH, BELL, VENT, WORM, STONE, GIANTS } from './game.js
 import { KINDS } from './fauna.js';
 
 export const T = 16;                            // pixels in a cell
+const VOLUME_BAR = 49;                          // the menu's bar of ten steps of loudness, in pixels
+const LANG_ROW = 18, LANG_ROWS = 3 * LANG_ROW + 2; // the menu's list of languages: a row each, and all it adds to the menu
+// A heart of the hull, 7 pixels by 6: each row's runs of pixels, first and last column (the top row two, either
+// side of the notch). HEART_PITCH: from one heart to the next.
+const HEART = [[[1, 2], [4, 5]], [[0, 6]], [[0, 6]], [[1, 5]], [[2, 4]], [[3, 3]]].flatMap((runs, r) => runs.map(([a, b]) => [a, b, r])), HEART_PITCH = 9;
 export const DIR_BIOME = [B.LODE, B.EMBER, B.MIRE, B.FROST];
 export const GEM_ICON = [null, 'frost', 'ember', 'mire', 'lode'];
 export const GEM_COLOR = [null, '#bfe6ff', '#ffb060', '#b8f06a', '#d8b8ff'];
@@ -1255,20 +1260,26 @@ export class Drawing {
     const R = this.val('tether'), far = this.far, left = Math.max(0, R - far), label = compact(left), room = textWidth(label) + 10;
     this.bar(6, B + 29, W - 12 - room, 'tether', left / R, far / R > 0.93 ? '#ff7a5a' : '#f4ecd8', this.twang > 0);
     text(ctx, label, W - 6, B + 30, this.twang > 0 ? '#ff7a5a' : '#f4ecd8', 1);
-    // The hull: a pip for each knock it can take, after the grit. One just lost shows red for a moment, the last
-    // one left stays red, and a hull just mended shows white.
-    const pips = this.val('hull'), sound = this.hull, hx = 18 + textWidth(compact(S.grit - this.pending.grit)) + 7;
+    // The hull, after the grit: hearts, each two of the knocks it can take, so a knock is half a heart (a hull of an
+    // odd number has a half heart last). Half a heart just lost blinks white for a moment, the last half left
+    // blinks red, and a hull just mended shows white.
+    const pips = this.val('hull'), sound = this.hull, hx = 18 + textWidth(compact(S.grit - this.pending.grit)) + 7, hearts = Math.ceil(pips / 2);
+    const blink = ((now / 150) | 0) % 2 === 0;
     for (let n = 0; n < pips; n++) {
-      const x = hx + n * 5, full = n < sound, lost = n === sound && this.knocked > 0;
-      ctx.fillStyle = '#16121c'; ctx.fillRect(x, B + 6, 4, 7);
-      ctx.fillStyle = lost ? '#ff5a4a' : !full ? '#3a3450' : this.mended > 0 ? '#ffffff' : sound === 1 ? '#ff7a5a' : '#bfe6ff';
-      ctx.fillRect(x + 1, B + 7, 2, 5);
+      const x = hx + (n >> 1) * HEART_PITCH, right = n & 1, full = n < sound, lost = n === sound && this.knocked > 0;
+      const colour = lost ? (blink ? '#ffffff' : '#ff4d6d') : !full ? '#3a3450' : this.mended > 0 ? '#ffffff' : sound === 1 ? (blink ? '#ff4d6d' : '#8a2038') : '#ff4d6d';
+      // (Each half draws its own share of the heart's dark rim, the left half the middle column with it.)
+      const [from, to] = right ? [4, 6] : [0, 3];
+      ctx.fillStyle = '#16121c';
+      for (const [a, b, r] of HEART) { const l = Math.max(a, from), h = Math.min(b, to); if (l <= h) ctx.fillRect(x + l - 1, B + 6 + r, h - l + 3, 3); }
+      ctx.fillStyle = colour;
+      for (const [a, b, r] of HEART) { const l = Math.max(a, from), h = Math.min(b, to); if (l <= h) ctx.fillRect(x + l, B + 7 + r, h - l + 1, 1); }
     }
     // What the lab has analysed, of all it can: shown once there is a first sample, lit for a moment by a new level.
     // (`known` is the game's count, kept as samples come in: counting the lab's list here made a list every frame.)
     const known = this.known;
     if (this.knownFor !== known) { this.knownFor = known; this.knownSaid = `${known}/${LAB.length}`; }
-    if (known && hx + pips * 5 + 4 < W - 6 - textWidth(this.knownSaid) - 11) {
+    if (known && hx + hearts * HEART_PITCH + 3 < W - 6 - textWidth(this.knownSaid) - 11) {
       const count = this.knownSaid, lit = this.labFlash > 0 && ((now / 120) | 0) % 2 === 0;
       text(ctx, count, W - 6, B + 6, lit ? '#ffffff' : '#8cf2c4', 1);
       draw(ctx, 'icons', 'lab', W - 6 - textWidth(count) - 11, B + 5);
@@ -1674,30 +1685,45 @@ export class Drawing {
       ['FINDER', finder ? `${['', 'CACHES', '+GEODES', 'ALL'][finder]}, ${FINDER[finder]} CELLS` : 'NONE', finder > 0],
     ];
   }
-  // The menu: the sound, the language, and a new world (two taps, so a slip of the thumb does not cost a world).
+  // The menu: how loud the sounds are and how loud the music, the language, and a new world (two taps, so a slip of
+  // the thumb does not cost a world).
   drawMenu(px, y0, pw) {
     const { ctx } = this, sure = this.confirmReset > 0;
-    slice9(ctx, 'ui', 'button', px + 6, y0 + 4, pw - 12, 20);
-    text(ctx, 'SOUND', px + 14, y0 + 10, '#ffffff');
-    text(ctx, isMuted() ? 'OFF' : 'ON', px + pw - 14, y0 + 10, isMuted() ? '#ff7a5a' : '#8cf2c4', 1);
-    this.buttons.unshift({ x: px + 6, y: y0 + 4, w: pw - 12, h: 20, act: () => { setMuted(!isMuted()); sfx.tap(); } });
-    // The music has a switch of its own (with the sound off there is none, whatever it says).
-    const playing = isMusic() && !isMuted();
-    slice9(ctx, 'ui', 'button', px + 6, y0 + 28, pw - 12, 20);
-    text(ctx, 'MUSIC', px + 14, y0 + 34, isMuted() ? '#8a84a0' : '#ffffff');
-    text(ctx, isMusic() ? 'ON' : 'OFF', px + pw - 14, y0 + 34, playing ? '#8cf2c4' : isMusic() ? '#8a84a0' : '#ff7a5a', 1);
-    this.buttons.unshift({ x: px + 6, y: y0 + 28, w: pw - 12, h: 20, act: () => { setMusic(!isMusic()); sfx.tap(); } });
-    // The language, each tap the next of the three: the game is saved and the page loaded again in it (js/lang.js).
-    // (Its name is in its own tongue, which no table turns.)
-    const speaks = LANGS.findIndex(l => l.id === lang);
-    slice9(ctx, 'ui', 'button', px + 6, y0 + 52, pw - 12, 20);
+    this.volumeRow('SOUND', soundVolume, setSoundVolume, 'sound', px, y0 + 4, pw);
+    this.volumeRow('MUSIC', musicVolume, setMusicVolume, 'music', px, y0 + 28, pw);
+    // The language: a tap opens the list of the three under it (and shuts it again), and one chosen from the list
+    // that is not the one spoken now is the language: the game is saved and the page loaded again in it
+    // (js/lang.js). (Each name is in its own tongue, which no table turns.)
+    const speaks = LANGS.findIndex(l => l.id === lang), open = !!this.langOpen, below = open ? LANG_ROWS : 0;
+    slice9(ctx, 'ui', open ? 'button-down' : 'button', px + 6, y0 + 52, pw - 12, 20);
     text(ctx, 'LANGUAGE', px + 14, y0 + 58, '#ffffff');
-    text(ctx, LANGS[speaks].name, px + pw - 14, y0 + 58, '#8cf2c4', 1);
-    this.buttons.unshift({ x: px + 6, y: y0 + 52, w: pw - 12, h: 20, act: () => { sfx.tap(); this.save(); chooseLang(LANGS[(speaks + 1) % LANGS.length].id); } });
-    slice9(ctx, 'ui', sure ? 'button-off' : 'button', px + 6, y0 + 76, pw - 12, 20);
-    text(ctx, sure ? 'TAP AGAIN: NEW WORLD' : 'NEW WORLD', px + pw / 2, y0 + 82, sure ? '#ff7a5a' : '#ffffff', 0.5);
-    this.buttons.unshift({ x: px + 6, y: y0 + 76, w: pw - 12, h: 20, act: () => {
+    text(ctx, `${LANGS[speaks].name} ${open ? '^' : 'v'}`, px + pw - 14, y0 + 58, '#8cf2c4', 1);
+    this.buttons.unshift({ x: px + 6, y: y0 + 52, w: pw - 12, h: 20, act: () => { this.langOpen = !this.langOpen; sfx.tap(); } });
+    if (open) LANGS.forEach((l, n) => {
+      const y = y0 + 74 + n * LANG_ROW, on = n === speaks;
+      slice9(ctx, 'ui', on ? 'button-down' : 'button', px + 14, y, pw - 28, LANG_ROW - 2);
+      text(ctx, l.name, px + 22, y + 4, on ? '#8cf2c4' : '#ffffff');
+      if (on) text(ctx, '<', px + pw - 22, y + 4, '#8cf2c4', 1);
+      this.buttons.unshift({ x: px + 14, y, w: pw - 28, h: LANG_ROW - 2, act: () => { this.langOpen = false; sfx.tap(); if (!on) { this.save(); chooseLang(l.id); } } });
+    });
+    slice9(ctx, 'ui', sure ? 'button-off' : 'button', px + 6, y0 + 76 + below, pw - 12, 20);
+    text(ctx, sure ? 'TAP AGAIN: NEW WORLD' : 'NEW WORLD', px + pw / 2, y0 + 82 + below, sure ? '#ff7a5a' : '#ffffff', 0.5);
+    this.buttons.unshift({ x: px + 6, y: y0 + 76 + below, w: pw - 12, h: 20, act: () => {
       if (this.confirmReset > 0) { this.confirmReset = 0; this.fresh((Math.random() * 1e9) | 0); this.save(); sfx.relic(); } else { this.confirmReset = 2.5; sfx.tap(); }
+    } });
+  }
+  // A row of the menu that sets how loud something is: its name, and a bar of ten steps at the row's right end, as
+  // many lit as it is loud. A tap on the bar sets the step under it (just left of the first, nothing), and a tap on
+  // the name turns it off, or back on at the step it was at; a tap that sounds is heard at the new step.
+  volumeRow(name, get, set, which, px, y, pw) {
+    const { ctx } = this, step = get(), bx = px + pw - 14 - VOLUME_BAR, was = this.volumeWas ??= { sound: STEPS_OF_VOLUME, music: STEPS_OF_VOLUME };
+    slice9(ctx, 'ui', 'button', px + 6, y, pw - 12, 20);
+    text(ctx, name, px + 14, y + 6, step ? '#ffffff' : '#8a84a0');
+    for (let n = 0; n < STEPS_OF_VOLUME; n++) { ctx.fillStyle = n < step ? '#8cf2c4' : '#3a3450'; ctx.fillRect(bx + n * 5, y + 7, 4, 6); }
+    this.buttons.unshift({ x: px + 6, y, w: pw - 12, h: 20, act: x => {
+      const step = get(), to = x === undefined || x < bx - 3 ? (step ? 0 : was[which] || STEPS_OF_VOLUME) : Math.max(0, Math.min(STEPS_OF_VOLUME, Math.ceil((x - bx + 1) / 5)));
+      if (step) was[which] = step;
+      set(to); sfx.tap();
     } });
   }
   // Under the menu's rows, the long frames written down (`frameTook`) and the frames that threw (`failed`), newest
@@ -1757,7 +1783,7 @@ export class Drawing {
     if (this.labTab === 'chart' && !this.charted) this.labTab = 'stats';
     const g = this.labGeom(), { pw, px } = g;
     const chart = Math.min(pw - 12, H - 52 - HEAD - 10);
-    const rise = 1 - this.labRise, ph = this.labTab === 'menu' ? HEAD + 104 + (this.stalls.length ? 14 + this.stalls.length * 10 : 0) : this.labTab === 'chart' ? HEAD + chart + 10 : this.labTab === 'stats' ? HEAD + this.stats().length * this.statsPitch(this.stats().length) + 8 : g.ph;
+    const rise = 1 - this.labRise, ph = this.labTab === 'menu' ? HEAD + 104 + (this.langOpen ? LANG_ROWS : 0) + (this.stalls.length ? 14 + this.stalls.length * 10 : 0) : this.labTab === 'chart' ? HEAD + chart + 10 : this.labTab === 'stats' ? HEAD + this.stats().length * this.statsPitch(this.stats().length) + 8 : g.ph;
     const py = this.labTab === 'lab' ? g.py : Math.max(2, Math.round((H - 44 - ph) / 2)) + Math.round(rise * rise * 60);
     slice9(ctx, 'ui', 'panel', px, py, pw, ph);
     this.button(px, py, pw, ph, () => {});
@@ -1765,7 +1791,7 @@ export class Drawing {
     this.chartRect = null;
     this.panelTabs(px, py, pw, HEAD);
     if (this.labTab === 'stats') { this.drawStats(px, py + HEAD, pw); return; }
-    if (this.labTab === 'menu') { this.drawMenu(px, py + HEAD, pw); if (this.stalls.length) this.drawStalls(px, py + HEAD + 102, pw); return; }
+    if (this.labTab === 'menu') { this.drawMenu(px, py + HEAD, pw); if (this.stalls.length) this.drawStalls(px, py + HEAD + 102 + (this.langOpen ? LANG_ROWS : 0), pw); return; }
     if (this.labTab === 'chart') {
       // The chart is dragged to look about it and pinched (or wheeled, or stepped by its two buttons) to look closer:
       // from the whole reach down to four pixels a cell, never past the edge of the whole reach's own view.

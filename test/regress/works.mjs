@@ -144,8 +144,17 @@ for (const coil of [0, 1]) {
   rows[1].act(); game.render();
   check(audio.isMusic() === music, 'a second tap on MUSIC did not put it back');
   const { lang, LANGS, LANG_KEY } = await import('../../js/lang.js'), next = LANGS[(LANGS.findIndex(l => l.id === lang) + 1) % LANGS.length].id;
+  // (A tap on LANGUAGE opens the list of the three and chooses nothing; one of the list chooses, the one spoken now
+  // nothing, and either shuts it.)
   rows[2].act(); game.render();
-  check(localStorage.getItem(LANG_KEY) === next, `a tap on LANGUAGE in ${lang} kept '${localStorage.getItem(LANG_KEY)}', not '${next}'`);
+  const list = () => game.buttons.filter(b => b.h === 16 && b.w > 90).sort((a, b) => a.y - b.y);
+  const langs = list();
+  check(game.langOpen && langs.length === 3 && localStorage.getItem(LANG_KEY) === null, `a tap on LANGUAGE opened a list of ${langs.length} and kept '${localStorage.getItem(LANG_KEY)}'`);
+  langs[LANGS.findIndex(l => l.id === lang)].act(); game.render();
+  check(!game.langOpen && localStorage.getItem(LANG_KEY) === null, `the language spoken now, chosen, kept '${localStorage.getItem(LANG_KEY)}'`);
+  rows[2].act(); game.render();
+  list()[LANGS.findIndex(l => l.id === next)].act(); game.render();
+  check(!game.langOpen && localStorage.getItem(LANG_KEY) === next, `${next} chosen from the list kept '${localStorage.getItem(LANG_KEY)}'`);
   localStorage.removeItem(LANG_KEY);
   rows[3].act(); game.render();
   check(game.S.seed === seed && game.confirmReset > 0, 'one tap on NEW WORLD made a new world');

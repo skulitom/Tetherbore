@@ -526,7 +526,7 @@ export class Game {
       }
     }
     if (this.input.id !== null) return;
-    if (hit) { hit.act(); return; }
+    if (hit) { hit.act(x, y); return; }
     if (this.shop || this.lab) { this.shop = this.lab = false; sfx.tap(); return; }
     Object.assign(this.input, { id, ax: x, ay: y, px: x, py: y, m: 0 });
     this.drill.armed = true;
@@ -1698,7 +1698,7 @@ export class Game {
   // something was analysed (at the thing last learnt about); a tap on the map names the chart's tab itself. The
   // lab's list opens with the thing chosen in the middle of its window, as near as the ends allow.
   openLab(open, tab) {
-    this.lab = open; this.shop = false; this.chartTouch.clear();
+    this.lab = open; this.shop = false; this.chartTouch.clear(); this.langOpen = false;
     this.labTouch = null; this.labVel = 0; this.labAim = null; this.labHeld = null;
     if (open) {
       this.labSel ??= (LAB.find(e => this.S.lab[e.key]) ?? LAB[0]).key; this.labTab = tab ?? (this.labFlash > 0 ? 'lab' : this.labTab);

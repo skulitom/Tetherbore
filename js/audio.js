@@ -20,7 +20,19 @@
 // rules above with no browser.
 
 let ctx = null, master = null, sounds = null, room = null, space = null, keys = null, noiseBuffer = null, muted = false, music = true, aside = false;
-try { muted = localStorage.getItem('tetherbore-mute') === '1'; music = localStorage.getItem('tetherbore-music') !== '0'; } catch { /* private mode */ }
+// How loud the sounds are and how loud the music is, each a tenth at a time from nothing (0) to all (10), set apart
+// in the menu and kept on the device; a step is heard as one, the gain the square of the share. The music at 0 is
+// off (`music`, its switch). A game kept from before there were steps, muted, keeps both at nothing and is no longer
+// muted: the steps say it.
+let soundStep = 10, musicStep = 10;
+try {
+  muted = localStorage.getItem('tetherbore-mute') === '1'; music = localStorage.getItem('tetherbore-music') !== '0';
+  const step = key => { const v = localStorage.getItem(key); return v === null || !(+v >= 0 && +v <= 10) ? null : Math.round(+v); };
+  soundStep = step('tetherbore-sound') ?? 10; musicStep = step('tetherbore-music-step') ?? 10;
+  if (muted) { soundStep = 0; music = false; muted = false; localStorage.setItem('tetherbore-sound', '0'); localStorage.setItem('tetherbore-music', '0'); localStorage.setItem('tetherbore-mute', '0'); }
+} catch { /* private mode */ }
+export const STEPS_OF_VOLUME = 10;
+const share = step => (step / STEPS_OF_VOLUME) ** 2;
 
 const LEVEL = 0.4;                       // the master gain when not muted
 const SOUNDS = 0.6;                      // what the sounds and the bed are laid on at, against the music
@@ -38,7 +50,7 @@ export function unlock() {
   master = c.createGain();
   master.gain.value = muted ? 0 : LEVEL;
   sounds = c.createGain();
-  sounds.gain.value = SOUNDS;
+  sounds.gain.value = SOUNDS * share(soundStep);
   sounds.connect(master);
   const squash = c.createDynamicsCompressor(), curve = new Float32Array(1025);
   try { squash.threshold.value = -16; squash.knee.value = 10; squash.ratio.value = 3.5; squash.attack.value = 0.004; squash.release.value = 0.16; } catch { /* the browser's own settings */ }
@@ -109,6 +121,21 @@ export function setMusic(on) {
   music = !!on;
   try { localStorage.setItem('tetherbore-music', music ? '1' : '0'); } catch { /* private mode */ }
   tune();
+}
+// The step the sounds are at, and the music's (0 while its switch is off).
+export const soundVolume = () => soundStep;
+export const musicVolume = () => music ? musicStep : 0;
+export function setSoundVolume(step) {
+  soundStep = Math.max(0, Math.min(STEPS_OF_VOLUME, Math.round(step)));
+  try { localStorage.setItem('tetherbore-sound', String(soundStep)); } catch { /* private mode */ }
+  if (sounds) sounds.gain.value = SOUNDS * share(soundStep);
+}
+// (The music at 0 is its switch turned off, and at any other step turned on: the step it was at is kept for then.)
+export function setMusicVolume(step) {
+  step = Math.max(0, Math.min(STEPS_OF_VOLUME, Math.round(step)));
+  if (step > 0) { musicStep = step; try { localStorage.setItem('tetherbore-music-step', String(step)); } catch { /* private mode */ } }
+  if (band) band.out.gain.setTargetAtTime(MUSIC * share(musicStep), ctx.currentTime, 0.05);
+  if ((step > 0) !== music) setMusic(step > 0);
 }
 
 // ---------------------------------------------------------------- what every sound is built from
@@ -448,7 +475,7 @@ let told = false;
 // A sound by name: `sfx.dig(2)`. Nothing happens with no context, when muted, while the page is aside (`setAside`),
 // or sooner than its gap after the last.
 const sound = (name, build) => (...args) => {
-  if (!ctx || muted || aside) return;
+  if (!ctx || muted || aside || !soundStep) return;
   const t = ctx.currentTime, was = played[name];
   if (was !== undefined && t >= was && t - was < (GAP[name] ?? 0.02)) return;
   played[name] = t;
@@ -1016,7 +1043,7 @@ function tune() {
   if (want && !band) {
     const t = ctx.currentTime, soft = ctx.createBiquadFilter(), duck = ctx.createGain(), out = ctx.createGain(), sources = [];
     soft.type = 'lowpass'; soft.Q.value = 0.5; soft.frequency.value = 1000;
-    out.gain.value = 0; out.gain.setTargetAtTime(MUSIC, t, 1.2);
+    out.gain.value = 0; out.gain.setTargetAtTime(MUSIC * share(musicStep), t, 1.2);
     soft.connect(duck); duck.connect(out); out.connect(master);
     const osc = () => { const o = ctx.createOscillator(); o.type = 'triangle'; sources.push(o); return o; };
     const gain = to => { const g = ctx.createGain(); g.gain.value = 0; g.connect(to); return g; };
