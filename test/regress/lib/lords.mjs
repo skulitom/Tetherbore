@@ -1,5 +1,5 @@
 // Staging and driving helpers for the lords at the ends (js/bosses.js), shared by s9-bosses and s9-boss-play. Each
-// lord whose fight is built (`ready`) is in LORDS; a test of one lord's verb adds its own part beside the north's.
+// lord whose fight is built (`ready`) is in LORDS; a test of one lord's verb adds its own part beside the others'.
 import { makeGame, tunnel, setDown, random, C, N, K } from '../../harness.mjs';
 import { BOSS, LAIR, ST, lairX, lairY } from '../../../js/bosses.js';
 import { DX, DY } from '../../../js/world.js';
@@ -57,8 +57,19 @@ export function loopRound(game, b) {
   if (game.version !== version) game.retighten();
   return B.blows[b] > blows;
 }
-// Each lord's verb as a test lands it on a lord that is open to it: the north's a loop.
-export const VERB = { 3: loopRound };
+// The drill flown into lord `b` where it is, as `Bosses.ram` is asked each frame of its rest: set `off` cells from its
+// middle on the side the drill is, flying at `speed` cells a second toward it (or away from it, `away`), and put back
+// as it was. Returns whether it was a blow.
+export function ramInto(game, b, { speed = 6, off = 1, away = false } = {}) {
+  const B = game.fauna.bosses, d = game.drill, was = [d.x, d.y, d.vx, d.vy], blows = B.blows[b];
+  const a = Math.atan2(d.y - B.y[b], d.x - B.x[b]), ux = Math.cos(a), uy = Math.sin(a), v = away ? speed : -speed;
+  d.x = B.x[b] + ux * off; d.y = B.y[b] + uy * off; d.vx = ux * v; d.vy = uy * v;
+  B.ram(game, b);
+  [d.x, d.y, d.vx, d.vy] = was;
+  return B.blows[b] > blows;
+}
+// Each lord's verb as a test lands it on a lord that is open to it: the north's a loop, the south's a ram.
+export const VERB = { 1: ramInto, 3: loopRound };
 // A lord fought to the end by its verb, landed each time it is open to it: whether it was beaten (its husk left).
 export function beat(game, b, steer = null) {
   const B = game.fauna.bosses;

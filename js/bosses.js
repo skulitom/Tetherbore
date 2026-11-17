@@ -1,9 +1,10 @@
 // The four lords at the ends: one at the far end of each direction's axis, LAIR cells out, past the relic and inside
 // the last reach, the living kind of its direction's fossil. Each has a verb of its own that beats it, the game's own
 // verbs: the north's FROST WYRM is beaten by a loop of the tether wound round it while it rests (LOOP), the south's
-// by a ram, the west's by a cut, the east's by a haul. Each takes BLOWS blows, and each blow raises its stage: every
-// tell and rest of the stage after is shorter, and the last stage has a trick more. Nothing hurts on contact; only a
-// told attack does, and every tell starts on the screen and lasts LEAST_TELL seconds at the least.
+// MAGMA BEHEMOTH by the drill flown into it while it rests (RAM), the west's by a cut, the east's by a haul. Each
+// takes BLOWS blows, and each blow raises its stage: every tell and rest of the stage after is shorter, and the last
+// stage has a trick more. Nothing hurts on contact; only a told attack does, and every tell starts on the screen and
+// lasts LEAST_TELL seconds at the least.
 //
 // Where. A lord sleeps at its lair until the drill comes within WAKE cells of it (rumbling within NEAR), then wakes:
 // it is met (its bit in S.bosses), its name comes up, and after GRACE it fights about the drill, sunk in the rock
@@ -57,14 +58,22 @@ export const P = { swim_a: 0, swim_b: 1, rise: 2, idle_a: 3, idle_b: 4, tell: 5,
 export const BOSS = [
   { key: 'king', name: 'CRYSTAL KING', lord: 'LORD OF THE EAST', kin: 4, look: 'lode', fossil: 'AMMONITE', verb: 'haul', ready: false,
     poses: ['blink-a', 'blink-b', ...POSES.slice(2)], tell: [1.2, 1.0, 0.9], act: 0.3, rest: [3.2, 2.7, 2.3], near: [3, 5], ring: [3.5, 4, 4.5], stun: 0.5 },
-  { key: 'behemoth', name: 'MAGMA BEHEMOTH', lord: 'LORD OF THE SOUTH', kin: 2, look: 'ember', fossil: 'EMBER RIBS', verb: 'ram', ready: false,
-    poses: POSES, tell: [1.2, 1.0, 0.9], act: 0, rest: [2.6, 2.2, 1.9], near: [4, 7], charge: [16, 18, 20], stun: 0.4 },
+  // The south: it burrows at `burrow` cells a second in straight lines, rises, tells a lane `lane` cells wide to the
+  // drill and charges along it at `charge` cells a second by stage, through where the drill is to `over` cells past
+  // it (`reach` cells at the most), through rock or open ground and changing none; a drill within `hit` of its middle
+  // as it passes is hit, once a charge. It slides back at `slide` cells a second to where the drill was and rests
+  // there. In its last stage it tells again for `again` seconds and charges back along the same lane before it rests.
+  // A ram is the drill flown into its middle as it rests, from `ram` cells or nearer at `rush` cells a second or more
+  // (js/fauna.js's ram, RAM + 0.4 and RAM_SPEED, widened for its size).
+  { key: 'behemoth', name: 'MAGMA BEHEMOTH', lord: 'LORD OF THE SOUTH', kin: 2, look: 'ember', fossil: 'EMBER RIBS', verb: 'ram', ready: true, attack: 'charge',
+    poses: POSES, tell: [1.2, 1.0, 0.9], again: 0.9, act: 0, rest: [2.6, 2.2, 1.9], near: [4, 7], charge: [16, 18, 20], lane: 1.6, hit: 1.0, over: 2, reach: 14,
+    slide: 8, burrow: 3, arc: 6, ram: 1.6, rush: 3, stun: 0.4 },
   { key: 'mother', name: 'SPORE MOTHER', lord: 'LORD OF THE WEST', kin: 3, look: 'mire', fossil: 'ROOT WYRM', verb: 'cut', ready: false,
     poses: POSES, tell: [1.1, 0.95, 0.8], act: 0, rest: [3.2, 2.7, 2.3], near: [4, 7], stun: 0.3 },
   // The north: it swims at `swim` cells a second in arcs `arc` cells round the drill, rises on a perch (rock behind
   // it for the tether to bend on), and breathes `reach` cells at the most along a line to the drill; a drill within
   // `breath` of the line is hit.
-  { key: 'wyrm', name: 'FROST WYRM', lord: 'LORD OF THE NORTH', kin: 1, look: 'frost', fossil: 'FROZEN BEAST', verb: 'loop', ready: true,
+  { key: 'wyrm', name: 'FROST WYRM', lord: 'LORD OF THE NORTH', kin: 1, look: 'frost', fossil: 'FROZEN BEAST', verb: 'loop', ready: true, attack: 'breath',
     poses: POSES, tell: [1.1, 0.95, 0.8], act: 0.4, rest: [3.4, 2.9, 2.5], near: [3.5, 6], perch: true, reach: 9, swim: 7, arc: 6, breath: 0.8, stun: 0.5 },
 ];
 // Its lair's middle, in cells.
@@ -108,6 +117,9 @@ export class Bosses {
     this.plugs = new Uint8Array(4); this.shards = new Uint8Array(4); this.shard = new Int32Array(4); this.anchor = new Int32Array(4);
     this.struck = new Uint8Array(4); this.ph = new Float64Array(4); this.beat = new Uint16Array(4); this.heard = new Float32Array(4);
     this.fallT = new Float32Array(4); this.fallX = new Float64Array(12); this.fallY = new Float64Array(12);
+    // The south's charge: where the drill was as it locked (where it rests after), where the charge began, and which
+    // of its last stage's two charges it is on (0 the first, 1 the one back).
+    this.toX = new Float64Array(4); this.toY = new Float64Array(4); this.fromX = new Float64Array(4); this.fromY = new Float64Array(4); this.leg = new Uint8Array(4);
     // The cells of ice each has laid this fight (PLUGS a lord), which only it thaws.
     this.laid = new Int32Array(4 * PLUGS);
     // The west's tendrils (three slots) and the drag they put on the drill (1: none).
@@ -122,7 +134,7 @@ export class Bosses {
     this.seed = (Math.imul((seed | 0) + 808, 2654435761) ^ 0x2545f491) >>> 0;
     this.st.fill(SLEEP); this.t.fill(0); this.stage.fill(1); this.blows.fill(0); this.away.fill(0); this.armed.fill(0);
     this.plugs.fill(0); this.shards.fill(0); this.shard.fill(-1); this.anchor.fill(-1); this.cell.fill(-1); this.struck.fill(0);
-    this.beat.fill(0); this.heard.fill(-99); this.fallT.fill(-1); this.tendril.fill(0);
+    this.beat.fill(0); this.heard.fill(-99); this.fallT.fill(-1); this.tendril.fill(0); this.leg.fill(0);
     this.time = 0; this.tick = 0; this.work = 0; this.drag = 1; this.v = -1;
   }
   rnd() { return (this.seed = (Math.imul(this.seed, 1664525) + 1013904223) >>> 0) / 4294967296; }
@@ -148,6 +160,7 @@ export class Bosses {
       this.t[b] += dt;
       if (st === GONE) continue;
       if (BOSS[b].verb === 'loop') { this.north(game, b, dt); this.icefall(game, b, dt); }
+      else if (BOSS[b].verb === 'ram') this.south(game, b, dt);
     }
     if (game.version !== this.v) { this.v = game.version; this.settle(game); }
   }
@@ -174,7 +187,7 @@ export class Bosses {
   wake(game, b) {
     const d = game.drill;
     this.st[b] = SUNK; this.t[b] = -GRACE; this.stage[b] = 1; this.blows[b] = 0; this.away[b] = 0; this.plugs[b] = 0; this.shards[b] = 0;
-    this.beat[b] = 0; this.fallT[b] = -1; this.struck[b] = 0;
+    this.beat[b] = 0; this.fallT[b] = -1; this.struck[b] = 0; this.leg[b] = 0;
     this.ph[b] = Math.atan2(lairY(b) - d.y, lairX(b) - d.x);
     this.x[b] = d.x + Math.cos(this.ph[b]) * (BOSS[b].arc ?? 6); this.y[b] = d.y + Math.sin(this.ph[b]) * (BOSS[b].arc ?? 6);
     this.fauna.deed(game, 'boss-met', b);
@@ -182,7 +195,7 @@ export class Bosses {
   }
   // Leashed: asleep again, whole, its fight forgotten.
   heal(b) {
-    this.st[b] = SLEEP; this.t[b] = 0; this.stage[b] = 1; this.blows[b] = 0; this.away[b] = 0; this.fallT[b] = -1; this.cell[b] = -1;
+    this.st[b] = SLEEP; this.t[b] = 0; this.stage[b] = 1; this.blows[b] = 0; this.away[b] = 0; this.fallT[b] = -1; this.cell[b] = -1; this.leg[b] = 0;
   }
   // Into the rock, to swim about the drill until it rises again.
   sink(game, b) {
@@ -259,6 +272,7 @@ export class Bosses {
   // Where the north's breath reaches: from its middle toward the drill, `reach` cells at the most, up to the first
   // cell that is not open and seen, and no further than the narrowest screen shows.
   aim(game, b) {
+    if (BOSS[b].verb === 'ram') { this.lane(game, b); return; }
     const d = game.drill, w = game.world, x0 = this.x[b], y0 = this.y[b], dx = d.x - x0, dy = d.y - y0, len = Math.hypot(dx, dy) || 1, ux = dx / len, uy = dy / len;
     let ex = x0, ey = y0;
     for (let s = 0.25; s <= BOSS[b].reach + 1e-9; s += 0.25) {
@@ -289,6 +303,7 @@ export class Bosses {
   // At rest: a loop round it from now is a blow, if the band is not round it already.
   rest(game, b) {
     this.st[b] = REST; this.t[b] = 0;
+    if (BOSS[b].verb !== 'loop') return;
     this.armed[b] = winds(game.band, this.x[b], this.y[b]) === 0 ? 1 : 0;
     this.work += game.band.length;
   }
@@ -334,7 +349,7 @@ export class Bosses {
   blow(game, b) {
     if (!this.fauna.deed(game, 'blow', b)) return false;
     this.blows[b]++; this.st[b] = HURTING; this.t[b] = 0; this.fallT[b] = -1;
-    if (this.blows[b] < BLOWS) { this.stage[b]++; if (this.stage[b] === 3) this.fauna.deed(game, 'thaw', b); }
+    if (this.blows[b] < BLOWS) { this.stage[b]++; if (this.stage[b] === 3 && BOSS[b].verb === 'loop') this.fauna.deed(game, 'thaw', b); }
     this.voice(game, 'groan', b, 1);
     return true;
   }
@@ -344,6 +359,119 @@ export class Bosses {
   }
   // A cell was cut (js/fauna.js: `crushed`, from `Game.finishDig`). It only reads. (The west's verb.)
   crushed(game, i, k) { }
+
+  // ---------------------------------------------------------------- the south: MAGMA BEHEMOTH
+  // Sunk, it burrows in straight lines about the drill; it rises; it tells a lane to the drill, which tracks it and
+  // locks LOCK seconds before; it charges along it, through where the drill was and on, and slides back there; and
+  // it rests there, when the drill flown into it is a blow (`ram`). In its last stage it tells again and charges
+  // back along the same lane before it rests.
+  south(game, b, dt) {
+    const d = game.drill, B = BOSS[b], s = this.stage[b] - 1, t = this.t[b];
+    switch (this.st[b]) {
+      case SUNK: {
+        // (Drawn only: straight on, and turned back toward the drill once it is past where it rises.)
+        if (Math.hypot(d.x - this.x[b], d.y - this.y[b]) > B.near[1] + 2) this.ph[b] = Math.atan2(d.y - this.y[b], d.x - this.x[b]);
+        this.x[b] += Math.cos(this.ph[b]) * B.burrow * dt; this.y[b] += Math.sin(this.ph[b]) * B.burrow * dt;
+        if (t < SINK) break;
+        const c = this.spotNear(game, b, B.near[0], B.near[1], false);
+        if (c < 0) { this.t[b] = SINK - 0.5; break; }
+        this.surface(game, b, c);
+        break;
+      }
+      case UP: {
+        this.face[b] = d.x >= this.x[b] ? 1 : -1;
+        if (t < RISE) break;
+        this.aim(game, b);
+        if (this.fair(game, b)) { this.lockX[b] = this.ax[b]; this.lockY[b] = this.ay[b]; this.leg[b] = 0; this.tell(game, b, B.attack); }
+        else if (t > RISE + WAIT) this.sink(game, b);
+        break;
+      }
+      case TELL: {
+        // (The charge back is told along the lane it came by, locked from the first.)
+        const long = this.leg[b] ? B.again : B.tell[s];
+        if (!this.leg[b]) {
+          this.face[b] = d.x >= this.x[b] ? 1 : -1;
+          if (t < long - LOCK) { this.aim(game, b); this.lockX[b] = this.ax[b]; this.lockY[b] = this.ay[b]; }
+        }
+        if (t >= long) this.charge(game, b);
+        break;
+      }
+      case ACT: this.rush(game, b); break;
+      case REST: {
+        if (this.ram(game, b) || t < B.rest[s]) break;
+        this.beat[b]++;
+        this.sink(game, b);
+        break;
+      }
+      case HURTING: if (t >= HURT) { if (this.blows[b] >= BLOWS) { this.st[b] = YIELDING; this.t[b] = 0; } else this.sink(game, b); } break;
+      case YIELDING: if (t >= YIELD) this.yielded(game, b); break;
+    }
+  }
+  // The south's lane: from its middle through the drill to `over` cells past it, `reach` at the most, its far end
+  // drawn back until it is on the narrowest screen; it will rest where the drill is now (or at the far end, should
+  // that fall short of the drill).
+  lane(game, b) {
+    const d = game.drill, B = BOSS[b], x0 = this.x[b], y0 = this.y[b], dx = d.x - x0, dy = d.y - y0, len = Math.hypot(dx, dy) || 1, ux = dx / len, uy = dy / len;
+    let r = Math.min(len + B.over, B.reach);
+    while (r > 0.25 && !this.inView(game, x0 + ux * r, y0 + uy * r)) { r -= 0.25; this.work++; }
+    this.ax[b] = x0 + ux * r; this.ay[b] = y0 + uy * r;
+    if (r >= len) { this.toX[b] = d.x; this.toY[b] = d.y; } else { this.toX[b] = this.ax[b]; this.toY[b] = this.ay[b]; }
+  }
+  // Off along the locked lane from where it stands.
+  charge(game, b) {
+    this.st[b] = ACT; this.t[b] = 0; this.struck[b] = 0; this.cell[b] = -1;
+    this.fromX[b] = this.x[b]; this.fromY[b] = this.y[b];
+    this.face[b] = this.lockX[b] >= this.x[b] ? 1 : -1;
+  }
+  // The charge: out to the lane's far end at its stage's speed, a drill within `hit` of its middle as it passes hit
+  // once (`struck` 1); then (`struck` 2) back to where the drill was, to rest or to tell its charge back.
+  rush(game, b) {
+    const d = game.drill, B = BOSS[b], t = this.t[b], speed = B.charge[this.stage[b] - 1], fx = this.fromX[b], fy = this.fromY[b], ex = this.lockX[b], ey = this.lockY[b];
+    const len = Math.hypot(ex - fx, ey - fy), ux = len ? (ex - fx) / len : 0, uy = len ? (ey - fy) / len : 0;
+    if (!(this.struck[b] & 2)) {
+      const px = this.x[b], py = this.y[b], go = Math.min(t * speed, len);
+      this.x[b] = fx + ux * go; this.y[b] = fy + uy * go;
+      if (!(this.struck[b] & 1) && d.mode !== 'dead' && toSegment(d.x, d.y, px, py, this.x[b], this.y[b]) <= B.hit && this.fauna.deed(game, 'hit', B.stun)) this.struck[b] |= 1;
+      if (go < len) return;
+      this.struck[b] |= 2;
+    }
+    const back = Math.hypot(ex - this.toX[b], ey - this.toY[b]), u = (t - len / speed) * B.slide;
+    if (u < back) { this.x[b] = ex - ux * u; this.y[b] = ey - uy * u; return; }
+    this.arrive(game, b);
+  }
+  // Back where the drill was: in its last stage, after its first charge, its charge back told; else at rest there,
+  // if that is open ground (else it sinks, to rise elsewhere).
+  arrive(game, b) {
+    this.x[b] = this.toX[b]; this.y[b] = this.toY[b];
+    if (this.stage[b] >= 3 && this.leg[b] === 0 && this.back(game, b)) return;
+    const x = Math.floor(this.x[b]), y = Math.floor(this.y[b]);
+    if (game.world.peek(x, y) !== K.EMPTY) { this.sink(game, b); return; }
+    this.cell[b] = y * N + x;
+    this.rest(game, b);
+  }
+  // The charge back: along the lane it came by to `over` past where it rose (drawn back onto the narrowest screen),
+  // told only with it and both ends of the lane on it.
+  back(game, b) {
+    const B = BOSS[b], x0 = this.x[b], y0 = this.y[b], fx = this.fromX[b], fy = this.fromY[b], len = Math.hypot(fx - x0, fy - y0);
+    if (len < 1 || !this.inView(game, x0, y0)) return false;
+    const ux = (fx - x0) / len, uy = (fy - y0) / len;
+    let r = len + B.over;
+    while (r >= len && !this.inView(game, x0 + ux * r, y0 + uy * r)) { r -= 0.25; this.work++; }
+    if (r < len) return false;
+    this.toX[b] = fx; this.toY[b] = fy;
+    this.ax[b] = this.lockX[b] = x0 + ux * r; this.ay[b] = this.lockY[b] = y0 + uy * r;
+    this.leg[b] = 1; this.face[b] = fx >= x0 ? 1 : -1;
+    this.tell(game, b, 'return');
+    return true;
+  }
+  // A ram: the drill flown into it as it rests, `ram` cells from its middle or nearer at `rush` cells a second or
+  // more, toward its middle (a drill on it flying off is not). Asked every frame of its rest.
+  ram(game, b) {
+    const d = game.drill, B = BOSS[b], dx = this.x[b] - d.x, dy = this.y[b] - d.y;
+    if (this.st[b] !== REST || B.verb !== 'ram' || d.mode === 'dead') return false;
+    if (Math.hypot(dx, dy) > B.ram || Math.hypot(d.vx, d.vy) < B.rush || d.vx * dx + d.vy * dy <= 0) return false;
+    return this.blow(game, b);
+  }
 
   // ---------------------------------------------------------------- where it rises
   // A cell for lord `b` to rise in, near the drill: tried at 16 of WAYS ways round from a place its own generator
@@ -394,19 +522,22 @@ export class Bosses {
 
   // ---------------------------------------------------------------- staging (js/shot.js and the tests)
   // Lord `b` set up beside the drill in a state of its own (`sunk`, `rise`, `tell`, `act`, `rest`, `hurt`, `yield`,
-  // `gone`, `sleep`, `icefall`) at stage `n` (its blows one fewer), in cell `at`, or where `spotNear` would raise it,
-  // or failing that four cells above the drill. Nothing is done to the game: it is not met. Returns its cell.
+  // `gone`, `sleep`, `icefall` for the north, `return` for the south) at stage `n` (its blows one fewer), in cell
+  // `at`, or where `spotNear` would raise it, or failing that four cells above the drill. Nothing is done to the game:
+  // it is not met. Returns its cell.
   stageAs(game, b, what = 'rest', n = 1, at = -1) {
     const d = game.drill, B = BOSS[b];
-    this.stage[b] = n; this.blows[b] = n - 1; this.away[b] = 0; this.fallT[b] = -1; this.struck[b] = 0;
+    this.stage[b] = n; this.blows[b] = n - 1; this.away[b] = 0; this.fallT[b] = -1; this.struck[b] = 0; this.leg[b] = 0;
     let c = at >= 0 ? at : this.spotNear(game, b, B.near[0], B.near[1], !!B.perch);
     if (c < 0) c = Math.floor(d.y - 4) * N + Math.floor(d.x);
     this.surface(game, b, c);
     switch (what) {
       case 'sleep': this.heal(b); break;
       case 'sunk': this.sink(game, b); break;
-      case 'tell': this.aim(game, b); this.lockX[b] = this.ax[b]; this.lockY[b] = this.ay[b]; this.tell(game, b, 'breath'); break;
-      case 'act': this.aim(game, b); this.lockX[b] = this.ax[b]; this.lockY[b] = this.ay[b]; this.tell(game, b, 'breath'); this.st[b] = ACT; break;
+      case 'tell': this.aim(game, b); this.lockX[b] = this.ax[b]; this.lockY[b] = this.ay[b]; this.tell(game, b, B.attack); break;
+      case 'act': this.aim(game, b); this.lockX[b] = this.ax[b]; this.lockY[b] = this.ay[b]; this.tell(game, b, B.attack); if (B.verb === 'ram') this.charge(game, b); else this.st[b] = ACT; break;
+      // (The south's charge back: told from where the drill is, along a lane back to its cell.)
+      case 'return': this.fromX[b] = this.x[b]; this.fromY[b] = this.y[b]; this.x[b] = d.x; this.y[b] = d.y; if (!this.back(game, b)) { this.x[b] = this.fromX[b]; this.y[b] = this.fromY[b]; this.rest(game, b); } break;
       case 'rest': this.rest(game, b); break;
       case 'hurt': this.st[b] = HURTING; break;
       case 'yield': this.blows[b] = BLOWS; this.st[b] = YIELDING; break;
@@ -447,7 +578,8 @@ export class Bosses {
     ctx.globalAlpha = 1;
   }
   // Over the dark: a lord sunk (or asleep, near) as a hump through the rock; a tell's line, ringed in FOE_EYE; the
-  // breath; the icefall's rings and shards; and under a lord up, its blows as three diamonds.
+  // breath; the icefall's rings and shards; the south's lane (`drawLane`); and under a lord up, its blows as three
+  // diamonds.
   signs(game, ctx, ox, oy) {
     if (!frames()) return;
     const image = sheets.bosses.image, now = this.time, d = game.drill;
@@ -465,7 +597,8 @@ export class Bosses {
       }
       const x0 = this.x[b] * T - ox, y0 = this.y[b] * T - oy;
       ctx.fillStyle = EYE;
-      if (st === TELL || st === ACT) {
+      if ((st === TELL || st === ACT) && BOSS[b].verb === 'ram') this.drawLane(game, ctx, ox, oy, b);
+      else if (st === TELL || st === ACT) {
         const s = this.stage[b] - 1, locked = st === ACT || this.t[b] >= BOSS[b].tell[s] - LOCK;
         const ex = this.lockX[b] * T - ox, ey = this.lockY[b] * T - oy, len = Math.hypot(ex - x0, ey - y0) || 1, ux = (ex - x0) / len, uy = (ey - y0) / len;
         if (st === TELL) {
@@ -511,6 +644,29 @@ export class Bosses {
       }
     }
     ctx.globalAlpha = 1;
+  }
+  // The south's lane as it tells, its two edges dashed `lane` apart from its middle to the far end, flickering
+  // until it locks, and the lord ringed in the warning's colour; as it charges, the lane fading behind it.
+  drawLane(game, ctx, ox, oy, b) {
+    const B = BOSS[b], st = this.st[b], now = this.time, s = this.stage[b] - 1;
+    const sx = (st === ACT ? this.fromX[b] : this.x[b]) * T - ox, sy = (st === ACT ? this.fromY[b] : this.y[b]) * T - oy;
+    const ex = this.lockX[b] * T - ox, ey = this.lockY[b] * T - oy, len = Math.hypot(ex - sx, ey - sy) || 1, ux = (ex - sx) / len, uy = (ey - sy) / len;
+    const hw = B.lane / 2 * T, nx = -uy * hw, ny = ux * hw;
+    const locked = st === ACT || this.leg[b] === 1 || this.t[b] >= B.tell[s] - LOCK;
+    ctx.fillStyle = EYE;
+    ctx.globalAlpha = st === ACT ? Math.max(0, 0.5 - this.t[b]) : locked ? 0.95 : 0.4 + 0.3 * Math.sin(now * 30);
+    for (let u = (now * 30) % 6; u < len; u += 6) for (let side = -1; side <= 1; side += 2) {
+      ctx.fillRect(Math.round(sx + ux * u + nx * side), Math.round(sy + uy * u + ny * side), 2, 1);
+    }
+    // (Its far end, a bar across the lane.)
+    for (let v = -hw; v <= hw; v += 2) ctx.fillRect(Math.round(ex - uy * v), Math.round(ey + ux * v), 1, 1);
+    if (st !== TELL) return;
+    const r = FR[b][this.pose(b)][this.face[b] < 0 ? 1 : 0].r;
+    if (!r) return;
+    const lit = tinted('bosses', EYE), image = sheets.bosses.image, px = Math.round(sx - 24), py = Math.round(sy - 24);
+    ctx.globalAlpha = 0.45 + 0.35 * Math.sin(now * 24);
+    for (let n = 0; n < 4; n++) ctx.drawImage(lit, r[0], r[1], r[2], r[3], px + SIDES[n][0], py + SIDES[n][1], 48, 48);
+    ctx.globalAlpha = 1; ctx.drawImage(image, r[0], r[1], r[2], r[3], px, py, 48, 48);
   }
   // Over the dark, adding light: its eyes (bright as it tells, dim as it rests) and its own lamps.
   glow(game, ctx, ox, oy) {
