@@ -3,7 +3,7 @@
 import { World, CellBook, N, C, K, B, HARD, GRIT, GEMS, DX, DY, HAZARDS, RARE, CRUSH, ZONE, FIND, rowOf, hazOf, gemKin, digTime, cellHash, sight, cellsAlong, HOME_R } from './world.js';
 import { sheets, frameAt, duration } from './atlas.js';
 import { sfx, unlock, setAmbience } from './audio.js';
-import { richness, haulBonus, overload, income, round2, NEEDS, UPGRADES, LAB, LAB_OF, labLevel, labNext, CORE, ROWS, REACH } from './shop.js';
+import { richness, haulBonus, overload, income, round2, NEEDS, UPGRADES, LAB, LAB_OF, labLevel, labNext, CORE, ROWS, REACH, CUT } from './shop.js';
 import { Drawing, T, DIR_BIOME, GEM_ICON, GEM_COLOR, GEM_WHERE, SPOT, bright, compact, DEBRIS, LAB_LIST, LAB_RH, LAB_SEC } from './drawing.js';
 import { Feel } from './feel.js';
 import { Fitter } from './fit.js';
@@ -74,7 +74,10 @@ export const BOOST = { time: 3, by: 1.5 };
 // A drill whose
 // last pip is gone lies dead for DEATH seconds, the screen going dark, and then the game is back at the last
 // docking (`revert`).
-const SHIELD = 3;
+// The mender (js/shop.js: WORKS) must always take longer than this to give a pip back: the mend is counted from the
+// knock, so a mender inside the shield would give back each pip before the next blow could land, and no steady
+// fire would ever wear the hull past one dent.
+export const SHIELD = 3;
 // Metal is hard: steel and the iron of keystones take METAL times as long to cut as their kind says, until the
 // drill is fitted with the diamond tip (js/shop.js: WORKS).
 export const METAL = 3, METALS = [K.STEEL, K.KEY];
@@ -156,8 +159,10 @@ const HAZ_SAMPLE = Object.fromEntries(Object.entries(HAZARDS).map(([type, { shee
 // books do not grow by a drift's boulders for every drift crossed.
 const AWAY = 6;
 // Nothing is too hard to cut: tougher ground only takes longer (js/world.js: `digTime`), and a better bit cuts all
-// of it faster.
-export const SPEED = [1, 1.6, 2.4, 3.6, 5, 6.5, 8.5, 11];
+// of it faster. (The table is the shop's, CUT, where the bit's row says what each level does.)
+export const SPEED = CUT;
+// The shop's rows by their names, for `val`.
+const ROW_OF = new Map(ROWS.map(u => [u.id, u]));
 export const FLY = 9;                           // cells a second in open ground
 const BODY = 0.34;                              // the drill's half-width in cells
 const SIDE = [1, N, -1, -N];                    // the cells beside a cell, as steps of its number: east, south, west, north
@@ -307,12 +312,18 @@ export class Game {
     this.changed([C * N + C + 3]);
     this.shop = false; this.lab = false; this.labSel = null; this.labFlash = 0;
     this.labScroll = 0; this.labVel = 0; this.labTouch = null; this.labAim = null; this.labPrev = 0; this.labHeld = null;
+    this.recount();
     this.feel.reset(this.S.seed);
     this.fitter.reset();
     this.fauna.reset(this.S.seed, this);
     this.dockMark();
   }
-  val(id) { const u = ROWS.find(u => u.id === id); return u.values[this.S.lv[id] ?? 0]; }
+  // What a row gives at the level it is at. (Asked many times a frame: the row is looked up in a table made once.)
+  val(id) { return ROW_OF.get(id).values[this.S.lv[id] ?? 0]; }
+  // How many of the things the lab can know have a sample (`known`), for what is drawn every frame: counted afresh
+  // whenever the game begins, is loaded or goes back to a docking (`begin`), and one more by `analyse` for a first
+  // sample. (Whatever sets the lab's samples by hand, a tool or a test, counts them again with this.)
+  recount() { let n = 0; for (const e of LAB) if (this.S.lab[e.key]) n++; this.known = n; return n; }
   // Fitted with the lava skin, the drill flies through lava.
   get swims() { return this.val('lavaskin') > 0; }
   // The pips the hull has left: what its level gives, less the knocks taken since it was last mended.
@@ -1531,6 +1542,7 @@ export class Game {
     if (say) { this.crushedAt = this.time; this.popup(x, y, 'CRUSHED', '#9a94a8'); }
     if (!e) return;
     const n = this.S.lab[key] = (this.S.lab[key] ?? 0) + 1;
+    if (n === 1) this.known++;
     // (One count on the screen at a time: cutting through a seam of ore, each would lie over the last.)
     this.popups = this.popups.filter(p => !p.label.startsWith('SAMPLE '));
     if ((n & (n - 1)) === 0) {
@@ -2569,6 +2581,8 @@ export class Game {
     } else if (what === 'kinds') have = LAB.filter(e => S.lab[e.key]).length;
     else if (what === 'out') have = Math.floor(S.out ?? 0);
     else if (what === 'relics') have = S.relics.filter(Boolean).length;
+    // (Kinds of creature met: none in a game saved before there were creatures, or played with them left out.)
+    else if (what === 'beasts') have = S.fauna?.met ? Object.keys(S.fauna.met).length : 0;
     else have = Object.keys(S.met).length;
     return need > 0 ? { what, have, need } : null;
   }

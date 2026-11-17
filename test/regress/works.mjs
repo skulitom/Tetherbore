@@ -1,9 +1,14 @@
-// The shop's second tab. Four things are fitted for grit and the specimens of one direction each: without the
-// specimens the tap is refused and says where they are found; with them the specimens are spent. Each changes
+// The shop's second tab. Things are fitted for grit and the specimens of one direction each: without the
+// specimens the tap is refused and says where they are found; with them the specimens are spent. Four change
 // what a hazard does to the drill: LAVA SKIN lets it through lava, SPORE DRIVE turns a pod's burst into speed,
-// ARC COIL turns an arc into a pip mended, MENDER mends the hull faster than it mends itself. A game saved before them loads
-// with none. The panel the top bar opens says what the drill is now, from the game's own figures.
+// ARC COIL turns an arc into a pip mended, MENDER mends the hull faster than it mends itself (and never as fast as
+// the shield after a knock lasts). A game saved before them loads with none. The panel the top bar opens says what
+// the drill is now, from the game's own figures. And the shop's tables keep their rules: the first tab's levels ask
+// distances that fit the reach they are priced beside, and the late game's open one at a time.
 import { makeGame, UPGRADES, WORKS, MAPS, CORE, DEATH, K, B, N, C } from '../harness.mjs';
+const { SHIELD } = await import('../../js/game.js');
+const { REACH } = await import('../../js/shop.js');
+const { CREATURES } = await import('../../js/fauna.js');
 
 const fails = [], check = (ok, what) => { if (!ok) fails.push(what); };
 const fly = (game, x, y, seconds) => { game.input.auto = [x, y, 1]; for (let f = 0; f < seconds * 60; f++) game.update(1 / 60); game.input.auto = null; };
@@ -11,7 +16,9 @@ const rest = (game, seconds) => { for (let f = 0; f < seconds * 60; f++) game.up
 const row = id => WORKS.find(u => u.id === id);
 const fitted = async (id, level = 1) => { const game = await makeGame(7, { drill: 4 }, { hull: true }); game.S.lv[id] = level; return game; };
 
-check(WORKS.map(u => u.id).join() === 'mender,lavaskin,sporedrive,arccoil,diamond' && WORKS.map(u => u.kin).join() === [B.FROST, B.EMBER, B.MIRE, B.LODE, B.FROST].join(), `the second tab's rows are ${WORKS.map(u => `${u.id} (${u.kin})`)}`);
+check(WORKS.map(u => u.id).join() === 'mender,lavaskin,sporedrive,arccoil,diamond,flywheel' && WORKS.map(u => u.kin).join() === [B.FROST, B.EMBER, B.MIRE, B.LODE, B.FROST, B.EMBER].join(), `the second tab's rows are ${WORKS.map(u => `${u.id} (${u.kin})`)}`);
+// The mender at every level is slower than the shield after a knock: a blow in the moment after a mend still lands.
+check(WORKS[0].values.every(v => v > SHIELD) && WORKS[0].spec.slice(0, 3).join() === '8,16,24', `the mender gives a pip back every ${WORKS[0].values} s, where the shield lasts ${SHIELD} s; its specimens are ${WORKS[0].spec}`);
 check(WORKS.every(u => u.grit.length === u.values.length - 1 && u.spec.length === u.grit.length && u.grit.every(g => g > 0) && u.spec.every(n => n > 0)), 'a row of the second tab has a level with no price in grit or in specimens');
 
 // ---- buying: refused without the specimens, and says where; spent when bought
@@ -24,7 +31,8 @@ check(WORKS.every(u => u.grit.length === u.values.length - 1 && u.spec.length ==
   check(game.canBuy(u) && game.specNeed(B.EMBER) === 12, `with 12 of the south's specimens the row ${game.canBuy(u) ? 'can' : 'cannot'} be bought; the south's next asks ${game.specNeed(B.EMBER)}`);
   const grit = game.S.grit;
   game.buy(u);
-  check(game.S.lv.lavaskin === 1 && Math.abs(game.S.spec[B.EMBER] - 0.6) < 1e-9 && game.S.grit === grit - u.grit[0] && game.S.spec[B.FROST] === 40 && game.cost(u) === null && game.specNeed(B.EMBER) === 0, `bought: level ${game.S.lv.lavaskin}, the south's specimens ${game.S.spec[B.EMBER]}, grit down ${grit - game.S.grit}`);
+  // (What it asks next is its level of the late game: sixty specimens, which the bar now says the south wants.)
+  check(game.S.lv.lavaskin === 1 && Math.abs(game.S.spec[B.EMBER] - 0.6) < 1e-9 && game.S.grit === grit - u.grit[0] && game.S.spec[B.FROST] === 40 && game.cost(u)?.spec === 60 && game.specNeed(B.EMBER) === 60, `bought: level ${game.S.lv.lavaskin}, the south's specimens ${game.S.spec[B.EMBER]}, grit down ${grit - game.S.grit}, next ${JSON.stringify(game.cost(u))}`);
   const m = row('mender');
   for (let l = 0; l < 3; l++) game.buy(m);
   check(game.S.lv.mender === 2 && game.val('mender') === 9 && Math.abs(game.S.spec[B.FROST] - 16) < 1e-9, `the mender bought as far as 40 specimens go: level ${game.S.lv.mender}, one pip every ${game.val('mender')} s, ${game.S.spec[B.FROST]} specimens left`);
@@ -288,7 +296,7 @@ for (const coil of [0, 1]) {
 // ---- the fourth tab: what the station is built up with late, at many times the other tabs' prices
 {
   const of = id => CORE.find(u => u.id === id), dearest = Math.max(...[...UPGRADES, ...WORKS, ...MAPS].flatMap(u => u.grit));
-  check(CORE.map(u => u.id).join() === 'refinery,cutter,lamp,blackbox', `the fourth tab's rows are ${CORE.map(u => u.id)}`);
+  check(CORE.map(u => u.id).join() === 'refinery,cutter,lamp,blackbox,livecatch,trophy', `the fourth tab's rows are ${CORE.map(u => u.id)}`);
   check(CORE.every(u => u.grit.every((g, l) => l === 0 || g > u.grit[l - 1]) && u.gems.every((g, l) => l === 0 || g > u.gems[l - 1]) && u.needs[1].length === u.grit.length), 'a row of the fourth tab does not cost more at each level, in grit and in gems, or asks nothing found');
   // (Of the levels a game comes to first: those of the late game are dear in every tab, further down.)
   const early = Math.max(...[...UPGRADES, ...WORKS, ...MAPS].flatMap(u => u.grit.filter(g => g < 1e7)));
@@ -369,12 +377,23 @@ for (const coil of [0, 1]) {
 {
   const all = [...UPGRADES, ...WORKS, ...MAPS, ...CORE], by = id => all.find(u => u.id === id);
   // (How many levels each row had before the late game's were added.)
-  const had = { drill: 4, winch: 5, scanner: 4, momentum: 4, hull: 4, mender: 3, maprange: 3, refinery: 5, cutter: 4, lamp: 3, blackbox: 3 };
+  const had = { drill: 4, winch: 5, scanner: 4, momentum: 4, hull: 4, mender: 3, maprange: 3, refinery: 5, cutter: 4, lamp: 3, blackbox: 3, lavaskin: 1, sporedrive: 1, arccoil: 1, livecatch: 2, trophy: 2 };
   const late = all.flatMap(u => u.grit.map((g, l) => ({ u, l, g })).filter(e => e.l >= (had[u.id] ?? 99)));
   // Each costs ten million grit or more, more than the level before it, and asks something that lies far out:
-  // more cells out than nine hundred, the parts of the far wrecks, relics, or specimens by the score.
-  const asks = ({ u, l }) => { const a = u.needs?.[1][l], [what, n] = Array.isArray(a) ? a : [u.needs?.[0], a]; return what === 'out' ? n >= 900 : what === 'parts' ? n >= 6 : what === 'relics' ? n >= 1 : (u.spec?.[l] ?? 0) >= 60; };
-  check(late.length === 24 && late.every(e => e.g >= 1e7 && e.g > e.u.grit[e.l - 1]) && late.every(asks), `the late game has ${late.length} levels; one that asks nothing far out: ${late.find(e => !asks(e))?.u.id}`);
+  // more cells out than any level before the late game asks (the winch's 700), the parts of the far wrecks,
+  // relics, the deep flanks' kinds analysed, nearly every kind of creature met, or specimens by the score.
+  const asks = ({ u, l }) => { const a = u.needs?.[1][l], [what, n] = Array.isArray(a) ? a : [u.needs?.[0], a]; return what === 'out' ? n > 700 : what === 'parts' ? n >= 6 : what === 'relics' ? n >= 1 : what === 'kinds' ? n >= 40 : what === 'beasts' ? n >= 12 : (u.spec?.[l] ?? 0) >= 60; };
+  check(late.length === 29 && late.every(e => e.g >= 1e7 && e.g > e.u.grit[e.l - 1]) && late.every(asks), `the late game has ${late.length} levels; one that asks nothing far out: ${late.find(e => !asks(e))?.u.id}`);
+  // They open one at a time: no two levels of any row ask the same distance of seven hundred cells or more, and none
+  // asks what a level of reach asks.
+  const outs = all.flatMap(u => u.needs ? u.needs[1].map(a => Array.isArray(a) ? a : [u.needs[0], a]).filter(([what, n]) => what === 'out' && n >= 700).map(([, n]) => [u.id, n]) : []);
+  const reachAsks = all[0].needs[1].filter(n => n > 0), shared = outs.filter(([id, n], i) => outs.some(([, m], j) => j !== i && m === n) || (id !== 'tether' && reachAsks.includes(n)));
+  check(outs.length >= 15 && !shared.length, `levels that ask the same distance as another: ${shared.map(([id, n]) => `${id} ${n}`).join(', ')}`);
+  // The hull and the ram ask no more of how far out the drill has been than eight tenths of the reach each level is
+  // priced beside (the reach after its step: its place beside the reach rounded up). (They asked 600 and 1,000 of
+  // reaches of 620 and 950, and were bought in the same minute as the reach after.)
+  const fit = ['hull', 'momentum'].flatMap(id => { const u = by(id); return u.beside.map((at, l) => [id, l, u.needs[1][l], REACH[Math.ceil(at)]]).filter(([, , n, R]) => n > 0.8 * R); });
+  check(!fit.length, `levels that ask more than eight tenths of their reach: ${fit.map(([id, l, n, R]) => `${id} ${l + 1} asks ${n} of ${R}`).join(', ')}`);
   check(all.every(u => u.values.length === u.grit.length + 1 && u.gems.length === u.grit.length && (!u.needs || u.needs[1].length === u.grit.length) && (!u.spec || u.spec.length === u.grit.length)), `a row's prices and its levels are not of a length: ${all.find(u => u.values.length !== u.grit.length + 1)?.id}`);
   const whole = all.reduce((sum, u) => sum + u.grit.reduce((a, b) => a + b, 0), 0), first = whole - late.reduce((sum, e) => sum + e.g, 0);
   check(whole > 2e9 && whole > first * 20, `the whole shop costs ${whole} grit, the levels before the late game ${first}`);
@@ -388,14 +407,17 @@ for (const coil of [0, 1]) {
   for (let n = 0; n < 30; n++) game.S.met[`place-${n}`] = 1;
   for (let pass = 0; pass < 12; pass++) for (const u of all) game.buy(u);
   const stuck = all.filter(u => game.cost(u)).map(u => `${u.id} ${game.lacks(u)}`);
-  check(game.val('drill') === 5 && game.val('winch') === 3 && game.val('momentum') === 2.2 && game.val('hull') === 8 && game.val('scanner') === 9 && game.val('refinery') === 2 && game.val('lamp') === 14 && game.val('maprange') === 5,
+  // (The ram's first level of the late game asks 760 cells out: it is the first of them a game comes to.)
+  check(game.val('drill') === 5 && game.val('winch') === 3 && game.val('momentum') === 2.5 && game.val('hull') === 9 && game.val('scanner') === 9 && game.val('refinery') === 2 && game.val('lamp') === 14 && game.val('maprange') === 5,
     `800 cells out with five parts and no relic, the rig is at bit ${game.val('drill')}, winch ${game.val('winch')}, ram ${game.val('momentum')}, hull ${game.val('hull')}, scan ${game.val('scanner')}, refinery ${game.val('refinery')}, lamp ${game.val('lamp')}, range ${game.val('maprange')}`);
-  check(stuck.includes('drill NEEDS 800/900 CELLS OUT') && stuck.includes('scanner NEEDS 5/6 WRECK PARTS') && stuck.includes('refinery NEEDS 0/1 RELICS HOME') && stuck.includes('maprange NEEDS 800/1000 CELLS OUT'), `what the rows of the late game ask: ${stuck.join('; ')}`);
+  check(stuck.includes('drill NEEDS 800/950 CELLS OUT') && stuck.includes('scanner NEEDS 5/6 WRECK PARTS') && stuck.includes('refinery NEEDS 0/1 RELICS HOME') && stuck.includes('maprange NEEDS 800/1000 CELLS OUT') && stuck.includes('trophy NEEDS 0/6 BEASTS MET'), `what the rows of the late game ask: ${stuck.join('; ')}`);
   game.shop = true; game.shopRise = 1; game.resize(320, 568, 1);
   for (const tab of ['rig', 'works', 'map', 'core']) { game.shopTab = tab; game.render(); }
+  // (Every kind of creature met as well: the trophy line's last level asks for twelve of the fourteen.)
   game.S.out = 2000; game.S.wrecks = game.S.wrecks.map(() => 1); game.S.relics = [1, 1, 0, 0];
+  game.S.fauna = { pal: null, met: Object.fromEntries(CREATURES.slice(1).map(c => [c.key, 1])), spent: [] };
   for (let pass = 0; pass < 12; pass++) for (const u of all) game.buy(u);
-  check(all.every(u => !game.cost(u)) && game.val('drill') === 8 && game.val('winch') === 5 && game.val('momentum') === 2.8 && game.val('hull') === 12 && game.val('mender') === 2 && game.val('refinery') === 3 && game.val('blackbox') === 0.9,
+  check(all.every(u => !game.cost(u)) && game.val('drill') === 8 && game.val('winch') === 5 && game.val('momentum') === 2.8 && game.val('hull') === 12 && game.val('mender') === 3.5 && game.val('refinery') === 3 && game.val('blackbox') === 0.9 && game.val('trophy') === 4,
     `having been everywhere, still to buy: ${all.filter(u => game.cost(u)).map(u => `${u.id} ${game.lacks(u) ?? ''}`).join('; ')}`);
   // And the drill of the late game plays: it cuts, flies and is drawn, with the pictures of the last levels that have them.
   game.shop = false;
@@ -406,5 +428,5 @@ for (const coil of [0, 1]) {
   game.openLab(true, 'stats'); game.render(); game.openLab(false);
 }
 
-console.log(fails.length ? `DEFECT:\n  ${fails.join('\n  ')}` : 'no defect: the second tab sells five things for specimens, four of which turn a hazard, and the stats say what the drill is');
+console.log(fails.length ? `DEFECT:\n  ${fails.join('\n  ')}` : 'no defect: the second tab sells six things for specimens, four of which turn a hazard; the stats say what the drill is; the late game opens a level at a time');
 process.exit(fails.length ? 1 : 0);

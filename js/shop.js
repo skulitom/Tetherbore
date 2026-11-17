@@ -69,22 +69,43 @@ const levels = (beside, share) => ({ beside, grit: beside.map(at => priced(at, s
 // of the first tab ask it, so the rig cannot be bought up from the ground about the core. (Kinds analysed and
 // places met were asked first, and both are to be had within two hundred cells: a game had the bit and the ram at
 // their last levels and a reach of 1,350 with nothing explored past a tenth of it.)
-export const NEEDS = { parts: 'WRECK PARTS', kinds: 'KINDS ANALYSED', places: 'PLACES MET', out: 'CELLS OUT', relics: 'RELICS HOME' };
-// `values` is what each level gives; `grit` and `gems` what the next level costs; `gem` whose gems it takes.
+// 'beasts' is how many kinds of creature have been met (js/fauna.js, fourteen in all), which only TROPHY LINE asks:
+// a line for foes is bought by a pilot who has met them.
+export const NEEDS = { parts: 'WRECK PARTS', kinds: 'KINDS ANALYSED', places: 'PLACES MET', out: 'CELLS OUT', relics: 'RELICS HOME', beasts: 'BEASTS MET' };
+// How much faster each level of the bit cuts than the first (js/game.js: `cutTime`, which divides by it; it is the
+// game's SPEED). It is here, beside the bit's row, so that the row can say what its next level does.
+export const CUT = [1, 1.6, 2.4, 3.6, 5, 6.5, 8.5, 11];
+// `values` is what each level gives; `grit` and `gems` what the next level costs; `gem` whose gems it takes;
+// `says(l)`, where a row has it, what the step from level l to the next changes, in a few words (21 characters at
+// the most, the narrowest phone's line), and where it says nothing the shop says `what`.
 export const UPGRADES = [
-  // The tether's reach: how far from the core the drill may go, by any road. Each level nearly doubles it. It is
+  // The tether's reach: how far from the core the drill may go, by any road. Each level is about six tenths more. It is
   // bought with grit alone, which every ground gives: no one direction's gems and nothing that must be found in
   // one place, so a player may follow a single direction as far out as they like. From the third level it asks that
   // the drill has been three fifths of the way out its tether already goes, in whatever direction.
   { id: 'tether', icon: 'string', name: 'REACH', what: 'TETHER GOES FURTHER', values: REACH, gem: B.MIRE, needs: ['out', REACH.slice(0, -1).map((R, l) => l < 2 ? 0 : Math.round(R * 0.6))], ...levels(REACH.slice(0, -1).map((R, l) => l), 1), gems: REACH.slice(0, -1).map(() => 0), show: v => `${v}` },
-  { id: 'drill', icon: 'drill', name: 'BIT', what: 'CUTS FASTER', values: [1, 2, 3, 4, 5], gem: B.LODE, needs: ['out', [0, 40, 130, 400]], ...levels([0.6, 2.2, 4.4, 6.6], 0.6), show: v => `MK${v}` },
-  { id: 'winch', icon: 'winch', name: 'WINCH', what: 'BIGGER HAULS AT FULL PAY', values: [1, 1.3, 1.6, 2, 2.5, 3], gem: B.FROST, needs: ['out', [0, 30, 100, 300, 700]], ...levels([0.8, 2, 3.6, 5.4, 7.2], 0.5), show: v => `x${v}` },
+  // The bit: its first four steps cut so many times faster (CUT); its late three (MK6 to MK8) are its plough, the
+  // drill keeping its run through ground they cut in a blink, softer ground first, as a cut can take no less than
+  // a frame and the run was lost at every cell.
+  { id: 'drill', icon: 'drill', name: 'BIT', what: 'CUTS FASTER', values: [1, 2, 3, 4, 5], gem: B.LODE, needs: ['out', [0, 40, 130, 400]], ...levels([0.6, 2.2, 4.4, 6.6], 0.6), show: v => `MK${v}`,
+    says: l => l < 4 ? `CUTS x${(CUT[l + 1] / CUT[l]).toFixed(1)} FASTER` : ['PLOUGHS SOFT ROCK', 'PLOUGHS DENSE ROCK', 'PLOUGHS SLATE TOO'][l - 4] },
+  // The winch: the bonus a haul is paid for its size, and the load it draws in at full pay (WINCH_LOAD), which is
+  // most of what a level does. It takes the west's gems, which have least else to buy.
+  { id: 'winch', icon: 'winch', name: 'WINCH', what: 'BIGGER LOADS', values: [1, 1.3, 1.6, 2, 2.5, 3], gem: B.MIRE, needs: ['out', [0, 30, 100, 300, 700]], ...levels([0.8, 2, 3.6, 5.4, 7.2], 0.5), show: v => `x${v}`,
+    says: l => `LOAD ${WINCH_LOAD[l]}>${WINCH_LOAD[l + 1]}` },
   { id: 'scanner', icon: 'scanner', name: 'SCAN', what: 'SEES DEEPER IN ROCK', values: [3, 4, 5, 7, 9], gem: B.FROST, needs: ['parts', [0, 1, 2, 4]], ...levels([0.4, 1.6, 3.4, 5.8], 0.3), show: v => `${v}` },
-  { id: 'momentum', icon: 'momentum', name: 'RAM', what: 'FLIES FASTER', values: [1, 1.25, 1.5, 1.8, 2.2], gem: B.LODE, needs: ['out', [0, 60, 200, 600]], ...levels([0.7, 2.4, 4.2, 6.2], 0.4), show: v => `x${v}` },
+  // The ram takes the south's gems, as the hull does: the two are the pilot's way through the worst of the ground.
+  // Its levels, and the hull's, ask no more than eight tenths of how far the reach they are priced beside goes
+  // (the reach after the step of `beside`, rounded up), so that each opens as that reach is flown and not in the
+  // same minute as the next reach.
+  { id: 'momentum', icon: 'momentum', name: 'RAM', what: 'FLIES FASTER', values: [1, 1.25, 1.5, 1.8, 2.2], gem: B.EMBER, needs: ['out', [0, 60, 200, 500]], ...levels([0.7, 2.4, 4.2, 6.2], 0.4), show: v => `x${v}` },
   // The hull: how many knocks the drill takes before it is wrecked and wound home (`hit`, `wreck`), a pip a level,
   // each a plate more on the drill. Its first level is priced beside a reach that has only just met hazards and
-  // asks no gems; from there on it takes the south's, whose lava is the worst of what it is for.
-  { id: 'hull', icon: 'hull', name: 'HULL', what: 'TAKES MORE KNOCKS', values: [5, 6, 7, 8, 9], gem: B.EMBER, needs: ['out', [150, 300, 600, 1000]], ...levels([3.5, 4.5, 5.5, 6.5], 0.5), show: v => `${v}` },
+  // asks no gems; from there on it takes the south's, whose lava is the worst of what it is for. (Its third and
+  // fourth levels asked 600 and 1,000 cells out, all of a reach of 620 and more than one of 950: they were bought
+  // in the same minute as the reach after, on every world. And its second asked 300, as the winch's fourth does,
+  // and the two were bought in the same minute.)
+  { id: 'hull', icon: 'hull', name: 'HULL', what: 'TAKES MORE KNOCKS', values: [5, 6, 7, 8, 9], gem: B.EMBER, needs: ['out', [150, 280, 440, 660]], ...levels([3.5, 4.5, 5.5, 6.5], 0.5), show: v => `${v}` },
 ];
 // What the lab can know: each thing the bit can crush, by the sheet and frame it is drawn from (`Game.sampleOf`),
 // with its name, where it lies (`where`, for its note, and `at`, a few words for its line in the list), whose part of
@@ -163,22 +184,34 @@ export const labLevel = n => { let l = 0; while (n >> l) l++; return l; };
 export const labNext = n => 2 ** labLevel(n);
 // The shop's second tab, WORKS: what is fitted to the drill for the rare things found in pockets. Each row is paid
 // for in grit and in the specimens of one direction (`kin`; `spec`, how many each level asks), which only that
-// direction's pockets give. A row of two values is fitted once; MENDER has levels.
+// direction's pockets give. A row of two values is fitted once; MENDER and FLYWHEEL have levels, and the three
+// fittings for hazards a second level late in a game (in LATE: the specimens they ask pile up only after about an
+// hour and a half).
 //   MENDER      the hull mends itself, a pip back every so many seconds since the last knock (the value): every
-//               twenty with no mender fitted, so a drill that gets clear of trouble recovers, and faster with one
-//   LAVA SKIN   lava neither knocks the hull nor stops the drill: it flies through it
-//   SPORE DRIVE a spore pod's burst does not knock: it drives the drill half as fast again for BOOST seconds
-//   ARC COIL    a crystal's arc does not knock: it mends a pip
+//               twenty with no mender fitted, so a drill that gets clear of trouble recovers, and faster with one.
+//               Never as fast as SHIELD (js/game.js): a blow inside the shield after a knock takes nothing, so a
+//               mender quicker than the shield would give back every pip a steady fire took, and the hull's late
+//               levels and the black box's would be for nothing
+//   LAVA SKIN   lava neither knocks the hull nor stops the drill: it flies through it; at its second level (the
+//               bellows) woken lava smelts a wider rind of slag to steel
+//   SPORE DRIVE a spore pod's burst does not knock: it drives the drill half as fast again for BOOST seconds; at its
+//               second (the graft) moss that closes beside ore the world laid heals as that ore
+//   ARC COIL    a crystal's arc does not knock: it mends a pip; at its second (the capacitor) it charges the bit,
+//               and the next cut shatters the hard rock round it
 //   DIAMOND TIP metal (steel, and the iron of keystones) cuts as fast as its kind says (js/world.js: DIG_TIME);
 //               without it, METAL times as slow (js/game.js). Paid in the north's specimens, as starglass is its
 //               mineral: a clear crystal hard enough to cut iron.
+//   FLYWHEEL    a haul of a dozen cells or more that comes within a few seconds of the last pays a share more for
+//               each in the run, up to the value: a stream of quick loops against the winch's one great one. Paid
+//               in the south's specimens, which have least else to buy.
 const works = (beside, share, spec) => ({ beside, grit: beside.map(at => priced(at, share)), gems: beside.map(() => 0), spec });
 export const WORKS = [
-  { id: 'mender', name: 'MENDER', what: 'HULL MENDS FASTER', values: [20, 14, 9, 5], kin: B.FROST, gem: B.FROST, ...works([5, 6, 7], 0.4, [8, 16, 30]), show: v => `${v}S` },
-  { id: 'lavaskin', name: 'LAVA SKIN', what: 'SWIMS IN LAVA', values: [0, 1], kin: B.EMBER, gem: B.EMBER, ...works([5.5], 0.4, [12]), show: v => v ? 'ON' : 'OFF' },
-  { id: 'sporedrive', name: 'SPORE DRIVE', what: 'SPORES SPEED IT UP', values: [0, 1], kin: B.MIRE, gem: B.MIRE, ...works([5.5], 0.4, [12]), show: v => v ? 'ON' : 'OFF' },
-  { id: 'arccoil', name: 'ARC COIL', what: 'ARCS MEND THE HULL', values: [0, 1], kin: B.LODE, gem: B.LODE, ...works([5.5], 0.4, [12]), show: v => v ? 'ON' : 'OFF' },
+  { id: 'mender', name: 'MENDER', what: 'HULL MENDS FASTER', values: [20, 14, 9, 5], kin: B.FROST, gem: B.FROST, ...works([5, 6, 7], 0.4, [8, 16, 24]), show: v => `${v}S` },
+  { id: 'lavaskin', name: 'LAVA SKIN', what: 'SWIMS IN LAVA', values: [0, 1], kin: B.EMBER, gem: B.EMBER, ...works([5.5], 0.4, [12]), show: v => ['OFF', 'SWIM', 'SMELT'][v], says: l => l ? 'SMELTS A WIDER RIND' : null },
+  { id: 'sporedrive', name: 'SPORE DRIVE', what: 'SPORES SPEED IT UP', values: [0, 1], kin: B.MIRE, gem: B.MIRE, ...works([5.5], 0.4, [12]), show: v => ['OFF', 'DRIVE', 'GRAFT'][v], says: l => l ? 'MOSS HEALS AS ORE' : null },
+  { id: 'arccoil', name: 'ARC COIL', what: 'ARCS MEND THE HULL', values: [0, 1], kin: B.LODE, gem: B.LODE, ...works([5.5], 0.4, [12]), show: v => ['OFF', 'MEND', 'CHARGE'][v], says: l => l ? 'ARCS CHARGE THE BIT' : null },
   { id: 'diamond', name: 'DIAMOND TIP', what: 'CUTS METAL FAST', values: [0, 1], kin: B.FROST, gem: B.FROST, ...works([4.5], 0.4, [10]), show: v => v ? 'ON' : 'OFF' },
+  { id: 'flywheel', name: 'FLYWHEEL', what: 'QUICK HAULS PAY MORE', values: [0, 0.4, 0.6], kin: B.EMBER, gem: B.EMBER, ...works([4.5, 6.5], 0.4, [10, 30]), show: v => v ? `+${Math.round(v * 100)}%` : 'OFF', says: () => '+8% A HAUL IN A ROW' },
 ];
 // The shop's third tab, MAP: what the map in the corner shows.
 //   RANGE    how many cells of ground a pixel of the map is, so how far it shows: 69 cells across at first
@@ -190,10 +223,12 @@ export const WORKS = [
 // cells (js/drawing.js: `findsNear`; and js/fauna.js, whose wren never leads the drill to one the finder marks).
 export const FOUND = { cache: 1, geode: 2, prism: 3 };
 export const FINDER = [0, 120, 200, 320];
+// (RANGE takes the west's gems, as the winch does: of the four directions' gems the west's had least to buy.)
 export const MAPS = [
-  { id: 'maprange', icon: 'scanner', name: 'RANGE', what: 'MAP SHOWS FURTHER', values: [1.5, 2.25, 3.5, 5], gem: B.FROST, ...levels([2, 4, 6], 0.25), show: v => `${Math.round(v * 46)}` },
+  { id: 'maprange', icon: 'scanner', name: 'RANGE', what: 'MAP SHOWS FURTHER', values: [1.5, 2.25, 3.5, 5], gem: B.MIRE, ...levels([2, 4, 6], 0.25), show: v => `${Math.round(v * 46)}` },
   { id: 'maplens', icon: 'scanner', name: 'LENS', what: 'MAP TELLS MORE APART', values: [0, 1, 2, 3], gem: B.LODE, ...levels([1.5, 3.5, 5.5], 0.25), show: v => ['ROCK', 'ORE', 'HARD', 'ALL'][v] },
-  { id: 'mapfinder', icon: 'scanner', name: 'FINDER', what: 'MARKS FINDS NEAR THE DRILL', values: [0, 1, 2, 3], gem: B.MIRE, ...levels([2.5, 4.5, 6.5], 0.25), show: v => ['OFF', 'CACHE', 'GEODE', 'PRISM'][v] },
+  { id: 'mapfinder', icon: 'scanner', name: 'FINDER', what: 'MARKS FINDS UNSEEN', values: [0, 1, 2, 3], gem: B.MIRE, ...levels([2.5, 4.5, 6.5], 0.25), show: v => ['OFF', 'CACHE', 'GEODE', 'PRISM'][v],
+    says: l => `${['CACHES', 'GEODES', 'PRISMS'][l]} ${FINDER[l + 1]} OUT` },
   { id: 'chart', icon: 'scanner', name: 'CHART', what: 'MAP OF THE WHOLE REACH', values: [0, 1], gem: B.EMBER, ...levels([3], 0.3), show: v => v ? 'ON' : 'OFF' },
 ];
 // The shop's fourth tab, CORE: what is built into the station late in a game, at many times the price of anything
@@ -210,14 +245,30 @@ export const MAPS = [
 //              for most of three and the last for all four; a long game played round all four came to eight in ten
 //              minutes, eighteen in about thirty-five and twenty-eight in about eighty. (It asked 4, 7, 10 and 12 of
 //              sixteen, which one direction gave within two hundred cells.)
-//   LAMP       the drill's light reaches further (cells)
+//              Its first level of the late game asks for 42 kinds, which only the deep flanks make up: one wall of
+//              the late game that is about what has been analysed and not how far out the drill has been.
+//   LAMP       the drill's light reaches further (cells), and sees across open ground as far as it reaches, as the
+//              scan sees through rock. (It cost what the levels round it do, and gave a light that lit no more than
+//              a phone's screen showed: it is a third of that now.)
 //   BLACK BOX  when the drill is lost, this share of the grit the trip had earned is kept
+//   LIVE CATCH a rare hazard hauled while it is awake (a bell tolling, a fumarole between its jets, a lodestone
+//              humming) pays its lump this many times over; a glowworm swimming pays twice with none, as it always
+//              has. Paid in the west's gems, and asks for kinds analysed: thirty and forty, as many as a game
+//              has by the time it has been out to the rare hazards (from 450 cells) and past them
+//   TROPHY LINE a foe at rest (a bat clinging after its swoop, a leech on the floor, a spitter sagging) caught in a
+//              loop of the tether pays this many specimens of its ground's direction. Paid in the south's gems, and
+//              asks for kinds of creature met (js/fauna.js)
 const deep = (steps, gems) => ({ beside: steps.map(([at]) => at), grit: steps.map(([at, share]) => priced(at, share)), gems });
 export const CORE = [
   { id: 'refinery', pic: 'grit', name: 'REFINERY', what: 'HAULS PAY MORE GRIT', values: [1, 1.15, 1.3, 1.5, 1.75, 2], gem: B.FROST, needs: ['places', [6, 9, 12, 16, 20]], ...deep([[5, 1.5], [6, 2], [7, 2.5], [8, 3], [8, 6]], [600, 1500, 4000, 10000, 25000]), show: v => `x${v}` },
   { id: 'cutter', pic: 'lode', name: 'GEM CUTTER', what: 'HAULS PAY MORE GEMS', values: [1, 1.2, 1.4, 1.7, 2], gem: B.LODE, needs: ['kinds', [8, 18, 28, 36]], ...deep([[5.5, 1.5], [6.5, 2], [7.5, 3], [8, 5]], [800, 2500, 8000, 20000]), show: v => `x${v}` },
-  { id: 'lamp', pic: 'bolt', name: 'LAMP', what: 'LIGHT REACHES FURTHER', values: [8.5, 10, 12, 14], gem: B.EMBER, needs: ['parts', [1, 3, 5]], ...deep([[4, 1], [6, 1.5], [8, 2]], [0, 1000, 6000]), show: v => `${v}` },
+  { id: 'lamp', pic: 'bolt', name: 'LAMP', what: 'LIGHT SEES CAVERNS', values: [8.5, 10, 12, 14], gem: B.EMBER, needs: ['parts', [1, 3, 5]], ...deep([[4, 0.5], [6, 0.8], [8, 1.1]], [0, 600, 3000]), show: v => `${v}` },
   { id: 'blackbox', pic: 'lock', name: 'BLACK BOX', what: 'KEEPS GRIT WHEN LOST', values: [0, 0.25, 0.5, 0.75], gem: B.MIRE, needs: ['places', [5, 10, 15]], ...deep([[5, 1], [6.5, 2], [8, 3]], [400, 2000, 9000]), show: v => `${Math.round(v * 100)}%` },
+  // (The live catch's value is what a woken rare's lump is multiplied by: 1, by nothing, before it is bought.)
+  { id: 'livecatch', pic: 'mire', name: 'LIVE CATCH', what: 'WOKEN RARES PAY MORE', values: [1, 2, 3], gem: B.MIRE, needs: ['kinds', [30, 40]], ...deep([[6.5, 1.5], [7.5, 2]], [1500, 4000]), show: v => v > 1 ? `ALL x${v}` : 'WORM x2',
+    says: l => l ? `WOKEN RARES PAY x${CORE[4].values[l + 1]}` : 'BELLS, VENTS, STONES' },
+  { id: 'trophy', pic: 'spec-ember', name: 'TROPHY LINE', what: 'LOOPS CATCH FOES', values: [0, 2, 3], gem: B.EMBER, needs: ['beasts', [6, 10]], ...deep([[6, 1], [7, 1.5]], [1000, 3000]), show: v => v ? `${v} SPEC` : 'OFF',
+    says: l => `A FOE PAYS ${CORE[5].values[l + 1]} SPEC` },
 ];
 export const ROWS = [...UPGRADES, ...WORKS, ...MAPS, ...CORE];
 // The late game: levels past the ones above, for the two thirds of the ground that lie beyond them. Everything
@@ -225,24 +276,41 @@ export const ROWS = [...UPGRADES, ...WORKS, ...MAPS, ...CORE];
 // the relics lie two thousand out in each of four directions: a game had the whole shop at its last levels, and
 // 64 million grit over, with a twentieth of the ground inside its reach explored. Each row here is the levels
 // added to a row above: [what the level gives, grit, gems, what must have been found (as `needs`: a count of the
-// row's own kind, or [kind, count]), specimens]. They cost from ten million to three hundred million grit, 2.4
-// thousand million in all, and gems by the thousand of the direction each row takes them from; and they ask that
-// the drill has been further out than any level above asks (900 to 1,800 cells), that the far wrecks' parts have
-// come home (the last lie 1,200 and 1,700 out), and, the station's last, that relics have. (No level of reach: the
-// tether already goes past the relics.) Each of them is drawn as a step up on the drill, the tether or the station,
-// as every level above is (js/fit.js). `EARLY` is each row's last level before these, for a picture of a game there.
+// row's own kind, or [kind, count]), specimens]. They cost from ten million to four hundred and fifty million
+// grit, 3.4 thousand million in all, and gems by the thousand of the direction each row takes them from; and they
+// ask that the drill has been further out than any level above asks (760 to 1,850 cells), that the far wrecks'
+// parts have come home (the last lie 1,200 and 1,700 out), kinds analysed, creatures met or specimens by the
+// score, and, the station's last, that relics have. (No level of reach: the tether already goes past the relics.)
+// Each of them is drawn as a step up on the drill, the tether or the station, as every level above is
+// (js/fit.js). `EARLY` is each row's last level before these, for a picture of a game there.
+// No two of them ask the same distance, and none what a level of reach asks (900, for 2,300): they open one at a
+// time, forty or fifty cells apart, as the drill goes further out, the first three (the ram, the spore drive's
+// graft and the mender, 760 to 850) while it works its way out to the last reach's 900. (They asked 900, 1,000,
+// 1,500 and 1,800 of two and three rows at once, and were bought together in the minute the drill first got there,
+// with up to three hundred million grit banked waiting; and nothing at all asked between 700 and 900, which a game
+// took forty minutes and more to cross with nothing to buy.) A row's first late level is priced as it was; its
+// second and third at half as much again, so that from about a hundred minutes on, when levels open faster than
+// grit comes in, there is still something to save for.
 const LATE = {
-  drill: [[6, 25e6, 4000, 900], [7, 80e6, 10000, 1300], [8, 250e6, 25000, 1700]],
-  winch: [[3.5, 25e6, 5000, 1000], [4, 80e6, 12000, 1400], [5, 250e6, 30000, 1800]],
-  scanner: [[11, 20e6, 3000, 6], [13, 70e6, 8000, 8]],
-  momentum: [[2.5, 30e6, 5000, 1100], [2.8, 100e6, 14000, 1500]],
-  hull: [[10, 25e6, 3000, 1200], [11, 80e6, 8000, 1500], [12, 250e6, 20000, 1800]],
-  mender: [[3, 30e6, 0, 0, 60], [2, 100e6, 0, 0, 120]],
-  maprange: [[7, 10e6, 2000, ['out', 1000]], [10, 40e6, 6000, ['out', 1600]]],
-  refinery: [[2.5, 80e6, 30000, ['relics', 1]], [3, 300e6, 45000, ['relics', 2]]],
-  cutter: [[2.5, 60e6, 22000, ['out', 1500]], [3, 220e6, 35000, ['relics', 1]]],
-  lamp: [[16, 30e6, 10000, 7], [18, 90e6, 25000, 8]],
+  drill: [[6, 25e6, 4000, 950], [7, 120e6, 10000, 1350], [8, 375e6, 25000, 1750]],
+  winch: [[3.5, 25e6, 5000, 1050], [4, 120e6, 12000, 1450], [5, 375e6, 30000, 1850]],
+  scanner: [[11, 20e6, 3000, 6], [13, 105e6, 8000, 8]],
+  momentum: [[2.5, 30e6, 5000, 760], [2.8, 150e6, 14000, 1550]],
+  hull: [[10, 25e6, 3000, 1200], [11, 120e6, 8000, 1500], [12, 375e6, 20000, 1800]],
+  // (The mender's asked 60 and 120 of the north's specimens, the scarcest kind, where a long game gathers sixty to a
+  // hundred in three hours: they were bought on two worlds of six. And they mended every 3 and 2 seconds, no slower
+  // than the shield: no steady fire could wear the hull down. See WORKS.)
+  mender: [[4, 30e6, 0, 850, 40], [3.5, 150e6, 0, 1650, 60]],
+  lavaskin: [[2, 12e6, 0, 0, 60]],
+  sporedrive: [[2, 12e6, 0, 810, 40]],
+  arccoil: [[2, 15e6, 0, 0, 60]],
+  maprange: [[7, 10e6, 2000, ['out', 1000]], [10, 60e6, 6000, ['out', 1700]]],
+  refinery: [[2.5, 80e6, 30000, ['relics', 1]], [3, 450e6, 45000, ['relics', 2]]],
+  cutter: [[2.5, 60e6, 22000, ['kinds', 42]], [3, 330e6, 35000, ['relics', 1]]],
+  lamp: [[16, 30e6, 10000, 7], [18, 135e6, 25000, 8]],
   blackbox: [[0.9, 50e6, 15000, ['out', 1600]]],
+  livecatch: [[4, 40e6, 12000, ['relics', 1]]],
+  trophy: [[4, 30e6, 10000, ['beasts', 12]]],
 };
 export const EARLY = Object.fromEntries(ROWS.map(u => [u.id, u.values.length - 1]));
 for (const u of ROWS) for (const [value, grit, gems, need, spec] of LATE[u.id] ?? []) {

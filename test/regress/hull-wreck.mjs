@@ -101,13 +101,15 @@ for (const seed of [7, 19, 23]) {
   check(row.gems[0] === 0 && row.grit.every((g, l) => l === 0 || g > row.grit[l - 1]), `the hull's prices are ${row.grit} grit and ${row.gems} gems`);
   const game = await makeGame(7, {}, { hull: true });
   game.S.grit = 1e9; game.S.gems[B.EMBER] = 1e6;
-  // Its levels ask that the drill has been 150, 300, 600 and 1,000 cells out: having been nowhere, the tap is refused and says so.
+  // Its levels ask that the drill has been 150, 280, 440 and 660 cells out: having been nowhere, the tap is refused and says so.
   game.buy(row);
   check(game.S.lv.hull === 0 && game.shopNote?.text === 'NEEDS 0/150 CELLS OUT' && game.lacks(row) === 'NEEDS 0/150 CELLS OUT', `with grit and a drill that has been nowhere the tap ${game.S.lv.hull ? 'bought' : 'was refused'} and said '${game.shopNote?.text}'`);
-  game.S.out = 1000;
+  game.S.out = 659;
   for (let l = 0; l < 4; l++) game.buy(row);
+  check(game.S.lv.hull === 3 && game.lacks(row) === 'NEEDS 659/660 CELLS OUT', `having been 659 cells out: level ${game.S.lv.hull}, and the next says '${game.lacks(row)}'`);
+  game.S.out = 660;
   for (let l = 0; l < 3; l++) game.buy(row);
-  check(game.S.lv.hull === 4 && game.val('hull') === 9 && game.hull === 9 && game.lacks(row) === 'NEEDS 1000/1200 CELLS OUT', `having been 1,000 cells out: level ${game.S.lv.hull}, ${game.hull} pips, and the next says '${game.lacks(row)}'`);
+  check(game.S.lv.hull === 4 && game.val('hull') === 9 && game.hull === 9 && game.lacks(row) === 'NEEDS 660/1200 CELLS OUT', `having been 660 cells out: level ${game.S.lv.hull}, ${game.hull} pips, and the next says '${game.lacks(row)}'`);
   // The three levels of the late game ask for 1,200, 1,500 and 1,800 cells out; the last makes twelve pips, drawn with the last plates there are.
   game.S.out = 1800;
   for (let l = 0; l < 4; l++) game.buy(row);
