@@ -6,7 +6,8 @@
 //     opposite walls; inside it all open but its store, six cells of rich ore three by two against a wall with no
 //     door, so that nothing in it stands free; its collar all ground (no cave, no find opened in it);
 //   - its walls are joined to the rock: the ground round its collar, as the world lays it, runs on unbroken, a cell
-//     beside the next, twenty-four cells beyond the collar;
+//     beside the next, twenty-four cells beyond the collar, from a side of the collar and not only a corner of it
+//     (and on worlds 2 and 11, where two halls met the rock only at a corner, those two are not laid);
 //   - none meets a pocket (no cell of its collar is a pocket's ground), a find (no sector's find has its middle
 //     within six cells of its collar), a site (no site's heart within its reach and two), a wreck, a relic's vault
 //     or a shrine;
@@ -27,6 +28,25 @@ if (typeof World.prototype.hallOf !== 'function') {
   console.log('DEFECT: the world lays no builders\' halls (`hallOf`)');
   process.exit(1);
 }
+// Whether the ground round a hall's collar, as the world lays it, runs on to 24 cells beyond it, a cell joined to the
+// next by a side, from the cells against the collar's sides (a corner's cell touches the collar only at a point).
+const held = (w, H) => {
+  const out = (x, y) => Math.max(H.x0 - 2 - x, x - H.x1 - 2, H.y0 - 2 - y, y - H.y1 - 2, 0), seen = new Set(), list = [];
+  for (let y = H.y0 - 3; y <= H.y1 + 3; y++) for (let x = H.x0 - 3; x <= H.x1 + 3; x++) {
+    if (out(x, y) !== 1 || ((x === H.x0 - 3 || x === H.x1 + 3) && (y === H.y0 - 3 || y === H.y1 + 3))) continue;
+    seen.add(y * N + x);
+    if (w.at(x, y) !== K.EMPTY) list.push(x, y);
+  }
+  while (list.length) {
+    const y = list.pop(), x = list.pop();
+    if (out(x, y) > 24) return true;
+    for (let s = 0; s < 4; s++) {
+      const u = x + DX[s], v = y + DY[s];
+      if (out(u, v) > 0 && !seen.has(v * N + u) && w.at(u, v) !== K.EMPTY) { seen.add(v * N + u); list.push(u, v); }
+    }
+  }
+  return false;
+};
 const counts = { inner: [0, 0], outer: [0, 0], relic: [0, 0] }, ways = new Set();
 let halls = 0, walls = 0, cells = 0;
 for (const seed of [1, 7, 123456]) {
@@ -68,18 +88,7 @@ for (const seed of [1, 7, 123456]) {
       if (inner(x, y) > 0 && w.at(x, y) === K.EMPTY) open++;
     }
     check(!open && !pocket, `${where}: its collar has ${open} open cells and ${pocket} of a pocket's ground`);
-    const seen = new Set(), list = [];
-    for (let y = H.y0 - 3; y <= H.y1 + 3; y++) for (let x = H.x0 - 3; x <= H.x1 + 3; x++) if (out(x, y) === 1 && w.at(x, y) !== K.EMPTY) { seen.add(y * N + x); list.push(x, y); }
-    let held = false;
-    while (list.length && !held) {
-      const y = list.pop(), x = list.pop();
-      if (out(x, y) > 24) held = true;
-      for (let s = 0; s < 4; s++) {
-        const u = x + DX[s], v = y + DY[s];
-        if (out(u, v) > 0 && !seen.has(v * N + u) && w.at(u, v) !== K.EMPTY) { seen.add(v * N + u); list.push(u, v); }
-      }
-    }
-    check(held, `${where}: the hall at ${H.x0 - C},${H.y0 - C} hangs on nothing`);
+    check(held(w, H), `${where}: the hall at ${H.x0 - C},${H.y0 - C} hangs on nothing`);
     // Clear of what else lies there.
     for (let fy = sy - 1; fy <= sy + 1; fy++) for (let fx = sx - 1; fx <= sx + 1; fx++) {
       const [what, x, y] = w.findSpot(fx, fy);
@@ -110,6 +119,13 @@ for (const seed of [1, 7, 123456]) {
   check(none, `seed ${seed}: generation 1 lays halls`);
 }
 check(halls > 600 && walls > 50000, `only ${halls} halls were laid, with ${walls} cells of wall`);
+// Two squares, on worlds 2 and 11, where the rock round a hall met its collar only at a corner, the hall and its
+// collar standing free in a cavern: no hall is laid there, or it is held by a side.
+for (const [seed, sx, sy] of [[2, 21, -35], [11, -47, -1]]) {
+  const w = new World(); w.reset(seed);
+  const H = w.hallOf(sx, sy);
+  check(H === null || held(w, H), `seed ${seed} square ${sx},${sy}: the hall at ${H?.x0 - C},${H?.y0 - C} meets the rock only at a corner of its collar`);
+}
 check(ways.size === 4, `halls lie only ${[...ways]}`);
 const share = ([n, of]) => n / of;
 check(share(counts.inner) > 0.04 && share(counts.outer) > share(counts.inner) * 1.4 && share(counts.relic) > share(counts.outer) * 1.2,

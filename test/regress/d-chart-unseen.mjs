@@ -11,8 +11,16 @@
 //   - the borders ask the world no more than the picture did: one `biomeKnown` a pixel;
 //   - each corner's shrine is marked from the start, a cross in its two parents' colours where it lies, and each
 //     corner's herald is rung in its rare hazard's colour once the finder reaches it (the drill set down beside
-//     it), and not before.
-// Fails on the chart before: a deep flank unseen was a third of its colour, flat, and no border nor shrine shown.
+//     it), and not before;
+//   - each seam is told on the chart from every ground made by hand it meets (not a pocket, nor a generated cross,
+//     whose colours are its parents' and so a seam's kin's): its colour unseen, the ground's
+//     shade and grain together, is 7 or more apart from each of theirs, as worlds 7, 11 and 23 lay them on the
+//     diagonals (cinderfen was 0.9 from scoria and 1.0 from ember, the south's ground carried on to the diagonal, and
+//     glassdune 5.6 from lode);
+//   - and the colour of every ground on the map is its rock's (the mean of its sheet's pixels), as a hue, wherever
+//     both are coloured (obsidian's was violet, over amber sand).
+// Fails on the chart before: a deep flank unseen was a third of its colour, flat, and no border nor shrine shown;
+// and before the seams were coloured apart, on cinderfen, glassdune and obsidian.
 //   node test/regress/d-chart-unseen.mjs
 import { makeGame, world, C, N } from '../harness.mjs';
 const { K, rowOf, cellHash, SEAMS, SHRINES } = world;
@@ -102,5 +110,51 @@ const read = (out, size, per, mx0, my0, big) => {
   const near = rung();
   check(before === 0 && near >= 6, `the north-east's herald (${type}) is rung with ${before} dots from the core and ${near} with the drill beside it`);
 }
-console.log(fails.length ? `DEFECT: ${fails.join('\n        ')}` : 'ok: ground unseen reads at a luminance of 34 or more, grained, with its borders on the chart; the shrines are marked and the corners\' heralds rung within the finder');
+// Each seam against the grounds it meets, on the chart.
+{
+  const { World, BIOMES } = world, unseen = row => {
+    const g = rgb(row.debris[1]), s = unseenShade(row), gs = Math.min(0.65, Math.max(0.2, 46 / lum(...g)));
+    return [0, 1, 2].map(n => 0.65 * row.map[n] * s + 0.35 * g[n] * gs);
+  };
+  const meets = new Map(), seam = row => row.seam !== null && row.seam !== undefined && !row.deep;
+  for (const seed of [7, 11, 23]) {
+    const v = new World(); v.reset(seed);
+    for (let y = -2300; y <= 2300; y += 6) for (let x = -2300; x <= 2300; x += 6) {
+      const r = Math.hypot(x, y);
+      if (r < 440 || r > 2300 || Math.abs(Math.abs(x) - Math.abs(y)) > 400) continue;
+      const a = rowOf(v.biomeAt(C + x, C + y));
+      for (const [u, t] of [[6, 0], [0, 6]]) {
+        const b = rowOf(v.biomeAt(C + x + u, C + y + t));
+        if (a.id === b.id || a.pocket !== null || b.pocket !== null || a.id >= 128 || b.id >= 128) continue;
+        if (seam(a)) meets.set(`${a.id}:${b.id}`, [a, b]);
+        if (seam(b)) meets.set(`${b.id}:${a.id}`, [b, a]);
+      }
+    }
+  }
+  const seams = new Set([...meets.values()].map(([a]) => a.name));
+  check(seams.size === 4, `the seams met on the chart are ${[...seams]}`);
+  for (const [a, b] of meets.values()) {
+    const p = unseen(a), q = unseen(b), apart = Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]);
+    check(apart >= 7, `on the chart ${a.name} is ${apart.toFixed(1)} from ${b.name} beside it`);
+  }
+  // Each ground's colour and its rock's, as hues.
+  const { readFileSync } = await import('node:fs'), { decodePNG } = await import('../../tools/png.mjs');
+  const hue = ([r, g, b]) => {
+    const most = Math.max(r, g, b), d = most - Math.min(r, g, b);
+    return [d ? ((most === r ? (g - b) / d + 6 : most === g ? (b - r) / d + 2 : (r - g) / d + 4) * 60) % 360 : 0, most ? d / most : 0];
+  };
+  let rows = 0;
+  for (const row of BIOMES) {
+    if (!row || row.id >= 128 || row.pocket !== null) continue;
+    const { data: rgba } = decodePNG(readFileSync(new URL(`../../assets/${row.sheet}.png`, import.meta.url))), sum = [0, 0, 0];
+    let n = 0;
+    for (let i = 0; i < rgba.length; i += 4) if (rgba[i + 3] >= 200) { sum[0] += rgba[i]; sum[1] += rgba[i + 1]; sum[2] += rgba[i + 2]; n++; }
+    const [rock, rs] = hue(sum.map(v => v / n)), [map, ms] = hue(row.map), off = Math.min(Math.abs(rock - map), 360 - Math.abs(rock - map));
+    if (rs < 0.25 || ms < 0.25) continue;
+    rows++;
+    check(off <= 25, `${row.name}'s colour on the map is ${row.map} (hue ${map.toFixed(0)}), its rock's hue ${rock.toFixed(0)}`);
+  }
+  check(rows > 15, `only ${rows} grounds' colours were held to their rocks'`);
+}
+console.log(fails.length ? `DEFECT: ${fails.join('\n        ')}` : 'ok: ground unseen reads at a luminance of 34 or more, grained, with its borders on the chart; the shrines are marked and the corners\' heralds rung within the finder; each seam is told from the grounds beside it, and each ground\'s colour on the map is its rock\'s');
 process.exit(fails.length ? 1 : 0);

@@ -7,12 +7,15 @@
 //     it does not: flown due north, where there is none, it lands where the flight in magma lands;
 //   - in every other row there is (none has a current) it lands where the flight in the home ground does;
 //   - with the thumb lifted the drill stands: in the glacier, left still for two seconds, it has not moved;
+//   - the air leans as hard as the thumb steers: steered straight against it, at a tenth of a full drag (a thumb a
+//     few pixels from where it came down), from a stand, the drill goes the way it is steered in every half second
+//     of two, in the glacier and in the caldera, if more slowly than in their flanks (it was carried backward);
 //   - the game says the flow as it is (`flow`: the row's current and the way of the air), and nothing where there
 //     is none.
 // Fails on the game before there were currents: the glacier's flight is rime's, and the caldera's magma's.
 //   node test/regress/c10-currents.mjs
 import { makeGame, world, C, N } from '../harness.mjs';
-import { arena, fixRandom } from './lib/lasso.mjs';
+import { arena, fixRandom, flyTo, idle } from './lib/lasso.mjs';
 const { K, B, BIOMES } = world;
 
 const fails = [], check = (ok, what) => { if (!ok && fails.length < 20) fails.push(what); };
@@ -63,5 +66,26 @@ for (const row of BIOMES) {
   const r = await fly(GLACIER, 1, 0, 120);
   check(r.moved === 0, `left still in the glacier the drill moved ${r.moved} cells`);
 }
-console.log(fails.length ? `DEFECT: ${fails.join('\n        ')}` : `ok: the glacier's wind and the caldera's heat lean on a flight with the thumb down, the same every time; ${rows} other rows lean on nothing, and a drill left still stands`);
+// A light thumb against the air.
+for (const [b, plain, kind, nameOf] of [[GLACIER, RIME, 'wind', 'glacier'], [CALDERA, MAGMA, 'heat', 'caldera']]) {
+  const along = [];
+  for (const ground of [b, plain]) {
+    fixRandom(3);
+    const game = await makeGame(7, { tether: 6 }), d = game.drill, f = { x: 0, y: 0 };
+    arena(game, 80, K.EMPTY, ground);
+    game.changed();
+    flyTo(game, 20, 20); idle(game, 0.5);
+    game.world.flowAt(d.x, d.y, kind, f);
+    const ux = -f.x / Math.hypot(f.x, f.y), uy = -f.y / Math.hypot(f.x, f.y), steps = [];
+    let px = d.x, py = d.y;
+    for (let n = 1; n <= 120; n++) {
+      game.input.auto = [ux, uy, 0.1]; game.update(1 / 60);
+      if (n % 30 === 0) { steps.push((d.x - px) * ux + (d.y - py) * uy); px = d.x; py = d.y; }
+    }
+    along.push(steps);
+  }
+  const [air, still] = along, sum = list => list.reduce((a, v) => a + v, 0);
+  check(air.every(v => v > 0) && sum(air) < sum(still), `steered lightly against the ${nameOf}'s air the drill goes ${air.map(v => v.toFixed(2)).join(', ')} cells a half second along the thumb, in its flank ${still.map(v => v.toFixed(2)).join(', ')}`);
+}
+console.log(fails.length ? `DEFECT: ${fails.join('\n        ')}` : `ok: the glacier's wind and the caldera's heat lean on a flight with the thumb down, the same every time; ${rows} other rows lean on nothing, and a drill left still stands, and a light thumb against the air still goes its way`);
 process.exit(fails.length ? 1 : 0);

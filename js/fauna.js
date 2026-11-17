@@ -306,7 +306,9 @@ export class Fauna {
     d.my = C + Math.floor((sy + 0.2 + 0.6 * cellHash(sx, sy, seed + SALT + 2 + grid * 5)) * side);
     const far = Math.hypot(d.mx - C, d.my - C);
     if (far < CALM) return;
-    const row = rowOf(w.biomeAt(d.mx, d.my)), f = faunaOf(row);
+    // (Whose ground is the ground as it lies: an older game's ground it saw is kept as it was laid then, where the
+    // seed now lays a newer ground (js/world.js: `migrate`), and a den there is of the ground its cells are.)
+    const row = rowOf(w.biomeKnown(d.mx, d.my)), f = faunaOf(row);
     if (h >= (grid ? KIN_SHARE : DEN_SHARE) * (grid ? 1 : f.dense)) return;
     d.row = row.id;
     const k = cellHash(sx, sy, seed + SALT + 3 + grid * 3);

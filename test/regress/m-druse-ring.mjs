@@ -3,7 +3,8 @@
 //   - every geode in a sector of finds within two sectors of it (96 cells) is shown, out to its shell, and none
 //     further; the banner says how many rang under its title;
 //   - called out, each is marked on the map, and a mark goes once its geode is got to (hauled: m-map-gone);
-//   - two druse geodes in one haul ring once;
+//   - two druse geodes in one haul ring once; and with the map's marks full of things still standing, the geodes
+//     they ring take no mark from any of them (they took one each, the oldest first: half the map at a stroke);
 //   - a geode hauled in gilt, the flank the druse is a strain of, rings nothing: no geode round it is shown, and the
 //     banner says nothing of it.
 // Fails on the game before a druse rang: nothing round the geode is shown, and the banner says nothing.
@@ -60,9 +61,14 @@ if (druse && gilt) {
   check(S.marks.length === was - 1 && !S.marks.some(m => own.includes(m[0])), `a geode that rang, hauled: the map still marks ${S.marks.length} of ${was}`);
   // Two druse geodes in one haul ring once.
   const pair = geodes.filter(g => g.row.geodes && g !== druse && Math.hypot(g.fx - druse.fx, g.fy - druse.fy) > 300).slice(0, 2);
-  const rings = game.rings.length;
+  const rings = game.rings.length, standing = [];
+  for (let y = C - 30; y <= C + 30 && standing.length < 24; y += 3) for (let x = C - 30; x <= C + 30 && standing.length < 24; x += 5) { const i = y * N + x; if (w.k(i) !== K.EMPTY) standing.push([i, w.k(i), '#ffe14a']); }
+  S.marks = standing.map(m => m.slice());
   game.haul([...cellsOf(pair[0]), ...cellsOf(pair[1])]);
   check(/^\d+ GEODES? RINGS?$/.test(game.hauled.sub ?? '') && game.rings.length - rings <= 4, `two druse geodes in one haul: '${game.hauled.sub}', ${game.rings.length - rings} rings`);
+  game.callOut();
+  const kept = standing.filter(([i]) => S.marks.some(m => m[0] === i)).length;
+  check(game.hauled.sub && kept === 24 && S.marks.length === 24, `with the map's marks full, the geodes a haul rang left ${kept} of 24 marks of things standing (${S.marks.length} marks)`);
 }
 console.log(fails.length ? `DEFECT: ${fails.join('\n        ')}` : 'ok: a geode hauled in a druse rings the geodes within two sectors, which the map marks until they are got to; a gilt geode rings nothing');
 process.exit(fails.length ? 1 : 0);

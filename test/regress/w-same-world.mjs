@@ -240,7 +240,9 @@ const plain = (seed, gen = 2) => {
   // in a ring of dense rock. A fossil (0.80 to 0.86, over 1,200 out): 4 to 7 bones by hash 36, the first three cells
   // behind the middle along one of the four ways by hash 35 (east, south, west, north), each a cell on from the one
   // before and a cell to one side, the other, or neither of the one before by its own hash (35, of the sector
-  // that many east), never more than a cell from the line, in a bed of dense rock round each bone.
+  // that many east), never more than a cell from the line, in a bed of dense rock round each bone. Neither where a
+  // slab any sector tries could have a cell within six cells of the middle, nor where a wreck's heart is within 7 of
+  // it, or a relic's or a shrine's within 9 (as a square's distance).
   const druse = (sx, sy, what, fx, fy) => gen >= 2 && what >= 0.74 && (fx - C) ** 2 + (fy - C) ** 2 > 900 * 900 && ROW(biomeAt(fx, fy)).geodes === true;
   const findAt = (x, y) => {
     const sx = Math.floor((x - C) / FIND), sy = Math.floor((y - C) / FIND);
@@ -254,6 +256,8 @@ const plain = (seed, gen = 2) => {
     const dx = x - fx, dy = y - fy;
     if (what >= 0.74) {
       if (Math.hypot(fx - C, fy - C) <= (what < 0.8 ? 800 : 1200)) return -1;
+      const square = ([x, y]) => Math.max(Math.abs(x - fx), Math.abs(y - fy));
+      if (tryNear(fx, fy, 6) || wrecks.some(p => square(p) < 8) || relics.some(p => square(p) < 10)) return -1;
       const near = [];
       if (what < 0.8) {
         const [ux, uy] = [[1, 0], [0, 1], [1, 1], [1, -1]][Math.floor(hash(sx, sy, seed + 34) * 4)];
@@ -547,11 +551,19 @@ const plain = (seed, gen = 2) => {
     }
     return false;
   };
+  // (And no site's heart within its reach and eight cells.)
+  const sited = (x, y) => {
+    for (let ty = Math.floor((y - 14 - C + 72) / 144); ty <= Math.floor((y + 14 - C + 72) / 144); ty++) for (let tx = Math.floor((x - 14 - C + 72) / 144); tx <= Math.floor((x + 14 - C + 72) / 144); tx++) {
+      const S = siteOf(tx, ty);
+      if (S && Math.hypot(S.cx - x, S.cy - y) < S.reach + 8) return true;
+    }
+    return false;
+  };
   const sets = [0, 1, 2, 3].map(c => {
     const ux = c < 2 ? 1 : -1, uy = c === 0 || c === 3 ? -1 : 1;
     for (let k = 340; k <= 452; k++) {
       const x = C + k * ux, y = C + k * uy;
-      if ([[0, 0], [6, 0], [-6, 0], [0, 6], [0, -6]].every(([u, v]) => gen >= 2 && biomeAt(x + u, y + v) === 9 + c) && !meets(x, y, 6) && !wrecks.some(([wx, wy]) => Math.hypot(wx - x, wy - y) < 12) && !tried(x, y)
+      if ([[0, 0], [6, 0], [-6, 0], [0, 6], [0, -6]].every(([u, v]) => gen >= 2 && biomeAt(x + u, y + v) === 9 + c) && !meets(x, y, 6) && !wrecks.some(([wx, wy]) => Math.hypot(wx - x, wy - y) < 12) && !tried(x, y) && !sited(x, y)
         && [[7, 0], [5, 5], [0, 7], [-5, 5], [-7, 0], [-5, -5], [0, -7], [5, -5]].filter(([u, v]) => opens(x + u, y + v, 9 + c)).length <= 2) return [x, y];
     }
     return null;
@@ -586,7 +598,8 @@ const plain = (seed, gen = 2) => {
   // relic's or a shrine's (as a square's distance); or a slab any sector tries could have a cell, or a pocket's cell
   // could lie, within a cell of the disc round the collar; or a sector's find has its middle under 6 cells from the
   // collar, or a site its heart within its reach and 2; or the ground round the collar, as it lies with no hall and no
-  // slab, does not run on, a cell joined to the next by a side, to more than 24 cells beyond the collar.
+  // slab, does not run on, a cell joined to the next by a side, to more than 24 cells beyond the collar, followed from
+  // the cells against the collar's sides (not its four corners, which touch it only at a point).
   const tryNear = (x, y, room) => {
     for (let sy = Math.floor((y - C) / 144) - 1; sy <= Math.floor((y - C) / 144) + 1; sy++) for (let sx = Math.floor((x - C) / 144) - 1; sx <= Math.floor((x - C) / 144) + 1; sx++) {
       if (hash(sx, sy, seed + 80) >= 0.22) continue;
@@ -623,7 +636,7 @@ const plain = (seed, gen = 2) => {
       }
       if (ok) {
         const ground = (x, y) => kindAt(x, y, biomeAt(x, y), true, true) !== K.EMPTY, got = new Set(), list = [];
-        for (let y = y0 - 3; y <= y1 + 3; y++) for (let x = x0 - 3; x <= x1 + 3; x++) if (out(x, y) === 1) { got.add(cell(x, y)); if (ground(x, y)) list.push([x, y]); }
+        for (let y = y0 - 3; y <= y1 + 3; y++) for (let x = x0 - 3; x <= x1 + 3; x++) if (out(x, y) === 1 && ((x - x0 + 3) % (x1 - x0 + 6) || (y - y0 + 3) % (y1 - y0 + 6))) { got.add(cell(x, y)); if (ground(x, y)) list.push([x, y]); }
         let held = false;
         for (let n = 0; n < list.length && !held; n++) {
           const [qx, qy] = list[n];

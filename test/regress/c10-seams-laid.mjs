@@ -9,7 +9,10 @@
 //     those is not: 0.12 of the distance from the core from 24 cells to 90, and past the flanks 0.09 of it to 180;
 //   - it is a tenth of the ground or so from 600 cells out, and nothing nearer than 445;
 //   - each seam has one set piece, where it begins, laid as written, standing in rock that holds it (nothing it lays
-//     hangs on nothing), and its hearts are the seam's own hazards;
+//     hangs on nothing), and its hearts are the seam's own hazards; and no site's cell lies under it or its collar
+//     (no site's heart within its reach and the collar's), so that each corner's herald, which lies where the seam
+//     begins, is laid whole, its heart a rare hazard (on worlds 257, 789, 1054 and 1789 the collar lay over one, and
+//     on world 1789 took the north-west's heart, leaving the corner no herald);
 //   - in an older game's ground (generation 1) there is no seam and no set piece.
 //   node test/regress/c10-seams-laid.mjs
 import { World, N, C, K, SEAMS, SEAM_FROM, SET_FROM, SET_TO, BIOMES, rowOf, hazOf } from '../../js/world.js';
@@ -88,6 +91,21 @@ for (let seed = 1; seed <= 8; seed++) {
   let older = 0;
   for (let k = 300; k <= 1660; k += 3) for (const [ux, uy] of CORNER) { const b = old.biomeAt(C + ux * k, C + uy * k); if (b >= 9 && b <= 16) older++; }
   check(older === 0, `seed ${seed}: ${older} cells of the diagonals are a seam's at generation 1`);
+}
+// The set pieces and the sites by them, the corners' heralds among them.
+for (const seed of [1, 2, 3, 257, 789, 1054, 1789]) {
+  const w = new World(); w.reset(seed);
+  const sets = w.setPieces();
+  for (let c = 0; c < 4; c++) {
+    const x = sets[2 * c], y = sets[2 * c + 1];
+    for (let ty = Math.floor((y - C + 72) / 144) - 1; ty <= Math.floor((y - C + 72) / 144) + 1; ty++) for (let tx = Math.floor((x - C + 72) / 144) - 1; tx <= Math.floor((x - C + 72) / 144) + 1; tx++) {
+      const S = w.siteOf(tx, ty);
+      if (S === null) continue;
+      const apart = Math.hypot(S.cx - x, S.cy - y);
+      check(apart >= S.reach + Math.sqrt(30), `seed ${seed} corner ${c}: a ${S.type}'s heart lies ${apart.toFixed(1)} from the set piece at ${x - C},${y - C}`);
+      if (S.corner >= 0) check(w.at(S.cx, S.cy) === K.RARE, `seed ${seed} corner ${c}: the corner's herald's heart at ${S.cx - C},${S.cy - C} is ${w.at(S.cx, S.cy)}`);
+    }
+  }
 }
 const share = sums.rings.map((n, i) => n / sums.ringCells[i]);
 console.log(JSON.stringify({ starts: sums.starts.join(), broken: sums.broken, along: sums.along, inside: [sums.inside, sums.insideNot], outside: [sums.outside, sums.outsideIs], rings: share.map(s => +(s * 100).toFixed(1)), setCells: sums.setCells }));

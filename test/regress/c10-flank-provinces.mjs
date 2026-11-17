@@ -1,7 +1,9 @@
 // The deep flanks broken into provinces, and the deep strains laid in them (js/world.js: `biomeAt` rule 5b,
 // `flankProvince`, DEEP_STRAINS; grounds 64 to 67), in the world of generation 2, on worlds 1 to 8:
 //   - each flank has its strain: the north's glacier, the south's caldera, the west's mycelium, the east's druse,
-//     each of its flank's direction, deep ground, paying as a flank does, with its own ores;
+//     each of its flank's direction, deep ground, paying as a flank does, with its own ores, and where its ground
+//     pays in other ways a little under it (the caldera, whose slag the lava it wakes quenches to steel, and the
+//     druse, whose sectors of nothing are geodes, under their flanks' `rich`);
 //   - a deep strain lies only where the flank test holds (where generation 1 lays the flank), only in its own
 //     direction's flank, and only where its province's middle is 1,050 cells out or more (a province reaches 180
 //     cells and more from its middle): none under 850, next to none under 1,000, about three in ten of the flank at
@@ -23,6 +25,7 @@ for (const [id, [name, kin]] of Object.entries(STRAIN)) {
   check(row?.name === name && row.kin === kin && row.deepOf === kin && row.deep && row.gemx === 2 && row.rich >= 1.8 && row.rich <= 2.2 && row.oreKeys.join() === `ores:${name}A,ores:${name}B` && DEEP_STRAINS[kin].includes(+id),
     `ground ${id} is not ${name}, the deep strain of direction ${kin}: ${row?.name}, kin ${row?.kin}, rich ${row?.rich}, ${row?.oreKeys}`);
 }
+check(BIOMES[65].rich < BIOMES[6].rich && BIOMES[67].rich < BIOMES[8].rich, `the caldera's rich is ${BIOMES[65].rich} against magma's ${BIOMES[6].rich}, the druse's ${BIOMES[67].rich} against gilt's ${BIOMES[8].rich}`);
 check(BIOMES[64].current === 'wind' && BIOMES[65].current === 'heat' && BIOMES[66].glow && BIOMES[67].geodes && !BIOMES[5].current && !BIOMES[8].geodes, 'the deep strains do not say what they play by');
 const bands = [[850, 1000], [1250, 1450], [1650, 2350]].map(([from, to]) => ({ from, to, n: 0, strain: 0 }));
 const sums = { cells: 0, astray: 0, outsideFlank: 0, near: 0, split: 0, older: 0, sheath: 0, sheathFree: 0, lakes: 0, lakeSlag: 0, faults: 0, caps: 0, geodes: 0, met: new Set() };

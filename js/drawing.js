@@ -128,7 +128,7 @@ const NO_DASH = [], NO_FINDS = [];
 // How ground not yet seen is shown on the map and the chart (`drawMap`): its row's colour on the map, as dark as a
 // third of it, but never darker than a luminance of UNSEEN_LUM (a deep flank's colours, a third as bright, were
 // nearly black, and a wedge of one ground read as a hole in the world) nor brighter than UNSEEN_MOST of it (which
-// the darkest colour there is, obsidian's, needs to reach UNSEEN_LUM); and in
+// the darkest colour there is needs to reach UNSEEN_LUM: magma's, 0.56 of it); and in
 // UNSEEN_GRAIN of the squares of 8 cells, its second chip's colour (`debris`), a little brighter (UNSEEN_GRAIN_LUM),
 // so that no ground is one flat tone. Both worked out once a row (`unseen`), into tables made once. On the chart,
 // where ground changes the pixel is a quarter darker (EDGE), so the grounds' borders show.

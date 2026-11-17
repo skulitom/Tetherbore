@@ -14,7 +14,9 @@
 //   - The seams' and the deep's sounds are there by the names the game and the feel ask (a reaction by its row's
 //     `react`), and keep every rule above; the wind of the deep is one layer of five nodes, made the first time
 //     there is wind and never again, through the sounds' own gain, soft, its level and colour posted only when
-//     they move enough to hear, and nothing at all with no context or muted.
+//     they move enough to hear, and nothing at all with no context or muted; but what was asked for while muted or
+//     aside is what it blows at once the sound is back (the feel tells a level only as it moves, so a level dropped
+//     while muted left the wind blowing at the core).
 //   - While the page is aside (hidden, or another window has the focus) the context is suspended and no sound makes
 //     anything; a touch then does not wake it, and coming back resumes it.
 //   - The music is made once (26 nodes, eleven sources, one timer), makes no node however long it plays or however
@@ -441,6 +443,7 @@ for (const one of ASKS) { const nodes = ask(one); if (nodes.length) fails.push(`
 from = made.length;
 audio.setMuted(false);
 if (audio.isMuted() || master.gain.value !== level || kept.get('tetherbore-mute') !== '0' || timers.size !== 1 || made.length - from !== 26) fails.push('unmuted, the master is not back at its level or the music is not back');
+if (windNow()?.level !== 1 || windNow()?.heat !== true) fails.push(`unmuted, the wind is ${JSON.stringify(windNow())}, where the heat at its full was asked for while muted`);
 audio.setMusic(false);
 
 // ---------------------------------------------------------------- aside: the page hidden or out of focus
@@ -451,8 +454,11 @@ if (!suspended) fails.push('aside, the context was not suspended');
 audio.unlock();
 if (resumed !== wasResumed) fails.push('aside, a touch resumed the context');
 for (const one of ASKS) { const nodes = ask(one); if (nodes.length) fails.push(`${said(one)} made ${nodes.length} nodes while aside`); }
+setWind(0);
+if (windNow()?.level !== 1) fails.push('aside, the wind was moved');
 audio.setAside(false);
 if (resumed !== wasResumed + 1) fails.push('back from aside, the context was not resumed');
+if (windNow()?.level !== 0) fails.push(`back from aside, the wind is at ${windNow()?.level}, where it was told to drop while aside`);
 clock += 10;
 if (!ask(['tap']).length) fails.push('back from aside, a tap made nothing');
 

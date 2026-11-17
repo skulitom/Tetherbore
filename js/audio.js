@@ -97,6 +97,7 @@ export function setAside(value) {
     if (aside) ctx.suspend?.()?.catch?.(() => {});
     else if (ctx.state === 'suspended') ctx.resume()?.catch?.(() => {});
   } catch { /* left as it was */ }
+  if (!aside) blow(0.05);
 }
 export const isMuted = () => muted;
 export function setMuted(value) {
@@ -104,6 +105,8 @@ export function setMuted(value) {
   try { localStorage.setItem('tetherbore-mute', value ? '1' : '0'); } catch { /* private mode */ }
   if (master) master.gain.value = value ? 0 : LEVEL;
   tune();
+  // (Nothing was heard of the wind meanwhile: it comes back at once to what is asked for now.)
+  if (!value) blow(0.05);
 }
 // The music has a switch of its own, kept as the mute is: on unless it was turned off. (Muted, there is none.)
 export const isMusic = () => music;
@@ -616,12 +619,19 @@ for (const name of Object.keys(stings)) sfx[name] = sound(name, stings[name]);
 // wind; `kind` 'wind', a bandpassed whistle that wanders, or 'heat', a low roar). Five nodes, made the first time
 // there is any wind to blow, and nothing made after: a level is posted only when it has moved by a share worth
 // hearing, so a drill hanging in a hall posts nothing. It is soft, under the sounds, through the sounds' own gain.
-// With no context, muted or aside, nothing is made or posted.
+// With no context, muted or aside, nothing is made or posted, but what was asked for is kept (`galeWant`), and posted
+// as the sound comes back (`setMuted`, `setAside`): the feel tells a level only when it moves, so a level dropped
+// while the sound was off would leave the wind blowing at the core until the drill next flew through moving air.
 const GALE = 0.05, HEAT = 0.07;
-let gale = null;
+let gale = null, galeWant = 0, galeHeat = false;
 export function setWind(level, kind = 'wind') {
+  galeWant = Number.isFinite(level) ? Math.min(1, Math.max(0, level)) : 0; galeHeat = kind === 'heat';
+  blow(0.5);
+}
+// The wind as last asked for, posted where it can be heard, easing to it over `ease` seconds.
+function blow(ease) {
   if (!ctx || muted || aside) return;
-  const v = Number.isFinite(level) ? Math.min(1, Math.max(0, level)) : 0, heat = kind === 'heat';
+  const v = galeWant, heat = galeHeat;
   if (!gale) {
     if (v < 0.02) return;
     try {
@@ -637,7 +647,7 @@ export function setWind(level, kind = 'wind') {
   if (Math.abs(v - gale.level) < 0.04 && heat === gale.heat) return;
   const t = ctx.currentTime;
   gale.level = v; gale.heat = heat;
-  gale.out.gain.setTargetAtTime(v * (heat ? HEAT : GALE), t, 0.5);
+  gale.out.gain.setTargetAtTime(v * (heat ? HEAT : GALE), t, ease);
   gale.band.frequency.setTargetAtTime(heat ? 150 + 130 * v : 420 + 900 * v, t, 0.8);
   gale.band.Q.setTargetAtTime(heat ? 0.6 : 1.3, t, 0.8);
   gale.depth.gain.setTargetAtTime(heat ? 30 : 150 + 200 * v, t, 1);

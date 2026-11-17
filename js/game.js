@@ -336,6 +336,7 @@ export class Game {
     this.daylight = false;                  // no dark is laid over the ground: only a staged view asks for it (js/shot.js)
     this.place = null; this.placeKey = null; this.motifAt = -9;      // the name on show, the place the drill is in, when a place last sounded
     this.called = new Set(); this.calledAt = {};                      // things called out since the game began, and when each kind last was
+    this.rung = new Set();                                            // the geodes a druse's haul has just rung, by what each is called out as (`resonant`)
     this.tickIn = 0; this.ticks = 0;                                  // until a wreck's next tick, and how many there have been
     this.quenched = new Map();                                        // slag just turned to steel: how long each cell still shows white
     // The rare hazards awake, each by the cell it is in (`trigger`, `updateHazards`); and what they leave on the
@@ -383,7 +384,7 @@ export class Game {
   fresh(seed, quiet = false) {
     this.S = { seed, grit: 0, gems: [0, 0, 0, 0, 0], lv: Object.fromEntries(ROWS.map(u => [u.id, 0])), relics: [0, 0, 0, 0], wrecks: [0, 0, 0, 0, 0, 0, 0, 0],
       stats: { hauls: 0, best: 0, buys: 0, moves: 0, time: 0 }, won: false, met: {}, marks: [], visited: {}, spec: [0, 0, 0, 0, 0], lab: {}, out: 0, rare: {},
-      gen: GEN, shrines: [0, 0, 0, 0], fossils: 0 };
+      gen: GEN, shrines: [0, 0, 0, 0], fossils: 0, unshrined: 0 };
     this.world.reset(seed);
     this.begin();
     if (!quiet) this.claim();
@@ -417,7 +418,7 @@ export class Game {
     // Where the game begins is where the player already is: its name does not come up, now or as a new place later.
     const here = this.placeAt(this.di);
     this.place = null; this.placeKey = here.key; this.S.met[here.row.id] = 1;
-    this.called.clear(); this.calledAt = {}; this.tickIn = 0;
+    this.called.clear(); this.calledAt = {}; this.tickIn = 0; this.rung.clear();
     // The first piece, beside the core, lies loose from the start: the open cell between them tells of it.
     this.changed([C * N + C + 3]);
     this.shop = false; this.lab = false; this.labSel = null; this.labFlash = 0;
@@ -512,9 +513,11 @@ export class Game {
       // And what one saved before the seams and the deep strains lacks: the generation of the world it last played
       // in (the ground it saved is told apart piece by piece; this says only whether to say the deep has changed),
       // the corner shrines hauled and the fossils whole.
-      S.gen ??= 1; S.shrines ??= [0, 0, 0, 0]; S.fossils ??= 0;
+      S.gen ??= 1; S.shrines ??= [0, 0, 0, 0]; S.fossils ??= 0; S.unshrined ??= 0;
       for (const u of ROWS) this.S.lv[u.id] = Math.min(this.S.lv[u.id] ?? 0, u.values.length - 1);
       this.world.reset(S.seed);
+      // (The shrines an older game's seen ground left unlaid, before anything asks where one is.)
+      this.world.unshrined = S.unshrined;
       // Only this world's ground is taken. A piece says whose it is; one that does not (saved before pieces said)
       // is this world's if the store is marked as this world's. In a store with no mark at all each such piece is
       // looked at (`World.strange`): another world's ground does not lie as this seed lays it. And where a fifth
@@ -541,6 +544,7 @@ export class Game {
       // The ground an older game saved is brought up to today's rules where it was never seen (`World.migrate`),
       // and what the finder knew of the seed is asked again.
       const [, newer] = w.migrate();
+      S.unshrined = w.unshrined;
       this.laidFor = ''; if (this.chartMap) this.chartMap.laidFor = '';
       // (The pieces are put in by hand, not through the world: what it counts of changes to the ground goes up here.)
       w.stirred++;
@@ -1263,7 +1267,10 @@ export class Game {
     const row = w.row(this.di), flow = this.flow, cur = row.current !== null && CURRENT[row.current] !== undefined ? row.current : null;
     flow.kind = cur; flow.x = flow.y = 0;
     if (cur !== null) w.flowAt(d.x, d.y, cur, flow);
-    const lean = cur !== null && m > 0 && d.dig < 0 && w.k(this.di) === K.EMPTY ? CURRENT[cur] * FLY * this.val('momentum') : 0;
+    // It leans as hard as the thumb steers (`m`), so that steered against it, however lightly, the drill still goes
+    // the way it is steered, more slowly (at the same lean whatever the thumb, a thumb a few pixels from where it came
+    // down was carried backward).
+    const lean = cur !== null && m > 0 && d.dig < 0 && w.k(this.di) === K.EMPTY ? CURRENT[cur] * FLY * this.val('momentum') * m : 0;
     d.vx += (ix * top + flow.x * lean - d.vx) * ease; d.vy += (iy * top + flow.y * lean - d.vy) * ease;
     // Move a little at a time, sliding along whatever stops it. The string follows the small moves (`tend`), so it
     // goes round whatever the drill went round: a move this small never leaves the open ground the drill stands in,
@@ -1492,11 +1499,13 @@ export class Game {
   // dot on the map that stays until it is gone (but for wrecks and relics, which the map shows anyway). One call
   // for each thing, however many of its cells come into view and however often (a thing is known by what it is and
   // the sector of FIND cells its middle lies in), and no more than one of a kind every three seconds: what comes
-  // sooner still gets its dot.
+  // sooner still gets its dot. The map holds MARKS dots, and one more pushes out the oldest; but the geodes a druse
+  // rings (`resonant`: a dozen and more at once) take only the room there is, and are the first to make room for
+  // anything seen after (they pushed out half the map's dots of things still standing at a stroke).
   callOut() {
     const w = this.world, S = this.S;
     for (const [what, seen, mid] of w.spotted.splice(0)) {
-      const x = mid % N, y = Math.floor(mid / N), key = `${what}:${Math.floor((x - C) / FIND)},${Math.floor((y - C) / FIND)}`;
+      const x = mid % N, y = Math.floor(mid / N), key = `${what}:${Math.floor((x - C) / FIND)},${Math.floor((y - C) / FIND)}`, rung = this.rung.has(key);
       if (this.called.has(key)) continue;
       this.called.add(key);
       // (A rare hazard called out is met: what it does to the drill is on the panel from now on.)
@@ -1508,7 +1517,11 @@ export class Game {
       const row = w.row(seen), dir = w.relicAt.indexOf(seen), shrine = what === 'relic' && dir < 0 ? w.shrineAt.indexOf(seen) : -1;
       const name = what === 'mineral' ? (row.pocket?.mineral ?? SPOT.mineral[0]).toUpperCase() : shrine >= 0 ? SPOT.shrine[0] : SPOT[what][0];
       const colour = what === 'mineral' ? bright(row.map) : what === 'relic' && dir >= 0 ? GEM_COLOR[DIR_BIOME[dir]] : shrine >= 0 ? SPOT.shrine[1] : SPOT[what][1];
-      if (what !== 'wreck' && what !== 'relic') { S.marks.push([cell, kind, colour]); if (S.marks.length > MARKS) S.marks.shift(); }
+      if (rung) { if (S.marks.length < MARKS) S.marks.push([cell, kind, colour, 1]); }
+      else if (what !== 'wreck' && what !== 'relic') {
+        S.marks.push([cell, kind, colour]);
+        if (S.marks.length > MARKS) { const old = S.marks.findIndex(m => m[3] === 1); S.marks.splice(old >= 0 ? old : 0, 1); }
+      }
       if (this.time - (this.calledAt[what] ?? -9) < 3) continue;
       this.calledAt[what] = this.time;
       this.ring((x + 0.5) * T, (y + 0.5) * T, colour, 30);
@@ -1516,6 +1529,8 @@ export class Game {
       this.popup(x, y - 1, name, colour);
       sfx.spot(what);
     }
+    // (What a ring showed is all called out by now: a geode rung that was in view already is not told as rung later.)
+    if (this.rung.size) this.rung.clear();
   }
   // A wreck nobody has claimed, within hearing, ticks: softly, and quicker the nearer the drill is to it.
   listen(dt) {
@@ -2117,8 +2132,8 @@ export class Game {
   // A geode hauled in ground whose finds are geodes (a druse's: a row's `geodes`) rings, once a haul, and the geodes
   // round it answer: every sector of finds within two sectors (96 cells) of it that holds a geode is shown, the
   // whole of the geode out to its shell (`seeCell`), so the map marks it (the shell is what is called a geode) until
-  // it is got to. Asked of a cell of slate in the haul that lies within its sector's geode's shell. Returns how many
-  // geodes rang, the hauled one's not counted.
+  // it is got to, where the map has room (`callOut`, `rung`). Asked of a cell of slate in the haul that lies within
+  // its sector's geode's shell. Returns how many geodes rang, the hauled one's not counted.
   resonant(cells) {
     const w = this.world;
     for (let at = 0; at < cells.length; at++) {
@@ -2132,7 +2147,7 @@ export class Game {
         if (!(u || v)) continue;
         const [far, gx, gy, r] = w.findSpot(sx + u, sy + v);
         if (far !== 'geode') continue;
-        rang++;
+        rang++; this.rung.add(`geode:${sx + u},${sy + v}`);
         for (let b = -r; b <= r; b++) for (let a = -r; a <= r; a++) if (a * a + b * b <= r * r) w.seeCell(gx + a, gy + b);
       }
       return rang;

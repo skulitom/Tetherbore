@@ -14,9 +14,15 @@
 //     stays generation 1's;
 //   - ground in pieces never saved is generation 2's: the seam, and the deep seam past it;
 //   - a piece that does not say its world is judged by its own generation's rules (`World.strange`), and kept;
-//   - the dens (js/fauna.js: `lay`) and the finder, which ask the seed, agree with the ground as it lies;
+//   - the dens (js/fauna.js: `lay`) and the finder, which ask the seed, agree with the ground as it lies; and a den
+//     whose middle the old game saw is of the ground it saw, kept as it was laid then (not the seam the seed lays
+//     there now, whose roster and whose specimens it took);
 //   - saved again it says its generation, and a second load brings up nothing and says nothing;
-//   - and it plays, with the tether looked at after every frame.
+//   - and it plays, with the tether looked at after every frame;
+//   - and a save that saw the cell where the north-east's shrine's heart now lies: the shrine is not laid (the heart
+//     keeps its old ground, so it would be a sealed ring of stone round old rock, marked on the chart for good and
+//     never hauled), no cell round its heart is a shrine's stone, the other three are laid, and loaded again it is
+//     still not laid (`unshrined`, saved).
 import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import { makeGame, random, tetherFaults, farStart, C, N, K, world } from '../harness.mjs';
@@ -129,6 +135,17 @@ for (let sy = -20; sy <= 0; sy++) for (let sx = 0; sx <= 20; sx++) {
   if (what !== null && plainCell(fx, fy)) { finds++; if (w.kindAt(fx, fy, w.biomeAt(fx, fy)) !== w.k(fy * N + fx)) note(`the finder's ${what} at ${fx - C},${fy - C} is not what lies there`); }
 }
 if (cells < 10000 || dens < 5 || finds < 5) note(`too little was asked: ${cells} cells, ${dens} dens, ${finds} finds`);
+// (And the dens whose middle the old game saw, in the pieces brought up: of the ground that lies there.)
+let seenDens = 0;
+for (const grid of [0, 1]) for (let sy = -60; sy <= 0; sy++) for (let sx = 0; sx <= 60; sx++) {
+  const d = { grid, sx, sy, kind: 0 };
+  game.fauna.lay(game, d);
+  const id = ((d.my >> 6) << 8) | (d.mx >> 6), p = saved.get(id);
+  if (!d.kind || !p || !newer.has(id) || !p.seen[((d.my & 63) << 6) | (d.mx & 63)]) continue;
+  seenDens++;
+  if (d.row !== w.b(d.my * N + d.mx)) note(`the den at ${d.mx - C},${d.my - C}, on ground the old game saw, is of ground ${d.row}, where the ground is ${w.b(d.my * N + d.mx)}`);
+}
+if (seenDens < 10) note(`only ${seenDens} dens lie on ground the old game saw`);
 
 // 5. Saved again, each piece says its generation; a second load brings up nothing, and says nothing.
 const after = new Map([...w.chunks.entries()].filter(([, p]) => p).map(([id, p]) => [id, { kind: p.kind.slice(), biome: p.biome.slice() }]));
@@ -185,5 +202,28 @@ try {
   if (game.hauls.length) note(`${game.hauls.length} hauls never came home`);
 } catch (error) { note(`threw: ${error.stack.split('\n').slice(0, 4).join(' | ')}`); }
 
+// 8. A save that saw the north-east's shrine's heart (a piece the old game laid round it, nine cells round the heart
+// seen): the shrine is not laid, and stays so.
+let unshrined = '';
+{
+  const [sx, sy] = world.SHRINES[0], hx = C + sx, hy = C + sy, id = ((hy >> 6) << 8) | (hx >> 6), at = (x, y) => ((y & 63) << 6) | (x & 63);
+  const one = lay1(id), seen = new Uint8Array(CH * CH);
+  for (let y = hy - 1; y <= hy + 1; y++) for (let x = hx - 1; x <= hx + 1; x++) seen[at(x, y)] = 1;
+  rows = fixture(true);
+  rows.set(id, { kind: one.kind.slice(), biome: one.biome.slice(), seen, seed: save.seed });
+  localStorage.setItem('tetherbore-save-v3', save.local);
+  localStorage.removeItem('tetherbore-save-v3-latest');
+  const far = await makeGame(1);
+  if (!(await far.restore())) note('the save that saw the shrine did not load');
+  const ring = () => { let n = 0; for (let y = hy - 5; y <= hy + 5; y++) for (let x = hx - 5; x <= hx + 5; x++) { const k = far.world.k(y * N + x); if ((k === K.VAULT || k === K.RELIC) && k !== one.kind[at(x, y)]) n++; } return n; };
+  const v = far.world;
+  if (v.shrine(0) || far.S.unshrined !== 1 || ![1, 2, 3].every(d => v.shrine(d)) || ring()) note(`the shrine whose heart the old game saw: laid ${v.shrine(0)}, unshrined ${far.S.unshrined}, the others laid ${[1, 2, 3].map(d => v.shrine(d))}, ${ring()} cells of a shrine's stone round its heart`);
+  far.save();
+  await settle();
+  if (!(await far.restore())) note('the save that saw the shrine did not load again');
+  if (far.world.shrine(0) || far.S.unshrined !== 1 || ring()) note(`loaded again, the shrine whose heart the old game saw is laid ${far.world.shrine(0)} (unshrined ${far.S.unshrined}), with ${ring()} cells of its stone`);
+  unshrined = '; a shrine whose heart was seen is not laid, and stays so';
+}
+
 if (problems.length) { console.log('PROBLEMS\n' + problems.join('\n')); process.exit(1); }
-console.log(`ok: ${saved.size} old pieces, ${newer.size} brought up with ${laidAnew} cells laid anew and ${seenKept} seen and ${changedKept} changed kept, ${near + off} left as saved; ${dens} dens and ${finds} finds agree; loaded again, nothing taken up; ${frames} frames flown`);
+console.log(`ok: ${saved.size} old pieces, ${newer.size} brought up with ${laidAnew} cells laid anew and ${seenKept} seen and ${changedKept} changed kept, ${near + off} left as saved; ${dens} dens and ${finds} finds agree, and ${seenDens} dens on seen ground; loaded again, nothing taken up; ${frames} frames flown${unshrined}`);

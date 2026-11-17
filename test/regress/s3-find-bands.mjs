@@ -11,7 +11,8 @@
 //   - and in generation 2: twin stones are laid only where their middle is over 800 cells out, two cells of twin
 //     stone three cells either side of the middle, each in a ring of dense rock; a fossil only over 1,200, four to
 //     seven bones in a bed of dense rock, never more than four cells from the middle; nearer, both bands hold
-//     nothing laid, as before; and a druse's sectors (`geodes`) over 900 out hold a geode wherever they would hold
+//     nothing laid, as before, nor where a slab, a wreck, a relic's vault or a shrine could take a cell of one
+//     (`findRoom`); and a druse's sectors (`geodes`) over 900 out hold a geode wherever they would hold
 //     nothing, twin stones or a fossil, so 64 in a hundred of them are geodes; every other sector's find is where
 //     it was at generation 1;
 //   - a sector whose find would have its middle within five cells of where a pocket's cells can lie holds nothing
@@ -89,7 +90,8 @@ check(laid === 0, `${laid} sectors of twin stones or a fossil have cells laid by
       // (Out of a druse a find is where it was, but by a shrine, whose clearance can take a pocket away.)
       else if (JSON.stringify(two.findSpot(sx, sy)) !== JSON.stringify(one.findSpot(sx, sy)) && !SHRINES.some(([x, y]) => Math.hypot(mx - C - x, my - C - y) < 200)) sum.moved++;
       if (what !== 'twin' && what !== 'fossil') continue;
-      const want = r > (what === 'twin' ? 800 : 1200);
+      // (And only where nothing laid over a find could take a cell of it: js/world.js, `findRoom`.)
+      const want = r > (what === 'twin' ? 800 : 1200) && two.findRoom(fx, fy);
       if (laidHere !== want) { if (what === 'twin') sum.badTwin++; else sum.badFossil++; continue; }
       if (!want) { if (what === 'twin') sum.twinsNear++; else sum.fossilsNear++; continue; }
       // What it lays, cell by cell, in the sector.
