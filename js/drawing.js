@@ -777,7 +777,8 @@ export class Drawing {
       if (fine.hurt) { o.globalAlpha = 0.5; o.fillStyle = '#ff5a4a'; o.fillRect(dx - 5, dy - 5, 10, 10); o.globalAlpha = 1; }
     }
     // Never over the interface: the bar at the foot, the map, the buttons, and the small panels that come and go under the
-    // top bar (a place's plate, the count of specimens), which the frame's own drawing of the interface listed.
+    // top bar (a place's plate, the count of specimens) and over the bar (a thing's worth first seen), which the frame's
+    // own drawing of the interface listed.
     o.clearRect(0, H - 44, W, 44);
     if (this.mapRect) o.clearRect(...this.mapRect);
     for (const b of this.buttons) o.clearRect(b.x, b.y, b.w, b.h);
@@ -1256,8 +1257,17 @@ export class Drawing {
   // if the screen changes), so that drawing it every frame measures and makes nothing. `lw` is the line's width;
   // where that is wider than the screen, the gems go on over a second line, `lw2` wide, from the gem `split` (0:
   // one line): from the first of the corners' where the line up to it fits, else from the first that would not fit.
-  // The specimens go last, on the second line where there is one.
+  // The specimens go last, on the second line where there is one. And the line of what paid most in the haul
+  // (js/game.js: `topPayer`), its picture and its words `topW` wide, goes under them (`topAt`: 12, the room it takes)
+  // where it fits the screen, and where the banner has no more than two of the lines it may have under its gems
+  // already (a second of gems, a prism's, a word more): so a banner reaches no lower down the screen, towards the
+  // drill, than it could before it said this.
   bannerSplit(b, spec) {
+    this.splitGems(b, spec);
+    b.topW = b.top ? textWidth(b.top.said) + 14 : 0;
+    b.topAt = b.top && b.topW <= this.W - 8 && (b.split ? 1 : 0) + (b.shine > 1 ? 1 : 0) + (b.sub ? 1 : 0) <= 2 ? 12 : 0;
+  }
+  splitGems(b, spec) {
     const W = this.W, room = W - 8, gemW = g => textWidth(`+${compact(b.gems[g])}`) + 15, specW = spec ? textWidth(spec) + 17 : 0;
     let lw = b.trophy ? -4 : textWidth(`+${compact(b.grit)}`) + 11;
     for (const g of GEM_ORDER) if (b.gems[g] > 0) lw += gemW(g);
@@ -1275,6 +1285,38 @@ export class Drawing {
     let a = first, c = 0;
     for (const g of GEM_ORDER) if (b.gems[g] > 0) { if (g < split) a += gemW(g); else c += gemW(g); }
     b.split = split; b.lw = a; b.lw2 = c + specW - 4;
+  }
+  // A thing of the lab's seen for the first time: its picture on a chip rimmed by its tier, its name (or what the lab
+  // says of it before it is known) and what it is worth as the lab says it (js/worth.js), on a panel just over the
+  // bar, in the middle (out in the ground: at the core, where the shop's button is, it waits). The view keeps the
+  // drill within three tenths of the screen's narrower side of its middle, so on a phone held upright the panel,
+  // this low, is never over it. Where its ground pays more than the thing's own, how much more (`tag`): beside the
+  // name where there is room, else after the worth, else on a third line. Laid out once a thing (and again only if
+  // the screen changes), so a frame measures and makes nothing.
+  eyeFit(e) {
+    const room = this.W - 8, l1 = textWidth(e.name) + 24, l2 = textWidth(e.said) + 10, tw = e.tag ? textWidth(e.tag) + 6 : 0;
+    e.tagAt = !e.tag ? 0 : l1 + tw <= room ? 1 : l2 + tw <= room ? 2 : 3;
+    e.w = Math.min(room, Math.max(l1 + (e.tagAt === 1 ? tw : 0), l2 + (e.tagAt === 2 ? tw : 0), e.tagAt === 3 ? tw + 4 : 0));
+    e.h = e.tagAt === 3 ? 40 : 30; e.W = this.W;
+  }
+  drawEye() {
+    const { ctx, W, H } = this, e = this.eye;
+    if (e.W !== W) this.eyeFit(e);
+    const slide = Math.min(1, e.t / 0.15);
+    // (On a screen wider than it is tall the drill may come further down it: the panel stands at the left.)
+    const x = W > H ? 4 : Math.round(W / 2 - e.w / 2), y = H - 46 - e.h + Math.round((1 - slide) * (1 - slide) * 8);
+    ctx.globalAlpha = Math.min(1, slide, (e.life - e.t) / 0.3);
+    slice9(ctx, 'ui', 'panel', x, y, e.w, e.h);
+    e.rect[0] = x; e.rect[1] = y; e.rect[2] = e.w; e.rect[3] = e.h;
+    this.panels.push(e.rect);
+    chip(ctx, x + 4, y + 4, null, '#5a5674');
+    const f = sheets[e.sheet].frames[e.frame];
+    ctx.drawImage(sheets[e.sheet].image, f[0] + 2, f[1] + 2, 12, 12, x + 4, y + 4, 12, 12);
+    if (e.rim) ring(ctx, x + 4, y + 4, e.rim);
+    text(ctx, e.name, x + 20, y + 6, '#ffffff');
+    text(ctx, e.said, x + 5, y + 19, '#ffe14a');
+    if (e.tag) text(ctx, e.tag, x + e.w - 5, y + (e.tagAt === 1 ? 6 : e.tagAt === 2 ? 19 : 29), '#8ce060', 1);
+    ctx.globalAlpha = 1;
   }
   // What the next thing to be bought with a direction's specimens asks of them, or 0 where nothing is left to buy.
   specNeed(kin) { const u = WORKS.find(u => u.kin === kin && this.cost(u)); return u ? this.cost(u).spec : 0; }
@@ -1309,10 +1351,18 @@ export class Drawing {
       }
       // The specimens a pocket's mineral added, with the mineral itself beside the figure.
       if (spec) { if (b.mineral) this.drawMineral(ctx, b.mineral, lx - 1, at - 3); else draw(ctx, 'icons', `spec-${GEM_ICON[b.specOf]}`, lx, at - 1); text(ctx, spec, lx + 13, at, GEM_COLOR[b.specOf]); }
+      // What paid most in it, with its picture rimmed by its tier, in that tier's colour.
+      if (b.topAt) {
+        const t = b.top, tx = Math.round(W / 2 - b.topW / 2), f = sheets[t.sheet].frames[t.frame];
+        ctx.drawImage(sheets[t.sheet].image, f[0] + 2, f[1] + 2, 12, 12, tx, ly + down + 9, 12, 12);
+        ring(ctx, tx, ly + down + 9, t.colour);
+        text(ctx, t.said, tx + 14, ly + down + 12, t.colour);
+      }
       // A prism among the cells: what it multiplied the gems by, in the gems' colours by turns.
-      if (prism) text(ctx, prism, W / 2, ly + down + 12, GEM_COLOR[1 + ((now / 240) | 0) % 4], 0.5);
+      const more = down + b.topAt;
+      if (prism) text(ctx, prism, W / 2, ly + more + 12, GEM_COLOR[1 + ((now / 240) | 0) % 4], 0.5);
       // A word more under the rest, where the haul has one (HALF's).
-      if (b.sub) text(ctx, b.sub, W / 2, ly + down + (prism ? 24 : 12), '#fff6c8', 0.5);
+      if (b.sub) text(ctx, b.sub, W / 2, ly + more + (prism ? 24 : 12), '#fff6c8', 0.5);
       ctx.globalAlpha = 1;
     }
     // Over a dead drill the screen goes dark.
@@ -1341,7 +1391,7 @@ export class Drawing {
         }
         if (best) lines = [best[0], best[1]]; else big = 1;
       }
-      const under = this.banner ? Math.round(head) + 11 * (this.banner.n >= 10 ? 2 : 1) + (this.banner.shine > 1 ? 42 : 30) + (this.banner.sub ? 12 : 0) + (this.banner.split ? 12 : 0) : 0, y = Math.max(under, Math.round(Math.max(head + 14, H * 0.3) - (1 - pop) * 8));
+      const under = this.banner ? Math.round(head) + 11 * (this.banner.n >= 10 ? 2 : 1) + (this.banner.shine > 1 ? 42 : 30) + (this.banner.sub ? 12 : 0) + (this.banner.split ? 12 : 0) + (this.banner.topAt ?? 0) : 0, y = Math.max(under, Math.round(Math.max(head + 14, H * 0.3) - (1 - pop) * 8));
       ctx.globalAlpha = Math.min(1, (place.life - place.t) * 3);
       lines.forEach((line, n) => text(ctx, line, W / 2, y + n * 11 * big, place.colour, 0.5, big + (n === 0 && lines.length === 1 && place.t < 0.07 ? 1 : 0)));
       ctx.globalAlpha = 1;
@@ -1431,6 +1481,8 @@ export class Drawing {
       text(ctx, label, px + 17, 22, GEM_COLOR[line.kin]);
       ctx.globalAlpha = 1;
     }
+    // A thing of the lab's seen for the first time (js/game.js: `showEye`), out in the ground.
+    if (this.eye && !this.shop && !this.lab && !this.atCore) this.drawEye();
     // The map, in the top right corner.
     this.drawMap(W - 52, 6);
     // The shop's button, over the bar, when the drill is home.

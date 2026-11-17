@@ -36,9 +36,12 @@ const short = n => n >= 10 ? `${Math.round(n)}` : `${Math.round(n * 10) / 10}`;
 const about = n => n >= 100 ? `${Math.round(n / 10) * 10}` : short(n);
 const part = n => n >= 1 ? short(n) : `${Math.round(n * 100) / 100}`;
 const gemsSaid = g => g ? ` +${short(g)} ${g === 1 ? 'GEM' : 'GEMS'}` : '';
+// The figure alone, as the line says it: x4, ~x190. (A haul's banner names what paid most in it by it: js/game.js,
+// `topPayer`.)
+export const figOf = ({ x, lump }) => lump ? `~x${about(x)}` : `x${short(x)}`;
 export const worthSaid = ({ x, gems, spec, lump, home }) => {
   if (home) return `HOME x${short(home.x)}, EAST x${short(x)}${gemsSaid(gems)}`;
-  const fig = lump ? `~x${about(x)}` : `x${short(x)}`;
+  const fig = figOf({ x, lump });
   // (A lump's figure, about so, is said without WORTH before it, which there is no room for; and where a thing pays
   // gems and specimens both, as a lit lantern cap does, that it pays specimens is said without how many.)
   if (gems && spec) return `${fig} ROCK,${gemsSaid(gems)}, +SPEC`;
@@ -80,12 +83,14 @@ const placeOf = key => {
 };
 const gritOf = ({ k, row }) => (GRIT[k] + (row.id === B.CRUST ? HOME_ORE[k] ?? 0 : 0)) * row.rich * row.worth;
 // What a key is worth with the winch at level `winch` (only a lump's figure moves with it); null for a key the lab
-// has nothing of.
+// has nothing of. (`ground` is what the ground it is said for pays a cell, as a multiple of an ordinary ground's,
+// its `rich` times its `worth`: where a cell of it lies in a ground that pays more, the world says how much more
+// there, js/game.js: `eyeOn`.)
 export const worthOf = (key, winch = 0) => {
   const at = placeOf(key);
   if (!at) return null;
   const lv = Math.max(0, Math.min(LUMP_ROCK.length - 1, winch)), x = gritOf(at) + (at.lump ?? 0) * LUMP_ROCK[lv];
-  const gems = GEMS[at.k] * at.row.gemx, worth = { x, gems, gemKin: gems ? gemKin(at.k, at.row) : 0, spec: at.spec ?? 0, lump: !!at.lump, home: at.home ? { x: gritOf(at.home) } : null };
+  const gems = GEMS[at.k] * at.row.gemx, worth = { x, gems, gemKin: gems ? gemKin(at.k, at.row) : 0, spec: at.spec ?? 0, lump: !!at.lump, home: at.home ? { x: gritOf(at.home) } : null, ground: at.row.rich * at.row.worth };
   worth.tier = tierOf(worth);
   worth.said = worthSaid(worth);
   return worth;

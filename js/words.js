@@ -315,6 +315,12 @@ export const WORDS = [
   ['WORTH x# ROCK, +# GEM', 'x# ПОРОДЫ, +# КАМЕНЬ', '价值：岩石 x#，+# 宝石'],
   ['WORTH x# ROCK, +# GEMS', 'x# ПОРОДЫ, +# КАМН.', '价值：岩石 x#，+# 宝石'],
   ['WORTH x# ROCK, +# SPEC', 'x# ПОРОДЫ, +# ЭКЗ', '价值：岩石 x#，+# 标本'],
+  // (and where it is met: how much more the ground it is seen in pays, and what paid most in a haul, so many cells of
+  // it and its worth: js/game.js, `showEye`, `topPayer`)
+  ['HERE x#', 'ЗДЕСЬ x#', '此处 x#'],
+  ['HERE +#%', 'ЗДЕСЬ +#%', '此处 +#%'],
+  ['# * x#', '# * x#', '# * x#'],
+  ['# * ~x#', '# * ~x#', '# * ~x#'],
   // where a thing is found, said in the list before it is known
   ['HOME AND EAST', 'ДОМ И ВОСТОК', '家园与东方'],
   ['KEYSTONE SLABS', 'ЗАМКОВЫЕ ПЛИТЫ', '拱心石板'],

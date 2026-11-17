@@ -4,7 +4,8 @@ import { World, CellBook, N, C, K, B, HARD, GRIT, GEMS, DX, DY, HAZARDS, RARE, C
 import { sheets, frameAt, duration } from './atlas.js';
 import { sfx, unlock, setAmbience } from './audio.js';
 import { richness, haulBonus, overload, income, round2, NEEDS, UPGRADES, LAB, LAB_OF, labLevel, labNext, CORE, ROWS, REACH, CUT, TABS } from './shop.js';
-import { Drawing, T, DIR_BIOME, GEM_ICON, GEM_COLOR, GEM_WHERE, GEM_SHORT, SPOT, bright, compact, DEBRIS, LAB_LIST, LAB_RH, LAB_SEC } from './drawing.js';
+import { Drawing, T, DIR_BIOME, GEM_ICON, GEM_COLOR, GEM_WHERE, GEM_SHORT, SPOT, bright, compact, DEBRIS, LAB_LIST, LAB_RH, LAB_SEC, TIER_RIM } from './drawing.js';
+import { WORTH_AT, figOf } from './worth.js';
 import { Feel } from './feel.js';
 import { Fitter } from './fit.js';
 import { Fauna } from './fauna.js';
@@ -283,6 +284,18 @@ const LAB_TAP = 5, LAB_REST = 6;
 // mineral, the last made the first time it is asked for.
 const STEEL_SAMPLE = `${HAZARDS.lava.sheet}:steel`, KEY_SAMPLE = 'finds:key', MINERAL_SAMPLE = {}, STONE_SAMPLE = STONES.map(name => `stones:${name}`);
 const HAZ_SAMPLE = Object.fromEntries(Object.entries(HAZARDS).map(([type, { sheet }]) => [type, `${sheet}:hazard`]));
+// What a thing of the lab's is worth is said where the player meets it, from js/worth.js as the lab says it. The
+// first time in a game that a cell of a thing comes into the drill's view (`eyeOn`), its picture with the rim of its
+// tier, its name (what the lab says of it before it is known, until it is), and its worth come up for EYE_LIFE
+// seconds over the bar (js/drawing.js: `drawEye`), one at a time: EYE_WAIT more wait their turn, and what comes
+// while they wait is passed over quietly, to be met again. Only a thing of the second tier or the third: the first's
+// are the common ores, met in every ground in the first minutes, which the lab rims with nothing either. And not
+// before the first haul, while the game is still showing what a loop is for. A cell in ground that pays EYE_MORE
+// times what the thing's own ground does or more says how much more there (a deep flank twice, a cross a quarter).
+const EYE_LIFE = 3.6, EYE_WAIT = 3, EYE_MORE = 1.1;
+// The kinds of cell that are never a thing of the lab's (`sampleOf`), most of all ground, passed over at once.
+const PLAIN = new Uint8Array(256);
+for (const k of [K.EMPTY, K.CORE, K.BEDROCK, K.SOFT, K.DENSE, K.SLATE, K.ICE]) PLAIN[k] = 1;
 // The boulders of a drift (a pocket whose row's `twist` is 'drift') are in the books of loose ground while the
 // drill is in the drift or near it, and leave them once it is out and they are AWAY cells off the screen: so the
 // books do not grow by a drift's boulders for every drift crossed.
@@ -382,6 +395,8 @@ export class Game {
     // screen for a moment: a fumarole's flames, ore in flight to a lodestone, the flash of a toll.
     this.bells = new Map(); this.vents = new Map(); this.worms = new Map(); this.stones = new Map(); this.jets = []; this.flying = []; this.flares = [];
     this.specLine = null;                                             // the count of specimens just banked, on show under the top bar
+    this.eye = null; this.eyeQueue = [];                              // a thing of the lab's seen for the first time, on show over the bar; and those waiting (`eyeOn`)
+    this.payers = new Map();                                          // what each thing of the lab's paid in a haul (`payOf`), made once
     this.pips = []; this.pipsFor = '';                                // the pockets the map marks, and what that list was made for
     this.drifts = new Map();                                          // the drifts whose boulders are in the books, by their keys
     this.crushedAt = -9;                                              // when ore cut into last said CRUSHED
@@ -423,7 +438,7 @@ export class Game {
   fresh(seed, quiet = false) {
     this.S = { seed, grit: 0, gems: noGems(), lv: Object.fromEntries(ROWS.map(u => [u.id, 0])), relics: [0, 0, 0, 0], wrecks: [0, 0, 0, 0, 0, 0, 0, 0],
       stats: { hauls: 0, best: 0, buys: 0, moves: 0, time: 0 }, won: false, met: {}, marks: [], visited: {}, spec: [0, 0, 0, 0, 0], lab: {}, out: 0, rare: {},
-      gen: GEN, shrines: [0, 0, 0, 0], fossils: 0, unshrined: 0 };
+      gen: GEN, shrines: [0, 0, 0, 0], fossils: 0, unshrined: 0, eyed: {} };
     this.world.reset(seed);
     this.begin();
     if (!quiet) this.claim();
@@ -457,7 +472,7 @@ export class Game {
     // Where the game begins is where the player already is: its name does not come up, now or as a new place later.
     const here = this.placeAt(this.di);
     this.place = null; this.placeKey = here.key; this.S.met[here.row.id] = 1;
-    this.called.clear(); this.calledAt = {}; this.tickIn = 0; this.rung.clear();
+    this.called.clear(); this.calledAt = {}; this.tickIn = 0; this.rung.clear(); this.eye = null; this.eyeQueue.length = 0;
     // The first piece, beside the core, lies loose from the start: the open cell between them tells of it.
     this.changed([C * N + C + 3]);
     this.shop = false; this.lab = false; this.labSel = null; this.labFlash = 0;
@@ -555,6 +570,9 @@ export class Game {
       S.gen ??= 1; S.shrines ??= [0, 0, 0, 0]; S.fossils ??= 0; S.unshrined ??= 0;
       // (And the corners' gems, which a game saved before them has no places for: each gem keeps its number.)
       S.gems ??= []; while (S.gems.length < GEM_N) S.gems.push(0);
+      // (And the things of the lab's whose worth has been shown where they were met: a game saved before the world
+      // said so takes everything its lab has analysed as met, so a long game is not told of all it knows at once.)
+      if (!S.eyed) { S.eyed = {}; for (const key in S.lab) if (S.lab[key] > 0) S.eyed[key] = 1; }
       for (const u of ROWS) this.S.lv[u.id] = Math.min(this.S.lv[u.id] ?? 0, u.values.length - 1);
       this.world.reset(S.seed);
       // (The shrines an older game's seen ground left unlaid, before anything asks where one is.)
@@ -1493,7 +1511,9 @@ export class Game {
       const scanned = this.world.see(x, y, r), lit = this.S.lv.lamp >= 1 && this.lampSees(x, y);
       if (scanned || lit) this.version++;
       // Ground that has come into view is looked at: an island among it is known as loose from the first sight.
-      for (let v = y - r; v <= y + r; v++) for (let u = x - r; u <= x + r; u++) if (Math.abs(u - px) > r || Math.abs(v - py) > r) this.spot(v * N + u);
+      // (And a thing of the lab's among it, seen for the first time in the game, has its worth shown: `eyeOn`.)
+      const eyes = this.S.stats.hauls > 0;
+      for (let v = y - r; v <= y + r; v++) for (let u = x - r; u <= x + r; u++) if (Math.abs(u - px) > r || Math.abs(v - py) > r) { this.spot(v * N + u); if (eyes) this.eyeOn(v * N + u); }
       this.arrive(cell);
       if (this.drifts.size) this.driftsOut();
     }
@@ -1596,6 +1616,40 @@ export class Game {
     }
     // (What a ring showed is all called out by now: a geode rung that was in view already is not told as rung later.)
     if (this.rung.size) this.rung.clear();
+  }
+  // A cell that has come into the drill's view (`look`): where it is a thing of the lab's whose worth this game has not
+  // shown yet, of the second tier or the third with the winch as it is, it waits its turn (`showEye`), unless as many
+  // as may wait are waiting already. Rock and open ground are passed over at once, and nothing is made for a cell
+  // that is not such a thing (a key is a string made once: `sampleOf`).
+  eyeOn(i) {
+    const w = this.world, k = w.laid(i);
+    if (k < 0 || PLAIN[k]) return;
+    const S = this.S, key = this.sampleOf(k, w.row(i), i);
+    if (!key || S.eyed[key]) return;
+    const worth = WORTH_AT[Math.min(WORTH_AT.length - 1, S.lv.winch)][key], Q = this.eyeQueue;
+    if (!worth || worth.tier < 2 || Q.length >= EYE_WAIT) return;
+    for (let n = 0; n < Q.length; n++) if (Q[n].key === key) return;
+    Q.push({ key, cell: i });
+  }
+  // The next thing waiting is shown, where its cell is that thing still (one cut or hauled meanwhile is passed over, to
+  // be met again): over the bar (js/drawing.js: `drawEye`), with a ring from the cell in its tier's colour. From then
+  // on it is met, for the rest of the game.
+  showEye() {
+    const w = this.world, S = this.S, Q = this.eyeQueue;
+    while (Q.length) {
+      const { key, cell } = Q.shift(), k = w.laid(cell), row = k < 0 ? null : w.row(cell);
+      if (!row || S.eyed[key] || this.sampleOf(k, row, cell) !== key) continue;
+      const worth = WORTH_AT[Math.min(WORTH_AT.length - 1, S.lv.winch)][key], e = LAB_OF[key], line = LAB_LIST.line[LAB.indexOf(e)];
+      S.eyed[key] = 1;
+      // (How much more the ground this cell lies in pays than the ground the thing's worth is said for: not for a
+      // lump, which no ground multiplies, nor for copper and violet quartz, whose line says both grounds they lie in.)
+      const more = worth.lump || worth.home ? 0 : row.rich * row.worth / worth.ground;
+      const tag = more < EYE_MORE ? null : more >= 1.95 ? `HERE x${Math.round(more * 10) / 10}` : `HERE +${Math.round((more - 1) * 100)}%`;
+      this.eye = { key, sheet: line.sheet, frame: line.frame, name: S.lab[key] ? e.name : line.label, said: worth.said, tier: worth.tier, rim: TIER_RIM[worth.tier], tag,
+        cell, t: 0, life: EYE_LIFE, W: 0, rect: [0, 0, 0, 0] };
+      this.ring((cell % N + 0.5) * T, (Math.floor(cell / N) + 0.5) * T, this.eye.rim, 18);
+      return;
+    }
   }
   // A wreck nobody has claimed, within hearing, ticks: softly, and quicker the nearer the drill is to it.
   listen(dt) {
@@ -1864,8 +1918,9 @@ export class Game {
   // each level. A thing that has an heir's key (js/shop.js: `heir`: a cross's rich ore, which was known by its donor's
   // before it was a thing of its own, and a deep seam's ores, by its seam's) is known as well as the better of the
   // two, so what a game had learnt of it under the older name it keeps.
-  studied(k, row, i = -1) {
-    const key = this.sampleOf(k, row, i), e = key && LAB_OF[key];
+  studied(k, row, i = -1) { return this.studiedOf(this.sampleOf(k, row, i)); }
+  studiedOf(key) {
+    const e = key && LAB_OF[key];
     if (!e) return 0;
     const n = this.S.lab[key] ?? 0;
     return labLevel(e.heir ? Math.max(n, this.S.lab[e.heir] ?? 0) : n) / 100;
@@ -1973,6 +2028,10 @@ export class Game {
   //   mult, over        what the cells' grit is multiplied by, and the share of it left by a piece over the winch's load
   //   spin              the hauls before this in the flywheel's run (`spin`), each of which makes the cells' grit (not
   //                     the lumps) pay a share more, up to the flywheel's value: 0 with none, or no flywheel
+  //   top, topN         the thing of the lab's that paid most in the haul (its key), by what its cells brought in, their
+  //                     grit as the haul multiplies it and their lumps as they stand, the higher tier where two paid
+  //                     the same; null where none paid anything. And how many of its cells there were.
+  //   topHome           whether most of them lay in the home ground, where copper and violet quartz pay its own
   payOf(cells, extra = []) {
     const w = this.world, S = this.S, n = cells.length + extra.length, gems = noGems(), spec = [0, 0, 0, 0, 0], wrecks = [], held = S.wrecks ?? [];
     const chain = 1 + 0.2 * Math.min(5, this.chain && this.time - this.chain.t <= CHAIN ? this.chain.n : 0);
@@ -1980,13 +2039,13 @@ export class Game {
     // (The deep finds: the twin stones and fossils' bones in the haul, counted by their sectors and kind, and the
     // shrines.)
     let twins = 0, fossils = 0, fossil = 0, shrine = -1;
-    const catches = this.val('livecatch'), tally = this.tally, shrines = [];
-    tally.clear();
+    const catches = this.val('livecatch'), tally = this.tally, shrines = [], payers = this.payers;
+    tally.clear(); payers.clear();
     const one = (k, b, x, y) => {
       const row = rowOf(b), far = Math.hypot(x - C, y - C), rich = richness(far) * row.rich * row.worth, P = row.pocket;
       // Whose gems a cell pays is its kind's and its ground's to say; the home ground pays none.
       // What the lab knows of a thing makes it worth that much more (`studied`): its grit, its gems, its lump.
-      const study = 1 + this.studied(k, row, y * N + x);
+      const key = this.sampleOf(k, row, y * N + x), study = 1 + this.studiedOf(key), grit0 = grit, lump0 = lump;
       grit += GRIT[k] * rich * study; gems[gemKin(k, row)] += GEMS[k] * row.gemx * study;
       if (b === B.CRUST && (k === K.ORE_A || k === K.ORE_B)) grit += (k === K.ORE_B ? 20 : 4) * rich * study;
       // (Ore and hazards asleep are counted, for what the haul is called: `haulTitle`.)
@@ -2022,6 +2081,12 @@ export class Game {
         lump += round2(income(Math.max(22, far)) * P.lump * (P.chain ? chain : 1) * study);
         spec[w.zoneOf(Math.floor((x - C) / ZONE), Math.floor((y - C) / ZONE))?.kin ?? row.kin] += P.spec;
       }
+      // (What the cell brought in, put to its thing's account: [grit, lump, cells, cells in the home ground].)
+      if (key) {
+        let paid = payers.get(key);
+        if (!paid) payers.set(key, paid = [0, 0, 0, 0]);
+        paid[0] += grit - grit0; paid[1] += lump - lump0; paid[2]++; if (b === B.CRUST) paid[3]++;
+      }
     };
     for (const i of cells) one(w.k(i), w.b(i), i % N, Math.floor(i / N));
     for (const e of extra) one(e.k, e.b, e.x, e.y);
@@ -2050,6 +2115,13 @@ export class Game {
     // grit eight in a hundred more for each haul of the run before it, twelve at its second level, up to the row's
     // value, SPIN_STEP.)
     const fly = this.val('flywheel'), spin = fly > 0 && n >= LIGHT && this.time - this.spin.t <= CHAIN ? this.spin.n : 0, spun = spin ? 1 + Math.min(fly, SPIN_STEP[Math.min(2, S.lv.flywheel)] * spin) : 1;
+    // (What paid most of the lab's things: its cells' grit as the haul multiplies it, and its lumps as they stand.)
+    const worthNow = WORTH_AT[Math.min(WORTH_AT.length - 1, S.lv.winch)];
+    let top = null, topN = 0, topHome = false, most = 0, topTier = 0;
+    for (const [key, [g, l, count, home]] of payers) {
+      const paid = g * mult * spun + l, tier = worthNow[key]?.tier ?? 0;
+      if (paid > most * (1 + 1e-9) || (paid > 0 && paid >= most * (1 - 1e-9) && tier > topTier)) { top = key; topN = count; topHome = home * 2 > count; most = paid; topTier = tier; }
+    }
     // (The station's refinery multiplies a haul's grit, lumps and all; its gem cutter the gems.)
     const refined = this.val('refinery'), cut = this.val('cutter');
     // (And each shrine held makes the gems of both its parents' directions SHRINE_PERK times as many, for good, and
@@ -2063,7 +2135,7 @@ export class Game {
     }
     for (const d of shrines) gems[CORNER_GEM[d]] += SHRINE_GEMS;
     return { n, grit: Math.round((Math.round(grit * mult * spun) + lump) * refined), gems, lump, spec, minerals, mineral, prisms, shine, relic, caches, rares, rare, caught, live, parts, wrecks, mult, over, spin, chain: chains ? chain : 0,
-      ores, hazards, twins, fossils, fossil, shrine, shrines };
+      ores, hazards, twins, fossils, fossil, shrine, shrines, top, topN, topHome };
   }
   // The tether is round these cells: they go, and what they are worth is on its way home. `area` is how much the
   // loop that took them was round, in cells (`reelIfRound`), where it is known.
@@ -2174,8 +2246,10 @@ export class Game {
     // a beat of stillness. A light one says what it paid where it lay, and leaves the banner of a bigger haul up.
     // (A haul named by its place has its title in the place's colour; a giant's stays up longer, and HALF's longest.)
     const mineral = pay.mineral && sheets.minerals?.frames[pay.mineral] ? pay.mineral : null;
+    // (And what paid most in it, under what it paid: not on a relic's banner or a shrine's, which say what they are.)
+    const top = light || relic >= 0 || pay.shrine >= 0 ? null : this.topPayer(pay);
     this.hauled = { title, n, mult, over, grit, gems, light, shine: pay.shine, minerals: pay.minerals, mineral, spec: specUp, specOf, chain: pay.chain, spin: pay.spin, live: pay.live, t: 0,
-      life: half ? 7 : 2.2 + Math.min(1.2, n * 0.01) + giant * 0.4, giant, colour: named ? bright(ground.map) : null, sub };
+      life: half ? 7 : 2.2 + Math.min(1.2, n * 0.01) + giant * 0.4, giant, colour: named ? bright(ground.map) : null, sub, top };
     if (light) {
       this.shake = Math.max(this.shake, Math.min(1.5, 0.7 + n * 0.08));
       this.ring(cx, cy, '#fff6c8', 12 + n);
@@ -2218,6 +2292,16 @@ export class Game {
     }
     else if (pay.fossil || pay.twins) sfx.relic();
     if (rang) { sfx.resonate?.(rang); this.ring(cx, cy, '#fff0a0', 200, 0.08, 1.2); if (light) this.popup(mx, my - 1.2, `${rang} RING`, '#fff0a0'); }
+  }
+  // What a haul's banner says of the thing of the lab's that paid most in it (`payOf`: `top`), where that is a thing of
+  // the second tier or the third with the winch as it is: how many of its cells came, its name (a '?' until the lab
+  // has analysed it, as the lab's list has none) and its worth as the lab says it (js/worth.js; the home ground's
+  // where most of the cells lay there), in its tier's colour, with its picture; null otherwise. Made once a haul.
+  topPayer({ top, topN, topHome }) {
+    const worth = top && WORTH_AT[Math.min(WORTH_AT.length - 1, this.S.lv.winch)][top];
+    if (!worth || worth.tier < 2) return null;
+    const e = LAB_OF[top], line = LAB_LIST.line[LAB.indexOf(e)];
+    return { key: top, said: `${topN} ${this.S.lab[top] ? e.name : '?'} ${figOf(topHome && worth.home ? worth.home : worth)}`, colour: TIER_RIM[worth.tier], sheet: line.sheet, frame: line.frame };
   }
   // A geode hauled in ground whose finds are geodes (a druse's: a row's `geodes`) rings, once a haul, and the geodes
   // round it answer: every sector of finds within two sectors (96 cells) of it that holds a geode is shown, the
@@ -2826,6 +2910,8 @@ export class Game {
   revert() {
     const lost = this.S, was = JSON.parse(this.docked), earned = Math.max(0, Math.round(lost.grit - was.grit));
     this.S = was;
+    // (What was shown of a thing's worth was seen, whatever became of the trip: it is not shown again.)
+    was.eyed ??= {}; for (const key in lost.eyed ?? {}) was.eyed[key] = 1;
     const share = this.val('blackbox'), kept = Math.round(earned * share), gone = earned - kept;
     this.S.grit += kept;
     if (lost.lv.blackbox >= LORE) this.keepLore(lost);
@@ -3332,6 +3418,12 @@ export class Game {
     if (this.banner) { this.banner.t += dt; if (this.banner.t > this.banner.life) this.banner = null; }
     if (this.place) { this.place.t += dt; if (this.place.t > this.place.life) this.place = null; }
     if (this.specLine) { this.specLine.t += dt; if (this.specLine.t > this.specLine.life) this.specLine = null; }
+    // (A thing's worth is up for its while out in the ground, not under a panel nor at the core, where the shop's
+    // button is; and the next waiting comes after it.)
+    if (!this.shop && !this.lab && !this.atCore) {
+      if (this.eye) { this.eye.t += dt; if (this.eye.t > this.eye.life) this.eye = null; }
+      if (!this.eye && this.eyeQueue.length) this.showEye();
+    }
     // The camera eases after the drill, a little ahead of the way it is flying.
     const k = 1 - Math.exp(-dt * 8), lead = Math.min(3, Math.hypot(d.vx, d.vy) * 0.1), speed = Math.hypot(d.vx, d.vy) || 1;
     this.cam.x += ((d.x + d.vx / speed * lead) * T - this.cam.x) * k; this.cam.y += ((d.y + d.vy / speed * lead) * T - this.cam.y) * k;

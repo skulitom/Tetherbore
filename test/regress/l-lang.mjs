@@ -93,6 +93,11 @@ for (const line of LAB_LIST.line) { names.add(line.label); names.add(line.found)
 // (What each thing is worth, said under the list: js/worth.js.)
 const { WORTH_AT } = await import('../../js/worth.js');
 for (const at of WORTH_AT) for (const w of Object.values(at)) if (w) names.add(w.said);
+// (And said where it is met: how much more the ground it is seen in pays, and what paid most in a haul, so many
+// cells of it, its name or a '?', and its figure: js/game.js, `showEye`, `topPayer`.)
+const { figOf } = await import('../../js/worth.js');
+for (const said of ['HERE x2', 'HERE +25%', 'HERE +80%', 'HERE +20%', '12 ? x4', '1 ? ~x190']) names.add(said);
+for (const e of LAB) for (const at of WORTH_AT) if (at[e.key]) { names.add(`12 ${e.name} ${figOf(at[e.key])}`); if (at[e.key].home) names.add(`3 ${e.name} ${figOf(at[e.key].home)}`); }
 names.add(labCount(1)); names.add(labCount(5)); names.add(labCount(2400));
 for (const b of BIOMES) if (b) { names.add(b.title); const h = placeHaul(b); if (h) names.add(h); }
 for (const [, g] of GIANTS) names.add(g);
