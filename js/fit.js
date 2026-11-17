@@ -14,6 +14,7 @@
 import { UPGRADES, WORKS, MAPS, CORE, TABS } from './shop.js';
 import { sheets, draw, frameAt, duration, tinted, text, textWidth } from './atlas.js';
 import { sfx } from './audio.js';
+import { tr } from './lang.js';
 import { N, C, K } from './world.js';
 
 // (Figures of the game's own, kept here so that nothing of js/game.js or js/drawing.js need be imported: pixels in
@@ -23,14 +24,26 @@ const METALS = [K.STEEL, K.KEY];
 const GEM_COLOR = [null, '#bfe6ff', '#ffb060', '#b8f06a', '#d8b8ff'];
 
 // ---------------------------------------------------------------- how the tether looks
-// At each level of reach: rope, braid, cable, then lines of light. From the seventh, light runs out along it from
-// the core to the drill, as power fed down the cable: a dash of `glow` every `gap` pixels, `run` pixels a second
-// (and at the last, a white dash between each two). `dashes` is the pattern, made once.
+// At each level of reach a tether of its own, and named so (js/shop.js: `tiers`): TWINE; HEMP, a twisted rope;
+// KNOTTED, hemp with a knot every so far; PARACORD, a tight orange weave; STEEL WIRE, fine and twisted; CHAIN, dark
+// with bright links on it; GOLD CABLE; FIBRE, a fine blue line that light races down; PLASMA, a cyan cable in a glow
+// of its own; and STARLINE, violet, in a glow, strung with stars. `a` is the rope, `b` the second strand of its braid
+// in lengths `dash` of each turn, a turn `turn` times the usual and the strand `links` times the rope's width with
+// round ends where it is a chain's; `fine` a thinner rope, `thick` a thicker; `knot`, a knot of that colour every
+// `every` pixels along it; `halo`, a glow about the tether over the dark. From GOLD CABLE, light runs out along it from
+// the core to the drill, as power fed down the cable: a dash of `glow` every `gap` pixels, `run` pixels a second (and
+// at the last, a white dash between each two). `dashes` is the pattern, made once.
 export const TETHERS = [
-  { a: '#e8dcc0', b: '#e8dcc0', dash: 1 }, { a: '#e8dcc0', b: '#b89a6c', dash: 0.5 }, { a: '#f0d890', b: '#b0803a', dash: 0.5 },
-  { a: '#f0b060', b: '#c8442a', dash: 0.5 }, { a: '#d8e0ec', b: '#8a94a8', dash: 0.5 }, { a: '#eef4ff', b: '#6e7c98', dash: 0.25, thick: true },
-  { a: '#ffe89a', b: '#c89020', dash: 0.25, thick: true, glow: '#fff4c0', gap: 60, run: 50 }, { a: '#fff4c0', b: '#e8a020', dash: 0.5, thick: true, glow: '#ffffff', gap: 44, run: 70 },
-  { a: '#a8fff0', b: '#30c8c0', dash: 0.5, thick: true, glow: '#d8fff8', gap: 36, run: 90 }, { a: '#ffc8f4', b: '#b050d0', dash: 0.5, thick: true, glow: '#ffd8f8', gap: 28, run: 120, twin: '#ffffff' },
+  { a: '#e8dcc0', b: '#e8dcc0', dash: 1 },
+  { a: '#d8c49a', b: '#8a6a3e', dash: 0.5 },
+  { a: '#e0cc9c', b: '#a8844e', dash: 0.5, knot: '#6a4a26', every: 9 },
+  { a: '#ffa060', b: '#c8342a', dash: 0.5, turn: 0.5 },
+  { a: '#eef2fa', b: '#5a6884', dash: 0.3, turn: 0.4, fine: true },
+  { a: '#3a4058', b: '#d0d8e4', dash: 0.4, turn: 1.5, links: 1.1, thick: true },
+  { a: '#ffe89a', b: '#c89020', dash: 0.25, thick: true, glow: '#fff4c0', gap: 60, run: 50 },
+  { a: '#4a80d0', b: '#a8d8ff', dash: 0.2, fine: true, glow: '#ffffff', gap: 22, run: 150, halo: '#5cc4f0' },
+  { a: '#a8fff0', b: '#30c8c0', dash: 0.5, thick: true, glow: '#d8fff8', gap: 36, run: 90, halo: '#5fe0d0' },
+  { a: '#ffc8f4', b: '#b050d0', dash: 0.5, thick: true, glow: '#ffd8f8', gap: 28, run: 120, twin: '#ffffff', halo: '#c070ff', knot: '#ffffff', every: 14 },
 ];
 for (const t of TETHERS) if (t.glow) t.dashes = [3, t.gap];
 
@@ -103,8 +116,12 @@ const EXHAUST_COLOURS = [null, null, null, ['#ffb060', '#ff5a3a'], ['#ffe14a', '
 // fast; the scanner: how often its dish pings, while the drill is home, and from which level its beam sweeps.
 export const ORBIT = [0, 0, 0, 0, 0, 2, 3, 4, 6];
 const ORBIT_R = 46, ORBIT_SPEED = 0.8;
-const ORBIT_COLOURS = ['#c8f4ff', '#c8f4ff', '#c8f4ff', '#c8f4ff', '#c8f4ff', '#c8f4ff'], CROWN_COLOURS = ['#bfe6ff', '#ffffff', '#ffb060', '#b8f06a', '#ffffff', '#d8b8ff'];
+// (In each winch's own colours, two to a winch, by turns: the magma's embers, the storm's sparks, the gravity's
+// stars; and the singularity's crown of the four gems.)
+const ORBIT_COLOURS = [null, null, null, null, null, ['#ffd060', '#ff6a1a'], ['#fff27a', '#c8e0ff'], ['#f0e4ff', '#b08aff']], CROWN_COLOURS = ['#bfe6ff', '#ffffff', '#ffb060', '#b8f06a', '#ffffff', '#d8b8ff'];
 const PING = [0, 6, 5, 4.5, 4, 3.5, 3], BEAM = 3;
+// The hull's plates holding glint in their own metal: cobalt, gold, the aegis's white.
+const PLATE_GLINT = [null, null, null, null, null, '#84dcff', '#ffe14a', '#e6fbff'];
 // The lamp: the small warm glow at the drill's nose and the length of its flare, by level.
 const LAMP_GLOW = [0, 0.1, 0.12, 0.14, 0.16, 0.18], FLARE = [0, 9, 12, 15, 18, 21], WARM = '#ffe0a0';
 // The black box blinks every so many seconds, by level, on the station and the drill.
@@ -403,7 +420,9 @@ export class Fitter {
     // (A drill part is fitted with a turn on the core only where the drill sits still on it; out in flight it is
     // fitted where the drill is, with no turn.)
     f.still = game.atCore && Math.hypot(d.vx, d.vy) < 2;
-    f.label = `${u.name} ${u.show(u.values[q.level])}`;
+    // (A bit or a winch is named for what it is now: `tiers`, DIAMOND BIT, FROST WINCH.)
+    // (In another language the name and the value are each turned, as they are said apart in the shop: js/lang.js.)
+    f.label = u.tiers ? `${u.tiers[q.level]} ${u.noun ?? u.name}` : `${tr(u.name)} ${tr(u.show(u.values[q.level]))}`;
     const last = q.level === u.values.length - 1, tab = TAB_OF.get(u).id;
     f.sub = last ? 'MAX' : tab === 'works' ? 'FITTED' : tab === 'core' ? 'BUILT' : u.show(u.values[q.level]);
     this.gap = GAP;
@@ -464,7 +483,7 @@ export class Fitter {
       this.burst(x, y, 24, c, 90);
       this.flash = 0.3;
       const b = this.banner;
-      b.t = b.life; b.title = f.u.name; b.sub = f.sub; b.colour = f.colour;
+      b.t = b.life; b.title = f.u.tiers ? f.label : f.u.name; b.sub = f.sub; b.colour = f.colour;
     }
   }
   tintOn(colour, alpha, fade = 0.3) { this.tintColour = colour; this.tintAlpha = alpha; this.tint = fade; this.tintFade = fade; }
@@ -560,7 +579,7 @@ export class Fitter {
         const r = ORBIT_R + 14 * ease(this.orbitIn / 0.8), crown = lv.winch >= 8;
         for (let k = 0; k < n; k++) {
           const a = game.time * ORBIT_SPEED + k * 6.2832 / n;
-          ctx.fillStyle = crown ? CROWN_COLOURS[k % 6] : ORBIT_COLOURS[k % 6];
+          ctx.fillStyle = crown ? CROWN_COLOURS[k % 6] : ORBIT_COLOURS[lv.winch][k % 2];
           for (let j = 3; j >= 0; j--) {
             const b = a - j * 0.05;
             ctx.globalAlpha = j ? 0.35 - j * 0.08 : 0.9;
@@ -598,7 +617,7 @@ export class Fitter {
     }
     // The hull's plates holding while nothing can knock it, from the sixth level.
     if (game.shield > 0 && lv.hull >= 5 && d.mode !== 'dead') {
-      ctx.fillStyle = '#aab4c8'; ctx.globalAlpha = 0.7 * Math.min(1, game.shield);
+      ctx.fillStyle = PLATE_GLINT[Math.min(7, lv.hull)]; ctx.globalAlpha = 0.7 * Math.min(1, game.shield);
       for (let k = 0; k < 12; k++) { const a = game.time * 4 + k * 0.5236; ctx.fillRect(Math.round(dx + Math.cos(a) * 11), Math.round(dy + Math.sin(a) * 11), 1, 1); }
     }
     // The arc coil's crackle: four jagged lines out of the coil.

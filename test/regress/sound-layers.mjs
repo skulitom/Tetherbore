@@ -308,6 +308,22 @@ if (heard.size < GROUNDS.length - 3) fails.push(`in ten minutes of ${GROUNDS.len
 if (made.length - before > 5) fails.push(`the music made ${made.length - before} nodes in ten minutes (the bed's five, the first time the ground is told, are all that is meant)`);
 const notes = posts() - posted;
 if (!(notes > 1500 && notes < 36000)) fails.push(`the music posted ${notes} changes in ten minutes (thousands are meant: a note is three to five)`);
+// A long stay: four and a half minutes in each of a direction, a deep flank, a strain, a cross and a pocket. Each but
+// the pocket goes round its first piece, gives its second a turn and comes back to its first; every second is in its
+// first's key, scale and air, the strain's carries its twist and the cross's its donor's voice; and the pocket, which
+// has none, plays on. (Its checks below hold these minutes too.)
+const longStay = [[0, false, 'crust'], [1, true, 'rime'], ['firn', false, 'firn'], [THAW, false, THAW.name], ['hive', false, 'hive']];
+for (const [g, deep, name] of longStay) {
+  audio.setAmbience(g, deep, 300);
+  const order = [];
+  for (let k = 0; k < 270 / (timer.ms / 1000); k++) { clock += timer.ms / 1000; timer.run(); const now = audio.musicNow().score; if (now && now !== order.at(-1)) order.push(now); }
+  const first = audio.scoreOf(g, deep), second = audio.secondOf(first), mine = order.slice(order.indexOf(name));
+  if (name === 'hive') { if (second || mine.length !== 1) fails.push(`the hive has a second piece, or played ${mine.join(' > ')}`); continue; }
+  if (mine.slice(0, 3).join(' > ') !== `${name} > ${name}2 > ${name}`) fails.push(`four and a half minutes in ${name} played ${mine.join(' > ')}, not the first, the second and the first again`);
+  if (!second || second.root !== first.root || second.mode !== first.mode || second.air.join() !== first.air.join() || second.bell !== first.bell) fails.push(`${name}'s second is not in its first's key, scale, air and bell`);
+}
+if (audio.secondOf(audio.scoreOf('firn')).pluck?.pattern !== '0.1.2.3.4...') fails.push('the strain firn\'s second does not carry its run of glass');
+if (audio.secondOf(audio.scoreOf(THAW))?.perc?.pattern !== audio.scoreOf('ember').perc.pattern) fails.push('the cross thaw\'s second does not carry the south\'s drum');
 // What a gain's automation comes to at time `d`, all its events being targets.
 const valueAt = (param, d) => {
   let v = param.first, target = v, tau = 0, start = 0;

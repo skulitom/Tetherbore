@@ -3,7 +3,7 @@
 import { World, CellBook, N, C, K, B, HARD, GRIT, GEMS, DX, DY, HAZARDS, RARE, CRUSH, ZONE, FIND, rowOf, hazOf, gemKin, digTime, cellHash, sight, cellsAlong, HOME_R, GEN, SEAMS, SHRINE_R, FOSSILS, fossilKin } from './world.js';
 import { sheets, frameAt, duration } from './atlas.js';
 import { sfx, unlock, setAmbience } from './audio.js';
-import { richness, haulBonus, overload, income, round2, NEEDS, UPGRADES, LAB, LAB_OF, labLevel, labNext, CORE, ROWS, REACH, CUT } from './shop.js';
+import { richness, haulBonus, overload, income, round2, NEEDS, UPGRADES, LAB, LAB_OF, labLevel, labNext, CORE, ROWS, REACH, CUT, TABS } from './shop.js';
 import { Drawing, T, DIR_BIOME, GEM_ICON, GEM_COLOR, GEM_WHERE, SPOT, bright, compact, DEBRIS, LAB_LIST, LAB_RH, LAB_SEC } from './drawing.js';
 import { Feel } from './feel.js';
 import { Fitter } from './fit.js';
@@ -35,7 +35,32 @@ export const RUBBLE = 400;
 // and more): the loop is round nine tenths of HALF at the least, and at least two fifths of HALF is ground (`isHalf`).
 // It is asked of the loop's area and not of the cells hauled, as caves, tunnels and ground hauled before take a fifth
 // of any reach or more: a loop round exactly half the longest reach hauls six and a half million cells.
-const SIZES = [[200, 'COLOSSAL!'], [80, 'HUGE HAUL!'], [30, 'BIG HAUL!'], [10, 'NICE CUT!']];
+// Each size has three words, said by turns (`pick`: the game's count of hauls), the first its own; the ladder climbs
+// slowly at first, so COLOSSAL is a haul of note and not every slab.
+export const SIZES = [
+  [550, ['COLOSSAL!', 'GEOLOGY HAPPENED!', 'IS THAT LEGAL?!']],
+  [300, ['MASSIVE!', 'ABSOLUTE UNIT!', 'BIG ROCK ENERGY!']],
+  [150, ['HUGE HAUL!', 'WHOPPER!', "THAT'S A LOT OF ROCK"]],
+  [80, ['HEFTY HAUL!', 'BEEFY!', 'OOF. HEAVY.']],
+  [30, ['BIG HAUL!', 'CHUNKY!', "NOW WE'RE TALKING!"]],
+  [10, ['NICE CUT!', 'TIDY!', 'NEAT LITTLE ONE!']],
+];
+// What a haul is called for what is in it or how it was made, with a line under it, the first that holds of: a
+// creature caught in the loop that took it (`caught`), a hull down to its last half heart (`low`), and below MASSIVE
+// a haul that is half ore and more (`ores`), one of nothing that pays but its grit (`dull`) and one with three
+// hazards asleep in it or more (`hazards`). Each has words by turns, as the sizes do.
+export const QUIPS = {
+  caught: [['ECO-VANDAL!', 'YOU MONSTER'], ['EVICTED!', 'THEY PAID RENT'], ['HABITAT: GONE', 'NATURE WILL REMEMBER THIS']],
+  low: [['CLUTCH!', 'ON HALF A HEART'], ['NERVES OF STEEL!', 'ON HALF A HEART'], ['BRAVE. OR SILLY.', 'ON HALF A HEART']],
+  ores: [['MOTHER LODE!', 'GREED IS GOOD'], ['JACKPOT!', 'SHINY SHINY SHINY'], ['ORE-SOME!', 'SORRY']],
+  dull: [['PURE GRAVEL!', 'A FINE VINTAGE'], ['ROCKS!', 'YOU GOT ROCKS'], ['ARTISANAL DIRT!', 'HAND-PICKED']],
+  hazards: [['HOT POTATO!', 'HANDLE WITH CARE'], ['SPICY!', 'DO NOT LICK'], ['RISKY BUSINESS!', 'IT WAS ASLEEP. MOSTLY.']],
+};
+// And a line under each giant, and under a haul over the winch's load where nothing else is said.
+export const GIANT_SAYS = ['THE MOUNTAIN NEEDED THAT', 'MIND THE ICEBERGS', 'TAKE COVER', 'GEOLOGISTS ARE SCREAMING', 'NEW MAPS REQUIRED', 'BURP.'];
+export const OVER_SAYS = 'THE WINCH IS CRYING';
+// The keys that open a tab of the panel the bar opens, each shutting it again (`key`).
+export const PANEL_KEYS = { KeyI: 'stats', KeyL: 'lab', KeyM: 'chart', Escape: 'menu' };
 export const GIANTS = [[1000, 'MOUNTAINOUS!'], [4000, 'TITANIC!'], [15000, 'AVALANCHE!'], [50000, 'CATACLYSM!'], [150000, 'CONTINENTAL!'], [400000, 'WORLD EATER!']];
 export const HALF = Math.round(Math.PI * REACH[REACH.length - 1] ** 2 / 2);
 export const isHalf = (n, area) => area >= HALF * 0.9 && n >= HALF * 0.4;
@@ -56,26 +81,37 @@ export const placeHaul = row => !row || !(row.pocket || row.cross || (row.id >= 
 export const giantOf = (n, area = 0) => isHalf(n, area) ? GIANTS.length + 1 : GIANTS.findLastIndex(([at]) => n >= at) + 1;
 // The title of a haul of `n` cells with what was found in it, lying mostly in ground `row` (null: no one ground),
 // made by a loop round `area` cells (0: not known, as when a haul is staged by hand):
-// [title, giant, whether the place named it]. Half of everything outshouts anything; a relic and a wreck's part are
-// told before any size, as they are rarer than any; a cache and a rare hazard are told before any but a giant's,
-// a rare hazard caught awake with the live catch bought as caught live (`live`); and a haul that is a link in the
-// flywheel's run of two or more before it (`spin`, how many) by that before the place it lies in or its size.
+// [title, giant, whether the place named it, the line under it or null]. Half of everything outshouts anything; a
+// relic and a wreck's part are told before any size, as they are rarer than any; a cache and a rare hazard are told
+// before any but a giant's, a rare hazard caught awake with the live catch bought as caught live (`live`); a haul
+// that is a link in the flywheel's run of two or more before it (`spin`, how many) by that; then a creature caught
+// and the last half heart (`QUIPS`), the place it lies in, what it held (below MASSIVE), and its size. `pick` says
+// which of a size's or a quip's words: the same haul is always called the same.
 // A shrine is told as a relic is, and a fossil whole (`fossil`: the direction whose species it is) and twin stones
 // both in one haul (`twins`) as a rare hazard is.
-export function haulTitle(n, { relic = -1, parts = 0, caches = 0, rare = null, live = false, spin = 0, shrine = -1, fossil = 0, twins = 0 } = {}, row = null, area = 0) {
-  const giant = giantOf(n, area), place = n >= 30 ? placeHaul(row) : null;
-  if (giant > GIANTS.length) return ['HALF THE WORLD!', giant, false];
-  if (relic >= 0) return ['RELIC!', giant, false];
-  if (shrine >= 0) return ['SHRINE!', giant, false];
-  if (parts) return ['WRECK PART! PAY +10%', giant, false];
-  if (giant) return [GIANTS[giant - 1][1], giant, false];
-  if (caches) return ['CACHE!', 0, false];
-  if (rare) return [live ? 'CAUGHT LIVE!' : `${SPOT[rare][0]}!`, 0, false];
-  if (fossil) return [`${FOSSILS[fossil]}!`, 0, false];
-  if (twins) return ['TWIN STONES!', 0, false];
-  if (spin >= 2) return [`SPIN x${spin}`, 0, false];
-  if (place) return [place, 0, true];
-  return [SIZES.find(([at]) => n >= at)?.[1] ?? 'HAUL', 0, false];
+export function haulTitle(n, { relic = -1, parts = 0, caches = 0, rare = null, live = false, spin = 0, caught = 0, low = false, ores = 0, dull = false, hazards = 0, over = 1, pick = 0, shrine = -1, fossil = 0, twins = 0 } = {}, row = null, area = 0) {
+  const giant = giantOf(n, area), place = n >= 30 ? placeHaul(row) : null, one = list => list[pick % list.length];
+  const quip = key => { const [title, says] = one(QUIPS[key]); return [title, 0, false, says]; };
+  if (giant > GIANTS.length) return ['HALF THE WORLD!', giant, false, 'HALF THE REACH IN ONE HAUL'];
+  if (relic >= 0) return ['RELIC!', giant, false, null];
+  if (shrine >= 0) return ['SHRINE!', giant, false, null];
+  if (parts) return ['WRECK PART! PAY +10%', giant, false, null];
+  if (giant) return [GIANTS[giant - 1][1], giant, false, GIANT_SAYS[giant - 1]];
+  if (caches) return ['CACHE!', 0, false, null];
+  if (rare) return [live ? 'CAUGHT LIVE!' : `${SPOT[rare][0]}!`, 0, false, null];
+  if (fossil) return [`${FOSSILS[fossil]}!`, 0, false, null];
+  if (twins) return ['TWIN STONES!', 0, false, null];
+  if (spin >= 2) return [`SPIN x${spin}`, 0, false, null];
+  if (caught) return quip('caught');
+  if (low && n >= 10) return quip('low');
+  if (place) return [place, 0, true, over < 1 ? OVER_SAYS : null];
+  if (n >= 30 && n < 300) {
+    if (ores * 2 >= n) return quip('ores');
+    if (dull) return quip('dull');
+    if (hazards >= 3) return quip('hazards');
+  }
+  const size = SIZES.find(([at]) => n >= at);
+  return [size ? one(size[1]) : 'HAUL', 0, false, over < 1 ? OVER_SAYS : null];
 }
 // Which bits of rubble are in which cell, to find the bits near each (`jostle`): a table of chains, each cell hashed
 // to one chain, which holds the bits by their place in the list being jostled, in that order. The rubble is sorted
@@ -602,7 +638,7 @@ export class Game {
       }
     }
     if (this.input.id !== null) return;
-    if (hit) { hit.act(); return; }
+    if (hit) { hit.act(x, y); return; }
     if (this.shop || this.lab) { this.shop = this.lab = false; sfx.tap(); return; }
     Object.assign(this.input, { id, ax: x, ay: y, px: x, py: y, m: 0 });
     this.drill.armed = true;
@@ -643,7 +679,12 @@ export class Game {
   }
   // A key held down comes again and again (`repeat`): only the lab's list takes those, to walk on through it, and
   // only of a key it took as it went down (a key held to fly with as the list was opened is not walked by).
-  key(code, down, repeat = false) {
+  //
+  // On a keyboard each panel has a key of its own (`PANEL_KEYS`): U or Enter the shop (at the core), I the panel's
+  // STATS, L its LAB, M its MAP (once the chart is bought) and Escape its MENU; the key of the panel or tab open
+  // shuts it, and Escape shuts whatever is open. With a panel open, Tab (Shift+Tab back) steps through its tabs and
+  // 1 to 4 choose one.
+  key(code, down, repeat = false, shift = false) {
     if (!down && code === this.labHeld) this.labHeld = null;
     if (down && this.lab && this.labTab === 'lab' && (!repeat || code === this.labHeld) && this.labKey(code, repeat)) { this.labHeld = code; return true; }
     if (repeat) return false;
@@ -654,11 +695,30 @@ export class Game {
     }
     if (!down) return false;
     unlock();
-    if (code === 'KeyU' || code === 'Enter') { if (this.atCore && this.drill.mode !== 'dead') { this.shop = !this.shop; this.lab = false; } return true; }
-    if (code === 'KeyL') { this.openLab(!this.lab); return true; }
-    if (code === 'Escape') { this.shop = this.lab = false; return true; }
+    if (code === 'KeyU' || code === 'Enter') { if (this.atCore && this.drill.mode !== 'dead') { this.shop = !this.shop; this.lab = false; sfx.tap(); } return true; }
+    if (code === 'Escape' && (this.shop || this.lab)) { this.shop = this.lab = false; sfx.tap(); return true; }
+    const tab = PANEL_KEYS[code];
+    if (tab) {
+      if (tab === 'chart' && !this.charted) return true;
+      if (this.lab && this.labTab === tab) this.openLab(false); else this.openLab(true, tab);
+      return true;
+    }
+    const step = code === 'Tab' ? (shift ? -1 : 1) : 0, pick = /^(Digit|Numpad)[1-9]$/.test(code) ? +code.at(-1) - 1 : -1;
+    if (step || pick >= 0) {
+      if (!this.shop && !this.lab) return step !== 0;
+      const ids = this.shop ? TABS.map(t => t.id) : this.panelIds(), now = Math.max(0, ids.indexOf(this.shop ? this.shopTab : this.labTab));
+      const to = step ? (now + step + ids.length) % ids.length : pick;
+      if (to >= ids.length || to === now) return true;
+      if (this.shop) this.shopTab = ids[to];
+      else if (ids[to] === 'lab') return this.openLab(true, 'lab'), true;   // (the list opens at the thing chosen)
+      else { this.labTab = ids[to]; this.labVel = 0; this.labAim = null; }
+      sfx.tap();
+      return true;
+    }
     return false;
   }
+  // The panel's tabs, in the order they are drawn (the MAP only once the chart is bought).
+  panelIds() { return ['stats', 'lab', ...(this.charted ? ['chart'] : []), 'menu']; }
   // Which way the player is steering, and how hard: [x, y, 0-1].
   steer() {
     const inp = this.input;
@@ -1817,7 +1877,7 @@ export class Game {
   // something was analysed (at the thing last learnt about); a tap on the map names the chart's tab itself. The
   // lab's list opens with the thing chosen in the middle of its window, as near as the ends allow.
   openLab(open, tab) {
-    this.lab = open; this.shop = false; this.chartTouch.clear();
+    this.lab = open; this.shop = false; this.chartTouch.clear(); this.langOpen = false;
     this.labTouch = null; this.labVel = 0; this.labAim = null; this.labHeld = null;
     if (open) {
       this.labSel ??= (LAB.find(e => this.S.lab[e.key]) ?? LAB[0]).key; this.labTab = tab ?? (this.labFlash > 0 ? 'lab' : this.labTab);
@@ -1900,7 +1960,7 @@ export class Game {
   payOf(cells, extra = []) {
     const w = this.world, S = this.S, n = cells.length + extra.length, gems = [0, 0, 0, 0, 0], spec = [0, 0, 0, 0, 0], wrecks = [], held = S.wrecks ?? [];
     const chain = 1 + 0.2 * Math.min(5, this.chain && this.time - this.chain.t <= CHAIN ? this.chain.n : 0);
-    let grit = 0, lump = 0, relic = -1, caches = 0, minerals = 0, mineral = null, prisms = 0, chains = false, rares = 0, rare = null, caught = 0, live = false;
+    let grit = 0, lump = 0, relic = -1, caches = 0, minerals = 0, mineral = null, prisms = 0, chains = false, rares = 0, rare = null, caught = 0, live = false, ores = 0, hazards = 0;
     // (The deep finds: the twin stones and fossils' bones in the haul, counted by their sectors and kind, and the
     // shrines.)
     let twins = 0, fossils = 0, fossil = 0, shrine = -1;
@@ -1913,6 +1973,9 @@ export class Game {
       const study = 1 + this.studied(k, row);
       grit += GRIT[k] * rich * study; gems[gemKin(k, row)] += GEMS[k] * row.gemx * study;
       if (b === B.CRUST && (k === K.ORE_A || k === K.ORE_B)) grit += (k === K.ORE_B ? 20 : 4) * rich * study;
+      // (Ore and hazards asleep are counted, for what the haul is called: `haulTitle`.)
+      if (k === K.ORE_A || k === K.ORE_B) ores++;
+      else if (k === K.HAZARD || k === K.HAZARD2) hazards++;
       if (k === K.RELIC) {
         const at = w.relicAt.indexOf(y * N + x);
         if (at >= 0) relic = at;
@@ -1981,7 +2044,7 @@ export class Game {
       gems[b] = Math.round(gems[b] * shine * over * cut * perk);
     }
     return { n, grit: Math.round((Math.round(grit * mult * spun) + lump) * refined), gems, lump, spec, minerals, mineral, prisms, shine, relic, caches, rares, rare, caught, live, parts, wrecks, mult, over, spin, chain: chains ? chain : 0,
-      twins, fossils, fossil, shrine, shrines };
+      ores, hazards, twins, fossils, fossil, shrine, shrines };
   }
   // The tether is round these cells: they go, and what they are worth is on its way home. `area` is how much the
   // loop that took them was round, in cells (`reelIfRound`), where it is known.
@@ -2082,9 +2145,12 @@ export class Game {
     this.effect('haul', 'impact', cx, cy);
     sfx.crack(n, linked);
     for (const sp of sprites) if (count < 60 || cellHash(sp.x, sp.y, 9) < 0.4) this.chips(sp.x, sp.y, sp.debris, 2, null, 0.7);
-    const [title, giant, named] = haulTitle(n, { relic, parts, caches, rare: pay.rare, live: pay.live, spin: pay.spin, shrine: pay.shrine, fossil: pay.fossil, twins: pay.twins }, ground, area), half = giant > GIANTS.length;
-    // (What the banner says under its title: what a shrine gives for good, that a fossil is whole, how many geodes rang.)
-    const sub = half ? 'HALF THE REACH IN ONE HAUL' : pay.shrine >= 0 ? `GEMS x${SHRINE_PERK} FOR GOOD` : pay.fossil ? 'FOSSIL, WHOLE' : rang ? `${rang} ${rang === 1 ? 'GEODE RINGS' : 'GEODES RING'}` : null;
+    // (A creature caught by the loop that took the haul was caught this very moment: js/fauna.js, `wound`.)
+    const caught = this.fauna.caughtAt === this.time ? this.fauna.caughtN : 0, dull = !pay.ores && !pay.lump && !gems.some(g => g > 0);
+    const [title, giant, named, says] = haulTitle(n, { relic, parts, caches, rare: pay.rare, live: pay.live, spin: pay.spin, caught, low: this.hull === 1, ores: pay.ores, dull, hazards: pay.hazards, over, pick: S.stats.hauls, shrine: pay.shrine, fossil: pay.fossil, twins: pay.twins }, ground, area), half = giant > GIANTS.length;
+    // (What the banner says under its title: what a shrine gives for good, that a fossil is whole, how many geodes rang;
+    // else the line under the joke.)
+    const sub = half ? says : pay.shrine >= 0 ? `GEMS x${SHRINE_PERK} FOR GOOD` : pay.fossil ? 'FOSSIL, WHOLE' : rang ? `${rang} ${rang === 1 ? 'GEODE RINGS' : 'GEODES RING'}` : says;
     // What the last haul was and paid (`hauled`). Any but a light one says so across the screen, with a flash and
     // a beat of stillness. A light one says what it paid where it lay, and leaves the banner of a bigger haul up.
     // (A haul named by its place has its title in the place's colour; a giant's stays up longer, and HALF's longest.)

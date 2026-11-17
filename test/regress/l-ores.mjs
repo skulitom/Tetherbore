@@ -1,23 +1,25 @@
-// The lab at sixty-four. What the lab can know is sixty-four things in five parts (home and all round, then each
-// direction), each drawn from a frame the atlas has; every ground that has ore says what its two ores are (`ores`),
-// and that is both what the cell is drawn as and what the lab knows it by, so a strain's, a seam's, a deep flank's
-// and a deep strain's ores are their own (a deep seam's its seam's), the four directions' and the crosses' as they
-// were; within a direction's part the seam's come after the rare hazard and the deep strain's after the deep
-// flank's, near to far. A hazard of any type and a keystone's iron are samples, an inert hazard and a prism are
-// not. An ore that is its own pays exactly as the cell would with its direction's ore, and what is known of it
-// makes it, and nothing else, worth more. A hazard cut into is analysed and still goes off; a rare hazard's lump
-// takes what is known of it. A game saved with the sixteen first keys loads and counts them, the gem cutter asks
-// for kinds out of the sixty-four, and its late level for more than the near ground holds without the deep
-// flanks' and deep strains' ores. And the art of the new ores keeps to its rules, read from the sheets as built:
-// outlined in their direction's outline (a seam's rich ore in its other parent's, whose gems it pays), each apart from its neighbours in shape or colour, none in the colour of
-// what hurts in its ground (its direction's hazards, and a seam's other hazard), none lost against its own rock, a
-// common ore in pieces and a rich one in one.
+// The lab at sixty-four and on. What the lab can know is sixty-four things and more, in parts (home and all round,
+// then each direction and the corner after it, going round with the sun; a part with nothing in it is not shown;
+// js/shop.js: `LAB_PARTS`), each drawn from a frame the atlas has; every ground that has ore says what its two ores
+// are (`ores`), and that is both what the cell is drawn as and what the lab knows it by, so a strain's, a seam's, a
+// deep flank's and a deep strain's ores are their own (a deep seam's its seam's), the four directions' and the
+// crosses' as they were; a seam's two are in its corner's part and count toward the direction whose ground it is,
+// and within a direction's part the deep strain's come after the deep flank's, after the rare hazard, near to far.
+// A hazard of any type and a keystone's iron are samples, an inert hazard and a prism are not. An ore that is its
+// own pays exactly as the cell would with its direction's ore, and what is known of it makes it, and nothing else,
+// worth more. A hazard cut into is analysed and still goes off; a rare hazard's lump takes what is known of it. A
+// game saved with the sixteen first keys loads and counts them, the gem cutter asks for the kinds play set (8, 18,
+// 28 and 36), and its late level for more than the near ground holds without the seams', the deep flanks' and deep
+// strains' ores. And the art of the new ores keeps to its rules, read from the sheets as built: outlined in their
+// direction's outline (a seam's rich ore in its other parent's, whose gems it pays), each apart from its neighbours
+// in shape or colour, none in the colour of what hurts in its ground (its direction's hazards, and a seam's other
+// hazard), none lost against its own rock, a common ore in pieces and a rich one in one.
 //   node test/regress/l-ores.mjs
 import { readFile } from 'node:fs/promises';
 import { makeGame, N, C, K, world } from '../harness.mjs';
 import { decodePNG } from '../../tools/png.mjs';
 import { ROCKS, STRAINS } from '../../art/tiles.mjs';
-const { LAB, LAB_OF, LAB_KINS, CORE, labLevel } = await import('../../js/shop.js');
+const { LAB, LAB_OF, LAB_PARTS, PART_INDEX, CORE, labLevel } = await import('../../js/shop.js');
 const { sheets } = await import('../../js/atlas.js');
 const { BIOMES, HAZARDS, RARE, B, SEAMS, DEEP_STRAINS, rowOf, crossRow } = world;
 
@@ -34,25 +36,42 @@ const GROUNDS = ['firn', 'serac', 'scoria', 'forge', 'tangle', 'sporefall', 'red
 const OWN = id => (id >= 5 && id <= 24) || (id >= 64 && id <= 67);
 const SEAM_OF = id => id >= 13 && id <= 16 ? id - 4 : id;
 const NEW_ORES = GROUNDS.flatMap(g => [`ores:${g}A`, `ores:${g}B`]);
+const KIN_PART = ['home', 'n', 's', 'w', 'e'], SEAM_PART = { hoarstone: 'ne', glassdune: 'se', cinderfen: 'sw', frostfen: 'nw' };
 check(LAB.length === 64, `the lab knows ${LAB.length} things, not sixty-four`);
 check(new Set(LAB.map(e => e.key)).size === LAB.length, 'two things of the lab share a key');
 check(SIXTEEN.every(key => LAB_OF[key]), `the sixteen first keys are not all there: ${SIXTEEN.filter(key => !LAB_OF[key])}`);
 check(NEW_ORES.every(key => LAB_OF[key]), `the strains' and flanks' ores are not all there: ${NEW_ORES.filter(key => !LAB_OF[key])}`);
 const parts = [0, 1, 2, 3, 4].map(kin => LAB.filter(e => e.kin === kin).length);
 check(parts.join() === '4,14,17,16,13', `the parts of the list hold ${parts}, not 4, 14, 17, 16 and 13`);
-// Near to far within a part: the rare hazard (450 cells), the seam (470), the deep flank (800), the deep strain
-// (1,100); and each in the part of the direction whose ground it is.
+// Near to far within a direction's part: the rare hazard (450 cells), the deep flank (800), the deep strain (1,100);
+// and the seam's two (470) in its corner's part, counting toward the direction whose ground it is.
 for (const kin of [1, 2, 3, 4]) {
   const seam = BIOMES[SEAMS.find(([id]) => BIOMES[id].kin === kin)[0]], strain = BIOMES[DEEP_STRAINS[kin][0]];
-  const at = key => LAB.findIndex(e => e.key === key), order = [`${HAZARDS[RARE[kin]].sheet}:hazard`, `ores:${seam.name}A`, `ores:${seam.name}B`, `ores:${BIOMES[kin + 4].name}A`, `ores:${BIOMES[kin + 4].name}B`, `ores:${strain.name}A`, `ores:${strain.name}B`];
-  check(order.every((key, i) => at(key) >= 0 && LAB[at(key)].kin === kin && (i === 0 || at(key) > at(order[i - 1]))), `the far things of the ${LAB_KINS[kin][0]} are not in its part from near to far: ${order.map(key => `${key} ${at(key)}`)}`);
+  const at = key => LAB.findIndex(e => e.key === key), order = [`${HAZARDS[RARE[kin]].sheet}:hazard`, `ores:${BIOMES[kin + 4].name}A`, `ores:${BIOMES[kin + 4].name}B`, `ores:${strain.name}A`, `ores:${strain.name}B`];
+  check(order.every((key, i) => at(key) >= 0 && LAB[at(key)].kin === kin && LAB[at(key)].part === KIN_PART[kin] && (i === 0 || at(key) > at(order[i - 1]))), `the far things of direction ${kin} are not in its part from near to far: ${order.map(key => `${key} ${at(key)}`)}`);
+  const corner = SEAM_PART[seam.name];
+  check([`ores:${seam.name}A`, `ores:${seam.name}B`].every(key => LAB_OF[key]?.kin === kin && LAB_OF[key].part === corner), `the ${seam.name}'s ores are not in the ${corner} part, counting toward direction ${kin}`);
 }
-check(LAB.every((e, i) => i === 0 || e.kin >= LAB[i - 1].kin), 'the parts of the list are not each in one run');
-check(LAB_KINS.length === 5 && LAB_KINS.every(([title, icon]) => title && atlas.icons.frames[icon]), 'a part of the list has no title or no icon');
+// (The first forty-eight, each in the part of its direction, as many to each as there were.)
+const FIRST = [
+  'lode-items:oreA', 'lode-items:oreB', 'finds:key', 'minerals:aerolite', 'frost-items:oreA', 'frost-items:oreB',
+  'ores:firnA', 'ores:firnB', 'ores:seracA', 'ores:seracB', 'minerals:starglass', 'bell-items:hazard', 'ores:rimeA',
+  'ores:rimeB', 'lode-items:hazard', 'ores:redrockA', 'ores:redrockB', 'ores:loessA', 'ores:loessB',
+  'minerals:agate', 'lodestone-items:hazard', 'ores:giltA', 'ores:giltB', 'ember-items:oreA', 'ember-items:oreB',
+  'ember-items:steel', 'ember-items:hazard', 'minerals:tektite', 'ores:scoriaA', 'ores:scoriaB', 'ores:forgeA',
+  'ores:forgeB', 'minerals:opal', 'vent-items:hazard', 'ores:magmaA', 'ores:magmaB', 'mire-items:oreA',
+  'mire-items:oreB', 'mire-items:hazard', 'minerals:amber', 'ores:tangleA', 'ores:tangleB', 'ores:sporefallA',
+  'ores:sporefallB', 'minerals:lantern', 'worm-items:hazard', 'ores:bloomA', 'ores:bloomB'
+];
+const first = [0, 1, 2, 3, 4].map(kin => FIRST.filter(key => LAB_OF[key]?.kin === kin && LAB_OF[key].part === KIN_PART[kin]).length);
+check(first.join() === '4,10,13,12,9', `the first forty-eight lie in their parts as ${first}, not 4, 10, 13, 12 and 9`);
+check(LAB.every((e, i) => i === 0 || PART_INDEX[e.part] >= PART_INDEX[LAB[i - 1].part]), 'the parts of the list are not each in one run, in order');
+check(LAB_PARTS.map(p => p.id).join() === 'home,n,ne,e,se,s,sw,w,nw', `the parts go ${LAB_PARTS.map(p => p.id)}, not round with the sun`);
+check(LAB_PARTS.every(p => p.title && p.colour && atlas.icons.frames[p.icon]), 'a part of the list has no title, colour or icon');
 for (const e of LAB) {
   const [sheet, frame] = e.key.split(':');
   check(atlas[sheet]?.frames[frame], `${e.name}: the atlas has no ${e.key}`);
-  check(e.name && e.at && e.where && e.note && [0, 1, 2, 3, 4].includes(e.kin), `${e.key}: no name, place, where or part`);
+  check(e.name && e.at && e.where && e.note && [0, 1, 2, 3, 4].includes(e.kin) && e.part in PART_INDEX, `${e.key}: no name, place, where, direction or part`);
 }
 check(atlas.ores && Object.keys(atlas.ores.frames).length === 40, `the ores sheet has ${Object.keys(atlas.ores?.frames ?? {}).length} frames, not 40`);
 

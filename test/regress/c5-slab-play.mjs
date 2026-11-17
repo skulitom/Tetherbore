@@ -14,7 +14,7 @@
 //   - A cobble field: a lap of its joints round one block, and round a square of four, cuts every key that holds
 //     them (each lies in a joint the lap flies) and brings them home, in three fields.
 //   node test/regress/c5-slab-play.mjs
-import { haulBonus, overload } from '../../js/game.js';
+import { haulBonus, overload, SIZES, QUIPS } from '../../js/game.js';
 import { play, field } from '../../tools/slab-play.mjs';
 
 const fails = [], check = (ok, what) => { if (!ok) fails.push(what); }, out = {};
@@ -55,7 +55,9 @@ for (const seed of [7, 11, 34]) {
     check(none.game.bannerSays(none.game.banner)[0] === `${a.n} x${a.mult.toFixed(1)} WINCH OVER LOAD`, `with no winch the banner says ${none.game.bannerSays(none.game.banner)[0]}`);
     check(b.over === 1 && one.game.bannerSays(one.game.banner)[0] === `${b.n} x${b.mult.toFixed(1)}`, `with one winch the haul is at ${b.over} of full pay and the banner says ${one.game.bannerSays(one.game.banner)[0]}`);
     check(b.grit > a.grit * 1.5, `one level of winch pays ${b.grit} for the slab, none ${a.grit}`);
-    check(a.title === 'COLOSSAL!' && b.title === 'COLOSSAL!', `the hauls are called ${a.title} and ${b.title}`);
+    // (Called by its size, or, being bare grit, by a joke: js/game.js, `haulTitle`.)
+    const words = n => [...SIZES.find(([at]) => n >= at)[1], ...QUIPS.dull.map(([t]) => t)];
+    check(words(a.n).includes(a.title) && words(b.n).includes(b.title), `the hauls are called ${a.title} and ${b.title}`);
     out.winch = { cells: a.n, none: a.grit, one: b.grit, over: +a.over.toFixed(3) };
   }
 }

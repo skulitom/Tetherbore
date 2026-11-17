@@ -22,7 +22,19 @@
 // rules above with no browser.
 
 let ctx = null, master = null, sounds = null, room = null, space = null, keys = null, noiseBuffer = null, muted = false, music = true, aside = false;
-try { muted = localStorage.getItem('tetherbore-mute') === '1'; music = localStorage.getItem('tetherbore-music') !== '0'; } catch { /* private mode */ }
+// How loud the sounds are and how loud the music is, each a tenth at a time from nothing (0) to all (10), set apart
+// in the menu and kept on the device; a step is heard as one, the gain the square of the share. The music at 0 is
+// off (`music`, its switch). A game kept from before there were steps, muted, keeps both at nothing and is no longer
+// muted: the steps say it.
+let soundStep = 10, musicStep = 10;
+try {
+  muted = localStorage.getItem('tetherbore-mute') === '1'; music = localStorage.getItem('tetherbore-music') !== '0';
+  const step = key => { const v = localStorage.getItem(key); return v === null || !(+v >= 0 && +v <= 10) ? null : Math.round(+v); };
+  soundStep = step('tetherbore-sound') ?? 10; musicStep = step('tetherbore-music-step') ?? 10;
+  if (muted) { soundStep = 0; music = false; muted = false; localStorage.setItem('tetherbore-sound', '0'); localStorage.setItem('tetherbore-music', '0'); localStorage.setItem('tetherbore-mute', '0'); }
+} catch { /* private mode */ }
+export const STEPS_OF_VOLUME = 10;
+const share = step => (step / STEPS_OF_VOLUME) ** 2;
 
 const LEVEL = 0.4;                       // the master gain when not muted
 const SOUNDS = 0.6;                      // what the sounds and the bed are laid on at, against the music
@@ -40,7 +52,7 @@ export function unlock() {
   master = c.createGain();
   master.gain.value = muted ? 0 : LEVEL;
   sounds = c.createGain();
-  sounds.gain.value = SOUNDS;
+  sounds.gain.value = SOUNDS * share(soundStep);
   sounds.connect(master);
   const squash = c.createDynamicsCompressor(), curve = new Float32Array(1025);
   try { squash.threshold.value = -16; squash.knee.value = 10; squash.ratio.value = 3.5; squash.attack.value = 0.004; squash.release.value = 0.16; } catch { /* the browser's own settings */ }
@@ -114,6 +126,21 @@ export function setMusic(on) {
   music = !!on;
   try { localStorage.setItem('tetherbore-music', music ? '1' : '0'); } catch { /* private mode */ }
   tune();
+}
+// The step the sounds are at, and the music's (0 while its switch is off).
+export const soundVolume = () => soundStep;
+export const musicVolume = () => music ? musicStep : 0;
+export function setSoundVolume(step) {
+  soundStep = Math.max(0, Math.min(STEPS_OF_VOLUME, Math.round(step)));
+  try { localStorage.setItem('tetherbore-sound', String(soundStep)); } catch { /* private mode */ }
+  if (sounds) sounds.gain.value = SOUNDS * share(soundStep);
+}
+// (The music at 0 is its switch turned off, and at any other step turned on: the step it was at is kept for then.)
+export function setMusicVolume(step) {
+  step = Math.max(0, Math.min(STEPS_OF_VOLUME, Math.round(step)));
+  if (step > 0) { musicStep = step; try { localStorage.setItem('tetherbore-music-step', String(step)); } catch { /* private mode */ } }
+  if (band) band.out.gain.setTargetAtTime(MUSIC * share(musicStep), ctx.currentTime, 0.05);
+  if ((step > 0) !== music) setMusic(step > 0);
 }
 
 // ---------------------------------------------------------------- what every sound is built from
@@ -453,7 +480,7 @@ let told = false;
 // A sound by name: `sfx.dig(2)`. Nothing happens with no context, when muted, while the page is aside (`setAside`),
 // or sooner than its gap after the last.
 const sound = (name, build) => (...args) => {
-  if (!ctx || muted || aside) return;
+  if (!ctx || muted || aside || !soundStep) return;
   const t = ctx.currentTime, was = played[name];
   if (was !== undefined && t >= was && t - was < (GAP[name] ?? 0.02)) return;
   played[name] = t;
@@ -823,6 +850,11 @@ sfx.ping = sound('ping', (near = 0) => tone(620 + 260 * near, 0.08, { type: 'sin
 // and a cross plays its host's piece with the donor's own voice in it (the north gives its glass, the south its
 // drum, the west its swaying pads, the east its reed) and its structure's change.
 //
+// Each direction, the home ground and each deep flank has a second piece (`SECONDS`), in the same key and scale as
+// its first so that every drop, cue and reward rings in tune with either: a long stay hears the first go round its
+// form `rounds` times, then the second, then the first again. A strain plays its direction's second with its own
+// twist, and a cross its host's second with the donor's voice, as each does the first (`secondOf`).
+//
 // A piece goes round its form, a phrase of four bars to a letter: an A phrase plays as written, a B phrase thinner
 // (no drum, fewer plucks, the motif a little higher, the lead more), and a rest only the pads; every phrase but a
 // rest opens with the motif. Notes come at random within the patterns, so a long stay does not come round the same
@@ -874,8 +906,9 @@ const ROOM = { pad: [110, 880], lead: [196, 1568], pluck: [220, 1760], bass: [90
 //   echo            [steps, share]: a pluck or lead note comes back that many steps later, that much softer
 //   burst           [count, by]: a pluck note sets off count - 1 more on the steps after, `by` degrees apart
 //   glide           what a pluck's pitch slides up to as it dies (1, none)
+//   rounds          how many times the piece goes round its form before its ground's other piece takes a turn
 const TOP = { bpm: 66, bar: 16, swing: 0, tempo: 1, root: 220, mode: 'major5', chords: [0], motif: '', form: 'AABr', lift: 2,
-  air: [420, 55], bright: 1100, bell: 'keys', level: 1, sign: null, echo: null, burst: null, glide: 1 };
+  air: [420, 55], bright: 1100, bell: 'keys', level: 1, sign: null, echo: null, burst: null, glide: 1, rounds: 2 };
 // And each voice. Patterns are in degrees over the bar's chord; `oct` is how many octaves up its room a phrase sits;
 // `vib` is [rate Hz, cents]. A pad holds two notes of the chord (`tones`), the second `spread` Hz off, and rises
 // and falls in `rise` and `fall` (time constants, seconds). The lead wanders among the degrees of `range`, a note at
@@ -1027,6 +1060,62 @@ const SCORES = {
     bass: { wave: 'bass', pattern: '0.......0.......', decay: 0.5, gain: 0.02 },
     perc: { pattern: 'w...............', gain: 0.7 } },
 };
+// The second pieces, by the name of the ground whose first they take turns with. Each keeps its first's root, scale,
+// air, bell and the voice it gives a cross (set from the first: `secondOf`), and changes nearly all the rest.
+const SECONDS = {
+  // Home, at evening: a lullaby in three, a music box turning slowly over a hum, a soft knock on the third beat.
+  crust: { bpm: 72, bar: 12, chords: [0, 3, 1, 4], motif: '7.4.2.4.0...', bright: 1000, form: 'AABr', rounds: 1,
+    pad: { wave: 'sine', tones: [0, 2], spread: 0.3, gain: 0.016, rise: 1.8, fall: 0.35, oct: 1 },
+    pluck: { wave: 'keys', pattern: '0.2.4.2.4.2.', chance: 0.75, lp: [2800, 1500], q: 0.5, decay: 0.5, gain: 0.011, oct: 1 },
+    bass: { wave: 'bass', pattern: '0...........', decay: 1.4, gain: 0.017 },
+    perc: { pattern: '........w...', gain: 0.45 } },
+  // The north, an aurora: very slow, choir pads swaying, a glass lead drifting high, no drum at all.
+  frost: { bpm: 40, chords: [0, 3, 1, 3], motif: '4...7...9...7...', bright: 2600, form: 'AB', rounds: 1,
+    pad: { wave: 'choir', tones: [0, 3], spread: 0.8, gain: 0.016, rise: 3, fall: 0.5, oct: 1, vib: [0.2, 16] },
+    lead: { wave: 'glass', grid: 4, every: 0.3, range: [7, 13], len: 1.4, rise: 0.2, fall: 1.2, gain: 0.011, oct: 1, vib: [0.3, 10] },
+    bass: { wave: 'sine', pattern: '0...............', decay: 3, gain: 0.014 } },
+  // The south, war drums far off: quicker, the stone drum doubled, a brass call over a pulsing bass.
+  ember: { bpm: 72, chords: [0, 0, 1, 0], motif: '0.1.0.......7...', bright: 850, form: 'AABr', rounds: 1,
+    pad: { wave: 'organ', tones: [0, 4], spread: 0.2, gain: 0.011, rise: 1, fall: 0.3, oct: 0 },
+    lead: { wave: 'brass', grid: 8, every: 0.35, range: [7, 11], len: 0.9, rise: 0.08, fall: 0.5, gain: 0.011, oct: 1, vib: [5, 9] },
+    bass: { wave: 'bass', pattern: '0...0...0...1...', decay: 0.3, gain: 0.022 },
+    perc: { pattern: 'd.d...d.d.d.w...', gain: 1 } },
+  // The west, in fog: a slow three, everything swaying, a hollow tune stepping down the whole tones.
+  mire: { bpm: 60, bar: 12, swing: 0.1, chords: [0, 5, 0, 1], motif: '6.5.4.3.2.1.', bright: 1000, form: 'AABr', rounds: 1,
+    pad: { wave: 'choir', tones: [0, 2], spread: 0.6, gain: 0.016, rise: 2.2, fall: 0.4, oct: 1, vib: [0.25, 30] },
+    lead: { wave: 'hollow', grid: 6, every: 0.35, range: [5, 11], len: 0.8, rise: 0.1, fall: 0.8, gain: 0.011, oct: 1, vib: [0.4, 20] },
+    pluck: { wave: 'hollow', pattern: '0.....4.....', chance: 0.6, lp: [2200, 800], q: 1, decay: 0.4, gain: 0.013, oct: 1 },
+    bass: { wave: 'bass', pattern: '0...........', decay: 1.2, gain: 0.018 } },
+  // The east, a night market: fast, the oud running, a shaker between the drum's strokes, the reed now and then.
+  lode: { bpm: 110, chords: [0, 1, 0, 3], motif: '7.8.7.5.4.......', bright: 1700, form: 'AABAr', rounds: 1,
+    pad: { wave: 'triangle', tones: [0, 4], spread: 0.25, gain: 0.01, rise: 2, fall: 0.3, oct: 0 },
+    lead: { wave: 'reed', grid: 4, every: 0.15, range: [6, 12], len: 0.4, rise: 0.02, fall: 0.3, gain: 0.012, oct: 1, vib: [6, 20] },
+    pluck: { wave: 'sawtooth', pattern: '0.1.4.1.0.4.5.4.', chance: 0.85, lp: [2400, 450], q: 2, decay: 0.1, gain: 0.011, oct: 0 },
+    perc: { pattern: 'd.s.w.s.d.s.w.s.', gain: 0.9 } },
+  // Deep north, an ice cathedral: choir and a slow arpeggio of keys climbing a whole bar of five, an organ under it.
+  rime: { bpm: 50, bar: 20, chords: [0, 2, 1, 0], motif: '6.......4.......3...', bright: 2100, form: 'AABr', rounds: 1,
+    pad: { wave: 'choir', tones: [0, 4], spread: 0.5, gain: 0.015, rise: 2.5, fall: 0.5, oct: 1 },
+    pluck: { wave: 'keys', pattern: '0...2...4...6...b...', chance: 0.8, lp: [5000, 2500], q: 0.3, decay: 1.2, gain: 0.01, oct: 2 },
+    bass: { wave: 'organ', pattern: '0.........0.........', decay: 2.5, gain: 0.016 } },
+  // Deep south, the furnace breathing: a slow six, a bass in long heaves, the drum a heart, brass held long.
+  magma: { bpm: 58, bar: 12, chords: [0, 1, 0, 6], motif: '9.8.7.....8.', bright: 750, form: 'AABr', rounds: 1,
+    pad: { wave: 'sawtooth', tones: [0, 4], spread: 0.3, gain: 0.011, rise: 1.4, fall: 0.35, oct: 1 },
+    lead: { wave: 'brass', grid: 6, every: 0.3, range: [7, 11], len: 1.8, rise: 0.4, fall: 0.9, gain: 0.01, oct: 1, vib: [3.5, 12] },
+    bass: { wave: 'bass', pattern: '0.....0.....', decay: 0.9, gain: 0.023 },
+    perc: { pattern: 'd.....w..w..', gain: 0.9 } },
+  // Deep west, a greenhouse in the dark: brisk, a shaker ticking, keys bursting in pairs, pads swaying gently.
+  bloom: { bpm: 96, swing: 0.12, chords: [0, 4, 1, 4], motif: 'b.9.7.9.b.......', bright: 1600, form: 'AABAr', rounds: 1, burst: [2, 2],
+    pad: { wave: 'triangle', tones: [0, 2], spread: 0.5, gain: 0.015, rise: 1.2, fall: 0.3, oct: 1, vib: [0.4, 12] },
+    pluck: { wave: 'keys', pattern: '0...4...2...6...', chance: 0.7, lp: [4000, 1800], q: 0.5, decay: 0.35, gain: 0.011, oct: 1 },
+    bass: { wave: 'bass', pattern: '0.......4.......', decay: 0.8, gain: 0.017 },
+    perc: { pattern: 's.s.s.s.s.s.s.s.', gain: 0.55 } },
+  // Deep east, the treasury: a minuet, a plucked harpsichord going round, organ below, a brass flourish rarely.
+  gilt: { bpm: 72, bar: 12, chords: [0, 4, 3, 4], motif: '7.6.4.....2.', bright: 1500, form: 'AABr', rounds: 1,
+    pad: { wave: 'organ', tones: [0, 2], spread: 0.15, gain: 0.011, rise: 0.8, fall: 0.25, oct: 1 },
+    lead: { wave: 'brass', grid: 6, every: 0.12, range: [5, 11], len: 0.6, rise: 0.05, fall: 0.35, gain: 0.01, oct: 1, vib: [5, 7] },
+    pluck: { wave: 'sawtooth', pattern: '0.2.4.2.4.7.', chance: 0.9, lp: [3200, 600], q: 1.5, decay: 0.14, gain: 0.011, oct: 1 },
+    bass: { wave: 'organ', pattern: '0.....4.....', decay: 1, gain: 0.017 } },
+};
 // A direction's score by its number, and its deep flank's; and the strain whose twist each structure of a cross
 // takes (HOLLOW, CRAZED, FROTHY, BANDED). The numbers are the world's, which never move.
 const KIN = ['crust', 'frost', 'ember', 'mire', 'lode'], DEEP = ['crust', 'rime', 'magma', 'bloom', 'gilt'];
@@ -1074,6 +1163,26 @@ function crossScore(row) {
     crosses.set(key, finish(merge(merge(a, twist ? SCORES[twist].twist : {}), sign ? { [sign]: b[sign] } : {}), row.name, [a.name, b.name, twist]));
   }
   return crosses.get(key);
+}
+// The piece that takes turns with score `s`, or null where there is none (a pocket's). A ground's own (SECONDS), in
+// its first's key; a score made `of` another (a strain), that one's second with its twist; a cross's, its host's
+// second with its structure's twist and the donor's voice, as its first is made. Whatever it is made from, a second
+// is in the key, scale, air and bell of the first it takes turns with.
+const seconds = new Map();
+export function secondOf(s) {
+  if (!s) return null;
+  if (seconds.has(s)) return seconds.get(s);
+  let o = null;
+  const own = SECONDS[s.name], raw = SCORES[s.name];
+  const key = { root: s.root, mode: s.mode, air: s.air, bell: s.bell, sign: s.sign };
+  if (own) o = finish({ ...own, ...key, level: s.level }, `${s.name}2`, [s.name]);
+  else if (raw?.of) { const base = secondOf(resolve(raw.of)); if (base) o = finish({ ...merge(base, raw.twist ?? {}), ...key }, `${s.name}2`, [base.name]); }
+  else if (s.from?.length === 3) {
+    const [a, b, twist] = s.from, host = secondOf(resolve(a)), donor = resolve(b);
+    if (host && donor) o = finish({ ...merge(merge(host, twist ? SCORES[twist].twist : {}), donor.sign ? { [donor.sign]: donor[donor.sign] } : {}), ...key }, `${s.name}2`, [host.name, b, twist]);
+  }
+  seconds.set(s, o);
+  return o;
 }
 // The score of a ground: its row (by its name, then as a cross, then its direction's), a score's name, or a number
 // (a direction; with `deep`, its deep flank). Whatever it is given it answers with a score, the home ground's if
@@ -1153,7 +1262,7 @@ function tune() {
   if (want && !band) {
     const t = ctx.currentTime, soft = ctx.createBiquadFilter(), duck = ctx.createGain(), out = ctx.createGain(), sources = [];
     soft.type = 'lowpass'; soft.Q.value = 0.5; soft.frequency.value = 1000;
-    out.gain.value = 0; out.gain.setTargetAtTime(MUSIC, t, 1.2);
+    out.gain.value = 0; out.gain.setTargetAtTime(MUSIC * share(musicStep), t, 1.2);
     soft.connect(duck); duck.connect(out); out.connect(master);
     const osc = () => { const o = ctx.createOscillator(); o.type = 'triangle'; sources.push(o); return o; };
     const gain = to => { const g = ctx.createGain(); g.gain.value = 0; g.connect(to); return g; };
@@ -1255,7 +1364,11 @@ function follow() {
   band.thin = thin; band.mix = s.level * (1 - 0.4 * thin);
   if (bright !== band.bright) { band.bright = bright; band.soft.frequency.setTargetAtTime(bright, t, 2.5); }
   if (band.next < t + 0.05) band.next = t + 0.05;       // (after a stall, what was missed is let go)
-  while (band.next < t + AHEAD) { post(band.next, band.n); band.next += stepLen(s, band.n); band.n++; }
+  while (band.next < t + AHEAD) {
+    post(band.next, band.n); band.next += stepLen(s, band.n); band.n++;
+    // At the end of its rounds a piece gives its ground's other a turn: the first its second, the second the first.
+    if (band.n === s.bar * 4 * s.form.length * s.rounds) { const other = s === playing ? secondOf(playing) : playing; if (other && other !== s) { turn(other); break; } }
+  }
 }
 // A strike on a voice: a dip to nothing, the pitch, the rise, and after `hold` the fall. Never before what is
 // already posted on it.

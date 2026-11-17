@@ -1,4 +1,5 @@
 // Loads the sprite sheets Pixelbolt built (assets/atlas.json and its PNGs) and draws frames, animations and text.
+import { tr } from './lang.js';
 
 export const sheets = {};
 const tints = new Map();
@@ -73,23 +74,26 @@ export function tinted(name, color) {
   return canvas;
 }
 const fontIn = color => tinted('font', color);
+// (Both say the line in the language chosen, js/lang.js: what is measured is what is drawn.)
 export function textWidth(text, scale = 1) {
   const { glyphs } = sheets.font;
   let w = 0;
-  for (const ch of String(text)) w += ((glyphs[ch] ?? glyphs['?'])[1] + 1) * scale;
+  for (const ch of tr(String(text))) w += ((glyphs[ch] ?? glyphs['?'])[1] + 1) * scale;
   return w - scale;
 }
-// Text in Pixelbolt's pixel font. `align`: 0 left, 0.5 centre, 1 right. A dark copy under it keeps it readable.
+// Text in Pixelbolt's pixel font, with the Cyrillic capitals drawn for it and the Chinese characters the game says
+// taken from Fusion Pixel (art/build.mjs): a glyph is [x, width, row of the sheet]. `align`: 0 left, 0.5 centre, 1
+// right. A dark copy under it keeps it readable.
 export function text(ctx, value, x, y, color = '#ffffff', align = 0, scale = 1, shadow = '#0c0a12') {
-  value = String(value);
+  value = tr(String(value));
   const { glyphs } = sheets.font;
   x = Math.round(x - textWidth(value, scale) * align); y = Math.round(y);
   for (const pass of shadow ? [shadow, color] : [color]) {
     const image = fontIn(pass), o = pass === shadow && shadow ? scale : 0;
     let cx = x;
     for (const ch of value) {
-      const [gx, gw] = glyphs[ch] ?? glyphs['?'];
-      if (ch !== ' ') ctx.drawImage(image, gx, 0, gw, 10, cx + o, y + o, gw * scale, 10 * scale);
+      const [gx, gw, gy = 0] = glyphs[ch] ?? glyphs['?'];
+      if (ch !== ' ') ctx.drawImage(image, gx, gy, gw, 10, cx + o, y + o, gw * scale, 10 * scale);
       cx += (gw + 1) * scale;
     }
     if (pass === color) break;

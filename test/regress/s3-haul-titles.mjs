@@ -1,4 +1,8 @@
-// S3: what a haul is called, and the show it makes. Up to COLOSSAL a haul is called by its size; one of BIG or more
+// S3: what a haul is called, and the show it makes. Up to the giants a haul is called by its size, the ladder climbing
+// slowly (COLOSSAL from 550 cells), each size with three words said by turns; a creature caught by the loop that
+// took it, a hull on its last half heart, and below MASSIVE a haul half ore, one of bare grit or one of three hazards
+// asleep, by a joke with a line under it; a giant has a line under it too, and a haul over the winch's load where
+// nothing else is said. One of BIG or more
 // that lies mostly in a place of its own (a pocket, a deep ground, a strain, a cross) by that place, in its colour,
 // with a burst of its colours and its two notes; a giant, from a thousand cells, by its own word at each step, with
 // rings after rings, a longer beat of stillness, a brighter flash and a sound of its own; and a haul of half the
@@ -9,7 +13,7 @@
 //   node test/regress/s3-haul-titles.mjs
 import { makeGame, world, C, N } from '../harness.mjs';
 const { K, B, BIOMES } = world;
-const { haulTitle, placeHaul, giantOf, isHalf, GIANTS, HALF } = await import('../../js/game.js');
+const { haulTitle, placeHaul, giantOf, isHalf, GIANTS, HALF, SIZES, QUIPS, GIANT_SAYS, OVER_SAYS } = await import('../../js/game.js');
 const { REACH } = await import('../../js/shop.js');
 const { textWidth } = await import('../../js/atlas.js');
 
@@ -17,7 +21,7 @@ const fails = [], check = (ok, what) => { if (!ok) fails.push(what); };
 const name = (n, found, row, area) => haulTitle(n, found, row, area)[0];
 
 // ---- the ladder of sizes, and HALF
-const ladder = [[1, 'HAUL'], [9, 'HAUL'], [10, 'NICE CUT!'], [30, 'BIG HAUL!'], [80, 'HUGE HAUL!'], [200, 'COLOSSAL!'], [999, 'COLOSSAL!'],
+const ladder = [[1, 'HAUL'], [9, 'HAUL'], [10, 'NICE CUT!'], [30, 'BIG HAUL!'], [80, 'HEFTY HAUL!'], [150, 'HUGE HAUL!'], [300, 'MASSIVE!'], [549, 'MASSIVE!'], [550, 'COLOSSAL!'], [999, 'COLOSSAL!'],
   ...GIANTS.map(([at, word]) => [at, word]), [HALF, GIANTS[GIANTS.length - 1][1]], [Math.round(HALF * 0.8), 'HALF THE WORLD!', HALF]];
 for (const [n, want, area] of ladder) check(name(n, {}, null, area) === want, `a haul of ${n} round ${area ?? 0} is called ${name(n, {}, null, area)}, not ${want}`);
 check(Math.abs(HALF - Math.PI * REACH[REACH.length - 1] ** 2 / 2) < 1 && HALF > 8e6, `HALF is ${HALF} cells, not half the disc of the last reach`);
@@ -32,6 +36,16 @@ check(name(40, { relic: 2 }) === 'RELIC!' && name(5000, { relic: 2 }) === 'RELIC
 check(name(40, { parts: 1 }).startsWith('WRECK PART') && name(5000, { parts: 1 }).startsWith('WRECK PART'), 'a wreck part is not told before any size');
 check(name(500, { caches: 1 }) === 'CACHE!' && name(5000, { caches: 1 }) === 'TITANIC!', 'a cache is not told before any size but a giant\'s');
 check(haulTitle(5000, { relic: 1 })[1] === 2, 'a giant with a relic in it is not still a giant (its show)');
+
+// ---- the words by turns, and the jokes
+check(SIZES.every(([, words]) => words.length === 3) && [0, 1, 2, 3].map(pick => haulTitle(40, { pick })[0]).join('|') === "BIG HAUL!|CHUNKY!|NOW WE'RE TALKING!|BIG HAUL!", `a haul of 40 is called by turns ${[0, 1, 2, 3].map(pick => haulTitle(40, { pick })[0])}`);
+check(haulTitle(40, { caught: 1 }).join('|') === 'ECO-VANDAL!|0|false|YOU MONSTER' && haulTitle(40, { caught: 2, pick: 1 })[3] === 'THEY PAID RENT', `a creature caught: ${haulTitle(40, { caught: 1 })}`);
+check(name(40, { caught: 1 }, BIOMES.find(r => r?.name === 'hive')) === 'ECO-VANDAL!' && name(500, { caught: 1 }) === 'ECO-VANDAL!' && name(1000, { caught: 1 }) === 'MOUNTAINOUS!' && name(40, { caught: 1, caches: 1 }) === 'CACHE!', 'a creature caught is not told after a cache and a giant and before a place and a size');
+check(name(40, { low: true }) === 'CLUTCH!' && haulTitle(40, { low: true })[3] === 'ON HALF A HEART' && name(5, { low: true }) === 'HAUL' && name(40, { low: true, caught: 1 }) === 'ECO-VANDAL!', 'the last half heart is not told after a creature and of ten cells or more');
+check(name(40, { ores: 20 }) === 'MOTHER LODE!' && name(40, { ores: 19 }) === 'BIG HAUL!' && name(300, { ores: 300 }) === 'MASSIVE!' && name(29, { ores: 29 }) === 'NICE CUT!', 'a haul half ore is not called so from 30 cells to under MASSIVE');
+check(name(40, { dull: true }) === 'PURE GRAVEL!' && name(40, { hazards: 3 }) === 'HOT POTATO!' && name(40, { hazards: 2 }) === 'BIG HAUL!' && name(40, { ores: 30, dull: true }) === 'MOTHER LODE!', 'bare grit or three hazards are not called so, after ore');
+check(name(40, { ores: 40 }, BIOMES.find(r => r?.name === 'hive')) === 'HONEYCOMB!', 'what a haul held is told before its place');
+check(haulTitle(1000)[3] === GIANT_SAYS[0] && GIANT_SAYS.length === GIANTS.length && haulTitle(40, { over: 0.5 })[3] === OVER_SAYS && haulTitle(40)[3] === null && haulTitle(40, { caught: 1, over: 0.5 })[3] === 'YOU MONSTER', 'a giant or a haul over the load has no line under it, or a joke\'s is not its own');
 
 // ---- places
 check(name(40, {}, hive) === 'HONEYCOMB!' && haulTitle(40, {}, hive)[2] === true, `a haul in the hive is called ${name(40, {}, hive)}`);
@@ -64,9 +78,28 @@ game.haul(block(30, -60, 40, 25, B.FROST));
 const plain = game.rings.length;
 check(game.banner?.title === 'MOUNTAINOUS!' && game.banner.giant === 1 && game.hitstop >= 0.18 && game.flash >= 0.45, `a thousand cells: ${game.banner?.title}, giant ${game.banner?.giant}, still ${game.hitstop}, flash ${game.flash}`);
 check(plain >= 4 && game.rings.some(r => r.t < 0) && game.rings.every(r => r.life >= 0.5), `a giant's rings: ${JSON.stringify(game.rings.map(r => [r.t, r.life]))}`);
-check(game.banner.life > 3.5, `a giant's banner is up ${game.banner.life} s`);
+check(game.banner.life > 3.5 && game.banner.sub === GIANT_SAYS[0], `a giant's banner is up ${game.banner.life} s and says '${game.banner.sub}' under it`);
 for (let f = 0; f < 30; f++) { game.update(1 / 60); game.render(); }
 settle(20);
+
+// A creature caught by the loop that took a haul (js/fauna.js, `wound`, the same moment), and none caught a moment
+// before; and a haul made on the last half heart.
+quiet();
+game.fauna.caughtAt = game.time; game.fauna.caughtN = 1;
+game.haul(block(30, -30, 8, 5, B.FROST));
+check(QUIPS.caught.some(([t, s]) => t === game.banner?.title && s === game.banner.sub), `a haul with a creature caught in its loop is called '${game.banner?.title}' / '${game.banner?.sub}'`);
+settle(6);
+quiet();
+game.fauna.caughtAt = game.time - 1;
+game.haul(block(40, -30, 8, 5, B.FROST));
+check(!QUIPS.caught.some(([t]) => t === game.banner?.title), `a haul a second after a creature was caught is called '${game.banner?.title}'`);
+settle(6);
+quiet();
+game.dents = game.val('hull') - 1;
+game.haul(block(50, -30, 8, 5, B.FROST));
+check(QUIPS.low.some(([t, s]) => t === game.banner?.title && s === game.banner.sub), `a haul on the last half heart is called '${game.banner?.title}'`);
+game.dents = 0;
+settle(6);
 
 // HALF cannot be hauled until the winch's cap goes, so its show is asked for as the haul would ask.
 quiet();
@@ -78,8 +111,9 @@ try { for (let f = 0; f < 60; f++) { game.update(1 / 60); game.render(); } } cat
 check(!threw, `HALF's banner threw: ${threw?.message}`);
 
 // ---- every title fits a 320-wide screen (a size smaller where it must)
-const titles = [...ladder.map(([, t]) => t), ...BIOMES.map(r => r && placeHaul(r)).filter(Boolean), 'HALF THE REACH IN ONE HAUL'];
-for (const t of titles) check(textWidth(t, 1) <= 312, `${t} is ${textWidth(t, 1)} pixels wide, too wide for a narrow screen`);
+// (And every line under a title, which is not set smaller, fits the narrowest phone's 152 pixels.)
+const titles = [...ladder.map(([, t]) => t), ...SIZES.flatMap(([, w]) => w), ...Object.values(QUIPS).flat(2), ...GIANT_SAYS, OVER_SAYS, ...BIOMES.map(r => r && placeHaul(r)).filter(Boolean), 'HALF THE REACH IN ONE HAUL'];
+for (const t of titles) check(textWidth(t, 1) <= 152, `${t} is ${textWidth(t, 1)} pixels wide, too wide for a narrow screen`);
 
 console.log(fails.length ? `DEFECT: ${[...new Set(fails)].slice(0, 30).join('\n        ')}` : `ok: ${ladder.length} sizes up to HALF (a loop round ${HALF} cells), ${titles.length - ladder.length - 1} places with words of their own, a giant's show and HALF's`);
 process.exit(fails.length ? 1 : 0);

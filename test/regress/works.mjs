@@ -7,7 +7,7 @@
 // distances that fit the reach they are priced beside, and the late game's open one at a time.
 import { makeGame, UPGRADES, WORKS, MAPS, CORE, DEATH, K, B, N, C } from '../harness.mjs';
 const { SHIELD } = await import('../../js/game.js');
-const { REACH } = await import('../../js/shop.js');
+const { REACH, LAB } = await import('../../js/shop.js');
 const { CREATURES } = await import('../../js/fauna.js');
 
 const fails = [], check = (ok, what) => { if (!ok) fails.push(what); };
@@ -127,24 +127,38 @@ for (const coil of [0, 1]) {
   const game = await fitted('lavaskin', 1);
   game.S.lv.tether = 3; game.S.lv.hull = 2; game.dents = 1; game.S.lab['lode-items:oreA'] = 4;
   const said = Object.fromEntries(game.stats().map(([name, value, lit]) => [name, [value, lit]]));
-  check(said.REACH[0] === '160 CELLS' && said.HULL[0] === '6/7 PIPS' && said.MENDS[0] === '1 PIP / 20 S' && said.LAVA[0] === 'SWIMS IN IT' && said.LAVA[1] === true && said.SPORES[0] === 'KNOCK' && said.SPORES[1] === false && said.ANALYSED[0] === '1/64, UP TO +3%', `the stats say ${JSON.stringify(said)}`);
+  check(said.REACH[0] === 'PARACORD 160 CELLS' && said.HULL[0] === 'TWIN BAND 6/7 PIPS' && said.MENDS[0] === '1 PIP / 20 S' && said.LAVA[0] === 'SWIMS IN IT' && said.LAVA[1] === true && said.SPORES[0] === 'KNOCK' && said.SPORES[1] === false && said.ANALYSED[0] === `1/${LAB.length}, UP TO +3%`, `the stats say ${JSON.stringify(said)}`);
   game.resize(320, 568, 1); game.labTab = 'stats'; game.openLab(true); game.render();
   // (The panel's tabs stand in its header, left to right: STATS, LAB, MENU; and MAP before MENU once the chart is bought.)
   const heads = game.buttons.filter(b => b.h === 20 && b.w < 60 && b.w > 24 && b.y < game.H / 2).sort((a, b) => a.x - b.x);
   heads[1]?.act(); game.render();
   check(heads.length === 3 && game.labTab === 'lab', `a tap on the second of ${heads.length} tabs left the panel at '${game.labTab}'`);
-  // The menu: the sound, the music (a switch of its own, kept as the sound's is), and a new world on the second tap.
+  // The menu: the sound, the music (a switch of its own, kept as the sound's is), the language (the next of the
+  // three kept, and the page loaded again in it: there is no page here), and a new world on the second tap.
   heads[2].act(); game.render();
   const rows = game.buttons.filter(b => b.h === 20 && b.w > 100).sort((a, b) => a.y - b.y), seed = game.S.seed;
-  check(game.labTab === 'menu' && rows.length === 3, `the menu has ${rows.length} rows`);
+  check(game.labTab === 'menu' && rows.length === 4, `the menu has ${rows.length} rows`);
   const audio = await import('../../js/audio.js'), music = audio.isMusic();
   rows[1].act(); game.render();
   check(audio.isMusic() === !music && localStorage.getItem('tetherbore-music') === (music ? '0' : '1'), `a tap on MUSIC left the music ${audio.isMusic() ? 'on' : 'off'}, kept as '${localStorage.getItem('tetherbore-music')}'`);
   rows[1].act(); game.render();
   check(audio.isMusic() === music, 'a second tap on MUSIC did not put it back');
+  const { lang, LANGS, LANG_KEY } = await import('../../js/lang.js'), next = LANGS[(LANGS.findIndex(l => l.id === lang) + 1) % LANGS.length].id;
+  // (A tap on LANGUAGE opens the list of the three and chooses nothing; one of the list chooses, the one spoken now
+  // nothing, and either shuts it.)
   rows[2].act(); game.render();
+  const list = () => game.buttons.filter(b => b.h === 16 && b.w > 90).sort((a, b) => a.y - b.y);
+  const langs = list();
+  check(game.langOpen && langs.length === 3 && localStorage.getItem(LANG_KEY) === null, `a tap on LANGUAGE opened a list of ${langs.length} and kept '${localStorage.getItem(LANG_KEY)}'`);
+  langs[LANGS.findIndex(l => l.id === lang)].act(); game.render();
+  check(!game.langOpen && localStorage.getItem(LANG_KEY) === null, `the language spoken now, chosen, kept '${localStorage.getItem(LANG_KEY)}'`);
+  rows[2].act(); game.render();
+  list()[LANGS.findIndex(l => l.id === next)].act(); game.render();
+  check(!game.langOpen && localStorage.getItem(LANG_KEY) === next, `${next} chosen from the list kept '${localStorage.getItem(LANG_KEY)}'`);
+  localStorage.removeItem(LANG_KEY);
+  rows[3].act(); game.render();
   check(game.S.seed === seed && game.confirmReset > 0, 'one tap on NEW WORLD made a new world');
-  rows[2].act(); game.render();
+  rows[3].act(); game.render();
   check(game.S.seed !== seed, 'two taps on NEW WORLD made no new world');
   game.openLab(false);
 }
