@@ -1492,7 +1492,11 @@ export class Drawing {
         if (what === null || !(FOUND[what] <= level) || Math.hypot(fx - C, fy - C) > R || Math.hypot(fx + 0.5 - d.x, fy + 0.5 - d.y) > far) continue;
         const laid = w.kindAt(fx, fy, w.biomeAt(fx, fy));
         if ((what === 'cache' && laid !== K.CACHE) || (what === 'prism' && laid !== K.PRISM) || rowOf(w.biomeAt(fx, fy)).pocket !== null) continue;
-        M.laid.push([what, fx, fy]);
+        // (With a cell of it that the seed laid solid, and what it laid there: a big geode's heart is hollow, so the
+        // ore beside it. A find hauled away unseen, the tether round it from afar, is not seen, but that cell is
+        // open then, and the find is gone: its mark was left on the map for good.)
+        const px = laid === K.EMPTY ? fx + 1 : fx;
+        M.laid.push([what, fx, fy, fy * N + px, laid === K.EMPTY ? w.kindAt(px, fy, w.biomeAt(px, fy)) : laid]);
       }
     }
     // (Into one of two lists `M` keeps, made once, in turn: the ground changes at every cut, and a list made at
@@ -1502,7 +1506,8 @@ export class Drawing {
       M.foundAt = this.version;
       const into = M.found === M.foundA ? (M.foundB ??= []) : (M.foundA ??= []);
       into.length = 0;
-      for (const f of M.laid) if (w.peek(f[1], f[2]) < 0) into.push(f);
+      // (Unseen, and still there: the cell the seed laid solid holds what it laid, or is not made yet.)
+      for (const f of M.laid) { const now = w.laid(f[3]); if (w.peek(f[1], f[2]) < 0 && (now < 0 || now === f[4])) into.push(f); }
       M.found = into;
     }
     return M.found;

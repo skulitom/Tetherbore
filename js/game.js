@@ -1836,6 +1836,15 @@ export class Game {
     for (const i of cells) w.setK(i, K.EMPTY);
     // (It is plainly gone, wherever it was: the map shows it open without the drill going to look.)
     w.show(cells);
+    // A pocket whose ground the tether has drawn in has been got to, and the map no longer marks it as somewhere to
+    // go, as it does a pocket the drill has flown into (`arrive`). (Its pip stayed on the map, however much of it was
+    // hauled away from outside.) Asked once a run of one ground: a haul's cells lie mostly in runs.
+    for (let at = 0, was = -1; at < n; at++) {
+      const b = w.b(cells[at]);
+      if (b === was) continue;
+      was = b;
+      if (rowOf(b).pocket) { const here = this.placeAt(cells[at]); if (here.zone) S.visited[here.key] = 1; }
+    }
     // A haul made soon after another is a link in a chain: `n` is how many came before it.
     const linked = this.chain && this.time - this.chain.t <= CHAIN ? this.chain.n : 0;
     this.chain = { t: this.time, n: linked + 1 };
