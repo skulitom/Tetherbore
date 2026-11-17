@@ -22,9 +22,10 @@ import { KINDS } from './fauna.js';
 export const T = 16;                            // pixels in a cell
 const VOLUME_BAR = 49;                          // the menu's bar of ten steps of loudness, in pixels
 const LANG_ROW = 18, LANG_ROWS = 3 * LANG_ROW + 2; // the menu's list of languages: a row each, and all it adds to the menu
-// A heart of the hull, 7 pixels by 6: each row's runs of pixels, first and last column (the top row two, either
-// side of the notch). HEART_PITCH: from one heart to the next.
-const HEART = [[[1, 2], [4, 5]], [[0, 6]], [[0, 6]], [[1, 5]], [[2, 4]], [[3, 3]]].flatMap((runs, r) => runs.map(([a, b]) => [a, b, r])), HEART_PITCH = 9;
+// A heart of the hull, 9 pixels by 8, two round lobes over a point: each row's runs of pixels, first and last column.
+// Its left half is columns 0 to 4 (the middle with it) and its right 5 to 8. HEART_PITCH: from one heart to the next.
+const HEART = ['.##...##.', '####.####', '#########', '#########', '.#######.', '..#####..', '...###...', '....#....']
+  .flatMap((row, r) => [...row.matchAll(/#+/g)].map(m => [m.index, m.index + m[0].length - 1, r])), HEART_PITCH = 10, HEART_MID = 4;
 export const DIR_BIOME = [B.LODE, B.EMBER, B.MIRE, B.FROST];
 export const GEM_ICON = [null, 'frost', 'ember', 'mire', 'lode'];
 export const GEM_COLOR = [null, '#bfe6ff', '#ffb060', '#b8f06a', '#d8b8ff'];
@@ -1264,16 +1265,21 @@ export class Drawing {
     // odd number has a half heart last). Half a heart just lost blinks white for a moment, the last half left
     // blinks red, and a hull just mended shows white.
     const pips = this.val('hull'), sound = this.hull, hx = 18 + textWidth(compact(S.grit - this.pending.grit)) + 7, hearts = Math.ceil(pips / 2);
-    const blink = ((now / 150) | 0) % 2 === 0;
+    const blink = ((now / 150) | 0) % 2 === 0, half = (n, l, h) => n & 1 ? [Math.max(l, HEART_MID + 1), h] : [l, Math.min(h, HEART_MID)];
+    // (The dark rim of every heart first, a whole heart's as one, and its colour over it: a heart whole is not
+    // parted down the middle.)
+    ctx.fillStyle = '#16121c';
+    for (let n = 0; n < pips; n += 2) {
+      const x = hx + (n >> 1) * HEART_PITCH, last = n + 1 >= pips;
+      for (const [a, b, r] of HEART) { const [l, h] = last ? half(n, a, b) : [a, b]; if (l <= h) ctx.fillRect(x + l - 1, B + 4 + r, h - l + 3, 3); }
+    }
     for (let n = 0; n < pips; n++) {
-      const x = hx + (n >> 1) * HEART_PITCH, right = n & 1, full = n < sound, lost = n === sound && this.knocked > 0;
+      const x = hx + (n >> 1) * HEART_PITCH, full = n < sound, lost = n === sound && this.knocked > 0;
       const colour = lost ? (blink ? '#ffffff' : '#ff4d6d') : !full ? '#3a3450' : this.mended > 0 ? '#ffffff' : sound === 1 ? (blink ? '#ff4d6d' : '#8a2038') : '#ff4d6d';
-      // (Each half draws its own share of the heart's dark rim, the left half the middle column with it.)
-      const [from, to] = right ? [4, 6] : [0, 3];
-      ctx.fillStyle = '#16121c';
-      for (const [a, b, r] of HEART) { const l = Math.max(a, from), h = Math.min(b, to); if (l <= h) ctx.fillRect(x + l - 1, B + 6 + r, h - l + 3, 3); }
       ctx.fillStyle = colour;
-      for (const [a, b, r] of HEART) { const l = Math.max(a, from), h = Math.min(b, to); if (l <= h) ctx.fillRect(x + l, B + 7 + r, h - l + 1, 1); }
+      for (const [a, b, r] of HEART) { const [l, h] = half(n, a, b); if (l <= h) ctx.fillRect(x + l, B + 5 + r, h - l + 1, 1); }
+      // (A glint on the left lobe of a heart lit as ever.)
+      if (!(n & 1) && colour === '#ff4d6d' && !lost && sound > 1) { ctx.fillStyle = '#ffc2cf'; ctx.fillRect(x + 1, B + 6, 1, 1); }
     }
     // What the lab has analysed, of all it can: shown once there is a first sample, lit for a moment by a new level.
     // (`known` is the game's count, kept as samples come in: counting the lab's list here made a list every frame.)

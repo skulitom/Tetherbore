@@ -49,14 +49,22 @@ check(audio.soundVolume() === 4, 'the music moved the sounds');
 game.openLab(false);
 
 // The hearts: every pixel of them drawn while the bar is, by colour.
+// (And no heart's dark rim is drawn after any heart's colour: a rim laid over a lit half parted a whole heart.)
 const drawn = new Map();
-game.ctx.fillRect = (x, y, w, h) => { const c = game.ctx.fillStyle; if (h === 1 && (c === '#ff4d6d' || c === '#3a3450')) drawn.set(c, (drawn.get(c) ?? 0) + w); };
-const hearts = (lv, hull) => { game.S.lv.hull = lv; game.dents = game.val("hull") - hull; game.knocked = 0; game.mended = 0; drawn.clear(); game.render(); return [drawn.get('#ff4d6d') ?? 0, drawn.get('#3a3450') ?? 0]; };
-// (A left half is sixteen pixels and the middle column; a right half eleven.)
+let lit0 = false, rimOver = false;
+game.ctx.fillRect = (x, y, w, h) => {
+  const c = game.ctx.fillStyle;
+  if (h === 1 && (c === '#ff4d6d' || c === '#3a3450')) { drawn.set(c, (drawn.get(c) ?? 0) + w); lit0 = true; }
+  if (h === 3 && c === '#16121c' && lit0) rimOver = true;
+};
+const hearts = (lv, hull) => { game.S.lv.hull = lv; game.dents = game.val("hull") - hull; game.knocked = 0; game.mended = 0; drawn.clear(); lit0 = false; game.render(); return [drawn.get('#ff4d6d') ?? 0, drawn.get('#3a3450') ?? 0]; };
+// (A left half is twenty-six pixels, the middle column with it; a right half twenty.)
 const [lit, dark] = hearts(2, 5);
-check(game.val('hull') === 7 && lit === 16 * 3 + 11 * 2 && dark === 16 + 11, `a hull of ${game.val('hull')} with five left drew ${lit} lit and ${dark} dark`);
+check(game.val('hull') === 7 && lit === 26 * 3 + 20 * 2 && dark === 20 + 26, `a hull of ${game.val('hull')} with five left drew ${lit} lit and ${dark} dark`);
 const [allLit, none] = hearts(1, 6);
-check(game.val('hull') === 6 && allLit === 27 * 3 && none === 0, `a whole hull of six drew ${allLit} lit and ${none} dark`);
+check(game.val('hull') === 6 && allLit === 46 * 3 && none === 0, `a whole hull of six drew ${allLit} lit and ${none} dark`);
+
+check(!rimOver, 'the rim of a heart was drawn over a heart already lit');
 
 for (const f of fails) console.log(f);
 console.log(fails.length ? `${fails.length} FAILED` : 'the sounds and the music are set apart, kept, and the hull is drawn in hearts');
