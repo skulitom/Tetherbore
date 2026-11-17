@@ -241,5 +241,5 @@ check(labCount(1) === '1 SAMPLE. +1% AT 2' && labCount(5) === '5 SAMPLES. +1% AT
 check(textWidth(labCount(99999)) <= text, `what is said of a count of samples ('${labCount(99999)}') is wider than the notes`);
 LAB_PARTS.forEach(({ id, title }) => { const all = LAB.filter(e => e.part === id).length || 19; check(16 + textWidth(title) + 4 + textWidth(`${all}/${all}`) <= right, `the head ${title} is too long for its line`); });
 
-console.log(fails.length ? `DEFECT:\n  ${fails.join('\n  ')}` : 'no defect: what is crushed is analysed, what is known pays a hundredth more a level, and the notes open from the bar as a list of sixty-four that scrolls');
+console.log(fails.length ? `DEFECT:\n  ${fails.join('\n  ')}` : `no defect: what is crushed is analysed, what is known pays a hundredth more a level, and the notes open from the bar as a list of ${LAB.length} that scrolls`);
 process.exit(fails.length ? 1 : 0);

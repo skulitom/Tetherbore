@@ -57,7 +57,7 @@ const levels = (beside, share) => ({ beside, grit: beside.map(at => priced(at, s
 // Grit and gems are not enough for the levels of the first tab: each level also asks that something has been
 // found, so that the rig grows no faster than the ground is explored. `needs` on a row is [what, how many for each
 // level]: 'parts', parts of the older machine brought home from its wrecks, which lie one to each stretch of
-// ground (45, 90, 160 ... cells out); 'kinds', kinds of thing the lab has analysed, of the sixty-four of `LAB`
+// ground (45, 90, 160 ... cells out); 'kinds', kinds of thing the lab has analysed, of the eighty-nine of `LAB`
 // (each figure set by play and not as a share of the list, since what the list gained lies far out, off the axes):
 // near the core the ores of the home ground and of the four directions' own, the hazards of the south, the west and
 // the east (the north has none so near), keystone iron where a slab lies on the road (the first is 52 cells out, in
@@ -122,24 +122,32 @@ export const UPGRADES = [
 // note on it. A thing crushed is a sample analysed, and what is known of a thing makes every one of it hauled worth
 // more: a hundredth more for the first sample, and a hundredth more each time the count of samples doubles
 // (`labLevel`). So the first few samples teach the most, and crushing ore for its own sake soon stops paying.
-// There are sixty-four things: the two ores of the home ground and of each of the twenty-four grounds the four
-// directions are made of (each one's own, its two strains, its seam, its deep flank and its deep strain; the east's
-// own shares the home ground's, and a deep seam its seam's, as skarn the hoarstone's), steel, keystone iron, the
-// seven pocket minerals and the seven hazards, the three that every direction's ground has and the four rare ones,
-// which are sampled as the bit goes into them and go off as ever. (A prism pays nothing itself, so there is nothing
-// of it to learn. A rare hazard is in the list to be counted: crushing one forfeits its lump, and there are too few
-// in a world for its own hundredths to come to much.) A seam's two ores are in the part of its corner (`part`,
-// LAB_PARTS) and count toward the direction whose ground it is (js/world.js: SEAMS, going round with the sun from
-// the north: the hoarstone the north's, the glassdune the east's, the cinderfen the south's, the frostfen the
-// west's), though its rich ore pays the other direction's gems; a deep strain is in its flank's.
+// There are eighty-nine things: the two ores of the home ground and of each of the twenty-eight grounds the four
+// directions are made of (each one's own, its two strains, its seam, its deep seam, its deep flank and its deep
+// strain; the east's own shares the home ground's), the rich ore of each of the twelve pairs of crosses, steel,
+// keystone iron, the seven pocket minerals, the seven hazards (the three that every direction's ground has and the
+// four rare ones, which are sampled as the bit goes into them and go off as ever), and the ancient stone of the
+// deep: the walls of each corner's shrine, and the builders' halls' (js/world.js: STONES, `stoneOf`). (A prism
+// pays nothing itself, so there is nothing of it to learn. A rare hazard is in the list to be counted: crushing one
+// forfeits its lump, and there are too few in a world for its own hundredths to come to much.) A seam's two ores,
+// its deep seam's and its shrine's stone are in the part of its corner (`part`, LAB_PARTS) and count toward the
+// direction whose ground it is (js/world.js: SEAMS, going round with the sun from the north: the hoarstone the
+// north's, the glassdune the east's, the cinderfen the south's, the frostfen the west's), though a rich ore of it
+// pays another's gems; a deep strain is in its flank's; a cross's rich ore is in the part of the direction it lies
+// in (its host) and counts toward the direction whose gems it pays (its donor); and the builders' stone, which lies
+// in every direction, is home's. A cross's rich ore was its donor's to the lab until it was drawn as a stone of its
+// own, and a deep seam's ores were its seam's, so what a game had learnt of those counts for them as well (`heir`:
+// Game.studied takes the better of the two), and no haul of an older game pays less for them.
 // Within a part of the list, a direction's own two ores come first and then the rest from near to far: the seam's
-// after the rare hazard (450 and 470 cells), the deep strain's after the deep flank's.
+// after the rare hazard (450 and 470 cells), the crosses' after them (500), the deep strain's after the deep
+// flank's; and in a corner the seam's, then the deep seam's (900), then the shrine's (1,400).
 export const LAB = [
   // Home and all round.
   { kin: 0, key: 'lode-items:oreA', name: 'COPPER', at: 'HOME AND EAST', where: 'HOME GROUND AND EAST', note: 'SOFT RED METAL WITH A GREEN BLOOM. THE FIRST THING A NEW BIT LEARNS THE TASTE OF.' },
   { kin: 0, key: 'lode-items:oreB', name: 'VIOLET QUARTZ', at: 'HOME AND EAST', where: 'HOME GROUND AND EAST', note: 'A CRYSTAL THAT HOLDS A CHARGE. IT HUMS WHEN A SPARK VEIN IS NEAR.' },
   { kin: 0, key: 'finds:key', name: 'KEYSTONE IRON', at: 'KEYSTONE SLABS', where: 'THE KEYS OF KEYSTONE SLABS, EVERYWHERE', note: 'IRON STAPLES SET ACROSS THE CRACKS BY NOBODY. IT HAS NOT RUSTED, AND IT IS NOT FROM HERE.' },
   { kin: 0, key: 'minerals:aerolite', name: 'AEROLITE', at: 'PUMICE DRIFTS', where: 'PUMICE DRIFTS', note: 'A STAR THAT FELL INTO PUMICE AND STAYED. LIGHT ENOUGH TO FLOAT.' },
+  { kin: 0, key: 'stones:builders', name: 'BUILDERS STONE', at: 'BUILDERS HALLS', where: 'THE WALLS OF BUILDERS HALLS, FROM 1600 CELLS OUT', note: 'VIOLET BLOCKS, A GOLD SPIRAL ON EACH. THE BUILDERS SIGNED THEIR WORK, AND NOTHING ELSE.' },
   // North.
   { kin: 1, key: 'frost-items:oreA', name: 'RIME SALT', at: 'FROST', where: 'FROST, NORTH', note: 'BLUE SALT FROZEN SQUARE. IT KEEPS ITS COLD FOR A HUNDRED YEARS.' },
   { kin: 1, key: 'frost-items:oreB', name: 'AURORA SPAR', at: 'FROST', where: 'FROST, NORTH', note: 'PINK AND GREEN NEEDLES, GROWN IN THE DARK UNDER THE ICE.' },
@@ -149,8 +157,14 @@ export const LAB = [
   { kin: 1, key: 'ores:seracB', name: 'FLUORITE', at: 'SERAC', where: 'SERAC, NORTH', note: 'GLASSY CUBES OF VIOLET. UNDER THE LAMP THEY GLOW A COLOUR THEY ARE NOT.' },
   { kin: 1, key: 'minerals:starglass', name: 'STARGLASS', at: 'GLAZE', where: 'GLAZE, FAR NORTH', note: 'A STAR OF CLEAR ICE THAT NEVER MELTS. ONE TO A PANE, AND THE PANE BREAKS AT A TOUCH.' },
   { kin: 1, key: 'bell-items:hazard', name: 'RIME BELL', at: 'ALONE, 450 OUT', where: 'NORTH, ALONE IN THE ROCK, FROM 450 CELLS OUT', note: 'BLACK ICE CAST AS A BELL, BY WHAT NOBODY KNOWS. IT TOLLS ONCE AS IT BREAKS.' },
-  { kin: 1, key: 'ores:hoarstoneA', part: 'ne', name: 'HOAR QUARTZ', at: 'HOARSTONE', where: 'HOARSTONE AND SKARN, NORTH-EAST', note: 'QUARTZ FURRED WITH A FROST THAT NEVER THAWS. IT GROWS WHERE NORTH ICE LIES ON EAST STONE.' },
-  { kin: 1, key: 'ores:hoarstoneB', part: 'ne', name: 'POLAR TOPAZ', at: 'HOARSTONE', where: 'HOARSTONE AND SKARN, NORTH-EAST', note: 'PALE GOLD, AND COLD IN THE HAND ON THE HOTTEST DAY. THE EAST GREW IT AND THE NORTH KEPT IT.' },
+  { kin: 2, key: 'ores:thawB', part: 'n', heir: 'ember-items:oreB', name: 'CANDLE QUARTZ', at: 'THAW', where: 'THAW, NORTH', note: 'WARM WHITE QUARTZ THAT LOOKS LIT FROM INSIDE. THE HEAT OF THE SOUTH IS STILL IN IT, UNDER THE ICE.' },
+  { kin: 3, key: 'ores:tundraB', part: 'n', heir: 'mire-items:oreB', name: 'FROST LICHEN', at: 'TUNDRA', where: 'TUNDRA, NORTH', note: 'A LICHEN THAT EATS STONE AND FREEZES SOLID EVERY NIGHT. EVERY MORNING IT GOES ON EATING.' },
+  { kin: 4, key: 'ores:hailstoneB', part: 'n', heir: 'lode-items:oreB', name: 'GHOST QUARTZ', at: 'HAILSTONE', where: 'HAILSTONE, NORTH', note: 'CLEAR QUARTZ WITH A GREEN CRYSTAL GHOSTED INSIDE IT: A SMALLER ONE THAT IT GREW OVER.' },
+  { kin: 1, key: 'ores:hoarstoneA', part: 'ne', name: 'HOAR QUARTZ', at: 'HOARSTONE', where: 'HOARSTONE, NORTH-EAST', note: 'QUARTZ FURRED WITH A FROST THAT NEVER THAWS. IT GROWS WHERE NORTH ICE LIES ON EAST STONE.' },
+  { kin: 1, key: 'ores:hoarstoneB', part: 'ne', name: 'POLAR TOPAZ', at: 'HOARSTONE', where: 'HOARSTONE, NORTH-EAST', note: 'PALE GOLD, AND COLD IN THE HAND ON THE HOTTEST DAY. THE EAST GREW IT AND THE NORTH KEPT IT.' },
+  { kin: 1, key: 'ores:skarnA', heir: 'ores:hoarstoneA', part: 'ne', name: 'SCHEELITE', at: 'SKARN', where: 'SKARN, DEEP IN THE HOARSTONE', note: 'HONEY CRYSTALS IN PAIRED POINTS, HEAVY AS LEAD. UNDER THE LAMP THEY GLOW A COLD BLUE.' },
+  { kin: 1, key: 'ores:skarnB', heir: 'ores:hoarstoneB', part: 'ne', name: 'PEACOCK ORE', at: 'SKARN', where: 'SKARN, DEEP IN THE HOARSTONE', note: 'COPPER GONE BLUE, VIOLET AND BRONZE WHERE THE ICE MET THE HOT STONE. NO TWO LUMPS AGREE.' },
+  { kin: 1, key: 'stones:stone-ne', part: 'ne', name: 'LODESTAR STONE', at: 'SHRINE', where: 'THE WALLS OF THE SHRINE, NORTH-EAST, 1400 CELLS OUT', note: 'A SHRINE TABLET, ICE AND LODE SET IN IT AS ONE STONE. IT ALWAYS LIES POINTING NORTH.' },
   { kin: 1, key: 'ores:rimeA', name: 'MOONSTONE', at: 'RIME', where: 'RIME, THE DEEP FLANKS OF THE NORTH', note: 'MILKY WHITE, WITH A BLUE LIGHT THAT SLIDES ACROSS IT. BRIGHTEST FURTHEST FROM ANY SUN.' },
   { kin: 1, key: 'ores:rimeB', name: 'ICE OPAL', at: 'RIME', where: 'RIME, THE DEEP FLANKS OF THE NORTH', note: 'EVERY COLOUR OF THE SKY OVER THE POLE, FROZEN IN. THE FIRE OPAL IS ITS COUSIN.' },
   { kin: 1, key: 'ores:glacierA', name: 'AQUAMARINE', at: 'GLACIER', where: 'GLACIER, DEEP IN THE RIME', note: 'SEA BLUE, FROM A SEA THAT NEVER WAS. THE WIND IN THE HALLS HAS POLISHED EVERY FACE OF IT.' },
@@ -167,8 +181,14 @@ export const LAB = [
   { kin: 2, key: 'ores:forgeB', name: 'KIDNEY ORE', at: 'FORGE', where: 'FORGE, SOUTH', note: 'IRON IN SHINING LUMPS, ROUND AS KIDNEYS. GROUND TO DUST IT IS RED AS BLOOD.' },
   { kin: 2, key: 'minerals:opal', name: 'FIRE OPAL', at: 'TINDERWORKS', where: 'TINDERWORKS, FAR SOUTH', note: 'A COAL THAT TURNED TO GEM INSIDE A RING OF FUSE. BURN THE FUSE AND IT FALLS OUT.' },
   { kin: 2, key: 'vent-items:hazard', name: 'FUMAROLE', at: 'ALONE, 450 OUT', where: 'SOUTH, ALONE IN THE ROCK, FROM 450 CELLS OUT', note: 'A CHIMNEY OF THE DEEP FIRE. WHAT THE LAB TAKES OF IT IS STILL WARM A YEAR LATER.' },
-  { kin: 2, key: 'ores:cinderfenA', part: 'sw', name: 'BOG IRON', at: 'CINDERFEN', where: 'CINDERFEN AND TARPIT, SOUTH-WEST', note: 'IRON THE BOG GATHERED IN LUMPS, ROASTED WHERE THE LAVA CAME UP UNDER THE PEAT.' },
-  { kin: 2, key: 'ores:cinderfenB', part: 'sw', name: 'SMOKE JASPER', at: 'CINDERFEN', where: 'CINDERFEN AND TARPIT, SOUTH-WEST', note: 'GREY STONE WITH SMOKE CAUGHT IN IT IN SWIRLS. CUT, IT SMELLS OF BURNT REED.' },
+  { kin: 1, key: 'ores:quenchB', part: 's', heir: 'frost-items:oreB', name: 'TOURMALINE', at: 'QUENCH', where: 'QUENCH, SOUTH', note: 'A ROSE CRYSTAL WITH A GREEN FOOT. WARM IT AND IT PULLS ASH TO ITSELF.' },
+  { kin: 3, key: 'ores:sootfenB', part: 's', heir: 'mire-items:oreB', name: 'FIRE MOREL', at: 'SOOTFEN', where: 'SOOTFEN, SOUTH', note: 'A MUSHROOM THAT COMES UP ONLY ON BURNT GROUND. THIS ONE WENT TO STONE BEFORE ANYONE ATE IT.' },
+  { kin: 4, key: 'ores:flashrockB', part: 's', heir: 'lode-items:oreB', name: 'FULGURITE', at: 'FLASHROCK', where: 'FLASHROCK, SOUTH', note: 'LIGHTNING STRUCK SAND HERE AND LEFT ITS PATH IN GLASS, BRANCHING. IT IS HOLLOW ALL THE WAY DOWN.' },
+  { kin: 2, key: 'ores:cinderfenA', part: 'sw', name: 'BOG IRON', at: 'CINDERFEN', where: 'CINDERFEN, SOUTH-WEST', note: 'IRON THE BOG GATHERED IN LUMPS, ROASTED WHERE THE LAVA CAME UP UNDER THE PEAT.' },
+  { kin: 2, key: 'ores:cinderfenB', part: 'sw', name: 'SMOKE JASPER', at: 'CINDERFEN', where: 'CINDERFEN, SOUTH-WEST', note: 'GREY STONE WITH SMOKE CAUGHT IN IT IN SWIRLS. CUT, IT SMELLS OF BURNT REED.' },
+  { kin: 2, key: 'ores:tarpitA', heir: 'ores:cinderfenA', part: 'sw', name: 'ORPIMENT', at: 'TARPIT', where: 'TARPIT, DEEP IN THE CINDERFEN', note: 'PALE FLAKES THAT PEEL LIKE PAGES. PAINTERS ONCE GROUND IT FOR GOLD, AND IT POISONED THEM.' },
+  { kin: 2, key: 'ores:tarpitB', heir: 'ores:cinderfenB', part: 'sw', name: 'AMMOLITE', at: 'TARPIT', where: 'TARPIT, DEEP IN THE CINDERFEN', note: 'THE SHELL OF A SEA BEAST THE TAR SWALLOWED WHOLE, ITS PEARL GONE TO GREEN AND BLUE FIRE.' },
+  { kin: 2, key: 'stones:stone-sw', part: 'sw', name: 'FENFIRE STONE', at: 'SHRINE', where: 'THE WALLS OF THE SHRINE, SOUTH-WEST, 1400 CELLS OUT', note: 'A SHRINE TABLET SET WITH A COAL AND A CAP. IN THE DARK A GREEN FLAME WALKS ACROSS IT.' },
   { kin: 2, key: 'ores:magmaA', name: 'RED GOLD', at: 'MAGMA', where: 'MAGMA, THE DEEP FLANKS OF THE SOUTH', note: 'GOLD AND COPPER RUN TOGETHER IN THE MAGMA AND COOLED IN DROPS. NO SMITH MADE IT.' },
   { kin: 2, key: 'ores:magmaB', name: 'PERIDOT', at: 'MAGMA', where: 'MAGMA, THE DEEP FLANKS OF THE SOUTH', note: 'GREEN GLASS THE DEEP COUGHS UP IN LUMPS OF LAVA. THE ONE GREEN THING IN THE SOUTH.' },
   { kin: 2, key: 'ores:calderaA', name: 'MELANITE', at: 'CALDERA', where: 'CALDERA, DEEP IN THE MAGMA', note: 'A GARNET AS BLACK AS SOOT, BORN IN THE LAKES OF FIRE. IN THE LAMP IT SHINES LIKE WET TAR.' },
@@ -184,8 +204,14 @@ export const LAB = [
   { kin: 3, key: 'ores:sporefallB', name: 'JEWEL BEETLE', at: 'SPOREFALL', where: 'SPOREFALL, WEST', note: 'A BEETLE OF RED AND GREEN TURNED TO STONE BEFORE THE MIRE WAS. THE SPORES NEVER TOUCH IT.' },
   { kin: 3, key: 'minerals:lantern', name: 'LANTERN CAP', at: 'GROTTOS', where: 'GROTTOS, FAR WEST', note: 'A MUSHROOM THAT LIGHTS WHEN SOMETHING FLIES BY. ONLY A LIT ONE IS WORTH THE HAUL.' },
   { kin: 3, key: 'worm-items:hazard', name: 'GLOWWORM', at: 'ALONE, 450 OUT', where: 'WEST, ALONE IN THE ROCK, FROM 450 CELLS OUT', note: 'A LIGHT THAT SWIMS THROUGH ROCK AS A FISH SWIMS. WHAT THE BIT LEAVES GLOWS FOR A WEEK.' },
-  { kin: 3, key: 'ores:frostfenA', part: 'nw', name: 'MOSS AGATE', at: 'FROSTFEN', where: 'FROSTFEN AND MUSKEG, NORTH-WEST', note: 'CLEAR STONE WITH GREEN MOSS FROZEN IN IT. THE MOSS IS STILL ALIVE, AND WAITS FOR A THAW.' },
-  { kin: 3, key: 'ores:frostfenB', part: 'nw', name: 'ICE JADE', at: 'FROSTFEN', where: 'FROSTFEN AND MUSKEG, NORTH-WEST', note: 'PALE GREEN AND COLD AS THE BOG IT LIES IN. IT RINGS LIKE A BELL WHEN IT IS STRUCK.' },
+  { kin: 1, key: 'ores:rimemossB', part: 'w', heir: 'frost-items:oreB', name: 'CELESTINE', at: 'RIMEMOSS', where: 'RIMEMOSS, WEST', note: 'PALE BLUE CRYSTALS FROM A COLD HOLLOW OF THE BOG, NAMED FOR A SKY THEY NEVER SAW.' },
+  { kin: 2, key: 'ores:smoulderB', part: 'w', heir: 'ember-items:oreB', name: 'PYRITE', at: 'SMOULDER', where: 'SMOULDER, WEST', note: 'BRASS CUBES SO STRAIGHT THEY LOOK MADE. STRUCK WITH STEEL THEY THROW SPARKS.' },
+  { kin: 4, key: 'ores:buzzmireB', part: 'w', heir: 'lode-items:oreB', name: 'ELECTRUM', at: 'BUZZMIRE', where: 'BUZZMIRE, WEST', note: 'GOLD AND SILVER RUN TOGETHER IN ONE NUGGET. THE CRYSTALS OF THE BOG HUM WHEN IT IS NEAR.' },
+  { kin: 3, key: 'ores:frostfenA', part: 'nw', name: 'MOSS AGATE', at: 'FROSTFEN', where: 'FROSTFEN, NORTH-WEST', note: 'CLEAR STONE WITH GREEN MOSS FROZEN IN IT. THE MOSS IS STILL ALIVE, AND WAITS FOR A THAW.' },
+  { kin: 3, key: 'ores:frostfenB', part: 'nw', name: 'ICE JADE', at: 'FROSTFEN', where: 'FROSTFEN, NORTH-WEST', note: 'PALE GREEN AND COLD AS THE BOG IT LIES IN. IT RINGS LIKE A BELL WHEN IT IS STRUCK.' },
+  { kin: 3, key: 'ores:muskegA', heir: 'ores:frostfenA', part: 'nw', name: 'VIVIANITE', at: 'MUSKEG', where: 'MUSKEG, DEEP IN THE FROSTFEN', note: 'INDIGO BLADES GROWN ON OLD BONES IN THE BOG. LIGHT DARKENS THEM, SO THE LAB KEEPS THEM SHUT.' },
+  { kin: 3, key: 'ores:muskegB', heir: 'ores:frostfenB', part: 'nw', name: 'LARIMAR', at: 'MUSKEG', where: 'MUSKEG, DEEP IN THE FROSTFEN', note: 'SEA BLUE WEBBED WITH WHITE, LIKE LIGHT ON THE BED OF A SHALLOW POOL. NO SEA WAS EVER HERE.' },
+  { kin: 3, key: 'stones:stone-nw', part: 'nw', name: 'MOSSRIME STONE', at: 'SHRINE', where: 'THE WALLS OF THE SHRINE, NORTH-WEST, 1400 CELLS OUT', note: 'A SHRINE TABLET FURRED WITH A MOSS THAT GROWS ONLY IN FROST. IT IS COLD AND IT IS ALIVE.' },
   { kin: 3, key: 'ores:bloomA', name: 'SUNSEED', at: 'BLOOM', where: 'BLOOM, THE DEEP FLANKS OF THE WEST', note: 'SEEDS OF A FLOWER THAT NEVER SAW THE SUN, GONE HARD AS GLASS. PLANTED, NOTHING COMES.' },
   { kin: 3, key: 'ores:bloomB', name: 'FLOWER STONE', at: 'BLOOM', where: 'BLOOM, THE DEEP FLANKS OF THE WEST', note: 'A DARK STONE WITH A WHITE FLOWER OPEN INSIDE IT, AS IF IT GREW THERE. IT DID.' },
   { kin: 3, key: 'ores:myceliumA', name: 'SPORE PEARL', at: 'MYCELIUM', where: 'MYCELIUM, DEEP IN THE BLOOM', note: 'A BEAD THE THREADS WIND ROUND A SPORE, LAYER ON LAYER. THE ROCK IS ALIVE WITH THEM.' },
@@ -198,8 +224,14 @@ export const LAB = [
   { kin: 4, key: 'ores:loessB', name: 'LAPIS LAZULI', at: 'LOESS', where: 'LOESS, EAST', note: 'THE BLUE OF A DEEP SKY WITH GOLD DUST CAUGHT IN IT. THE SILT KEEPS IT CLEAN.' },
   { kin: 4, key: 'minerals:agate', name: 'AGATE', at: 'SHALE STACKS', where: 'SHALE STACKS, FAR EAST', note: 'BANDED RED STONE, A LAYER A YEAR. IT LIES ALONG THE GRAIN OF THE SHALE.' },
   { kin: 4, key: 'lodestone-items:hazard', name: 'LODESTONE', at: 'ALONE, 450 OUT', where: 'EAST, ALONE IN THE ROCK, FROM 450 CELLS OUT', note: 'A STONE THAT PULLS ORE TO IT THROUGH SOLID ROCK. THE LAB KEEPS IT FAR FROM THE TOOLS.' },
-  { kin: 4, key: 'ores:glassduneA', part: 'se', name: 'SAND ROSE', at: 'GLASSDUNE', where: 'GLASSDUNE AND OBSIDIAN, SOUTH-EAST', note: 'PETALS OF CRYSTAL GROWN ROUND THE SAND OF THE DUNES, THE SAND STILL IN THEM. A FIST CRUMBLES IT.' },
-  { kin: 4, key: 'ores:glassduneB', part: 'se', name: 'EMBER GARNET', at: 'GLASSDUNE', where: 'GLASSDUNE AND OBSIDIAN, SOUTH-EAST', note: 'A RED STONE THE LAVA LEFT IN THE DUNES. HELD TO THE LAMP IT GLOWS LIKE A COAL.' },
+  { kin: 1, key: 'ores:hoarsandB', part: 'e', heir: 'frost-items:oreB', name: 'KYANITE', at: 'HOARSAND', where: 'HOARSAND, EAST', note: 'A SHEAF OF BLUE BLADES, HARD ACROSS AND SOFT ALONG. A KNIFE SCRATCHES IT ONE WAY ONLY.' },
+  { kin: 2, key: 'ores:kilnstoneB', part: 'e', heir: 'ember-items:oreB', name: 'GOLDSTONE', at: 'KILNSTONE', where: 'KILNSTONE, EAST', note: 'VIOLET GLASS FULL OF GOLD SPARKS. A KILN MADE IT BY MISTAKE, THEY SAY. NO KILN WAS EVER HERE.' },
+  { kin: 3, key: 'ores:mouldstoneB', part: 'e', heir: 'mire-items:oreB', name: 'CHRYSOPRASE', at: 'MOULDSTONE', where: 'MOULDSTONE, EAST', note: 'APPLE GREEN, FROM THE NICKEL IN IT. THE MOULD GROWS ALL ROUND IT AND NEVER ON IT.' },
+  { kin: 4, key: 'ores:glassduneA', part: 'se', name: 'SAND ROSE', at: 'GLASSDUNE', where: 'GLASSDUNE, SOUTH-EAST', note: 'PETALS OF CRYSTAL GROWN ROUND THE SAND OF THE DUNES, THE SAND STILL IN THEM. A FIST CRUMBLES IT.' },
+  { kin: 4, key: 'ores:glassduneB', part: 'se', name: 'EMBER GARNET', at: 'GLASSDUNE', where: 'GLASSDUNE, SOUTH-EAST', note: 'A RED STONE THE LAVA LEFT IN THE DUNES. HELD TO THE LAMP IT GLOWS LIKE A COAL.' },
+  { kin: 4, key: 'ores:obsidianA', heir: 'ores:glassduneA', part: 'se', name: 'DUNE GOLD', at: 'OBSIDIAN', where: 'OBSIDIAN, DEEP IN THE GLASSDUNE', note: 'GREEN GOLD WASHED OUT OF THE DUNES AND CAUGHT IN THE GLASS. THE SILVER IN IT GIVES IT THE GREEN.' },
+  { kin: 4, key: 'ores:obsidianB', heir: 'ores:glassduneB', part: 'se', name: 'RAINBOW GLASS', at: 'OBSIDIAN', where: 'OBSIDIAN, DEEP IN THE GLASSDUNE', note: 'BLACK GLASS WITH BANDS OF PINK, VIOLET AND TEAL IN THE LAMP. THE LAVA COOLED IN LAYERS.' },
+  { kin: 4, key: 'stones:stone-se', part: 'se', name: 'SUNFORGE STONE', at: 'SHRINE', where: 'THE WALLS OF THE SHRINE, SOUTH-EAST, 1400 CELLS OUT', note: 'A SHRINE TABLET, WARM ON ONE FACE AND HUMMING ON THE OTHER. THE DUNES AND THE FIRE MET IN IT.' },
   { kin: 4, key: 'ores:giltA', name: 'SPINEL', at: 'GILT', where: 'GILT, THE DEEP FLANKS OF THE EAST', note: 'RED STONES THAT KINGS TOOK FOR RUBIES. THE GILT HAS THEM BY THE HANDFUL.' },
   { kin: 4, key: 'ores:giltB', name: 'ALEXANDRITE', at: 'GILT', where: 'GILT, THE DEEP FLANKS OF THE EAST', note: 'GREEN IN THE DARK AND RED IN THE LAMP. THE LAB HAS NEVER SEEN IT THE SAME COLOUR TWICE.' },
   { kin: 4, key: 'ores:druseA', name: 'CITRINE POINT', at: 'DRUSE', where: 'DRUSE, DEEP IN THE GILT', note: 'YELLOW SPIKES THAT LINE EVERY HOLLOW OF THE DRUSE. KNOCK ONE AND THE WHOLE ROCK HUMS.' },
@@ -210,8 +242,8 @@ export const LAB = [
 // sheet drawn beside it and the colour its title is said in. A thing's part is its `part` (one of these ids), or
 // where it says none the part of its direction (`kin`: home, north, south, west, east, as the gems are counted); its
 // direction is still what it counts toward wherever it is listed. The corners' parts hold what lies where two
-// directions meet (js/world.js: the seams), and a part with nothing in it yet is not shown. LAB is put in the
-// parts' order here, each part's things in the order written.
+// directions meet (js/world.js: the seams, the deep seams beyond them and the shrines in those), and a part with
+// nothing in it is not shown. LAB is put in the parts' order here, each part's things in the order written.
 export const LAB_PARTS = [
   { id: 'home', title: 'HOME AND ALL ROUND', icon: 'home', colour: '#f4ecd8' },
   { id: 'n', title: 'NORTH', icon: 'frost', colour: '#bfe6ff' },
@@ -285,9 +317,11 @@ export const MAPS = [
 // in the other tabs (a level costs from one and a half to six times the step of reach it lies beside, and gems by
 // the thousand), each asking besides for much to have been found.
 //   REFINERY   every haul's grit is multiplied
-//   GEM CUTTER every haul's gems are multiplied: it asks for kinds analysed, 8, 18, 28 and 36 of the sixty-four. A
-//              direction and the home ground hold seventeen to twenty-one between them (the east seventeen, the
-//              south twenty-one), most of them far out: within two hundred cells one direction gives five to eight
+//   GEM CUTTER every haul's gems are multiplied: it asks for kinds analysed, 8, 18, 28 and 36, set by play when
+//              the list was sixty-four (the twenty-five it has gained since, the deep seams' ores, the crosses' rich
+//              ores and the ancient stone, all lie from 500 cells out). Of those sixty-four a direction and the home
+//              ground held seventeen to twenty-one between them (the east seventeen, the south twenty-one), most of
+//              them far out: within two hundred cells one direction gives five to eight
 //              (copper and violet quartz, its own two ores, its hazard but in the north, a pocket's mineral, keystone
 //              iron where a slab lies on the road, steel in the south), its strains, a far pocket and its rare
 //              hazard add six or so by the reach the second level lies beside, its seam two more from about 470
@@ -297,8 +331,9 @@ export const MAPS = [
 //              eighteen in about thirty-five and twenty-eight in about eighty. (It asked 4, 7, 10 and 12 of
 //              sixteen, which one direction gave within two hundred cells.)
 //              Its first level of the late game asks for 43 kinds, which only the far ground makes up: everything
-//              short of the seams, the deep flanks and the deep strains is 40, so three at least of their twenty-four
-//              ores must have been analysed. One wall of the late game that is about what has been analysed and not
+//              short of the seams and what lies beyond them (the crosses' rich ores, the deep seams', flanks' and
+//              strains' ores and the ancient stone, forty-nine) is 40, so three at least of those must have been
+//              analysed. One wall of the late game that is about what has been analysed and not
 //              how far out the drill has been. (It asked 42 of the forty-eight, two of the deep flanks' eight. Asked
 //              52, as first set, it was a wall a long game never came over: played three hours on five worlds
 //              (tools/long-play.mjs --all), a game held to its spokes analyses 40 to 49 kinds, the deep strains'

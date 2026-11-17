@@ -1,6 +1,6 @@
 // Tetherbore: the game. A drill flies free on a tether from a fixed core, cuts whatever ground it is pushed into,
 // and reels in any piece of ground it has drawn the tether round.
-import { World, CellBook, N, C, K, B, HARD, GRIT, GEMS, DX, DY, HAZARDS, RARE, CRUSH, ZONE, FIND, rowOf, hazOf, gemKin, digTime, cellHash, sight, cellsAlong, GEN, SEAMS, SHRINE_R, FOSSILS, fossilKin, GEM_N, GEM_PAST, noGems } from './world.js';
+import { World, CellBook, N, C, K, B, HARD, GRIT, GEMS, DX, DY, HAZARDS, RARE, CRUSH, ZONE, FIND, rowOf, hazOf, gemKin, digTime, cellHash, sight, cellsAlong, GEN, SEAMS, SHRINE_R, FOSSILS, fossilKin, GEM_N, GEM_PAST, noGems, STONES } from './world.js';
 import { sheets, frameAt, duration } from './atlas.js';
 import { sfx, unlock, setAmbience } from './audio.js';
 import { richness, haulBonus, overload, income, round2, NEEDS, UPGRADES, LAB, LAB_OF, labLevel, labNext, CORE, ROWS, REACH, CUT, TABS } from './shop.js';
@@ -277,8 +277,9 @@ function rays(reach) {
 // slower than LAB_REST pixels a second.
 const LAB_TAP = 5, LAB_REST = 6;
 // The lab's keys of what is not ore (`sampleOf`): steel, a keystone's iron, each hazard by its type (its sheet's
-// `hazard` frame), and each pocket's mineral, the last made the first time it is asked for.
-const STEEL_SAMPLE = `${HAZARDS.lava.sheet}:steel`, KEY_SAMPLE = 'finds:key', MINERAL_SAMPLE = {};
+// `hazard` frame), the ancient stone of the deep by where it was laid (js/world.js: STONES), and each pocket's
+// mineral, the last made the first time it is asked for.
+const STEEL_SAMPLE = `${HAZARDS.lava.sheet}:steel`, KEY_SAMPLE = 'finds:key', MINERAL_SAMPLE = {}, STONE_SAMPLE = STONES.map(name => `stones:${name}`);
 const HAZ_SAMPLE = Object.fromEntries(Object.entries(HAZARDS).map(([type, { sheet }]) => [type, `${sheet}:hazard`]));
 // The boulders of a drift (a pocket whose row's `twist` is 'drift') are in the books of loose ground while the
 // drill is in the drift or near it, and leave them once it is out and they are AWAY cells off the screen: so the
@@ -1801,7 +1802,7 @@ export class Game {
     // (Ploughing, the drill goes through a mineral every second or so: it says so no more often than that.)
     // (A hazard cut into is crushed too, a rare one as much as lava, and is a sample: the lab learns from what goes
     // off, before it goes off. So is a keystone's iron.)
-    const key = this.sampleOf(k, row);
+    const key = this.sampleOf(k, row, i);
     if (k === K.ORE_A || k === K.ORE_B || k === K.STEEL || k === K.PRISM || k === K.RARE || mineral || key) this.analyse(key, x, y, (row.dig >= PLOUGH && !ploughed) || this.time - this.crushedAt >= CRUSH_EVERY);
     // (A pup beside the cut is fed by ore crushed; a roost of bats beside it wakes. The creatures only read it.)
     this.fauna.crushed(this, i, k);
@@ -1841,10 +1842,12 @@ export class Game {
 
   // ------------------------------------------------------------ the lab
   // What a cell of this kind in this ground is to the lab: the key of its row in `LAB` (the sheet and frame it is
-  // drawn from, so a cross's rich ore is its donor's here too and a strain's ore its own: `row.oreKeys`), or null for
-  // what the lab does not study. A hazard is its type's, whatever ground it lies in, and a hazard's cell of a type
-  // its ground has none of is nothing. (Every key is made once, not for each cell asked about.)
-  sampleOf(k, row) {
+  // drawn from, so a strain's ore, a seam's and a cross's rich ore are their own: `row.oreKeys`), or null for what
+  // the lab does not study. A hazard is its type's, whatever ground it lies in, and a hazard's cell of a type its
+  // ground has none of is nothing. Vault is a stone of the lab's only as a shrine's or a builders' hall's walls,
+  // which only the cell's place `i` says (js/world.js: `stoneOf`; nothing without it). (Every key is made once, not
+  // for each cell asked about.)
+  sampleOf(k, row, i = -1) {
     const P = row.pocket;
     if (P !== null && k === (P.kind ?? K.MINERAL)) return MINERAL_SAMPLE[P.mineral] ??= `minerals:${P.mineral}`;
     if (k === K.ORE_A) return row.oreKeys[0];
@@ -1852,10 +1855,19 @@ export class Game {
     if (k === K.STEEL) return STEEL_SAMPLE;
     if (k === K.HAZARD || k === K.HAZARD2 || k === K.RARE) return HAZ_SAMPLE[hazOf(k, row)] ?? null;
     if (k === K.KEY) return KEY_SAMPLE;
+    if (k === K.VAULT && i >= 0) { const s = this.world.stoneOf(i % N, Math.floor(i / N)); return s < 0 ? null : STONE_SAMPLE[s]; }
     return null;
   }
-  // How much more such a cell is worth for what the lab knows of it: a hundredth for each level.
-  studied(k, row) { const key = this.sampleOf(k, row); return key && LAB_OF[key] ? labLevel(this.S.lab[key] ?? 0) / 100 : 0; }
+  // How much more such a cell (at `i`, where that matters) is worth for what the lab knows of it: a hundredth for
+  // each level. A thing that has an heir's key (js/shop.js: `heir`: a cross's rich ore, which was known by its donor's
+  // before it was a thing of its own, and a deep seam's ores, by its seam's) is known as well as the better of the
+  // two, so what a game had learnt of it under the older name it keeps.
+  studied(k, row, i = -1) {
+    const key = this.sampleOf(k, row, i), e = key && LAB_OF[key];
+    if (!e) return 0;
+    const n = this.S.lab[key] ?? 0;
+    return labLevel(e.heir ? Math.max(n, this.S.lab[e.heir] ?? 0) : n) / 100;
+  }
   // The bit went through something at cell (x, y). The cell says CRUSHED, as it always has (where `say` allows: in
   // ploughed ground no more than once a second). If the lab studies the thing, that was one more sample of it, and
   // under CRUSHED the cell says what the lab made of it: SAMPLE and how far the count has come towards the next
@@ -1972,7 +1984,7 @@ export class Game {
       const row = rowOf(b), far = Math.hypot(x - C, y - C), rich = richness(far) * row.rich * row.worth, P = row.pocket;
       // Whose gems a cell pays is its kind's and its ground's to say; the home ground pays none.
       // What the lab knows of a thing makes it worth that much more (`studied`): its grit, its gems, its lump.
-      const study = 1 + this.studied(k, row);
+      const study = 1 + this.studied(k, row, y * N + x);
       grit += GRIT[k] * rich * study; gems[gemKin(k, row)] += GEMS[k] * row.gemx * study;
       if (b === B.CRUST && (k === K.ORE_A || k === K.ORE_B)) grit += (k === K.ORE_B ? 20 : 4) * rich * study;
       // (Ore and hazards asleep are counted, for what the haul is called: `haulTitle`.)

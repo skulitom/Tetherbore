@@ -3,7 +3,7 @@
 // from its rules: js/game.js copies them onto the game as they are, so `this` in them is the game. Nothing here is a
 // rule of play: what these methods keep on the game is what was drawn and where (the pieces of ground, the chart's
 // picture and view, what can be tapped this frame).
-import { N, C, K, B, DX, DY, BIOMES, HAZARDS, CRUSH, ZONE, FIND, rowOf, hazOf, cellHash, RELIC_R, SEAMS, SHRINES, CORNER_HERALDS, fossilKin, GEM_PAST } from './world.js';
+import { N, C, K, B, DX, DY, BIOMES, HAZARDS, CRUSH, ZONE, FIND, rowOf, hazOf, cellHash, RELIC_R, SEAMS, SHRINES, CORNER_HERALDS, fossilKin, GEM_PAST, STONES } from './world.js';
 import { sheets, draw, drawScaled, frameAt, duration, slice9, text, textWidth, tinted } from './atlas.js';
 import { tr, words, LANGS, lang, chooseLang } from './lang.js';
 import { decorAt, markAt, natural, framesOf, placeOf } from './decor.js';
@@ -173,10 +173,12 @@ export const unseenShade = row => {
   return UNSEEN_SHADE[id];
 };
 // What is drawn over a twin stone, a fossil's bone (its species' head, body or tail: by direction, then which bone),
-// a fault, and a shrine's heart (by corner) (`overlay`): made once, not for each cell.
+// a fault, a shrine's heart (by corner) and the ancient stone of a shrine's or a builders' hall's walls (by which:
+// js/world.js, STONES) (`overlay`): made once, not for each cell.
 const CAP_OVER = ['minerals', 'cap'], LANTERN_OVER = ['minerals', 'lantern'], TWIN_OVER = ['finds', 'twin'], BONE_OVER = ['finds', 'bone'], FAULT_OVER = ['cracks', 'crack-2'];
 const FOSSIL_OVER = [0, 1, 2, 3, 4].map(kin => ['head', 'body', 'tail'].map(part => ['finds', `fossil-${kin}-${part}`]));
 const SHRINE_OVER = [0, 1, 2, 3].map(d => ['shrines', `shrine-${d}`]);              // (a line with no dashes, and no finds: the one list each, given each time)
+const STONE_OVER = STONES.map(name => ['stones', name]);
 const ROUND = 3.5, BRAID = 4;                    // on the fine canvas: how wide a rope rounds a corner, and the length of one turn of its braid, in the game's pixels
 const LIGHT_STEP = [[1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, -1, 1], [1, 1, 1.41], [-1, 1, 1.41], [1, -1, 1.41], [-1, -1, 1.41]];
 // How far light goes to each of those neighbours, in a flat array: the flood of light reads it eight times for
@@ -257,9 +259,11 @@ export class Drawing {
   }
   // What is drawn over a cell's rock, as [sheet, frame], or null for nothing: dense rock and ore from its ground's
   // own sheet (`row`), a hazard from its type's, a relic from its direction's, a find from the finds'. Ore is drawn
-  // from what its row says its two ores are (`ores`), which is what the lab knows them by: a cross's rich ore is its
-  // donor's, so that what it looks like is what it pays, and a strain's or a deep flank's are its own. (The row's
-  // own pairs are returned, so nothing is made for a cell.)
+  // from what its row says its two ores are (`ores`), which is what the lab knows them by: a strain's, a seam's or a
+  // deep flank's are its own, and a cross's rich ore is a stone of its own in its donor's outline, so that what it
+  // looks like says whose gems it pays. (The row's own pairs are returned, so nothing is made for a cell.)
+  // Vault is drawn with a stone over it where it is a shrine's or a builders' hall's walls, which only the cell `i`
+  // says (js/world.js: `stoneOf`), the same stone the lab knows it as.
   // A pocket's mineral is its own frame of the 'minerals' sheet, and its special cell (a hive's stalk) one of two:
   // the one that runs level or the one that stands upright, as the cell `i` lies between what it joins (asked of
   // the cells beside it; upright where `i` is not given).
@@ -294,6 +298,7 @@ export class Drawing {
       return sheets.finds?.frames.bone ? BONE_OVER : [row.items, 'dense'];
     }
     if (k === K.FAULT) return sheets.fault?.tiles ? null : FAULT_OVER;
+    if (k === K.VAULT) { if (i === undefined || !sheets.stones) return null; const s = this.world.stoneOf(i % N, Math.floor(i / N)); return s < 0 ? null : STONE_OVER[s]; }
     // (A shrine's heart is a relic's kind, drawn as its corner's shrine.)
     if (k === K.RELIC && i !== undefined && sheets.shrines) { const d = this.world.shrineAt.indexOf(i); if (d >= 0) return SHRINE_OVER[d]; }
     // A keystone is an iron staple across its block of rock; a prism turns through the gems' colours (`render`).

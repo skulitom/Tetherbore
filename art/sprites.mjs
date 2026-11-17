@@ -882,7 +882,13 @@ const CORNER_STONE = Array.from({ length: 8 }, (_, y) => Array.from({ length: 8 
   const side = x + y;
   return side === 7 ? 'w' : side < 7 ? (x + 2 * y > 9 ? 'c' : 'a') : (2 * x + y > 15 ? 'f' : 'e');
 }).join(''));
-const SPECIMEN = ['..aaa...', '.abaac..', 'abaaaac.', 'aaaaacc.', 'aaaaccc.', '.aaccc..', '..ccc...', '........'];
+const GEM_CUTS = [
+  ['ne', '#5a8cff', '#a8c4ff', '#2a4ab8', ['...w....', '..wac...', '..wbc...', '.wbbac..', '.wbbac..', 'wbbbacc.', 'accccccc', '........']],
+  ['se', '#f2346c', '#ff9ab4', '#a01840', ['........', '.awbbba.', 'awbbbaac', 'aaaaaccc', '.aaaacc.', '..aacc..', '...ac...', '........']],
+  ['sw', '#aaa6bc', '#dcdae8', '#5c586e', ['...bb...', '.bbwbbb.', 'abbbbbbc', 'aaabbccc', 'aaaacccc', 'aaaacccc', '.aaaccc.', '...ac...']],
+  ['nw', '#2ed060', '#9cf2b0', '#12803a', ['...ab...', '..awbc..', '..awbc..', '..abbc..', '..abbc..', '..abbc..', '..abcc..', '...cc...']],
+];
+const SPECIMEN = ['..aaa...','.abaac..', 'abaaaac.', 'aaaaacc.', 'aaaaccc.', '.aaccc..', '..ccc...', '........'];
 export const icons = {
   version: 1, name: 'icons', width: 10, height: 10,
   palette: { k: '#16121c', w: '#ffffff', i: '#bfe6ff', o: '#ff7a1c', y: '#ffd84a', W: '#fff6c8', g: '#8ce060', G: '#4aa040', s: '#d8d0c0',
@@ -898,6 +904,11 @@ export const icons = {
     ...[['ne', '#bfe6ff', '#5a9ad8', '#d8b8ff', '#8a5ad8'], ['se', '#d8b8ff', '#8a5ad8', '#ffb060', '#c8501c'], ['sw', '#ffb060', '#c8501c', '#b8f06a', '#4aa040'],
       ['nw', '#b8f06a', '#4aa040', '#bfe6ff', '#5a9ad8']]
       .map(([name, a, c, e, f]) => ({ name: `corner-${name}`, palette: { a, c, e, f }, ops: [{ op: 'grid', x: 1, y: 1, rows: CORNER_STONE }, { op: 'outline', color: 'k', position: 'outside' }] })),
+    // A corner's own gem, which only its deep seam and its shrine pay: each cut its own way and none round, so that
+    // none is taken for a specimen, in its own colour (`a`) with its light (`b`) and its shade (`c`). The north-east's
+    // a trillion of blue, the south-east's a brilliant of crimson seen side on, the south-west's a cube of hematite,
+    // the north-west's an emerald's column.
+    ...GEM_CUTS.map(([name, a, b, c, rows]) => ({ name: `gem-${name}`, palette: { a, b, c }, ops: [{ op: 'grid', x: 1, y: 1, rows }, { op: 'outline', color: 'k', position: 'outside' }] })),
   ],
 };
 
@@ -1825,7 +1836,9 @@ export const lodestone = {
 // Lit from the upper left: a light, b body, c shade, w a glint; x and y, s and S, d and D, g and G, r and R accents.
 const ORE_KEYS = { k: '#000000', a: '#000000', b: '#000000', c: '#000000', w: '#ffffff', x: '#000000', y: '#000000', s: '#000000', S: '#000000',
   d: '#000000', D: '#000000', g: '#000000', G: '#000000', r: '#000000', R: '#000000', o: '#000000', O: '#000000' };
-const OUTLINE = { north: '#22395a', south: '#160c12', west: '#1c1426', east: '#3a2414' };
+// (And a corner's own, for the rich ore of its deep seam, which pays the corner's own gem: a dark of that gem's
+// colour, so that the stone that pays the new gem is ringed as no direction's is.)
+const OUTLINE = { north: '#22395a', south: '#160c12', west: '#1c1426', east: '#3a2414', ne: '#14204a', se: '#3a0c1c', sw: '#24222e', nw: '#0c3018' };
 const ore = (name, side, palette) => ({ name, duration: 300, palette: { ...palette, k: OUTLINE[side] },
   ops: [{ op: 'stamp', symbol: name, x: 2, y: 2 }, { op: 'outline', color: 'k', position: 'outside' }] });
 export const ores = {
@@ -2431,6 +2444,311 @@ export const ores = {
       '....cccc....',
       '............',
     ],
+    // ---- the deep seams' own. A deep seam's common ore pays its first parent's gems and is ringed in that
+    // direction's outline, as its seam's is; its rich ore pays its corner's own gem and is ringed in the corner's
+    // outline. Each is kept off what hurts there and off its rock, as the seams' are.
+    // Skarn: scheelite, honey-coloured dipyramids (gold would be the crystals'); peacock ore, a knobbly lump of
+    // bornite tarnished blue, violet and teal, with a bronze glint where the tarnish is worn.
+    skarnA: [
+      '....a.......',
+      '...awb......',
+      '..aabbb.....',
+      '.aaabbbc....',
+      '..abbbc.....',
+      '...bbc......',
+      '....c.......',
+      '.........a..',
+      '.a......awb.',
+      'awb....aabbc',
+      '.bc.....bbc.',
+      '.........c..',
+    ],
+    skarnB: [
+      '............',
+      '..ab....ab..',
+      '.awbb..axbr.',
+      '.abxbbabbrrc',
+      '..bbbbbbrbc.',
+      '.abbyxxbbbc.',
+      'abrrbxxbbyc.',
+      'abrrbbbbbcc.',
+      '.bbbbbbccc..',
+      '..bbcbbc....',
+      '...cc.cc....',
+      '............',
+    ],
+    // Obsidian: dune gold, nuggets of a green gold (a yellow one would be the crystals' and the lava's); rainbow
+    // glass, a nodule of black glass whose polished face shows bands of magenta, violet and teal.
+    obsidianA: [
+      '............',
+      '..aab.......',
+      '.awbbb......',
+      '.abbbbc.....',
+      '..bbbcc.....',
+      '...cc....ab.',
+      '........awbc',
+      '........bbc.',
+      '...aab...c..',
+      '..awbbc.....',
+      '..abbcc.....',
+      '...cc.......',
+    ],
+    obsidianB: [
+      '............',
+      '....ddddd...',
+      '..ddxxxxxd..',
+      '.dxxwxrrxxd.',
+      '.dxrrrggrxdd',
+      'dxrrgggggrxd',
+      'dxrgddddggrd',
+      'dxgddddddgrd',
+      'dgdddddddddd',
+      '.ddddddddDd.',
+      '..dddddDDd..',
+      '....dddd....',
+    ],
+    // Tarpit: orpiment, its plates stacked in flakes, a straw yellow kept clear of the lava's; ammolite, a plate of
+    // fossil shell cut flat, its play of colour teal and green in cells split by dark seams.
+    tarpitA: [
+      '............',
+      '.aaaaw......',
+      'bbbbbbb.....',
+      'aaaaaabc....',
+      'bbbbbbbc....',
+      '.bbbbcc.....',
+      '............',
+      '............',
+      '........aaw.',
+      '.......bbbbc',
+      '.......aaabc',
+      '........bbc.',
+    ],
+    tarpitB: [
+      '............',
+      '............',
+      '..dddddddd..',
+      '.dggggdGGgd.',
+      'dgwggdGGGgdd',
+      'dggggdGGggbd',
+      'ddddgggdddbd',
+      'dbbbdggggdbd',
+      'dbbbbdgggggd',
+      '.dbbbdggggd.',
+      '..dddddddd..',
+      '............',
+    ],
+    // Muskeg: vivianite, sprays of indigo blades; larimar, a pebble of sea blue webbed with white.
+    muskegA: [
+      '............',
+      '.a..a.......',
+      '.ab.ab..a...',
+      '..bab..ab...',
+      '..bbbbab....',
+      '...bbbc.....',
+      '....cc......',
+      '.........a..',
+      '.......a.ab.',
+      '.......abbc.',
+      '........bc..',
+      '............',
+    ],
+    muskegB: [
+      '............',
+      '............',
+      '...aaaab....',
+      '..awwaabbb..',
+      '.aaxaaabxbb.',
+      '.abbxxbbxbc.',
+      'abbbbxxbbbcc',
+      'abxbbbbxxbcc',
+      '.bbxxbbbbcc.',
+      '..bbbxbccc..',
+      '...ccccc....',
+      '............',
+    ],
+    // ---- the crosses' own rich ores. A cross pays its donor's gems for its rich ore, which is ringed in the
+    // donor's outline, kept off both its parents' hazards, its host's common ore and its donor's own rich ore, and
+    // seen on the cross's rock. Named as `CROSS_LOOKS` names the cross (js/world.js), host by host.
+    // Thaw: candle quartz, a point with small points crowded round its foot, the warm white of wax.
+    thawB: [
+      '.....a......',
+      '....awb.....',
+      '....awb.....',
+      '....abb.....',
+      '..a.abb.a...',
+      '.awbabbab...',
+      '.abbabbbbc..',
+      '.abbbbbbbc..',
+      '..bbbbbbcc..',
+      '..bbbbbbcc..',
+      '...cccccc...',
+      '............',
+    ],
+    // Tundra: frost lichen, a lobed rosette of pale green crust rimed white.
+    tundraB: [
+      '..aa........',
+      '.abba.aa....',
+      '.abbbabba...',
+      '..bxbbbbba..',
+      '.abbbxxbbbc.',
+      'abbxbxxbxbbc',
+      '.bbbbbbbbbc.',
+      '..cbbxbbbbc.',
+      '...cbbcbbc..',
+      '....cc.cc...',
+      '............',
+      '............',
+    ],
+    // Hailstone: ghost quartz, a clear point with the green ghost of an older crystal standing in it.
+    hailstoneB: [
+      '.....a......',
+      '....awa.....',
+      '...awgga....',
+      '...wgGgab...',
+      '..agggGgb...',
+      '..aggGggbc..',
+      '..agGgggbc..',
+      '..aggGGgbc..',
+      '..agggggbc..',
+      '..aggggbbc..',
+      '..abbbbbbc..',
+      '...cccccc...',
+    ],
+    // Quench: tourmaline, a long striated prism of rose with its foot gone green, as a watermelon's is.
+    quenchB: [
+      '.........ab.',
+      '........awbc',
+      '.......abxbc',
+      '......abxbc.',
+      '.....abxbc..',
+      '....abxbc...',
+      '...abxbc....',
+      '..aGxbc.....',
+      '.agGGc......',
+      '.ggGc.......',
+      '.gGc........',
+      '..c.........',
+    ],
+    // Sootfen: fire morel, the honeycombed cap of the morel that comes up where a fen has burnt, on its pale stem.
+    sootfenB: [
+      '.....aa.....',
+      '....abbb....',
+      '...abdbdb...',
+      '...bbbbbc...',
+      '..abdbdbbc..',
+      '..bbbbbbbc..',
+      '..bdbdbdbc..',
+      '..bbbbbbcc..',
+      '...ccccc....',
+      '....wsS.....',
+      '....wsS.....',
+      '....sSS.....',
+    ],
+    // Flashrock: fulgurite, glass fused by lightning, a branching tube of pale green glass round a dark core.
+    flashrockB: [
+      '.....aa.....',
+      '....abbc....',
+      '....abc.....',
+      '...abbc.....',
+      '..abbbbc....',
+      '.ab.abbbc...',
+      'ab..abbdc.ab',
+      'b...abddbabc',
+      '....abdbbbc.',
+      '...abbdc....',
+      '..abbdc.....',
+      '..bcc.......',
+    ],
+    // Rimemoss: celestine, a cluster of tabular crystals of the palest sky blue on a crust of matrix.
+    rimemossB: [
+      '.......a....',
+      '......awb...',
+      '..a...abb...',
+      '.awb..abbc..',
+      '.abb.aabbc..',
+      '.abbcabbbc.a',
+      '.abbcabbbcab',
+      '.abbbabbbabc',
+      '.abbbbbbbbbc',
+      '..ssssssssS.',
+      '...SSSSSSS..',
+      '............',
+    ],
+    // Smoulder: pyrite, two cubes of pale brass grown through each other, striated.
+    smoulderB: [
+      '............',
+      '.aaaab......',
+      '.awaabb.....',
+      '.abbbbbaaab.',
+      '.abxbbbawabb',
+      '.abbbxbabbbb',
+      '.abxbbbabxbc',
+      '.cbbbxbabbbc',
+      '..cccccbxbbc',
+      '......cbbbcc',
+      '.......cccc.',
+      '............',
+    ],
+    // Buzzmire: electrum, a lumpy nugget of the pale gold that is half silver.
+    buzzmireB: [
+      '............',
+      '.....ab.....',
+      '..ab.awb....',
+      '.awbbabbb...',
+      '.abxbbbbbab.',
+      '..bbybbxbwbc',
+      '.abbbbbbbxbc',
+      'abxbbbcbbbc.',
+      '.bbcbxccbc..',
+      '..cc..cc....',
+      '............',
+      '............',
+    ],
+    // Hoarsand: kyanite, a sheaf of long blue blades, each streaked down its length with white.
+    hoarsandB: [
+      '.........ab.',
+      '......ab.bbc',
+      '.....abcabc.',
+      '....abcabc..',
+      '...abcabc.ab',
+      '..abcabc.abc',
+      '.abcabc.abc.',
+      '.bcabc.abc..',
+      '..abc.abc...',
+      '...c.abc....',
+      '.....bc.....',
+      '............',
+    ],
+    // Kilnstone: goldstone, the violet kind, glass tumbled smooth with sparks of copper gold shut in it.
+    kilnstoneB: [
+      '............',
+      '............',
+      '.....aaab...',
+      '...aawaabbb.',
+      '..aaybabbybc',
+      '.abbbbbbbbbc',
+      '.abybbbbybcc',
+      'abbbbbybbbcc',
+      'abbybbbbbcc.',
+      '.bbbbbybcc..',
+      '..ccccccc...',
+      '............',
+    ],
+    // Mouldstone: chrysoprase, apple green, grown in rounded clusters.
+    mouldstoneB: [
+      '............',
+      '..aab...aab.',
+      '.awabb.awabb',
+      '.aabbbcaabbc',
+      '..bbbcaabbcc',
+      '.aab.cabbcc.',
+      'awabbcbbcc..',
+      'aabbbbbcc...',
+      '.bbbbbcc....',
+      '..bccc......',
+      '............',
+      '............',
+    ],
   },
   frames: [
     ore('firnA', 'north', { a: '#8ab4ff', b: '#3a62d8', c: '#2030a0' }),
@@ -2473,6 +2791,26 @@ export const ores = {
     ore('myceliumB', 'west', { d: '#3a2a20', o: '#60a0ff', O: '#c0e0ff', w: '#ffffff', g: '#70f0a0', y: '#f0e060' }),
     ore('druseA', 'east', { a: '#ffffff', w: '#ffffff', b: '#fff2d0', c: '#c8b488', y: '#ffe070' }),
     ore('druseB', 'east', { a: '#f0ffa8', w: '#ffffff', b: '#c8f050', c: '#4a7a28', x: '#a8d040' }),
+    ore('skarnA', 'north', { a: '#ffd8a0', w: '#ffffff', b: '#d87838', c: '#8a3e1c' }),
+    ore('skarnB', 'ne', { a: '#9ab8ff', w: '#ffffff', b: '#4a5ee0', c: '#28248a', x: '#8250e6', r: '#38b8b0', y: '#f0c850' }),
+    ore('obsidianA', 'east', { a: '#fff8c0', w: '#ffffff', b: '#c4cc44', c: '#5e5a3c' }),
+    ore('obsidianB', 'se', { d: '#2a1a30', D: '#160c1c', w: '#ffffff', x: '#d03890', r: '#8048d8', g: '#30b8b0' }),
+    ore('tarpitA', 'south', { a: '#fffbe6', w: '#ffffff', b: '#ece6b4', c: '#aaa078' }),
+    ore('tarpitB', 'sw', { d: '#1c1a26', w: '#ffffff', g: '#2898d0', G: '#50d080', b: '#bee6e6' }),
+    ore('muskegA', 'west', { a: '#8aa8ff', b: '#3c50c0', c: '#1e2470' }),
+    ore('muskegB', 'nw', { a: '#c8f0ff', w: '#ffffff', b: '#6ec8dc', c: '#2a7a9a', x: '#e8fcff' }),
+    ore('thawB', 'south', { a: '#fff4e8', w: '#ffffff', b: '#fad2aa', c: '#a0806a' }),
+    ore('tundraB', 'west', { a: '#f0fff0', b: '#b4e678', c: '#6a9a48', x: '#e8fff8' }),
+    ore('hailstoneB', 'east', { a: '#f4fbff', w: '#ffffff', g: '#82d2a0', G: '#4ea878', b: '#c8dce8', c: '#8aa4b8' }),
+    ore('quenchB', 'north', { a: '#ffb0d0', w: '#ffffff', b: '#e65082', c: '#902050', x: '#c03a6a', g: '#60c070', G: '#2e7a40' }),
+    ore('sootfenB', 'west', { a: '#e1dacd', b: '#beb4a5', c: '#786e64', d: '#3a302c', w: '#ffffff', s: '#e8e0d0', S: '#b0a890' }),
+    ore('flashrockB', 'east', { a: '#f0f8d0', b: '#c8dc78', c: '#7a8a40', d: '#3a3a2a' }),
+    ore('rimemossB', 'north', { a: '#f0f8ff', w: '#ffffff', b: '#c4def8', c: '#8496be', s: '#a89c90', S: '#6a6058' }),
+    ore('smoulderB', 'south', { a: '#f0ecd2', w: '#ffffff', b: '#c4be96', c: '#787050', x: '#a09870' }),
+    ore('buzzmireB', 'east', { a: '#ffffff', w: '#ffffff', b: '#e8e6d4', c: '#989282', x: '#c6c2ac', y: '#fff8dc' }),
+    ore('hoarsandB', 'north', { a: '#a0c0ff', b: '#4678dc', c: '#203c8a', x: '#dce8ff' }),
+    ore('kilnstoneB', 'south', { a: '#b48ce8', w: '#ffffff', b: '#783cbe', c: '#3a1a6a', y: '#ffe070' }),
+    ore('mouldstoneB', 'west', { a: '#c8f8d0', w: '#ffffff', b: '#78dc8c', c: '#2e8a4a' }),
   ],
 
 };
@@ -2511,7 +2849,43 @@ export const shrines = {
   animations: Object.fromEntries(SHRINE_GEMS.map((_, d) => [`shrine-${d}`, { frames: [`shrine-${d}`, `shrine-${d}`, `shrine-${d}`, `shrine-${d}-glint`] }])),
 };
 
-export const RECIPES = [finds, cracks, dish, frost, ember, mire, lode, ores, minerals, drill, core, station, icons, upgrades, ui, logo, tough, bell, vent, worm, lodestone, fauna, shrines];
+// ------------------------------------------------------------------ carved stones (generation 2)
+// Ancient stone that is more than stone, which the lab can know. A tablet of a shrine's grey stone, set in the ring
+// of ancient stone round its heart, with a diamond inlaid in it split between the shrine's two parents' colours as
+// its heart's gem is, the first in the upper half, a line of light on the cut: `stone-<corner>`, in SHRINES' order
+// by name (ne, se, sw, nw). And the builders' stone of their halls' walls: the same tablet in the ancient stone's
+// own violet, a square spiral cut into it and laid with gold: `builders`. Each is drawn over the cell's stone and
+// its plate, and is opaque over the middle twelve pixels each way, which is what the lab shows of it; the stone's
+// own rim shows round it. (The builders' mark was first the plan of a hall, its walls, doors and store; at six
+// pixels it was a face.)
+const TABLET = Array.from({ length: 12 }, (_, y) => Array.from({ length: 12 }, (_, x) => {
+  if (x === 0 || y === 0 || x === 11 || y === 11) return 'k';
+  if (x === 10 || y === 10) return 'S';
+  if (x === 1 || y === 1) return 'l';
+  return x === 2 || y === 2 || x === 9 || y === 9 ? 'g' : 'm';
+}).join(''));
+// (The diamond in the tablet's field, eight pixels each way: the first parent where x + y is under 7, the line of
+// light where it is 7, and the second beyond, with the shadow of its cutting under its lower edges. Rimmed dark all
+// round, the rim ran into the groove round the field and the diamond read as a cross.)
+const INLAY = Array.from({ length: 8 }, (_, y) => Array.from({ length: 8 }, (_, x) => {
+  const d = Math.abs(x - 3.5) + Math.abs(y - 3.5);
+  return d > 4 ? '.' : d > 3 ? (x + y > 7 ? 'o' : '.') : x + y < 7 ? 'p' : x + y === 7 ? 'w' : 'q';
+}).join(''));
+const SPIRAL = ['yyyyyy', '.....y', 'yyyy.y', 'y..y.y', 'y....y', 'yyyyyy'];
+const CORNER_NAMES = ['ne', 'se', 'sw', 'nw'];
+export const stones = {
+  version: 1, name: 'stones', width: 16, height: 16,
+  palette: { k: '#14101c', l: '#b4aec4', S: '#4e4860', g: '#2e2838', m: '#6e6880', w: '#ffffff', o: '#2e2838', p: '#000000', q: '#000000', y: '#000000' },
+  symbols: { tablet: TABLET, inlay: INLAY, spiral: SPIRAL },
+  frames: [
+    ...SHRINE_GEMS.map(([a, b], d) => ({ name: `stone-${CORNER_NAMES[d]}`, duration: 300, palette: { p: GEM[a][0], q: GEM[b][0] },
+      ops: [{ op: 'stamp', symbol: 'tablet', x: 2, y: 2 }, { op: 'stamp', symbol: 'inlay', x: 4, y: 4 }] })),
+    { name: 'builders', duration: 300, palette: { k: '#0e0a18', l: '#8a78c0', S: '#2c2244', g: '#1c1430', m: '#3a2f58', y: '#f0c848' },
+      ops: [{ op: 'stamp', symbol: 'tablet', x: 2, y: 2 }, { op: 'stamp', symbol: 'spiral', x: 5, y: 5 }] },
+  ],
+};
+
+export const RECIPES = [finds, cracks, dish, frost, ember, mire, lode, ores, minerals, drill, core, station, icons, upgrades, ui, logo, tough, bell, vent, worm, lodestone, fauna, shrines, stones];
 
 // The home-screen icon: the core on dark ground, with the drill out on its tether.
 // (The core as the first winch was drawn before each winch was one of its own, in the colours it had then.)

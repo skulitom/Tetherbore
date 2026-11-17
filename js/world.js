@@ -125,11 +125,14 @@ const KIN_ITEMS = ['lode-items', 'frost-items', 'ember-items', 'mire-items', 'lo
 //   rich, gemx, worth   what multiplies a hauled cell's grit (rich, worth) and gems (gemx)
 //   dig                 what multiplies the time to cut a cell
 //   sheet, floor, items the terrain sheet of its rock, of its floor, and the sheet of its dense rock and ores
-//   itemsB              the sheet its rich ore is drawn from, where that is not `items`: a cross's is its donor's
+//   itemsB              its rich ore's direction's sheet, where that is not `items`: a cross's is its donor's (what
+//                       its rich ore pays and is drawn like; the creatures and the caves' pieces keep clear of its
+//                       colours)
 //   ores                what its two ores are drawn from, [sheet, frame] of its common ore and of its rich ore,
 //                       which is also what the lab knows them by: its direction's sheet (`items`, `itemsB`), or for
-//                       a strain or a deep flank two frames of `ores` of its own; and `oreKeys`, the two as the
-//                       lab's keys, 'sheet:frame', made once
+//                       a strain, a seam, a deep flank, a deep seam or a deep strain two frames of `ores` of its
+//                       own, or for a cross its host's common ore and a rich ore of its own (`<noun>B` of `ores`);
+//                       and `oreKeys`, the two as the lab's keys, 'sheet:frame', made once
 //   gloom, dark         the colour of its dark, and how deep the dark is (1 as everywhere today)
 //   mote                [colour, drift]: the motes in its air, and whether they 'fall', 'rise', 'sway' or hang 'still'
 //   map, debris         its colour on the map (its sheet's own ground colour) and the three colours of its chips
@@ -323,10 +326,11 @@ strain(24, 'loess', B.LODE, { rich: 0.85, dig: 0.5, gen: { dense: 0.76, oreA: 0.
 // a ground of its own made of both. Its first ore pays its own direction's gems (`kin`, the first of the two going
 // round the core with the sun from the north) and its rich ore the other's; it has a hazard or a trait of each, and
 // the reaction between the two that the game plays by (`react`). Past the flanks' own distance from the core it is
-// a deep seam: a rock of its own over its seam's floor, ores and caves' pieces (so that coming into it reads as
-// somewhere new, where the seam's sheet alone could not be told from it), deep ground's richer, meaner figures (as
-// `deep` makes a flank of its direction's ground) and looks of its own. `rich` follows the danger, as a strain's and a cross's do: a quarter
-// more than a direction's ground, and a deep seam's twice. The four, by corner:
+// a deep seam: a rock of its own over its seam's floor and caves' pieces (so that coming into it reads as somewhere
+// new, where the seam's sheet alone could not be told from it), two ores of its own (`ownOres` of its own name: its
+// common ore outlined as its first parent's, its rich ore in its corner's own outline), deep ground's richer, meaner
+// figures (as `deep` makes a flank of its direction's ground) and looks of its own. `rich` follows the danger, as a
+// strain's and a cross's do: a quarter more than a direction's ground, and a deep seam's twice. The four, by corner:
 //   north-east  HOARSTONE / SKARN       the north's ground, frozen quartz: charged crystals on its slate, and a cut
 //                                       closes with ice (react 'thaw': an arc thaws the ice round it)
 //   south-east  GLASSDUNE / OBSIDIAN    the east's ground, fused sand: crystals, and lava in pockets with its slag;
@@ -347,7 +351,7 @@ strain(24, 'loess', B.LODE, { rich: 0.85, dig: 0.5, gen: { dense: 0.76, oreA: 0.
 export const SEAMS = [[9, 13], [10, 14], [11, 15], [12, 16]];
 const seam = (corner, f, under) => {
   const name = f.name, shallow = biome({ id: SEAMS[corner][0], seam: corner, ores: ownOres(name), ...f });
-  biome({ ...f, id: SEAMS[corner][1], seam: corner, deep: true, sheet: under.name, floor: `${name}-floor`, ores: ownOres(name), rich: 2, gemx: 2,
+  biome({ ...f, id: SEAMS[corner][1], seam: corner, deep: true, sheet: under.name, floor: `${name}-floor`, ores: ownOres(under.name), rich: 2, gemx: 2,
     gen: { ...shallow.gen, oreA: 0.6, oreB: 0.66 }, haz: deeper(f.haz), haz2: f.haz2 && deeper(f.haz2), ...under });
 };
 seam(0, { name: 'hoarstone', kin: B.FROST, gemA: B.FROST, gemB: B.LODE, rich: 1.25, react: 'thaw', gen: { ...GROUND, slate: 0.05 }, haz: { type: 'spark', rate: 1 }, freeze: 30,
@@ -664,7 +668,9 @@ for (const [id, decor, air] of LOOKS) Object.assign(BIOMES[id], { decor, air });
 //   host       one of the four directions' own grounds. The cross lies in that direction and is that ground: its
 //              thresholds, its floor, its dark and motes, its ore's sheet, its own hazard as thick as ever, and
 //              its plain ore pays its gems.
-//   donor      one of the other three. Its rich ore is the donor's (drawn as the donor's, paying the donor's gems)
+//   donor      one of the other three. Its rich ore pays the donor's gems and is a stone of the pair's own (a
+//              frame of `ores` named for the cross, `<noun>B`, outlined as the donor's ores are, and a thing of its
+//              own to the lab, which counts what it knew of the donor's rich ore toward it: js/shop.js, `heir`)
 //              and it has the donor's trait at WEAK strength: the north's, a cut closes with ice after 30 seconds;
 //              the others', their hazard as the ground's second, six tenths as thick (lava in smaller pockets, as
 //              scoria's is), each with what goes with it wherever it lies (`HAZARDS`: slag round the lava, crystals
@@ -703,7 +709,7 @@ export const crossRow = (host, donor, structure) => {
   const own = BIOMES[host], from = BIOMES[donor], [noun, map, patch] = CROSS_LOOKS[host][donor], shape = shaped(host, donor, structure);
   const title = shape ? `${STRUCTURES[shape]} ${noun}` : noun, hazard = from.haz && (from.haz.type === 'lava' ? { type: 'lava', rate: WEAK, t: 0.80 } : { type: from.haz.type, rate: WEAK });
   return biome({ id: crossId(host, donor, structure), name: title.toLowerCase(), title, kin: host, gemB: donor, rich: 1.25,
-    sheet: `x-${own.name}-${from.name}`, floor: own.floor, items: own.items, itemsB: from.items, ores: [own.ores[0], from.ores[1]], gloom: own.gloom, mote: own.mote,
+    sheet: `x-${own.name}-${from.name}`, floor: own.floor, items: own.items, itemsB: from.items, ores: [own.ores[0], ['ores', `${noun.toLowerCase()}B`]], gloom: own.gloom, mote: own.mote,
     map, debris: [own.debris[0], patch, ACCENT[donor]], gen: { ...own.gen, ...SHAPES[shape].gen }, extras: SHAPES[shape].extras,
     haz: own.haz, haz2: hazard, freeze: own.freeze || from.freeze, cross: { host, donor, structure: shape },
     decor: own.decor, decor2: own.decor && from.decor && `${own.decor}-${from.decor}`, air: own.air });
@@ -730,6 +736,11 @@ export const GEM_PAST = [0, HOME_R, HOME_R, HOME_R, HOME_R, DEEP_R, DEEP_R, DEEP
 // generation 2 and an older game had not seen the heart (`unshrined`), and the pockets, the sites and the slabs keep
 // clear of it as of a relic.
 export const SHRINE_R = 1400, SHRINES = [[990, -990], [990, 990], [-990, 990], [-990, -990]];
+// The ancient stone of the deep is a thing of its own to the lab, by where it was laid (`stoneOf`): a shrine's walls,
+// a stone to each corner in the order of SHRINES, and the builders' halls' walls. Each is the frame of this name on
+// the 'stones' sheet that is drawn over its vault, and the lab's 'stones:<name>'. (A relic's vault and the old veins
+// of vault in the rock are plain vault, and nothing to the lab.)
+export const STONES = ['stone-ne', 'stone-se', 'stone-sw', 'stone-nw', 'builders'];
 // Which rules of the world a piece of it was laid by: its generation. Every piece made now is laid by the rules of
 // GEN; a piece saved by an older game was laid by those of its day, and is laid by them still (`genOf`, `genAt`),
 // or the ground it saved would no longer be the ground the seed lays there, and every rule that asks what was laid
@@ -1760,6 +1771,24 @@ export class World {
     // Each door two cells of soft rock across the middle of its wall.
     if (H.ew ? inV && (v === ((h + 1) >> 1) - 1 || v === (h + 1) >> 1) : inU && (u === ((w + 1) >> 1) - 1 || u === (w + 1) >> 1)) return K.SOFT;
     return K.VAULT;
+  }
+  // Whether a cell is a wall of a builders' hall, as `kindAt` lays one: vault where `hallCell` says so. (Where a hall
+  // is laid nothing that `kindAt` asks before it, a relic's vault, a shrine, a wreck, a pocket, a slab or a set
+  // piece, can lie: its collar keeps clear of them all.) Asked of a square's hall worked out once and kept.
+  hallWall(x, y) {
+    const dx = x - C, dy = y - C;
+    return dx * dx + dy * dy > (HALL_FROM - HALL) * (HALL_FROM - HALL) && this.hallCell(x, y) === K.VAULT;
+  }
+  // Which ancient stone a cell of vault is (`STONES`): 0 to 3 a shrine's walls, by corner, where `kindAt` lays them
+  // (a square's distance of 1 to 3 from the heart, in a piece of generation 2, the shrine laid); 4 a builders' hall's
+  // walls; or -1, any other vault. Asked only of vault: it says where vault was laid, not what a cell is now.
+  stoneOf(x, y) {
+    const dx = x - C, dy = y - C, r = Math.sqrt(dx * dx + dy * dy);
+    if (r > SHRINE_R - 8 && r < SHRINE_R + 8) for (let d = 0; d < 4; d++) {
+      const edge = Math.max(Math.abs(dx - SHRINES[d][0]), Math.abs(dy - SHRINES[d][1]));
+      if (edge >= 1 && edge <= 3 && this.shrine(d) && this.genAt(x, y) >= 2) return d;
+    }
+    return this.hallWall(x, y) ? 4 : -1;
   }
   reset(seed) {
     this.seed = seed;

@@ -8,7 +8,8 @@
 //   - a hauled cell pays a quarter more grit than in the host's own ground; plain ore pays the host's gems, rich ore
 //     the donor's, and each hazard its own kind's;
 //   - rock is drawn from the pair's own sheet over the host's floor, plain ore and dense rock from the host's sheet,
-//     rich ore from the donor's (it looks like what it pays), a hazard from its kind's; chips are the cross's;
+//     rich ore as a stone of the pair's own (`<noun>B` of the 'ores' sheet, in the donor's outline, so that it says
+//     whose gems it pays), a hazard from its kind's; chips are the cross's;
 //   - coming into one, the place is named by the cross's name, with both gems it pays on its plate; hand-made
 //     ground has one.
 // And a frame of every one of the sixty is drawn, so no row names a sheet or a frame the art has not.
@@ -92,7 +93,8 @@ for (const row of BIOMES.filter(row => row?.cross)) {
   const own = BIOMES[row.cross.host], from = BIOMES[row.cross.donor], id = row.id, sheet = `x-${own.name}-${from.name}`;
   check(game.rockSheet(K.SOFT, id) === sheet && game.rockSheet(K.DENSE, id) === sheet && game.rockSheet(K.SLATE, id) === 'slate' && game.rockSheet(K.ICE, id) === 'ice', `${row.name}: its rock is drawn from ${game.rockSheet(K.SOFT, id)}`);
   check(row.floor === own.floor && same(game.overlay(K.ORE_A, row), [own.items, 'oreA']) && same(game.overlay(K.DENSE, row), [own.items, 'dense']), `${row.name}: its floor, its plain ore or its dense rock is not drawn as its host's`);
-  check(same(game.overlay(K.ORE_B, row), [from.items, 'oreB']), `${row.name}: its rich ore is drawn from ${game.overlay(K.ORE_B, row)}, not its donor's sheet`);
+  const noun = BIOMES[crossId(row.cross.host, row.cross.donor)].title.toLowerCase();
+  check(same(game.overlay(K.ORE_B, row), ['ores', `${noun}B`]) && row.itemsB === from.items, `${row.name}: its rich ore is drawn from ${game.overlay(K.ORE_B, row)}, not the pair's own ores:${noun}B`);
   check(same(game.overlay(K.HAZARD, row), game.overlay(K.HAZARD, own)) && same(game.overlay(K.HAZARD2, row), from.haz ? game.overlay(K.HAZARD, from) : null), `${row.name}: its hazards are drawn as ${game.overlay(K.HAZARD, row)} and ${game.overlay(K.HAZARD2, row)}`);
   check(game.debris(K.SOFT, id) === row.debris && game.debris(K.SOFT, id) !== own.debris, `${row.name}: its chips are not its own colours`);
 }

@@ -21,7 +21,7 @@
 // three, by what it is worth as said: three for 10 rock or 10 gems or more, two for 3 rock or more, one for less;
 // the lab rims a thing's chip by it (js/drawing.js: `TIER_RIM`), and the world shows the same. `said` is the line,
 // in English (js/lang.js turns it): WORTH x4 ROCK, +5 GEMS; ~x12 ROCK, +0.25 SPEC.
-import { K, B, GRIT, GEMS, HAZARDS, RARE, BIOMES, gemKin } from './world.js';
+import { K, B, GRIT, GEMS, HAZARDS, RARE, BIOMES, SEAMS, STONES, gemKin } from './world.js';
 import { LAB, richness, income, haulBonus, WINCH_LOAD } from './shop.js';
 
 // (The winch's value at each level, as the shop has them, read once the rows are made: js/shop.js, UPGRADES.)
@@ -49,6 +49,10 @@ export const worthSaid = ({ x, gems, spec, lump, home }) => {
 // ground's of that number to have them that is no cross and no pocket, but the home ground's (copper and violet
 // quartz) are said for the east's ground, which has them too, with the home ground's beside (`home`); a hazard is
 // its type's first ground's; steel the south's; a key's iron an ordinary ground's; a pocket's mineral its pocket's.
+// A cross's rich ore, which is no other ground's, is its pair's first cross's (a quarter more than its host, as every
+// cross of the pair pays). A shrine's stone, vault, is said for the deep seam the shrine lies in, and the builders'
+// stone for an ordinary ground, as a key's iron is (their halls lie in whatever ground is there, most of it the
+// deep flanks, which pay twice that; the line does not say).
 const ORDINARY = () => BIOMES.filter(r => r && !r.cross && !r.pocket && r.lay !== undefined);
 const placeOf = key => {
   const rows = ORDINARY(), found = rows.filter(r => r.oreKeys?.includes(key));
@@ -57,7 +61,10 @@ const placeOf = key => {
     const home = found.find(r => r.id === B.CRUST), own = found.find(r => r.id !== B.CRUST);
     return home && own ? { ...at(own), home: at(home) } : at(found[0]);
   }
+  const cross = BIOMES.find(r => r?.cross && r.oreKeys[1] === key);
+  if (cross) return { k: K.ORE_B, row: cross };
   const [sheet, frame] = key.split(':');
+  if (sheet === 'stones' && STONES.includes(frame)) { const s = STONES.indexOf(frame); return { k: K.VAULT, row: BIOMES[s < 4 ? SEAMS[s][1] : B.FROST] }; }
   if (frame === 'hazard') {
     const type = Object.keys(HAZARDS).find(t => HAZARDS[t].sheet === sheet);
     if (RARE.includes(type)) return { k: K.RARE, row: BIOMES[RARE.indexOf(type)], lump: RARE_LUMP };
