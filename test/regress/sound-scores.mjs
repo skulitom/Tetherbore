@@ -14,7 +14,8 @@
 //     least;
 //   - where a pocket's own rule rings rewards (the drift's chain, the grotto's caps), its key holds the major
 //     five-note scale on A that they ring in;
-//   - every score is whole and in bounds: a known scale, waves the music has, patterns of the letters it reads,
+//   - each of the twelve has a second piece, a deep seam's slower than its seam's;
+//   - every score, every second piece too, is whole and in bounds: a known scale, waves the music has, patterns of the letters it reads,
 //     a motif of a bar at the most, a tempo of 36 to 125 a minute, a metre of three, four or five beats, chords,
 //     a form that begins with its motif, every voice's level soft, and every phrase a voice plays (its pads for
 //     each chord, its patterns, the lead's range, the motif and its answer) inside the voice's room, where a phone's
@@ -22,7 +23,7 @@
 // What the music sounds like is not held here: `node tools/sounds.mjs music` renders and measures every score.
 //   node test/regress/sound-scores.mjs
 import { BIOMES, SEAMS } from '../../js/world.js';
-import { scoreOf, scoreNames, phrasesOf, waveNames } from '../../js/audio.js';
+import { scoreOf, scoreNames, phrasesOf, waveNames, secondOf } from '../../js/audio.js';
 
 const fails = [], KIN = ['crust', 'frost', 'ember', 'mire', 'lode'], DEEP = ['crust', 'rime', 'magma', 'bloom', 'gilt'], TWIST = [null, 'tangle', 'serac', 'scoria', 'redrock'];
 const MAIN = [...KIN, ...DEEP.slice(1)], VOICES = ['pad', 'lead', 'pluck', 'bass', 'perc'], WAVES = new Set(waveNames());
@@ -69,6 +70,9 @@ for (const row of newer) {
   else if (ways(row, of) < 2) fails.push(`${row.name} is apart from ${of}, whose piece it is made of, in ${ways(row, of)} ways (two at least are meant)`);
   if (row.deep && row.seam !== null && !(s.bpm * s.tempo < parent.bpm * parent.tempo || s.root < parent.root)) fails.push(`the deep seam ${row.name} is neither slower nor lower than ${of}`);
 }
+// (Each of the twelve has a second piece, not its first again: a seam's and a deep strain's its own, a deep seam's its
+// seam's, slower too.)
+for (const row of newer) { const s = scoreOf(row), two = secondOf(s); if (!two || bare({ ...two, rounds: 0 }) === bare({ ...s, rounds: 0 })) fails.push(`${row.name} has no second piece of its own`); else if (row.deep && row.seam !== null && !(two.bpm * two.tempo < secondOf(scoreOf(BIOMES[SEAMS[row.seam][0]].name)).bpm)) fails.push(`the deep seam ${row.name}'s second is not slower than its seam's`); }
 for (let a = 0; a < newer.length; a++) for (let b = a + 1; b < newer.length; b++) if (ways(newer[a], newer[b]) < 2) fails.push(`${newer[a].name} and ${newer[b].name} are apart in ${ways(newer[a], newer[b])} ways (two at least are meant)`);
 // (What a score plays is in its key: if all of it together holds A major's five notes, so does the key.)
 const A_MAJOR = [9, 11, 1, 4, 6], classOf = f => ((Math.round(12 * Math.log2(f / 440)) % 12) + 12 + 9) % 12;
@@ -87,9 +91,10 @@ for (const row of rows.filter(r => r.cross)) {
 
 // ---- every score whole and in bounds
 const ROOM = { pad: [110, 880], lead: [196, 1568], pluck: [220, 1760], bass: [90, 330] };
-const all = [...scoreNames(), ...rows.filter(r => r.cross)];
+// (And every second piece, each taking turns with its first: js/audio.js, `secondOf`.)
+const firsts = [...scoreNames(), ...rows.filter(r => r.cross)], all = [...firsts, ...new Set(firsts.map(g => secondOf(scoreOf(g))).filter(Boolean))];
 for (const ground of all) {
-  const s = scoreOf(ground), name = s.name, bad = what => fails.push(`${name}: ${what}`);
+  const s = ground?.fit ? ground : scoreOf(ground), name = s.name, bad = what => fails.push(`${name}: ${what}`);
   for (const key of ['bpm', 'bar', 'swing', 'tempo', 'root', 'mode', 'chords', 'motif', 'form', 'lift', 'air', 'bright', 'bell', 'level', 'glide']) if (s[key] === undefined || s[key] === null) bad(`has no ${key}`);
   if (typeof ground === 'string' && name !== ground) bad(`is called ${name}`);
   if (!(s.bpm * s.tempo >= 36 && s.bpm * s.tempo <= 125)) bad(`goes at ${s.bpm * s.tempo} a minute`);
@@ -117,5 +122,5 @@ for (const ground of all) {
   }
 }
 
-console.log(fails.length ? `DEFECT: ${fails.slice(0, 30).join('\n        ')}` : `ok: ${rows.length} grounds each play their own piece (${scoreNames().length} made by hand, ${rows.filter(r => r.cross).length} crosses made of them), the nine main ones apart, every score whole and every phrase in its voice's room and its own shape`);
+console.log(fails.length ? `DEFECT: ${fails.slice(0, 30).join('\n        ')}` : `ok: ${rows.length} grounds each play their own piece (${scoreNames().length} made by hand, ${rows.filter(r => r.cross).length} crosses made of them), the nine main ones apart, every score and its second (${all.length - firsts.length}) whole and every phrase in its voice's room and its own shape`);
 process.exit(fails.length ? 1 : 0);
