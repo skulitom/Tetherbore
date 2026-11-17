@@ -3,7 +3,7 @@
 import { World, CellBook, N, C, K, B, HARD, GRIT, GEMS, DX, DY, HAZARDS, RARE, CRUSH, ZONE, FIND, rowOf, hazOf, gemKin, digTime, cellHash, sight, cellsAlong, HOME_R } from './world.js';
 import { sheets, frameAt, duration } from './atlas.js';
 import { sfx, unlock, setAmbience } from './audio.js';
-import { richness, haulBonus, overload, income, round2, NEEDS, UPGRADES, LAB, LAB_OF, labLevel, labNext, CORE, ROWS, REACH, CUT } from './shop.js';
+import { richness, haulBonus, overload, income, round2, NEEDS, UPGRADES, LAB, LAB_OF, labLevel, labNext, CORE, ROWS, REACH, CUT, TABS } from './shop.js';
 import { Drawing, T, DIR_BIOME, GEM_ICON, GEM_COLOR, GEM_WHERE, SPOT, bright, compact, DEBRIS, LAB_LIST, LAB_RH, LAB_SEC } from './drawing.js';
 import { Feel } from './feel.js';
 import { Fitter } from './fit.js';
@@ -36,6 +36,8 @@ export const RUBBLE = 400;
 // It is asked of the loop's area and not of the cells hauled, as caves, tunnels and ground hauled before take a fifth
 // of any reach or more: a loop round exactly half the longest reach hauls six and a half million cells.
 const SIZES = [[200, 'COLOSSAL!'], [80, 'HUGE HAUL!'], [30, 'BIG HAUL!'], [10, 'NICE CUT!']];
+// The keys that open a tab of the panel the bar opens, each shutting it again (`key`).
+export const PANEL_KEYS = { KeyI: 'stats', KeyL: 'lab', KeyM: 'chart', Escape: 'menu' };
 export const GIANTS = [[1000, 'MOUNTAINOUS!'], [4000, 'TITANIC!'], [15000, 'AVALANCHE!'], [50000, 'CATACLYSM!'], [150000, 'CONTINENTAL!'], [400000, 'WORLD EATER!']];
 export const HALF = Math.round(Math.PI * REACH[REACH.length - 1] ** 2 / 2);
 export const isHalf = (n, area) => area >= HALF * 0.9 && n >= HALF * 0.4;
@@ -565,7 +567,12 @@ export class Game {
   }
   // A key held down comes again and again (`repeat`): only the lab's list takes those, to walk on through it, and
   // only of a key it took as it went down (a key held to fly with as the list was opened is not walked by).
-  key(code, down, repeat = false) {
+  //
+  // On a keyboard each panel has a key of its own (`PANEL_KEYS`): U or Enter the shop (at the core), I the panel's
+  // STATS, L its LAB, M its MAP (once the chart is bought) and Escape its MENU; the key of the panel or tab open
+  // shuts it, and Escape shuts whatever is open. With a panel open, Tab (Shift+Tab back) steps through its tabs and
+  // 1 to 4 choose one.
+  key(code, down, repeat = false, shift = false) {
     if (!down && code === this.labHeld) this.labHeld = null;
     if (down && this.lab && this.labTab === 'lab' && (!repeat || code === this.labHeld) && this.labKey(code, repeat)) { this.labHeld = code; return true; }
     if (repeat) return false;
@@ -576,11 +583,30 @@ export class Game {
     }
     if (!down) return false;
     unlock();
-    if (code === 'KeyU' || code === 'Enter') { if (this.atCore && this.drill.mode !== 'dead') { this.shop = !this.shop; this.lab = false; } return true; }
-    if (code === 'KeyL') { this.openLab(!this.lab); return true; }
-    if (code === 'Escape') { this.shop = this.lab = false; return true; }
+    if (code === 'KeyU' || code === 'Enter') { if (this.atCore && this.drill.mode !== 'dead') { this.shop = !this.shop; this.lab = false; sfx.tap(); } return true; }
+    if (code === 'Escape' && (this.shop || this.lab)) { this.shop = this.lab = false; sfx.tap(); return true; }
+    const tab = PANEL_KEYS[code];
+    if (tab) {
+      if (tab === 'chart' && !this.charted) return true;
+      if (this.lab && this.labTab === tab) this.openLab(false); else this.openLab(true, tab);
+      return true;
+    }
+    const step = code === 'Tab' ? (shift ? -1 : 1) : 0, pick = /^(Digit|Numpad)[1-9]$/.test(code) ? +code.at(-1) - 1 : -1;
+    if (step || pick >= 0) {
+      if (!this.shop && !this.lab) return step !== 0;
+      const ids = this.shop ? TABS.map(t => t.id) : this.panelIds(), now = Math.max(0, ids.indexOf(this.shop ? this.shopTab : this.labTab));
+      const to = step ? (now + step + ids.length) % ids.length : pick;
+      if (to >= ids.length || to === now) return true;
+      if (this.shop) this.shopTab = ids[to];
+      else if (ids[to] === 'lab') return this.openLab(true, 'lab'), true;   // (the list opens at the thing chosen)
+      else { this.labTab = ids[to]; this.labVel = 0; this.labAim = null; }
+      sfx.tap();
+      return true;
+    }
     return false;
   }
+  // The panel's tabs, in the order they are drawn (the MAP only once the chart is bought).
+  panelIds() { return ['stats', 'lab', ...(this.charted ? ['chart'] : []), 'menu']; }
   // Which way the player is steering, and how hard: [x, y, 0-1].
   steer() {
     const inp = this.input;

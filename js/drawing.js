@@ -186,6 +186,7 @@ function replay(ops, ctx) {
 }
 const sketch = new Sketch();
 
+const PANEL_NAMES = { stats: 'STATS', lab: 'LAB', chart: 'MAP', menu: 'MENU' };   // the bar's panel's tabs (`panelIds`)
 export class Drawing {
   rockSheet(k, b) {
     return k === K.BEDROCK ? 'bedrock' : k === K.SLATE ? 'slate' : k === K.VAULT || k === K.RELIC ? 'vault' : k === K.ICE ? 'ice' : k === K.BASALT ? 'basalt' : rowOf(b).sheet;
@@ -1592,8 +1593,8 @@ export class Drawing {
   panelTabs(px, py, pw, HEAD) {
     const { ctx } = this;
     let tx = px + 8;
-    for (const [id, name] of [['stats', 'STATS'], ['lab', 'LAB'], ...(this.charted ? [['chart', 'MAP']] : []), ['menu', 'MENU']]) {
-      const tw = textWidth(name), on = this.labTab === id;
+    for (const id of this.panelIds()) {
+      const name = PANEL_NAMES[id], tw = textWidth(name), on = this.labTab === id;
       text(ctx, name, tx, py + 7, on ? '#ffe14a' : '#8a84a0');
       if (on) { ctx.fillStyle = '#ffe14a'; ctx.fillRect(tx, py + 17, tw, 1); }
       this.buttons.unshift({ x: tx - 4, y: py, w: tw + 10, h: HEAD, act: () => { this.labTab = id; this.labVel = 0; this.labAim = null; sfx.tap(); } });

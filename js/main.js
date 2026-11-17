@@ -35,7 +35,7 @@ canvas.addEventListener('wheel', e => {
 }, { passive: false });
 canvas.addEventListener('contextmenu', e => e.preventDefault());
 // (A key held down comes again: the game says whether it takes those, as the lab's list does to walk through it.)
-window.addEventListener('keydown', e => { if (!e.metaKey && !e.ctrlKey && game.key(e.code, true, e.repeat)) e.preventDefault(); else if (e.repeat && /^Arrow|Space/.test(e.code)) e.preventDefault(); });
+window.addEventListener('keydown', e => { if (!e.metaKey && !e.ctrlKey && game.key(e.code, true, e.repeat, e.shiftKey)) e.preventDefault(); else if (e.repeat && /^Arrow|Space/.test(e.code)) e.preventDefault(); });
 window.addEventListener('keyup', e => { game.key(e.code, false); });
 document.addEventListener('visibilitychange', () => { if (document.hidden) game.save(); });
 // The game is silent while its tab is hidden or another window has the focus (js/audio.js, `setAside`).
