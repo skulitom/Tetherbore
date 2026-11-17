@@ -43,7 +43,7 @@ const { WORDS } = await import('../../js/words.js');
 const { makeGame } = await import('../harness.mjs');
 const { TABS, LAB, NEEDS, CORE } = await import('../../js/shop.js');
 const { BIOMES } = await import('../../js/world.js');
-const { GIANTS, placeHaul, haulTitle } = await import('../../js/game.js');
+const { GIANTS, placeHaul, haulTitle, SIZES, QUIPS, GIANT_SAYS, OVER_SAYS } = await import('../../js/game.js');
 const { SPOT, GEM_WHERE, LAB_LIST, labCount } = await import('../../js/drawing.js');
 const { CREATURES } = await import('../../js/fauna.js');
 const { readFileSync } = await import('node:fs');
@@ -91,6 +91,10 @@ names.add(labCount(1)); names.add(labCount(5)); names.add(labCount(2400));
 for (const b of BIOMES) if (b) { names.add(b.title); const h = placeHaul(b); if (h) names.add(h); }
 for (const [, g] of GIANTS) names.add(g);
 for (const n of [3, 10, 30, 80, 200]) names.add(haulTitle(n)[0]);
+// (Every word of every size, every joke and its line, and the lines under the giants, each fitting the narrowest
+// phone's 152 pixels at the smallest size a banner sets a title.)
+const hauls = [...SIZES.flatMap(([, w]) => w), ...Object.values(QUIPS).flat(2), ...GIANT_SAYS, OVER_SAYS, 'HALF THE REACH IN ONE HAUL'];
+for (const t of hauls) names.add(t);
 names.add(haulTitle(5, { relic: 1 })[0]); names.add(haulTitle(5, { parts: 1 })[0]); names.add(haulTitle(5, { caches: 1 })[0]); names.add(haulTitle(5, { spin: 3 })[0]);
 names.add(haulTitle(5, { rare: 'bell', live: true })[0]);
 for (const [what, [name]] of Object.entries(SPOT)) { names.add(name); if (['bell', 'vent', 'worm', 'lodestone'].includes(what)) names.add(haulTitle(5, { rare: what })[0]); }
@@ -128,6 +132,11 @@ check(!missing.length, `${missing.length} lines have no turn in ${lang}: ${missi
   });
   LAB_KINS.forEach(([title], kin) => { const all = LAB.filter(e => e.kin === kin).length; check(16 + textWidth(title) + 4 + textWidth(`${all}/${all}`) <= right, `the head '${tr(title)}' is too long for its line`); });
   check(textWidth(labCount(99999)) <= wide, `'${tr(labCount(99999))}' is wider than the notes`);
+}
+
+{
+  const { textWidth } = await import('../../js/atlas.js');
+  for (const t of hauls) check(textWidth(t, 1) <= 152, `'${tr(t)}' is ${textWidth(t, 1)} pixels wide, too wide for a narrow phone`);
 }
 
 // A number is kept; a line no key fits is drawn as it is; English is never turned.

@@ -1212,6 +1212,8 @@ export class Fauna {
   // band.
   wound(game) {
     if (this.off) return;
+    // (How many were caught by the loop closed this moment, for what its haul is called: `caughtAt`, `caughtN`.)
+    if (this.caughtAt !== game.time) this.caughtN = 0;
     const pts = game.band, d = game.drill;
     if (pts.length < 3 || d.mode === 'dead') return;
     const trophy = game.val('trophy') > 0;
@@ -1234,8 +1236,9 @@ export class Fauna {
         }
       }
       if (turns === 0 || near > PUFF.loop) continue;
-      if (foe) { this.trophy(game, i); continue; }
+      if (foe) { if (this.trophy(game, i)) { this.caughtAt = game.time; this.caughtN++; } continue; }
       if (!this.deed(game, 'catch', i)) continue;
+      this.caughtAt = game.time; this.caughtN++;
       this.set(i, CAUGHT);
       const den = this.denAt(i);
       if (den) this.deed(game, 'spend', den.key);
@@ -1249,11 +1252,11 @@ export class Fauna {
     const k = this.kind[i], st = this.st[i];
     return k === BATS || k === SPITTERS ? st === REST : k === LEECHES && st === AWAY;
   }
-  // A foe looped at rest: it pays, and it and the rest of its den go, the den spent as a puffling's is. (One trophy a
-  // den in SPENT seconds of play: a roost's bats clinging together are one catch, not four. A leech of the den fast
-  // to the hull stays on it, and comes off as it would have.)
+  // A foe looped at rest: it pays, and it and the rest of its den go, the den spent as a puffling's is; says whether
+  // it was caught. (One trophy a den in SPENT seconds of play: a roost's bats clinging together are one catch, not
+  // four. A leech of the den fast to the hull stays on it, and comes off as it would have.)
   trophy(game, i) {
-    if (!this.deed(game, 'trophy', i)) return;
+    if (!this.deed(game, 'trophy', i)) return false;
     const den = this.denAt(i), x = this.x[i], y = this.mid(i);
     this.puff2(x * T, y * T, SPARK, WHITE, 8);
     for (let j = 0; j < FAUNA; j++) if (this.kind[j] && j !== this.latched && (j === i || (this.den[i] >= 0 && this.den[j] === this.den[i]))) {
@@ -1261,6 +1264,7 @@ export class Fauna {
       this.set(j, AWAY); this.leave(j);
     }
     if (den) this.deed(game, 'spend', den.key);
+    return true;
   }
   // Whose specimens a foe's den pays: the direction of the ground it lies in (a cross's, its host's), or, set down
   // where no direction's ground is, its own kind's (bats the south's, leeches the west's, spitters the north's).

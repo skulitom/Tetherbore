@@ -5,6 +5,7 @@
 // a chain rubble never breaks fine. A haul of no cells is nothing at all.
 //   node test/regress/s2-light-haul.mjs
 import { makeGame, world, C, N } from '../harness.mjs';
+const { SIZES } = await import('../../js/game.js');
 const { K, B } = world;
 
 const game = await makeGame(7), w = game.world, S = game.S, fails = [];
@@ -35,7 +36,7 @@ check(!settle(12).has('bank') && !game.hauls.length, 'a light haul burst at the 
 // ---- twelve cells: as it always was
 quiet();
 game.haul(lay(30, -8, Array(12).fill(K.SOFT)));
-check(game.hauled.light === false && game.banner === game.hauled && game.banner.title === 'NICE CUT!', `a haul of 12 has no banner: ${JSON.stringify(game.banner)}`);
+check(game.hauled.light === false && game.banner === game.hauled && SIZES.at(-1)[1].includes(game.banner.title), `a haul of 12 has no banner: ${JSON.stringify(game.banner)}`);
 check(game.hitstop > 0 && game.flash > 0 && game.shake > 1.5, `a haul of 12 neither stopped, flashed nor shook: ${game.hitstop} ${game.flash} ${game.shake}`);
 check(!game.popups.some(p => p.color === '#ffe14a'), 'a haul of 12 says what it paid twice');
 const big = game.banner;
