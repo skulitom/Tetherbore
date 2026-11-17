@@ -16,6 +16,7 @@ const { makeGame, B } = await import('../harness.mjs');
 const { TABS, LAB, CORE } = await import('../../js/shop.js');
 const { KINDS } = await import('../../js/fauna.js');
 const { sheets, textWidth } = await import('../../js/atlas.js');
+const { lang } = await import('../../js/lang.js');
 
 const fails = [], check = (ok, what) => { if (!ok && fails.length < 40) fails.push(what); };
 const game = await makeGame(7), S = game.S;
@@ -24,7 +25,7 @@ let drawing = false;
 const glyphs = [], icons = [];
 game.ctx.drawImage = (image, sx, sy, sw, sh, dx, dy, dw, dh) => {
   if (!drawing || dw === undefined) return;
-  if (image?.tint && sh === 10 && sy === 0) { if (image.tint !== '#0c0a12') glyphs.push({ x: dx, y: dy, w: dw }); }
+  if (image?.tint && sh === 10 && sy % 10 === 0) { if (image.tint !== '#0c0a12') glyphs.push({ x: dx, y: dy, w: dw }); }
   else if (image === sheets.icons.image) icons.push({ x: dx, y: dy, w: dw, h: dh });
 };
 for (const name of ['drawShop', 'drawStats']) {
@@ -129,8 +130,9 @@ for (const [cssW, cssH] of [[320, 568], [360, 640]]) {
 {
   const said = lv => { Object.assign(S.lv, lv); return Object.fromEntries(game.stats().map(([name, value]) => [name, value])); };
   const a = said({ drill: 3, winch: 2 }), b = said({ drill: 5, winch: 8 });
-  check(a.BIT === 'GOLD MK4, x3.6' && a.WINCH === 'GEARED x1.6, LOAD 1000', `the bit at MK4 says '${a.BIT}' and the winch at x1.6 '${a.WINCH}'`);
-  check(b.BIT === 'VOID MK6, x6.5 PLOUGH' && b.WINCH === 'x5, LOAD 100K', `the bit at MK6 says '${b.BIT}' and the winch at its last '${b.WINCH}'`);
+  // (In English: another language says each in its own number of pixels, and has room for other words.)
+  if (lang === 'en') check(a.BIT === 'GOLD MK4, x3.6' && a.WINCH === 'GEARED x1.6, LOAD 1000', `the bit at MK4 says '${a.BIT}' and the winch at x1.6 '${a.WINCH}'`);
+  if (lang === 'en') check(b.BIT === 'VOID MK6, x6.5 PLOUGH' && b.WINCH === 'x5, LOAD 100K', `the bit at MK6 says '${b.BIT}' and the winch at its last '${b.WINCH}'`);
 }
 // Every row's `says` (and its `what`) fits the narrowest line by itself, as js/shop.js promises.
 for (const u of TABS.flatMap(t => t.rows)) for (let l = 0; l < u.values.length - 1; l++) {

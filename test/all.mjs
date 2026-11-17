@@ -151,10 +151,14 @@ for (const [x, y, what] of [[141, -576, 'a rime bell'], [-139, 565, 'a fumarole'
 // And in a deep flank, where the crystals and the lava are thickest.
 tests.push({ name: 'rope-fuzz.mjs 31 400 9 1000 1000 (deep south-east)', run: ['rope-fuzz.mjs', 31, 400, 9, 1000, 1000] });
 
+// And the shop and STATS in Russian and in Mandarin, which say most of their lines in more or fewer pixels than
+// English (h-shop-fit, run with TETHERBORE_LANG: js/lang.js). (The language test, l-lang, runs itself in each.)
+for (const id of ['ru', 'zh']) tests.push({ name: `regress/h-shop-fit.mjs [${id}]`, run: ['regress/h-shop-fit.mjs'], env: { TETHERBORE_LANG: id } });
+
 const queue = tests.filter(test => test.name.includes(only)), began = Date.now();
 let failed = 0, done = 0;
 const one = test => new Promise(resolve => {
-  const t = Date.now(), child = spawn(process.execPath, [here + test.run[0], ...test.run.slice(1).map(String)], { cwd: here + '..', stdio: ['ignore', 'pipe', 'pipe'] });
+  const t = Date.now(), child = spawn(process.execPath, [here + test.run[0], ...test.run.slice(1).map(String)], { cwd: here + '..', stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ...test.env } });
   let out = '';
   child.stdout.on('data', data => { out += data; });
   child.stderr.on('data', data => { out += data; });

@@ -14,6 +14,7 @@
 import { UPGRADES, WORKS, MAPS, CORE, TABS } from './shop.js';
 import { sheets, draw, frameAt, duration, tinted, text, textWidth } from './atlas.js';
 import { sfx } from './audio.js';
+import { tr } from './lang.js';
 import { N, C, K } from './world.js';
 
 // (Figures of the game's own, kept here so that nothing of js/game.js or js/drawing.js need be imported: pixels in
@@ -408,7 +409,8 @@ export class Fitter {
     // fitted where the drill is, with no turn.)
     f.still = game.atCore && Math.hypot(d.vx, d.vy) < 2;
     // (A bit or a winch is named for what it is now: `tiers`, DIAMOND BIT, FROST WINCH.)
-    f.label = u.tiers ? `${u.tiers[q.level]} ${u.name}` : `${u.name} ${u.show(u.values[q.level])}`;
+    // (In another language the name and the value are each turned, as they are said apart in the shop: js/lang.js.)
+    f.label = u.tiers ? `${u.tiers[q.level]} ${u.name}` : `${tr(u.name)} ${tr(u.show(u.values[q.level]))}`;
     const last = q.level === u.values.length - 1, tab = TAB_OF.get(u).id;
     f.sub = last ? 'MAX' : tab === 'works' ? 'FITTED' : tab === 'core' ? 'BUILT' : u.show(u.values[q.level]);
     this.gap = GAP;

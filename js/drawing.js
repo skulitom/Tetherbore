@@ -5,6 +5,7 @@
 // picture and view, what can be tapped this frame).
 import { N, C, K, B, DX, DY, BIOMES, HAZARDS, CRUSH, ZONE, FIND, rowOf, hazOf, cellHash, RELIC_R, HOME_R } from './world.js';
 import { sheets, draw, drawScaled, frameAt, duration, slice9, text, textWidth, tinted } from './atlas.js';
+import { tr, words, LANGS, lang, chooseLang } from './lang.js';
 import { decorAt, markAt, natural, framesOf, placeOf } from './decor.js';
 import { sfx, isMuted, setMuted, isMusic, setMusic } from './audio.js';
 import { WORKS, MAPS, TABS, LAB, LAB_OF, LAB_KINS, labLevel, labNext, ROWS, FOUND, FINDER, CUT, WINCH_LOAD } from './shop.js';
@@ -22,12 +23,13 @@ export const T = 16;                            // pixels in a cell
 export const DIR_BIOME = [B.LODE, B.EMBER, B.MIRE, B.FROST];
 export const GEM_ICON = [null, 'frost', 'ember', 'mire', 'lode'];
 export const GEM_COLOR = [null, '#bfe6ff', '#ffb060', '#b8f06a', '#d8b8ff'];
-// Text broken into lines no wider than `wide` pixels, at the spaces.
-const wrap = (words, wide) => {
-  const lines = [];
-  for (const word of words.split(' ')) {
+// Text broken into lines no wider than `wide` pixels, at the spaces: in the language chosen, turned whole before it
+// is broken (and in Mandarin broken between characters: js/lang.js, `words`).
+const wrap = (said, wide) => {
+  const lines = [], { parts, join } = words(tr(said));
+  for (const word of parts) {
     const last = lines[lines.length - 1];
-    if (last !== undefined && textWidth(`${last} ${word}`) <= wide) lines[lines.length - 1] = `${last} ${word}`; else lines.push(word);
+    if (last !== undefined && textWidth(`${last}${join}${word}`) <= wide) lines[lines.length - 1] = `${last}${join}${word}`; else lines.push(word);
   }
   return lines;
 };
@@ -1656,7 +1658,7 @@ export class Drawing {
       ['FINDER', finder ? `${['', 'CACHES', '+GEODES', 'ALL'][finder]}, ${FINDER[finder]} CELLS` : 'NONE', finder > 0],
     ];
   }
-  // The menu: the sound, and a new world (two taps, so a slip of the thumb does not cost a world).
+  // The menu: the sound, the language, and a new world (two taps, so a slip of the thumb does not cost a world).
   drawMenu(px, y0, pw) {
     const { ctx } = this, sure = this.confirmReset > 0;
     slice9(ctx, 'ui', 'button', px + 6, y0 + 4, pw - 12, 20);
@@ -1669,9 +1671,16 @@ export class Drawing {
     text(ctx, 'MUSIC', px + 14, y0 + 34, isMuted() ? '#8a84a0' : '#ffffff');
     text(ctx, isMusic() ? 'ON' : 'OFF', px + pw - 14, y0 + 34, playing ? '#8cf2c4' : isMusic() ? '#8a84a0' : '#ff7a5a', 1);
     this.buttons.unshift({ x: px + 6, y: y0 + 28, w: pw - 12, h: 20, act: () => { setMusic(!isMusic()); sfx.tap(); } });
-    slice9(ctx, 'ui', sure ? 'button-off' : 'button', px + 6, y0 + 52, pw - 12, 20);
-    text(ctx, sure ? 'TAP AGAIN: NEW WORLD' : 'NEW WORLD', px + pw / 2, y0 + 58, sure ? '#ff7a5a' : '#ffffff', 0.5);
-    this.buttons.unshift({ x: px + 6, y: y0 + 52, w: pw - 12, h: 20, act: () => {
+    // The language, each tap the next of the three: the game is saved and the page loaded again in it (js/lang.js).
+    // (Its name is in its own tongue, which no table turns.)
+    const speaks = LANGS.findIndex(l => l.id === lang);
+    slice9(ctx, 'ui', 'button', px + 6, y0 + 52, pw - 12, 20);
+    text(ctx, 'LANGUAGE', px + 14, y0 + 58, '#ffffff');
+    text(ctx, LANGS[speaks].name, px + pw - 14, y0 + 58, '#8cf2c4', 1);
+    this.buttons.unshift({ x: px + 6, y: y0 + 52, w: pw - 12, h: 20, act: () => { sfx.tap(); this.save(); chooseLang(LANGS[(speaks + 1) % LANGS.length].id); } });
+    slice9(ctx, 'ui', sure ? 'button-off' : 'button', px + 6, y0 + 76, pw - 12, 20);
+    text(ctx, sure ? 'TAP AGAIN: NEW WORLD' : 'NEW WORLD', px + pw / 2, y0 + 82, sure ? '#ff7a5a' : '#ffffff', 0.5);
+    this.buttons.unshift({ x: px + 6, y: y0 + 76, w: pw - 12, h: 20, act: () => {
       if (this.confirmReset > 0) { this.confirmReset = 0; this.fresh((Math.random() * 1e9) | 0); this.save(); sfx.relic(); } else { this.confirmReset = 2.5; sfx.tap(); }
     } });
   }
@@ -1732,7 +1741,7 @@ export class Drawing {
     if (this.labTab === 'chart' && !this.charted) this.labTab = 'stats';
     const g = this.labGeom(), { pw, px } = g;
     const chart = Math.min(pw - 12, H - 52 - HEAD - 10);
-    const rise = 1 - this.labRise, ph = this.labTab === 'menu' ? HEAD + 80 + (this.stalls.length ? 14 + this.stalls.length * 10 : 0) : this.labTab === 'chart' ? HEAD + chart + 10 : this.labTab === 'stats' ? HEAD + this.stats().length * this.statsPitch(this.stats().length) + 8 : g.ph;
+    const rise = 1 - this.labRise, ph = this.labTab === 'menu' ? HEAD + 104 + (this.stalls.length ? 14 + this.stalls.length * 10 : 0) : this.labTab === 'chart' ? HEAD + chart + 10 : this.labTab === 'stats' ? HEAD + this.stats().length * this.statsPitch(this.stats().length) + 8 : g.ph;
     const py = this.labTab === 'lab' ? g.py : Math.max(2, Math.round((H - 44 - ph) / 2)) + Math.round(rise * rise * 60);
     slice9(ctx, 'ui', 'panel', px, py, pw, ph);
     this.button(px, py, pw, ph, () => {});
@@ -1740,7 +1749,7 @@ export class Drawing {
     this.chartRect = null;
     this.panelTabs(px, py, pw, HEAD);
     if (this.labTab === 'stats') { this.drawStats(px, py + HEAD, pw); return; }
-    if (this.labTab === 'menu') { this.drawMenu(px, py + HEAD, pw); if (this.stalls.length) this.drawStalls(px, py + HEAD + 78, pw); return; }
+    if (this.labTab === 'menu') { this.drawMenu(px, py + HEAD, pw); if (this.stalls.length) this.drawStalls(px, py + HEAD + 102, pw); return; }
     if (this.labTab === 'chart') {
       // The chart is dragged to look about it and pinched (or wheeled, or stepped by its two buttons) to look closer:
       // from the whole reach down to four pixels a cell, never past the edge of the whole reach's own view.

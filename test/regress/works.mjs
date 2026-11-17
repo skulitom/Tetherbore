@@ -133,18 +133,23 @@ for (const coil of [0, 1]) {
   const heads = game.buttons.filter(b => b.h === 20 && b.w < 60 && b.w > 24 && b.y < game.H / 2).sort((a, b) => a.x - b.x);
   heads[1]?.act(); game.render();
   check(heads.length === 3 && game.labTab === 'lab', `a tap on the second of ${heads.length} tabs left the panel at '${game.labTab}'`);
-  // The menu: the sound, the music (a switch of its own, kept as the sound's is), and a new world on the second tap.
+  // The menu: the sound, the music (a switch of its own, kept as the sound's is), the language (the next of the
+  // three kept, and the page loaded again in it: there is no page here), and a new world on the second tap.
   heads[2].act(); game.render();
   const rows = game.buttons.filter(b => b.h === 20 && b.w > 100).sort((a, b) => a.y - b.y), seed = game.S.seed;
-  check(game.labTab === 'menu' && rows.length === 3, `the menu has ${rows.length} rows`);
+  check(game.labTab === 'menu' && rows.length === 4, `the menu has ${rows.length} rows`);
   const audio = await import('../../js/audio.js'), music = audio.isMusic();
   rows[1].act(); game.render();
   check(audio.isMusic() === !music && localStorage.getItem('tetherbore-music') === (music ? '0' : '1'), `a tap on MUSIC left the music ${audio.isMusic() ? 'on' : 'off'}, kept as '${localStorage.getItem('tetherbore-music')}'`);
   rows[1].act(); game.render();
   check(audio.isMusic() === music, 'a second tap on MUSIC did not put it back');
+  const { lang, LANGS, LANG_KEY } = await import('../../js/lang.js'), next = LANGS[(LANGS.findIndex(l => l.id === lang) + 1) % LANGS.length].id;
   rows[2].act(); game.render();
+  check(localStorage.getItem(LANG_KEY) === next, `a tap on LANGUAGE in ${lang} kept '${localStorage.getItem(LANG_KEY)}', not '${next}'`);
+  localStorage.removeItem(LANG_KEY);
+  rows[3].act(); game.render();
   check(game.S.seed === seed && game.confirmReset > 0, 'one tap on NEW WORLD made a new world');
-  rows[2].act(); game.render();
+  rows[3].act(); game.render();
   check(game.S.seed !== seed, 'two taps on NEW WORLD made no new world');
   game.openLab(false);
 }

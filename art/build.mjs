@@ -76,8 +76,13 @@ if (wanted('icon')) {
   await writeFile(join(KEEP, 'icon.json'), JSON.stringify(appIcon));
 }
 
-// ---- the font: every printable ASCII character of Pixelbolt's pixel font, laid in a row
+// ---- the font: every printable ASCII character of Pixelbolt's pixel font, laid in a row; under it, in rows of
+// the same width, the Cyrillic capitals drawn for the game in its manner (art/cyrillic.mjs) and the Chinese
+// characters the game says, from Fusion Pixel (art/cjk.json, made by tools/cjk.mjs). A glyph is [x, width] on the
+// first row and [x, width, y] on any other, ten pixels a row.
 if (wanted('font')) {
+  const { CYRILLIC, ABOVE } = await import('./cyrillic.mjs');
+  const CJK = JSON.parse(await readFile(join(ART, 'cjk.json'), 'utf8'));
   const chars = Array.from({ length: 95 }, (_, i) => String.fromCharCode(32 + i)).join('') + '×';
   const glyphs = {}, ops = [];
   let x = 1;
@@ -87,7 +92,18 @@ if (wanted('font')) {
     if (ch !== ' ') ops.push({ op: 'text', x, y: 1, text: ch, color: 'w' });
     x += width + 2;
   }
-  await emit({ version: 1, name: 'font', width: x, height: 10, palette: { w: '#ffffff' }, frames: [{ name: 'font', ops }] }, 'font', { glyphs });
+  const wide = x, paint = rows => rows.map(r => r.replace(/#/g, 'w'));
+  let row = 10;
+  x = 1;
+  const place = (ch, width, rows, top) => {
+    if (x + width + 1 > wide) { x = 1; row += 10; }
+    glyphs[ch] = [x, width, row];
+    ops.push({ op: 'grid', x, y: row + top, rows: paint(rows) });
+    x += width + 2;
+  };
+  for (const [ch, shape] of Object.entries(CYRILLIC)) { const rows = shape.split('|'); place(ch, rows[0].length, rows, ABOVE.has(ch) ? 0 : 1); }
+  for (const [ch, { width, rows }] of Object.entries(CJK)) place(ch, width, rows, 0);
+  await emit({ version: 1, name: 'font', width: wide, height: row + 10, palette: { w: '#ffffff' }, frames: [{ name: 'font', ops }] }, 'font', { glyphs });
 }
 
 // ---- effects: shipped Pixelbolt presets, one animation each
