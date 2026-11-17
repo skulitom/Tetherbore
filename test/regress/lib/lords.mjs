@@ -75,9 +75,23 @@ export function cutAt(game, b, cell = game.fauna.bosses.anchor[b]) {
   B.crushed(game, cell, cell >= 0 ? game.world.k(cell) : 0);
   return B.blows[b] > blows;
 }
+// The east's shard (or `cell`) hauled home, as `Game.reelIfRound` takes a loose piece the band is looped round (a
+// loop of the band round it, the band put back as it lay and settled), and the ground looked at again as the lords
+// look at it when it changes (`Bosses.settle`); where none stands and his rest takes a ram, the drill flown into him.
+// Returns whether it was a blow.
+export function haulAt(game, b, cell = game.fauna.bosses.shard[b]) {
+  const B = game.fauna.bosses, blows = B.blows[b];
+  if (cell < 0) return B.armed[b] ? ramInto(game, b) : false;
+  const u = cell % N + 0.5, v = Math.floor(cell / N) + 0.5, d = game.drill, band = [[d.x, d.y]], was = game.band;
+  for (let k = 0; k <= 12; k++) band.push([u + Math.cos(k * Math.PI / 6) * 1.2, v + Math.sin(k * Math.PI / 6) * 1.2]);
+  band.push([d.x, d.y], [C + 0.5, C + 0.5]);
+  game.band = band; game.reelIfRound(); game.band = was; game.retighten();
+  B.settle(game);
+  return B.blows[b] > blows;
+}
 // Each lord's verb as a test lands it on a lord that is open to it: the north's a loop, the south's a ram, the
-// west's a cut.
-export const VERB = { 1: ramInto, 2: cutAt, 3: loopRound };
+// west's a cut, the east's a haul.
+export const VERB = { 0: haulAt, 1: ramInto, 2: cutAt, 3: loopRound };
 // The drill dodging every lash of the west's lord, as a drill stepped off her line does: her tendril never latches
 // on (the deed refused), and goes on to the rock behind. Nothing for another lord.
 const dodging = new WeakSet();

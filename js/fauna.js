@@ -46,7 +46,7 @@ import { sheets, tinted, text, textWidth } from './atlas.js';
 import { voices } from './audio.js';
 import { income, round2, FOUND, FINDER } from './shop.js';
 import { winds } from './winds.js';
-import { Bosses, PLUGS } from './bosses.js';
+import { Bosses, PLUGS, SHARD_KEEP } from './bosses.js';
 
 const T = 16;                                   // pixels in a cell, as js/drawing.js has it
 export const CALM = 40;                         // within this many cells of the core nothing lives
@@ -72,7 +72,7 @@ export const WREN = { call: 10, find: 24, peck: 1.6 };
 export const PUFF = { speed: 0.8, loop: 4, drill: 12, lump: 6, gems: 3 };
 export const NEWT = { caps: 3, every: 4, find: 8, tongue: 2 };
 export const RAM = 0.6, RAM_SPEED = 3;
-export const SHARD_KEEP = 2.5;                 // how near a drill flying free no lord's shard is laid (js/bosses.js)
+export { SHARD_KEEP };                          // how near a drill no lord's shard is laid (js/bosses.js)
 const STEP = 0.3;                               // how near the edge of a step, in cells, a creature on a floor goes up or down it          // how near the drill must come to a foe at rest to drive it off, and how fast
 
 // ---------------------------------------------------------------- who they are
@@ -1402,10 +1402,11 @@ export class Fauna {
         return true;
       }
       // The east's shard: cell `a` made a loose piece of its rich ore, one cell with open ground all round it, never
-      // under the tether, by a drill flying free (SHARD_KEEP), on lava, in a pocket or past the tether's reach.
+      // under the tether nor inside its loop (where it would be hauled the moment it was laid), by the drill
+      // (SHARD_KEEP), on lava, in a pocket or past the tether's reach.
       case 'shard': {
         const x = a % N, y = Math.floor(a / N);
-        if (!game.within(x + 0.5, y + 0.5) || Math.hypot(x + 0.5 - d.x, y + 0.5 - d.y) < SHARD_KEEP) return false;
+        if (!game.within(x + 0.5, y + 0.5) || Math.hypot(x + 0.5 - d.x, y + 0.5 - d.y) < SHARD_KEEP || winds(game.band, x + 0.5, y + 0.5) !== 0) return false;
         for (let v = -1; v <= 1; v++) for (let u = -1; u <= 1; u++) { const j = (y + v) * N + x + u; if (w.peek(x + u, y + v) !== K.EMPTY || w.lava.has(j)) return false; }
         if (rowOf(w.b(a)).pocket !== null) return false;
         game.layUnder();

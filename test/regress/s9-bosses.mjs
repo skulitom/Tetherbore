@@ -1,15 +1,15 @@
 // The lords at the ends (js/bosses.js): where they lie, that they change nothing but by their deeds, keep to their
 // bounds, tell fairly and rise where they can be seen. Each lord whose fight is built (`ready`) is held, the north's
-// FROST WYRM, the south's MAGMA BEHEMOTH and the west's SPORE MOTHER; a lord built later is held by the same parts as
-// it is made ready.
+// FROST WYRM, the south's MAGMA BEHEMOTH, the west's SPORE MOTHER and the east's CRYSTAL KING.
 //   1. Each lair lies LAIR (2,210) cells out on its own axis, past the relics, and the leash's disc round it inside
 //      the last reach, so every part of a fight can be flown.
 //   2. Tame equals off: two games side by side on one world and one stream of Math.random, the drill at a lord's lair
 //      and flown for 60 seconds by a seeded thumb that keeps near it, on worlds 7 and 11: one with its creatures off,
 //      the other with them tame and the lord woken and set into each of its states in turn (sunk, rising, telling,
-//      attacking, resting with its verb put to it (a loop of the band, a ram, a cut of its anchor), hurt, yielding,
-//      beaten, its later stage's trick (the north's icefall, the south's charge back, the west's second tendril) and
-//      the west holding the drill), every frame
+//      attacking, resting with its verb put to it (a loop of the band, a ram, a cut of its anchor, a haul of the
+//      east's shard or, none standing, a ram), hurt, yielding, beaten, its later stage's trick (the north's icefall,
+//      the south's charge back, the west's second tendril; the east blinking out) and the west holding the drill),
+//      every frame
 //      drawn. Frame by frame the two are the same: the drill, the band, the version of the ground, the cells about
 //      the lair, the hull, the grit, the save, the game's particles and shake, the draws from Math.random and the
 //      pieces made. No deed is done, and the lord was in every state.
@@ -23,11 +23,12 @@
 //      two within SHIELD; no tell is shorter than LEAST_TELL; at the first stage no two attacks come within 4.5
 //      seconds, slower than the late mender's 3.5; and each lord's trick is told at the stage it comes at and not
 //      before. (No blow lands in it, so each stage is fought for its 40 seconds: the thumb flies into the south's lord
-//      at rest now and then, and cuts the west's anchor.)
+//      at rest now and then, cuts the west's anchor, and may loop the east's shard.) The east's ring is told with him
+//      and its edge on the way to the drill on the screen (the ring is 144 pixels across at the most, the screen 160).
 //   6. Surfacing: on worlds 1, 7, 11, 23 and 123456, the drill brought into the open ground the seed left nearest
 //      each lair, the lord wakes and rises within 5 seconds of waking, on the screen.
-// Fails on the game before the lords, which has no js/bosses.js, and on the games before the south's and the west's,
-// whose lords there never wake.
+// Fails on the game before the lords, which has no js/bosses.js, and on the games before the south's, the west's and
+// the east's, whose lords there never wake.
 //   node test/regress/s9-bosses.mjs
 import { readFile } from 'node:fs/promises';
 import { makeGame, random, wander, farStart, C, N, K } from '../harness.mjs';
@@ -42,6 +43,7 @@ const fails = [], check = (ok, what) => { if (!ok) fails.push(what); };
 check(LORDS.includes(3), 'the north\'s lord is not ready');
 check(LORDS.includes(1), 'the south\'s lord is not ready');
 check(LORDS.includes(2), 'the west\'s lord is not ready');
+check(LORDS.includes(0), 'the east\'s lord is not ready');
 
 // ---- 1. where
 for (let b = 0; b < 4; b++) {
@@ -65,7 +67,7 @@ const ARRAYS = ['st', 't', 'stage', 'blows', 'x', 'y', 'cell', 'ax', 'ay', 'lock
 // icefall and the south's charge back at the last, the west's second tendril from her second; and the west holding
 // the drill.)
 const TRICK = { 1: 'return', 2: 'second', 3: 'icefall' }, TRICK_AT = { 1: 3, 2: 2, 3: 3 };
-const statesOf = b => [['sunk', 1], ['rise', 1], ['tell', 1], ['act', 1], ['rest', 1], ['hurt', 2], ['tell', 3], [TRICK[b], 3], ['rest', 2], ['yield', 3], ['gone', 3], ['sunk', 2], ...(b === 2 ? [['latch', 2]] : [])];
+const statesOf = b => [['sunk', 1], ['rise', 1], ['tell', 1], ['act', 1], ['rest', 1], ['hurt', 2], ['tell', 3], [TRICK[b] ?? 'blink', 3], ['rest', 2], ['yield', 3], ['gone', 3], ['sunk', 2], ...(b === 2 ? [['latch', 2]] : [])];
 let worst = 0;
 for (const b of LORDS) for (const seed of [7, 11]) {
   const games = [];
@@ -98,7 +100,7 @@ for (const b of LORDS) for (const seed of [7, 11]) {
   check(!differ, `with the ${NAMES[b]}'s lord on world ${seed} the game with its creatures tame went another way than the game with none, at frame ${differ}`);
   check(a.fauna.deeds === 0, `with the ${NAMES[b]}'s lord on world ${seed} a tame creature did ${a.fauna.deeds} deeds`);
   check(looped > 30, `with the ${NAMES[b]}'s lord on world ${seed} its verb was put to it at rest only ${looped} times`);
-  const missing = Object.entries(ST).filter(([name, s]) => !seen.has(s) && name !== 'BLINK' && (name !== 'LATCH' || b === 2)).map(([name]) => name);
+  const missing = Object.entries(ST).filter(([name, s]) => !seen.has(s) && (name !== 'BLINK' || b === 0) && (name !== 'LATCH' || b === 2)).map(([name]) => name);
   check(!missing.length, `with the ${NAMES[b]}'s lord on world ${seed} it was never ${missing.join(', ')}`);
   check(ARRAYS.every((k, n) => B[k] === arrays[n]) && Object.keys(B).sort().join() === keys, `with the ${NAMES[b]}'s lord on world ${seed} its arrays were made again, or it kept something more`);
   // Begun again: every lord asleep and whole.
@@ -128,7 +130,8 @@ for (const b of LORDS) {
     calls = 0;
     const ox = game.cam.x - game.W / 2, oy = game.cam.y - (game.H - 44) / 2;
     try { B.draw(game, ctx, ox, oy); B.signs(game, ctx, ox, oy); B.glow(game, ctx, ox, oy); game.render(); } catch (e) { check(false, `drawing the ${NAMES[b]}'s lord ${what} threw ${e.message}`); }
-    if (calls) drawn++;
+    // (The east blinked out is not to be seen.)
+    if (calls || (b === 0 && what === 'sunk')) drawn++;
   }
   check(drawn === STATES.length, `with a bosses sheet only ${drawn} of ${STATES.length} states of the ${NAMES[b]}'s lord drew anything`);
   if (had) sheets.bosses = had; else delete sheets.bosses;
@@ -165,7 +168,7 @@ for (const b of LORDS) {
   const first = tells.filter(t => t.stage === 1 && t.what === ATTACK);
   for (let n = 1; n < first.length; n++) check(first[n].at - first[n - 1].at >= 4.5, `at the first stage the ${NAMES[b]}'s attacks came ${(first[n].at - first[n - 1].at).toFixed(2)} seconds apart`);
   check(BOSS[b].tell.every(s => s >= LEAST_TELL) && ICEFALL.tell >= LEAST_TELL && (BOSS[b].again ?? 1) >= LEAST_TELL, `a tell of the ${NAMES[b]}'s is shorter than ${LEAST_TELL}`);
-  check(tells.filter(t => t.stage === 1).length >= 4 && tells.filter(t => t.stage === 3).length >= 4 && tells.some(t => t.what === TRICK[b] && t.stage === 3) && !tells.some(t => t.what === TRICK[b] && t.stage < TRICK_AT[b]),
+  check(tells.filter(t => t.stage === 1).length >= 4 && tells.filter(t => t.stage === 3).length >= 4 && (!TRICK[b] || (tells.some(t => t.what === TRICK[b] && t.stage === 3) && !tells.some(t => t.what === TRICK[b] && t.stage < TRICK_AT[b]))),
     `the ${NAMES[b]}'s fight told only ${tells.map(t => `${t.what}@${t.stage}`).join(' ')}`);
   check(hits.length >= 3, `the ${NAMES[b]}'s fight hit the drill only ${hits.length} times in 120 seconds`);
 }
