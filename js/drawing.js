@@ -32,7 +32,9 @@ const wrap = (words, wide) => {
 // The lab's notes are one list in five parts, laid out once here: a line of SEC pixels at the head of each part (its
 // icon, its title and how many of it are known) and a line of RH for each thing, in the order of `LAB`. `lines` is
 // every line from the top, `line[i]` thing i's (with what is said of it before it is known, `found`), `at[i]` where
-// it begins, `head[k]` where part k's head does, and `content` how tall the whole list is. NOTE is the room under
+// it begins, `head[k]` where part k's head does, and `content` how tall the whole list is. A thing not yet known is
+// drawn as where it is found (`label`), and two of one part found in one place (a ground's common ore and its rich
+// one) are told apart there and in what is said of them by which they are. NOTE is the room under
 // the list for what is said of the thing chosen: a line of its count, and up to NOTE_LINES lines of its note
 // (test/regress/l-analysis.mjs holds every note to them on the narrowest panel).
 export const LAB_RH = 13, LAB_SEC = 12, LAB_HEAD = 20, NOTE_LINES = 4, LAB_NOTE = 12 + NOTE_LINES * 10 + 4;
@@ -41,12 +43,15 @@ export const LAB_LIST = (() => {
   let y = 0;
   LAB.forEach((e, i) => {
     if (i === 0 || LAB[i - 1].kin !== e.kin) { head[e.kin] = y; lines.push({ y, h: LAB_SEC, kin: e.kin, entry: null, i: -1, total: LAB.filter(f => f.kin === e.kin).length }); y += LAB_SEC; }
-    const [sheet, frame] = e.key.split(':');
-    at[i] = y; lines.push(line[i] = { y, h: LAB_RH, kin: e.kin, entry: e, i, sheet, frame, found: `CUT THROUGH ONE WITH THE BIT. FOUND: ${e.where}.` });
+    const [sheet, frame] = e.key.split(':'), twin = LAB.some(f => f !== e && f.kin === e.kin && f.at === e.at), which = twin ? (frame.endsWith('A') ? 'COMMON' : 'RICH') : null;
+    at[i] = y; lines.push(line[i] = { y, h: LAB_RH, kin: e.kin, entry: e, i, sheet, frame, label: which ? `${e.at}, ${which}` : e.at,
+      found: `${which ? `A ${which} ORE. ` : ''}CUT THROUGH ONE WITH THE BIT. FOUND: ${e.where}.` });
     y += LAB_RH;
   });
   return { lines, line, at, head, content: y };
 })();
+// What is said under the list of a thing analysed n times: its count, and the count its next level comes at.
+export const labCount = n => `${compact(n)} ${n === 1 ? 'SAMPLE' : 'SAMPLES'}. +1% AT ${compact(labNext(n))}`;
 // What the lens shows a kind of ground as, and from which level of it: [level, red, green, blue].
 const LENS = [];
 for (const [level, colour, kinds] of [[1, [214, 178, 64], [K.ORE_A]], [1, [255, 232, 96], [K.ORE_B]], [2, [176, 184, 204], [K.SLATE, K.VAULT, K.KEY, K.STEEL, K.SLAG]], [2, [255, 84, 64], [K.HAZARD, K.HAZARD2]],
@@ -1481,7 +1486,8 @@ export class Drawing {
   // The chart can be read once it is bought, wherever the drill is.
   get charted() { return this.val('chart') > 0; }
   // The tabs of the panel the top bar opens (STATS: what the drill is now; ANALYSIS: the lab's notes; CHART: the
-  // whole reach), and its cross.
+  // whole reach), and its cross. (A tab chosen stops the lab's list where it is: left running, it would run on again
+  // when its tab came back, with no finger near it.)
   panelTabs(px, py, pw, HEAD) {
     const { ctx } = this;
     let tx = px + 8;
@@ -1489,7 +1495,7 @@ export class Drawing {
       const tw = textWidth(name), on = this.labTab === id;
       text(ctx, name, tx, py + 7, on ? '#ffe14a' : '#8a84a0');
       if (on) { ctx.fillStyle = '#ffe14a'; ctx.fillRect(tx, py + 17, tw, 1); }
-      this.buttons.unshift({ x: tx - 4, y: py, w: tw + 10, h: HEAD, act: () => { this.labTab = id; sfx.tap(); } });
+      this.buttons.unshift({ x: tx - 4, y: py, w: tw + 10, h: HEAD, act: () => { this.labTab = id; this.labVel = 0; this.labAim = null; sfx.tap(); } });
       tx += tw + 12;
     }
     text(ctx, 'x', px + pw - 12, py + 6, '#ffffff');
@@ -1643,6 +1649,9 @@ export class Drawing {
       const e = line.entry, n = S.lab[e.key] ?? 0, on = line.i === chosen;
       if (on) { ctx.fillStyle = '#3a3260'; ctx.fillRect(vx, y, vw - 4, LAB_RH - 1); }
       if (n) {
+        // (Each picture on a chip a little lighter than the panel: a dark stone, drawn to be seen on its own pale
+        // rock, would be lost on the panel's dark.)
+        ctx.fillStyle = on ? '#6e6896' : '#5a5674'; ctx.fillRect(vx + 3, y, 10, 12); ctx.fillRect(vx + 2, y + 1, 12, 10);
         const f = sheets[line.sheet].frames[line.frame];
         ctx.drawImage(sheets[line.sheet].image, f[0] + 2, f[1] + 2, 12, 12, vx + 2, y, 12, 12);
         text(ctx, e.name, vx + 18, y + 2, on ? '#ffe14a' : '#ffffff');
@@ -1650,7 +1659,7 @@ export class Drawing {
       } else {
         // (What is not yet known says where it is found.)
         text(ctx, '?', vx + 6, y + 2, on ? '#bcb4cc' : '#6a6478');
-        text(ctx, e.at, vx + 18, y + 2, on ? '#bcb4cc' : '#6a6478');
+        text(ctx, line.label, vx + 18, y + 2, on ? '#bcb4cc' : '#6a6478');
       }
     }
     // The head of the part at the top of the window stays there, and the next one pushes it up as it comes.
@@ -1678,7 +1687,7 @@ export class Drawing {
     const w = this.labWrap ??= { said: '', wide: 0, lines: [] };
     if (w.said !== said || w.wide !== wide) { w.said = said; w.wide = wide; w.lines = wrap(said, wide).slice(0, NOTE_LINES); }
     ctx.fillStyle = '#4a4468'; ctx.fillRect(px + 6, ny - 2, pw - 12, 1);
-    if (n) text(ctx, `${compact(n)} SAMPLES. +1% AT ${compact(labNext(n))}`, px + 8, ny + 1, '#bfe6ff');
+    if (n) text(ctx, labCount(n), px + 8, ny + 1, '#bfe6ff');
     else text(ctx, 'NOT ANALYSED YET', px + 8, ny + 1, '#bcb4cc');
     for (let l = 0; l < w.lines.length; l++) text(ctx, w.lines[l], px + 8, ny + 12 + l * 10, n ? '#d8d0c0' : '#9a94a8');
   }

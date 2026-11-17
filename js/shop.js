@@ -58,10 +58,12 @@ const levels = (beside, share) => ({ beside, grit: beside.map(at => priced(at, s
 // found, so that the rig grows no faster than the ground is explored. `needs` on a row is [what, how many for each
 // level]: 'parts', parts of the older machine brought home from its wrecks, which lie one to each stretch of
 // ground (45, 90, 160 ... cells out); 'kinds', kinds of thing the lab has analysed, of the forty-eight of `LAB`:
-// sixteen within two hundred cells (the ores of the home ground and of the four directions' own, steel, keystone
-// iron, the three hazards every direction has and the minerals of the pockets that lie first in each direction),
+// near the core the ores of the home ground and of the four directions' own, the hazards of the south, the west and
+// the east (the north has none so near), keystone iron where a slab lies on the road (the first is 52 cells out, in
+// one direction only) and the minerals of the nearer pockets, with steel wherever lava has been woken onto slag;
 // the strains' ores and the far pockets' minerals beyond, the rare hazards from 450 cells and the deep flanks' ores
-// from 900; 'places', grounds met, of which the strains, the pockets and the crosses lie further and further out.
+// from about 800 (900, give or take the hundred their edge wanders); 'places', grounds met, of which the strains,
+// the pockets and the crosses lie further and further out.
 // (`Game.need` counts what is held.)
 // 'out' is how far from the core the drill has ever been, in cells, by any road and in any direction: the levels
 // of the first tab ask it, so the rig cannot be bought up from the ground about the core. (Kinds analysed and
@@ -107,7 +109,7 @@ export const LAB = [
   { kin: 1, key: 'frost-items:oreA', name: 'RIME SALT', at: 'FROST', where: 'FROST, NORTH', note: 'BLUE SALT FROZEN SQUARE. IT KEEPS ITS COLD FOR A HUNDRED YEARS.' },
   { kin: 1, key: 'frost-items:oreB', name: 'AURORA SPAR', at: 'FROST', where: 'FROST, NORTH', note: 'PINK AND GREEN NEEDLES, GROWN IN THE DARK UNDER THE ICE.' },
   { kin: 1, key: 'ores:firnA', name: 'SAPPHIRE', at: 'FIRN', where: 'FIRN, NORTH', note: 'BLUE STONES PRESSED OUT OF THE SNOW BY A THOUSAND WINTERS. THE FIRN IS STILL PRESSING.' },
-  { kin: 1, key: 'ores:firnB', name: 'ENHYDRO', at: 'FIRN', where: 'FIRN, NORTH', note: 'A CRYSTAL WITH WATER SHUT INSIDE, OLDER THAN THE ICE. TIP IT AND THE BUBBLE MOVES.' },
+  { kin: 1, key: 'ores:firnB', name: 'ENHYDRO', at: 'FIRN', where: 'FIRN, NORTH', note: 'A YELLOW CRYSTAL WITH WATER SHUT INSIDE, OLDER THAN THE ICE. TIP IT AND THE BUBBLE MOVES.' },
   { kin: 1, key: 'ores:seracA', name: 'SHARD SILVER', at: 'SERAC', where: 'SERAC, NORTH', note: 'SILVER SPLIT INTO BLADES ALONG THE LANES OF ICE. THE PIECES CHIME WHEN THEY FALL.' },
   { kin: 1, key: 'ores:seracB', name: 'FLUORITE', at: 'SERAC', where: 'SERAC, NORTH', note: 'GLASSY CUBES OF VIOLET. UNDER THE LAMP THEY GLOW A COLOUR THEY ARE NOT.' },
   { kin: 1, key: 'minerals:starglass', name: 'STARGLASS', at: 'GLAZE', where: 'GLAZE, FAR NORTH', note: 'A STAR OF CLEAR ICE THAT NEVER MELTS. ONE TO A PANE, AND THE PANE BREAKS AT A TOUCH.' },
@@ -144,8 +146,8 @@ export const LAB = [
   // East.
   { kin: 4, key: 'lode-items:hazard', name: 'SPARK CRYSTAL', at: 'ALL OF THE EAST', where: 'EAST, ON THE FLANKS OF THE SLATE', note: 'A CRYSTAL FULL OF LIGHTNING. IT LETS IT ALL GO AT A TOUCH, AND THE SLATE BESIDE IT GOES TOO.' },
   { kin: 4, key: 'ores:redrockA', name: 'TURQUOISE', at: 'REDROCK', where: 'REDROCK, EAST', note: 'SKY GONE TO STONE IN THE RED BEDS. THE DARK LINES IN IT ARE WHERE IT CRACKED AND HEALED.' },
-  { kin: 4, key: 'ores:redrockB', name: 'SELENITE', at: 'REDROCK', where: 'REDROCK, EAST', note: 'BLADES OF CLEAR STONE NAMED FOR THE MOON. THEY LIE FLAT IN THE BEDS, AS THE BEDS LIE.' },
-  { kin: 4, key: 'ores:loessA', name: 'STONE FERN', at: 'LOESS', where: 'LOESS, EAST', note: 'BLACK FERNS DRAWN ON THE SILT BY WATER THAT DRIED LONG AGO. THEY NEVER GREW.' },
+  { kin: 4, key: 'ores:redrockB', name: 'SELENITE', at: 'REDROCK', where: 'REDROCK, EAST', note: 'PALE BLADES NAMED FOR THE MOON, STACKED FLAT IN THE BEDS AS THE BEDS LIE. A NAIL SCRATCHES THEM.' },
+  { kin: 4, key: 'ores:loessA', name: 'STONE FERN', at: 'LOESS', where: 'LOESS, EAST', note: 'DARK FERNS DRAWN ON THE SILT BY WATER THAT DRIED LONG AGO. THEY NEVER GREW.' },
   { kin: 4, key: 'ores:loessB', name: 'LAPIS LAZULI', at: 'LOESS', where: 'LOESS, EAST', note: 'THE BLUE OF A DEEP SKY WITH GOLD DUST CAUGHT IN IT. THE SILT KEEPS IT CLEAN.' },
   { kin: 4, key: 'minerals:agate', name: 'AGATE', at: 'SHALE STACKS', where: 'SHALE STACKS, FAR EAST', note: 'BANDED RED STONE, A LAYER A YEAR. IT LIES ALONG THE GRAIN OF THE SHALE.' },
   { kin: 4, key: 'lodestone-items:hazard', name: 'LODESTONE', at: 'ALONE, 450 OUT', where: 'EAST, ALONE IN THE ROCK, FROM 450 CELLS OUT', note: 'A STONE THAT PULLS ORE TO IT THROUGH SOLID ROCK. THE LAB KEEPS IT FAR FROM THE TOOLS.' },
@@ -195,12 +197,15 @@ export const MAPS = [
 // the thousand), each asking besides for much to have been found.
 //   REFINERY   every haul's grit is multiplied
 //   GEM CUTTER every haul's gems are multiplied: it asks for kinds analysed, 8, 18, 28 and 36 of the forty-eight. A
-//              game that keeps to one direction has seven or eight within two hundred cells (copper, violet quartz,
-//              keystone iron, its own two ores, its hazard, the mineral of its first pocket, and steel in the south),
-//              about fourteen by the reach the second level lies beside (its strains' four, a far pocket's mineral,
-//              its rare hazard) and sixteen with its deep flank: so the first level is one direction, the second
-//              asks for a second, the third for most of three and the last for all four. (It asked 4, 7, 10 and 12
-//              of sixteen, which one direction gave within two hundred cells.)
+//              direction and the home ground hold thirteen to seventeen between them (the north fourteen, the
+//              south seventeen), most of them far out: within two hundred cells one direction gives five to eight
+//              (copper and violet quartz, its own two ores, its hazard but in the north, a pocket's mineral, keystone
+//              iron where a slab lies on the road, steel in the south), its strains, a far pocket and its rare
+//              hazard add six or so by the reach the second level lies beside, and its deep flank two more from
+//              about 800 cells. So the first level is about one direction, the second asks for a second, the third
+//              for most of three and the last for all four; a long game played round all four came to eight in ten
+//              minutes, eighteen in about thirty-five and twenty-eight in about eighty. (It asked 4, 7, 10 and 12 of
+//              sixteen, which one direction gave within two hundred cells.)
 //   LAMP       the drill's light reaches further (cells)
 //   BLACK BOX  when the drill is lost, this share of the grit the trip had earned is kept
 const deep = (steps, gems) => ({ beside: steps.map(([at]) => at), grit: steps.map(([at, share]) => priced(at, share)), gems });

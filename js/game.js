@@ -227,9 +227,10 @@ export class Game {
     this.parts = []; this.rings = []; this.motes = []; this.gloom = [10, 8, 7]; this.murk = 1; this.flash = 0; this.counted = 0; this.chime = 3; this.clock = 0;
     this.shake = 0; this.twang = 0; this.edge = 0; this.hurt = 0; this.coreFlash = 0; this.banner = null; this.shop = false; this.shopRise = 0; this.lab = false; this.labRise = 0; this.labSel = null; this.labFlash = 0; this.confirmReset = 0;
     // The lab's list: how far it is scrolled, in pixels, and how fast it is going; the finger holding it ({ id, y0,
-    // s0, moved }: where it came down, the scroll then, and the furthest it has gone since), a scroll it is easing
-    // to, and the scroll at the last step (`stepLab`).
-    this.labScroll = 0; this.labVel = 0; this.labTouch = null; this.labAim = null; this.labPrev = 0;
+    // s0, moved, caught }: where it came down, the scroll then, the furthest it has gone since, and whether it came
+    // down on the list still running on), a scroll it is easing to, and the scroll at the last step (`stepLab`);
+    // and the key the list took when it went down, the one key whose repeats walk it (`key`).
+    this.labScroll = 0; this.labVel = 0; this.labTouch = null; this.labAim = null; this.labPrev = 0; this.labHeld = null;
     this.buttons = []; this.panels = [];    // what can be tapped this frame; and the small panels up this frame, each [x, y, w, h]
     this.chunks = new Map(); this.version = 0;
     this.daylight = false;                  // no dark is laid over the ground: only a staged view asks for it (js/shot.js)
@@ -303,7 +304,7 @@ export class Game {
     // The first piece, beside the core, lies loose from the start: the open cell between them tells of it.
     this.changed([C * N + C + 3]);
     this.shop = false; this.lab = false; this.labSel = null; this.labFlash = 0;
-    this.labScroll = 0; this.labVel = 0; this.labTouch = null; this.labAim = null; this.labPrev = 0;
+    this.labScroll = 0; this.labVel = 0; this.labTouch = null; this.labAim = null; this.labPrev = 0; this.labHeld = null;
     this.feel.reset(this.S.seed);
     this.fitter.reset();
     this.dockMark();
@@ -442,11 +443,13 @@ export class Game {
       if (x >= rx && y >= ry && x < rx + rw && y < ry + rh) { this.chartTouch.set(id, [x, y]); return; }
     }
     // A finger on the lab's list takes hold of it: dragged it scrolls the list, and let go where it came down it is
-    // a tap on the line under it (`pointerUp`). It catches the list if it was still running on.
+    // a tap on the line under it (`pointerUp`). It catches the list if it was still running on, and then chooses
+    // nothing: a touch that stops the list is to read it by.
     if (this.lab && this.labTab === 'lab' && !this.labTouch && this.input.id === null) {
       const g = this.labGeom();
       if (x >= g.vx && y >= g.vy && x < g.vx + g.vw && y < g.vy + g.view) {
-        this.labTouch = { id, y0: y, s0: this.labScroll, moved: 0 }; this.labVel = 0; this.labAim = null; this.labPrev = this.labScroll;
+        const caught = Math.abs(this.labVel) >= LAB_REST || this.labAim !== null;
+        this.labTouch = { id, y0: y, s0: this.labScroll, moved: 0, caught }; this.labVel = 0; this.labAim = null; this.labPrev = this.labScroll;
         return;
       }
     }
@@ -479,9 +482,10 @@ export class Game {
     if (t && t.id === id) {
       this.labTouch = null;
       // A finger that did not move is a tap: the line it came down on is chosen (the head of a part is not), and
-      // shown whole. One that moved lets go of the list with the speed it had (`stepLab`).
+      // shown whole, unless it came down to catch the list running on. One that moved lets go of the list with the
+      // speed it had (`stepLab`). (The lines are drawn at the scroll rounded to a pixel, and found there too.)
       if (t.moved < LAB_TAP && this.lab && this.labTab === 'lab') {
-        const g = this.labGeom(), at = t.y0 - g.vy, i = at < LAB_SEC && this.labScroll > 0 ? -1 : this.labLineAt(at + this.labScroll);
+        const g = this.labGeom(), top = Math.round(this.labScroll), at = t.y0 - g.vy, i = t.caught || (at < LAB_SEC && top > 0) ? -1 : this.labLineAt(at + top);
         if (i >= 0) { this.labSel = LAB[i].key; this.labReveal(i); sfx.tap(); }
         this.labVel = 0;
       }
@@ -489,9 +493,11 @@ export class Game {
     }
     if (this.input.id === id) { this.input.id = null; this.input.m = 0; }
   }
-  // A key held down comes again and again (`repeat`): only the lab's list takes those, to walk on through it.
+  // A key held down comes again and again (`repeat`): only the lab's list takes those, to walk on through it, and
+  // only of a key it took as it went down (a key held to fly with as the list was opened is not walked by).
   key(code, down, repeat = false) {
-    if (down && this.lab && this.labTab === 'lab' && this.labKey(code, repeat)) return true;
+    if (!down && code === this.labHeld) this.labHeld = null;
+    if (down && this.lab && this.labTab === 'lab' && (!repeat || code === this.labHeld) && this.labKey(code, repeat)) { this.labHeld = code; return true; }
     if (repeat) return false;
     const dir = { ArrowRight: 0, KeyD: 0, ArrowDown: 1, KeyS: 1, ArrowLeft: 2, KeyA: 2, ArrowUp: 3, KeyW: 3 }[code];
     if (dir !== undefined) {
@@ -1526,7 +1532,7 @@ export class Game {
   // lab's list opens with the thing chosen in the middle of its window, as near as the ends allow.
   openLab(open, tab) {
     this.lab = open; this.shop = false; this.chartTouch.clear();
-    this.labTouch = null; this.labVel = 0; this.labAim = null;
+    this.labTouch = null; this.labVel = 0; this.labAim = null; this.labHeld = null;
     if (open) {
       this.labSel ??= (LAB.find(e => this.S.lab[e.key]) ?? LAB[0]).key; this.labTab = tab ?? (this.labFlash > 0 ? 'lab' : this.labTab);
       const g = this.labGeom(), i = Math.max(0, LAB.findIndex(e => e.key === this.labSel));

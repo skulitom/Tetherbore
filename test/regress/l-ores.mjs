@@ -191,11 +191,12 @@ for (const kin of [1, 2, 3, 4]) {
   const rows = KIN_ROWS[kin].map(id => BIOMES[id]), mine = [];
   for (const row of rows) for (const [sheet, frame] of row.ores) mine.push({ row, fresh: sheet === 'ores', ...(await look(sheet, frame, rgb(OUTLINE[kin]))) });
   // What hurts in this direction: every colour of its own hazard as drawn that is a colour at all (its frames, and
-  // lava's slag, steel and pools), and the colour its rare hazard is seen as.
+  // lava's steel and pools), every colour of lava's slag, dull as it is (a grey lump is what tells of lava, and an
+  // ore must not be one), its outline aside, and the colour its rare hazard is seen as.
   const hurts = [];
-  const take = async (sheet, frame) => { if (sheets[sheet]?.frames[frame]) for (const c of (await pixels(sheet, frame)).grid) if (c && vivid(c)) hurts.push(c); };
+  const take = async (sheet, frame, all = false) => { if (sheets[sheet]?.frames[frame]) for (const c of (await pixels(sheet, frame)).grid) if (c && (vivid(c) || all && far(c, rgb(OUTLINE[kin])) >= 1)) hurts.push(c); };
   const own = BIOMES[kin].haz?.type, rare = HAZARDS[RARE[kin]].sheet;
-  if (own) { const s = HAZARDS[own].sheet; await take(s, 'hazard'); await take(s, 'hazard-b'); if (own === 'lava') { for (const f of ['slag', 'steel', 'steel-glint']) await take(s, f); await take('lava', 'lava-255-a'); await take('lava', 'lava-255-b'); } }
+  if (own) { const s = HAZARDS[own].sheet; await take(s, 'hazard'); await take(s, 'hazard-b'); if (own === 'lava') { await take(s, 'slag', true); for (const f of ['steel', 'steel-glint']) await take(s, f); await take('lava', 'lava-255-a'); await take('lava', 'lava-255-b'); } }
   hurts.push((await look(rare, 'hazard')).colour);
   for (const o of mine.filter(m => m.fresh)) {
     const name = `${o.frame} (${o.row.name})`;

@@ -4,11 +4,14 @@
 // under it, SAMPLE and the count or ANALYSED and the new worth, the count is saved and a game saved before the lab loads with none, and a new world starts with none.
 // The notes are opened and shut by a tap on the bar, they are a list that scrolls (dragged, flicked, wheeled and
 // stepped with the keys), a line is chosen by a tap, and no line or note is wider or longer than its panel holds on
-// the narrowest phone.
+// the narrowest phone. A key held to fly with does not walk the list, a touch that stops it running chooses
+// nothing, a tap finds the line drawn under it wherever the list has come to rest, and a flick does not run on
+// when the list's tab comes back to it. Two things of one place not yet known are told apart, and one sample is
+// one SAMPLE.
 import { makeGame, K, N, C } from '../harness.mjs';
 const { LAB, labLevel, labNext } = await import('../../js/game.js');
 const { LAB_KINS } = await import('../../js/shop.js');
-const { LAB_LIST, LAB_RH, LAB_SEC, NOTE_LINES } = await import('../../js/drawing.js');
+const { LAB_LIST, LAB_RH, LAB_SEC, NOTE_LINES, labCount } = await import('../../js/drawing.js');
 const { textWidth } = await import('../../js/atlas.js');
 
 const fails = [], check = (ok, what) => { if (!ok) fails.push(what); };
@@ -135,8 +138,9 @@ for (const way of [1, -1]) {
   check(game.labSel === LAB[14].key && inView(LAB[14].key), `fourteen downs chose ${game.labSel}, ${inView(game.labSel) ? '' : 'not '}in view (at ${game.labScroll})`);
   game.key('End', true); steps(60); game.render();
   check(game.labSel === LAB.at(-1).key && game.labScroll === g.most, `End chose ${game.labSel} with the list at ${game.labScroll} of ${g.most}`);
-  game.key('ArrowUp', true, true); game.key('ArrowUp', true, true);
+  game.key('ArrowUp', true); game.key('ArrowUp', true, true);
   check(game.labSel === LAB.at(-3).key, `an up held down walked to ${game.labSel}`);
+  game.key('ArrowUp', false);
   game.key('Home', true); steps(60);
   check(game.labSel === LAB[0].key && game.labScroll === 0, `Home chose ${game.labSel} with the list at ${game.labScroll}`);
   game.labTab = 'stats';
@@ -155,6 +159,51 @@ check(game.lab === false, 'a tap outside the notes left them open');
   if (y > r.vy + LAB_SEC && y < r.vy + r.view) { tap(r.vx + 40, y); check(game.labSel === LAB[5].key, `a tap as the panel rose chose ${game.labSel}, not ${LAB[5].key}`); }
   game.openLab(false);
 }
+// A key held down to fly with as the list is opened (by L, or by the bar's button) does not walk it: only a key
+// the list took as it went down walks on. Pressed afresh with the list open, it walks as ever.
+{
+  game.labSel = LAB[3].key;
+  game.key('ArrowDown', true);
+  game.openLab(true, 'lab'); steps(30);
+  for (let n = 0; n < 20; n++) game.key('ArrowDown', true, true);
+  check(game.labSel === LAB[3].key, `a flight key held as the list opened walked it to ${game.labSel}`);
+  game.key('ArrowDown', false);
+  game.key('ArrowDown', true); game.key('ArrowDown', true, true);
+  check(game.labSel === LAB[5].key, `a key pressed in the list and held walked it to ${game.labSel}, not ${LAB[5].key}`);
+  game.key('ArrowDown', false);
+}
+// A touch that catches the list running on stops it and chooses nothing; at rest, the same touch chooses.
+{
+  game.resize(320, 568, 1); game.openLab(true, 'lab'); game.render();
+  const r = game.labGeom(), y0 = r.vy + r.view - 10;
+  game.labScroll = 0; game.labSel = LAB[0].key;
+  game.pointerDown(1, r.vx + 30, y0);
+  for (let n = 1; n <= 4; n++) { game.pointerMove(1, r.vx + 30, y0 - n * 12); game.update(1 / 60); }
+  game.pointerUp(1); steps(3);
+  const running = game.labVel;
+  tap(r.vx + 40, r.vy + 80);
+  check(running !== 0 && game.labVel === 0 && game.labSel === LAB[0].key, `a touch that caught the list running at ${running.toFixed(0)} left it at ${game.labVel} and chose ${game.labSel}`);
+  tap(r.vx + 40, r.vy + 80);
+  check(game.labSel !== LAB[0].key, 'a tap on the list at rest chose nothing');
+}
+// The list comes to rest between pixels; a tap is read where the lines are drawn, at the scroll rounded.
+{
+  const r = game.labGeom();
+  game.labAim = null; game.labVel = 0; game.labScroll = 40.6; game.render();
+  const top = Math.round(game.labScroll), i = LAB.findIndex((e, j) => LAB_LIST.at[j] - top >= LAB_SEC + 2);
+  tap(r.vx + 40, r.vy + LAB_LIST.at[i] - top);
+  check(game.labSel === LAB[i].key, `a tap on the first row drawn of ${LAB[i].name}, with the list at 40.6, chose ${game.labSel}`);
+}
+// A flick left running as another tab is chosen does not run on when the list's tab comes back.
+{
+  const r = game.labGeom();
+  game.labAim = null; game.labScroll = 60; game.labVel = 1050;
+  tap(r.px + 12, r.py + 8);
+  check(game.labTab === 'stats', `a tap on STATS opened ${game.labTab}`);
+  steps(60); game.labTab = 'lab'; steps(1);
+  check(game.labScroll === 60 && game.labVel === 0, `back at the list after a flick and another tab, it moved to ${game.labScroll} at ${game.labVel}`);
+  game.openLab(false);
+}
 // The list draws on a short screen and on a wide one, known and unknown lines alike, scrolled anywhere.
 for (const [cw, ch] of [[600, 260], [360, 640], [1200, 800]]) {
   game.resize(cw, ch, 1); game.openLab(true, 'lab');
@@ -167,14 +216,18 @@ game.resize(320, 568, 1);
 const narrow = game.labGeom(), text = narrow.pw - 16, right = narrow.vw - 5;
 check(narrow.pw === 152, `the narrowest panel is ${narrow.pw} pixels, not 152`);
 const wrapped = words => { const lines = []; for (const word of words.split(' ')) { const last = lines.at(-1); if (last !== undefined && textWidth(`${last} ${word}`) <= text) lines[lines.length - 1] = `${last} ${word}`; else lines.push(word); } return lines; };
-for (const e of LAB) {
+LAB.forEach((e, i) => {
+  const { label, found } = LAB_LIST.line[i];
   check(18 + textWidth(e.name) + 4 + textWidth('+11%') <= right, `${e.name} is too long for its line`);
-  check(18 + textWidth(e.at) <= right, `${e.name}: '${e.at}' is too long for its line`);
-  for (const word of `${e.note} CUT THROUGH ONE WITH THE BIT. FOUND: ${e.where}.`.split(' ')) check(textWidth(word) <= text, `'${word}' is wider than the notes`);
+  check(18 + textWidth(label) <= right, `${e.name}: '${label}' is too long for its line`);
+  for (const word of `${e.note} ${found}`.split(' ')) check(textWidth(word) <= text, `'${word}' is wider than the notes`);
   check(wrapped(e.note).length <= NOTE_LINES, `${e.name}: its note takes ${wrapped(e.note).length} lines, of ${NOTE_LINES}`);
-  check(wrapped(`CUT THROUGH ONE WITH THE BIT. FOUND: ${e.where}.`).length <= NOTE_LINES, `${e.name}: where it is found takes ${wrapped(`CUT THROUGH ONE WITH THE BIT. FOUND: ${e.where}.`).length} lines`);
-}
-check(textWidth('99K SAMPLES. +1% AT 131K') <= text, 'what is said of a count of samples is wider than the notes');
+  check(wrapped(found).length <= NOTE_LINES, `${e.name}: where it is found takes ${wrapped(found).length} lines`);
+  // (Before it is known, a thing is not drawn or spoken of as another of its part is.)
+  LAB.forEach((f, j) => { if (j > i && f.kin === e.kin) check(LAB_LIST.line[j].label !== label && LAB_LIST.line[j].found !== found, `${e.name} and ${f.name} are both '${label}' before they are known`); });
+});
+check(labCount(1) === '1 SAMPLE. +1% AT 2' && labCount(5) === '5 SAMPLES. +1% AT 8', `a count of samples is said as '${labCount(1)}' and '${labCount(5)}'`);
+check(textWidth(labCount(99999)) <= text, `what is said of a count of samples ('${labCount(99999)}') is wider than the notes`);
 LAB_KINS.forEach(([title], kin) => { const all = LAB.filter(e => e.kin === kin).length; check(16 + textWidth(title) + 4 + textWidth(`${all}/${all}`) <= right, `the head ${title} is too long for its line`); });
 
 console.log(fails.length ? `DEFECT:\n  ${fails.join('\n  ')}` : 'no defect: what is crushed is analysed, what is known pays a hundredth more a level, and the notes open from the bar as a list of forty-eight that scrolls');
