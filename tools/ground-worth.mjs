@@ -10,7 +10,7 @@
 // In each ring (200, 400, 700, 1,000, 1,500 and 2,000 cells out, forty cells to either side) and each direction
 // (the quarter of the ring nearest north, south, west and east) `--cells` cells are asked about on each of the
 // worlds 1 to `--seeds`: whose ground each is (`biomeAt`) and what it is (`kindAt`). The same cells are asked of
-// the world seven times over, with what the build laid added a part at a time:
+// the world eight times over, with what the build laid added a part at a time:
 //   before     grounds 0 to 8 alone, as they were: no slag, no crystals on slate, no provinces, slabs, prisms, pockets
 //   rules      with the rind of slag round lava and the crystals on the flanks of slate (content item 2)
 //   strains    with the provinces of hand-made strains (item 1)
@@ -18,8 +18,9 @@
 //   slabs      with keystone slabs, cobble fields and prisms (item 5)
 //   now        with pockets (items 6 and 7) and the sites of the four rare hazards: the world of generation 1
 //   depth      with the rules of generation 2 (js/world.js: GEN): the seams, the deep strains, the corner heralds,
-//              twin stones, fossils, the druse's geodes and the shrines. The world as a new game has it
-// (Every stage but the last lays its pieces by generation 1's rules, as an older game's world is laid.)
+//              twin stones, fossils, the druse's geodes and the shrines
+//   halls      with the builders' halls past 1,600 cells (generation 2 too). The world as a new game has it
+// (Every stage but the last two lays its pieces by generation 1's rules, as an older game's world is laid.)
 // What is printed:
 //   solid      the share of the cells that are ground (not open, not bedrock)
 //   worth      the mean over solid cells of the kind's grit times its ground's `rich` and `worth`: what the rule
@@ -41,13 +42,14 @@ import { resolve } from 'node:path';
 
 export const RINGS = [200, 400, 700, 1000, 1500, 2000], BAND = 40, MOST = 0.15;
 export const WAYS = [['north', 0, -1], ['south', 0, 1], ['west', -1, 0], ['east', 1, 0]];
-export const STAGES = ['before', 'rules', 'strains', 'crosses', 'slabs', 'now', 'depth'], LAST = STAGES[STAGES.length - 1];
+export const STAGES = ['before', 'rules', 'strains', 'crosses', 'slabs', 'now', 'depth', 'halls'], LAST = STAGES[STAGES.length - 1];
 const CACHE_SECONDS = 12;                       // js/game.js, payOf: a cache holds twelve seconds of income
 
 // The world with only so much of what the build laid: `on` says which parts.
 class Staged extends World {
   constructor(on) { super(); this.on = on; }
   reset(seed) { super.reset(seed); this.genOf.fill(this.on.depth ? 2 : 1); }
+  hallOf(sx, sy) { return this.on.halls ? super.hallOf(sx, sy) : null; }
   zoneOf(sx, sy) { return this.on.pockets ? super.zoneOf(sx, sy) : null; }
   siteOf(sx, sy) { return this.on.sites ? super.siteOf(sx, sy) : null; }
   province(px, py, kin) {
@@ -62,7 +64,8 @@ class Staged extends World {
 }
 const PARTS = { before: {}, rules: { rules: 1 }, strains: { rules: 1, strains: 1 }, crosses: { rules: 1, strains: 1, crosses: 1 },
   slabs: { rules: 1, strains: 1, crosses: 1, slabs: 1 }, now: { rules: 1, strains: 1, crosses: 1, slabs: 1, pockets: 1, sites: 1 },
-  depth: { rules: 1, strains: 1, crosses: 1, slabs: 1, pockets: 1, sites: 1, depth: 1 } };
+  depth: { rules: 1, strains: 1, crosses: 1, slabs: 1, pockets: 1, sites: 1, depth: 1 },
+  halls: { rules: 1, strains: 1, crosses: 1, slabs: 1, pockets: 1, sites: 1, depth: 1, halls: 1 } };
 // Grounds 2, 4, 6 and 8 as they were laid before the direction rules: the same rows with no rind and no ribs.
 // (Copies stand in the table while `before` is asked, and the rows themselves are put back.)
 const bare = () => {
@@ -142,7 +145,7 @@ export async function against(dir, seeds = 4, each = 20000) {
     return into;
   }));
 }
-const whole = list => list.reduce((sum, s) => ({ asked: sum.asked + s.asked, solid: sum.solid + s.solid, grit: sum.grit + s.grit, lumps: sum.lumps + (s.lumps ?? 0) }), { asked: 0, solid: 0, grit: 0, lumps: 0 });
+export const whole = list => list.reduce((sum, s) => ({ asked: sum.asked + s.asked, solid: sum.solid + s.solid, grit: sum.grit + s.grit, lumps: sum.lumps + (s.lumps ?? 0) }), { asked: 0, solid: 0, grit: 0, lumps: 0 });
 // The worst a ring has moved, of the mean over solid cells: { ring, way, moved } (`way` is 'all' for a whole ring).
 export function worst(sums) {
   let most = { ring: 0, way: 'all', moved: 0 };

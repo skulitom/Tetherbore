@@ -15,8 +15,9 @@
 // strains: every rule laid since asks the generation, so those 96 lines hold whatever is added, and that they do is
 // the proof that a newer rule lays nothing in an older game's ground. Then of generation 2 (`GEN2_PLACES`), where
 // its rules lay ground of their own: each diagonal at 500, 650, 1,000, 1,500 and 2,000 cells (the seams, their set
-// pieces and the deep seams); the flanks a sixteenth of a circle either side of each diagonal at 1,500 and 2,000
-// (the deep strains); and each diagonal's shrine. 216 lines in all.
+// pieces and the deep seams, and at 2,000 the builders' halls); the flanks a sixteenth of a circle either side of
+// each diagonal at 1,500 and 2,000 (the deep strains, and at 2,000 the halls); and each diagonal's shrine. 216 lines
+// in all.
 import { readFile, writeFile } from 'node:fs/promises';
 import { World, C, CH, CW, DX, DY } from '../js/world.js';
 

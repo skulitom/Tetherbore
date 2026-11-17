@@ -4,9 +4,10 @@
 // moves a line here. The pieces are laid by the rules of generation 1 (js/world.js: GEN, `genOf`), which every rule
 // laid since asks for and lays nothing in: these lines staying as they were is the proof of it.
 // And 120 more of generation 2, where its rules lay ground of their own (the diagonals from 500 cells out, the deep
-// strains in the flanks, the shrines: `GEN2_PLACES`), as they were recorded when those rules were laid. And near the
-// core, within the 445 cells no rule of generation 2 reaches (js/world.js: MIGRATE_NEAR), generation 2 lays the same
-// as 1: the core and each direction at 200 cells, on each seed, where every recorded flight begins.
+// strains in the flanks, the shrines: `GEN2_PLACES`), as they were recorded when those rules were laid, and 21 of
+// those 2,000 cells out again when the builders' halls were (their kinds alone: the grounds are as they were). And
+// near the core, within the 445 cells no rule of generation 2 reaches (js/world.js: MIGRATE_NEAR), generation 2
+// lays the same as 1: the core and each direction at 200 cells, on each seed, where every recorded flight begins.
 //   node test/regress/s1-world-hash.mjs
 // Ground that is laid anew on purpose moves lines too: look at what moved (`node tools/world-hash.mjs --check`),
 // and record them again with `--write` in the same commit that says why.

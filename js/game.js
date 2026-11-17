@@ -248,6 +248,10 @@ const HAZ_SAMPLE = Object.fromEntries(Object.entries(HAZARDS).map(([type, { shee
 // drill is in the drift or near it, and leave them once it is out and they are AWAY cells off the screen: so the
 // books do not grow by a drift's boulders for every drift crossed.
 const AWAY = 6;
+// The old deep is darker: past DEEPEN[0] cells from the core the dark the drill is in deepens, by DEEPEN[2] more at
+// DEEPEN[0] + DEEPEN[1] and beyond. Only the dark drawn over what is out of the light deepens (`murk`): nothing the
+// game decides by asks it, and nothing in the deep needs the lamp.
+export const DEEPEN = [1600, 600, 0.25];
 // Nothing is too hard to cut: tougher ground only takes longer (js/world.js: `digTime`), and a better bit cuts all
 // of it faster. (The table is the shop's, CUT, where the bit's row says what each level does.)
 export const SPEED = CUT;
@@ -3115,7 +3119,8 @@ export class Game {
     // The dark eases to the colour and the depth of the ground the drill is in.
     const here = w.row(this.di), want = here.gloom, k = 1 - Math.exp(-dt * 1.5);
     for (let c = 0; c < 3; c++) this.gloom[c] += (want[c] - this.gloom[c]) * k;
-    this.murk += (here.dark - this.murk) * k;
+    const dx = this.drill.x - C, dy = this.drill.y - C, far = Math.sqrt(dx * dx + dy * dy);
+    this.murk += (here.dark * (1 + DEEPEN[2] * Math.min(1, Math.max(0, (far - DEEPEN[0]) / DEEPEN[1]))) - this.murk) * k;
     // Motes hang in open ground near the view; each belongs to the ground it was born over.
     while (this.motes.length < 34) {
       const x = this.cam.x + (Math.random() - 0.5) * (W + 60), y = this.cam.y + (Math.random() - 0.5) * (H + 60), row = w.row(Math.floor(y / T) * N + Math.floor(x / T));

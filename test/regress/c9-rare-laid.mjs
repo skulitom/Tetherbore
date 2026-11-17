@@ -39,6 +39,9 @@ const counts = [], totals = Object.fromEntries(TYPES.map(t => [t, 0]));
 let sites = 0, cells = 0, moved = 0, opened = 0, pieces = 0, wrongShape = 0, outside = 0, slabsSame = 0, inSeams = 0, inStrains = 0;
 for (let seed = 1; seed <= 8; seed++) {
   const w = new World(), bare = new NoSite(); w.reset(seed); bare.reset(seed);
+  // (The builders' halls keep clear of the sites, so a world with none would lay some of them elsewhere: the world
+  // with no sites has its halls where the world lays them.)
+  bare.hallOf = (sx, sy) => w.hallOf(sx, sy);
   const list = w.sitesWithin(2400), types = Object.fromEntries(TYPES.map(t => [t, 0]));
   counts.push(list.length);
   check(list.length >= 30 && list.length <= 65, `seed ${seed}: ${list.length} sites`);

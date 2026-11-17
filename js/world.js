@@ -799,6 +799,26 @@ export const SET_FROM = 480, SET_TO = 640, SET_ROOM = 6, SET_COLLAR = 30, SET_HE
 // FLANK_RISE for each cell further to FLANK_MOST, is a deep strain of the flank. So none under about 1,100 cells out,
 // three in ten at 1,350, six in ten from 1,650.
 export const FLANK_FROM = 1050, FLANK_RISE = 1000, FLANK_MOST = 0.6;
+// The old deep (generation 2): builders' halls, sealed rooms of ancient stone in whatever ground is there, from
+// HALL_FROM cells out and thicker toward the relics, so that the run-in to each is a city of them to lasso whole
+// (`hallOf`, `hallCell`). The ground is laid out in squares HALL cells across, the find sectors' own, one hall at the
+// most in each and all of it, its collar too, inside it. A square holds one where the hash of the square (38) is
+// under its share: HALL_SHARE[0] where the square's middle is HALL_FROM out, rising by HALL_SHARE[1] over the next
+// HALL_RISE cells, and HALL_NEAR[1] more where the middle is within HALL_NEAR[0] cells of a relic. Its walls are a
+// box 12 to 24 cells a side (39, 25), lying where two more hashes say (26, 27) at least HALL_EDGE cells inside the
+// square, or moved aside from the square's own find; vault, a cell thick, or two near a relic; its two doors two
+// cells of soft rock across the middle of opposite walls (which two, 28); its inside open but for a store of rich
+// ore three cells by two against one of the walls with no door (which, 30), so that nothing in it stands free.
+// Round the walls a collar HALL_COLLAR cells wide is laid with no caves, as a slab's is, joining the walls to the
+// rock; and none is laid where the rock outside the collar does not run on HALL_HOLD cells beyond it (in a great
+// cavern a hall would hang on nothing), nor where its collar and a little more would meet a pocket, a site, a slab
+// any sector could try, a wreck, a relic's vault, a shrine or any sector's find. It is laid only where every piece
+// its collar touches is of generation 2. Counted on worlds 1 to 4 (`node tools/strains.mjs --halls 4`): 9 squares
+// in a hundred hold one from 1,600 cells out, 14 from 1,750, 20 from 1,900, 30 within 260 cells of a relic; and at
+// 2,000 cells out they lift the worth of a solid cell by 2.6 in a hundred (tools/ground-worth.mjs, `halls`).
+export const HALL = 48, HALL_FROM = 1600, HALL_RISE = 400, HALL_SHARE = [0.08, 0.17], HALL_NEAR = [260, 0.15], HALL_EDGE = 4, HALL_COLLAR = 2, HALL_HOLD = 24;
+// (The box a hall's hold is followed in: the widest hall, its collar and a cell, and HALL_HOLD beyond on each side.)
+const HALL_BOX = 24 + 2 * (HALL_COLLAR + 1 + HALL_HOLD) + 2;
 // Rare hazards lie at sites, one at the most to a sector SITE cells across, the sectors laid out with their
 // middles on the corners of the slabs' (`World.siteOf`): a site's middle is within eleven cells of a corner each
 // way, and its heart a cell from that at the most, so every cell of one (none lies over six from its heart) is
@@ -869,7 +889,7 @@ export const cellHash = hash;
 // layer their cracks wander by). And generation 2's: 75 and 76 a seam's wobble and its start; 33 and 400 + a deep
 // strain's number, the flanks' provinces; 29 ripples of glass, 77 the glacier's sheath, 78 the caldera's lakes, 90
 // and 91 the mycelium's threads, 63 its caps; 79 the wind and 69 the heat (`flowAt`); 34 twin stones, 35 and 36 a
-// fossil; 37 a shrine's ore. (38, 39, 25 to 28 and 30 are kept for the builders' halls.) docs/CONTENT-PLAN.md (S3)
+// fossil; 37 a shrine's ore; 38, 39, 25 to 28 and 30 the builders' halls (`hallOf`). docs/CONTENT-PLAN.md (S3)
 // allots the rest: take a number from there, so that no two rules read the same layer.
 const kept = new Float64Array(128 * 7).fill(NaN);
 const noise = (x, y, s, k = s & 127) => {
@@ -1033,6 +1053,12 @@ export class World {
     this.zoneLast = { sx: NaN, sy: NaN, seed: NaN, zone: null };
     this.sites = new Map();                // the rare hazard's site of each sector asked about (null: none), and the sector asked last
     this.siteLast = { sx: NaN, sy: NaN, seed: NaN, site: null };
+    this.halls = new Map();                // the builders' hall of each square asked about (null: none), and the square asked last
+    this.hallLast = { sx: NaN, sy: NaN, seed: NaN, hall: null };
+    this.hallsOff = false;                 // while a hall's hold is followed: the ground as it lies with no hall (`hallHeld`)
+    this.hallSeen = new Uint8Array(HALL_BOX * HALL_BOX);      // what that following has come to, made once
+    // How many halls were not laid, of the squares whose hash could have held one, by what stood against each.
+    this.unhalled = { gen: 0, clear: 0, find: 0, held: 0 };
     // How many sites were not laid, of the sectors whose hash could have held one, by what stood against each.
     this.unsited = { far: 0, ground: 0, wreck: 0, pocket: 0, find: 0, heart: 0, share: 0 };
     this.relicAt = [0, 1, 2, 3].map(d => (C + DY[d] * RELIC_R) * N + C + DX[d] * RELIC_R);
@@ -1564,6 +1590,129 @@ export class World {
   }
   // What a slab makes of a cell (OUT: nothing).
   slabAt(x, y) { const S = this.slabOf(x, y); return S === null ? OUT : this.slabCell(S, x, y); }
+
+  // ---------------------------------------------------------------- the builders' halls
+  // The hall laid in a square of HALL cells (sx, sy: counted from the core's, as the find sectors are), or null where
+  // the square has none: { sx, sy, x0, y0, x1, y1, wall, ew, store }, its walls' outside corners, how thick they are,
+  // whether its doors are in its west and east walls (else its north and south), and which of the other two its
+  // store lies against (0 the north or west, 1 the south or east). Worked out once for each square and kept. Its
+  // share is asked of where the square's middle lies, and only past HALL_FROM (`HALL_SHARE`, `HALL_NEAR`).
+  hallOf(sx, sy) {
+    const seed = this.seed, key = ((sy + 64) << 7) | (sx + 64);
+    if (this.hallsFor !== seed) { this.hallsFor = seed; this.halls.clear(); }
+    let H = this.halls.get(key);
+    if (H !== undefined) return H;
+    H = null;
+    const mx = sx * HALL + HALL / 2, my = sy * HALL + HALL / 2, far = Math.sqrt(mx * mx + my * my);
+    if (far > HALL_FROM && far + HALL < WORLD_R - 100) {
+      let relic = Infinity;
+      for (let d = 0; d < 4; d++) { const ex = mx - DX[d] * RELIC_R, ey = my - DY[d] * RELIC_R; relic = Math.min(relic, ex * ex + ey * ey); }
+      const near = relic < HALL_NEAR[0] * HALL_NEAR[0];
+      if (hash(sx, sy, seed + 38) < HALL_SHARE[0] + HALL_SHARE[1] * Math.min(1, (far - HALL_FROM) / HALL_RISE) + (near ? HALL_NEAR[1] : 0)) H = this.hall(sx, sy, near);
+    }
+    this.halls.set(key, H);
+    return H;
+  }
+  // A square's hall, where its hash says it may hold one: its shape from its hashes, and null where it is not laid
+  // (the generation of the pieces it would lie in, something it would meet, or no hold: `unhalled`, for tests).
+  // Nothing here asks what a cell is but `hallHeld`, and that with no hall and no slab, so nothing of the world asks
+  // about a hall in working out where anything else lies.
+  // Where the square's own find is (the square is a sector of finds) and the hall's place by its hashes would meet
+  // it, the hall is moved aside, across or up and down the square, the least way that clears it, if it can be.
+  // (Six squares in ten hold a find the hall would meet where its hashes put it; moved aside, under one in ten.)
+  hall(sx, sy, near) {
+    const seed = this.seed, w = 12 + Math.floor(hash(sx, sy, seed + 39) * 13), h = 12 + Math.floor(hash(sx, sy, seed + 25) * 13);
+    const lx = C + sx * HALL + HALL_EDGE, ly = C + sy * HALL + HALL_EDGE, hx = lx + HALL - 2 * HALL_EDGE - w, hy = ly + HALL - 2 * HALL_EDGE - h;
+    let x0 = lx + Math.floor(hash(sx, sy, seed + 26) * (hx - lx + 1)), y0 = ly + Math.floor(hash(sx, sy, seed + 27) * (hy - ly + 1));
+    if (this.findName(sx, sy) !== null) {
+      // (Clear of it along one way where the collar and six cells more end before its middle, or begin after it.)
+      const fx = this.asked.fx, fy = this.asked.fy, gap = HALL_COLLAR + 6;
+      const clear = (at, f, size) => at + size - 1 + gap <= f || at - gap >= f;
+      const aside = (at, f, size, lo, hi) => {
+        const a = Math.min(hi, f - size + 1 - gap), b = Math.max(lo, f + gap);
+        return a >= lo && (b > hi || at - a <= b - at) ? a : b <= hi ? b : NaN;
+      };
+      if (!clear(x0, fx, w) && !clear(y0, fy, h)) {
+        const ax = aside(x0, fx, w, lx, hx);
+        if (ax === ax) x0 = ax; else y0 = aside(y0, fy, h, ly, hy);
+        if (y0 !== y0) return this.unhalled.find++, null;
+      }
+    }
+    const H ={ sx, sy, x0, y0, x1: x0 + w - 1, y1: y0 + h - 1, wall: near ? 2 : 1, ew: hash(sx, sy, seed + 28) < 0.5, store: hash(sx, sy, seed + 30) < 0.5 ? 0 : 1 };
+    const no = why => { this.unhalled[why]++; return null; };
+    // Its collar's box, and how far a cell lies outside it (as a square's distance: 0 within).
+    const ax = x0 - HALL_COLLAR, ay = y0 - HALL_COLLAR, bx = H.x1 + HALL_COLLAR, by = H.y1 + HALL_COLLAR;
+    const out = (x, y) => Math.max(ax - x, x - bx, ay - y, y - by, 0);
+    for (let py = ay >> 6; py <= by >> 6; py++) for (let px = ax >> 6; px <= bx >> 6; px++) if (this.genOf[(py << 8) | px] < 2) return no('gen');
+    // Clear of a wreck (its cells lie three from its heart), a relic's vault and a shrine (five), with two cells to
+    // spare.
+    if (this.wrecksFor !== seed) this.wrecks;
+    for (let n = 0; n < this.wreckX.length; n++) if (out(this.wreckX[n], this.wreckY[n]) < 5) return no('clear');
+    for (let d = 0; d < 4; d++) if (out(C + DX[d] * RELIC_R, C + DY[d] * RELIC_R) < 7 || (out(C + SHRINES[d][0], C + SHRINES[d][1]) < 7 && this.shrine(d))) return no('clear');
+    const cx = (ax + bx) / 2, cy = (ay + by) / 2, round = Math.sqrt((bx - ax) * (bx - ax) + (by - ay) * (by - ay)) / 2 + 1;
+    if (this.slabTried(cx, cy, round) || this.meetsPocket(cx, cy, round)) return no('clear');
+    // A find's cells lie four from its middle at the most, and a site's its reach from its heart.
+    for (let fy = Math.floor((ay - 6 - C) / FIND), f1 = Math.floor((by + 6 - C) / FIND); fy <= f1; fy++) for (let fx = Math.floor((ax - 6 - C) / FIND), g1 = Math.floor((bx + 6 - C) / FIND); fx <= g1; fx++) {
+      if (this.findName(fx, fy) !== null && out(this.asked.fx, this.asked.fy) < 6) return no('find');
+    }
+    for (let ty = Math.floor((ay - 8 - C + SITE / 2) / SITE), t1 = Math.floor((by + 8 - C + SITE / 2) / SITE); ty <= t1; ty++) for (let tx = Math.floor((ax - 8 - C + SITE / 2) / SITE), u1 = Math.floor((bx + 8 - C + SITE / 2) / SITE); tx <= u1; tx++) {
+      const S = this.siteOf(tx, ty);
+      if (S !== null && out(S.cx, S.cy) < S.reach + 2) return no('clear');
+    }
+    return this.hallHeld(ax, ay, bx, by) ? H : no('held');
+  }
+  // Whether the rock just outside a hall's collar (its box ax, ay to bx, by) runs on, cell beside cell, HALL_HOLD
+  // cells beyond it: followed as `held` follows a slab's, the way out tried first, through the ground as it lies with
+  // no hall and no slab in it.
+  hallHeld(ax, ay, bx, by) {
+    const seen = this.hallSeen, stack = this.hallStack ??= [], x0 = ax - HALL_HOLD - 2, y0 = ay - HALL_HOLD - 2, wide = bx - ax + 2 * HALL_HOLD + 5;
+    const was = this.slabHere, off = this.hallsOff;
+    this.slabHere = null; this.hallsOff = true;
+    seen.fill(0); stack.length = 0;
+    // (Outside the collar by `out` cells, as a square's distance.)
+    const out = (x, y) => Math.max(ax - x, x - bx, ay - y, y - by, 0);
+    const solid = (x, y) => this.kindAt(x, y, this.biomeAt(x, y)) !== K.EMPTY;
+    for (let y = ay - 1; y <= by + 1; y++) for (let x = ax - 1; x <= bx + 1; x++) {
+      if (out(x, y) !== 1) continue;
+      seen[(y - y0) * wide + x - x0] = 1;
+      if (solid(x, y)) stack.push(x, y);
+    }
+    let found = false;
+    while (stack.length) {
+      const y = stack.pop(), x = stack.pop();
+      if (out(x, y) > HALL_HOLD) { found = true; break; }
+      // The way back toward the hall is put by first, so that the way away from it is tried first (the sides are
+      // east, south, west, north: the last of the four tried is the first popped).
+      const away = x < ax ? 2 : x > bx ? 0 : y < ay ? 3 : 1;
+      for (let n = 0; n < 4; n++) {
+        const s = (away + 1 + n) & 3, u = x + DX[s], v = y + DY[s], at = (v - y0) * wide + u - x0;
+        if (seen[at] || out(u, v) === 0) continue;
+        seen[at] = 1;
+        if (solid(u, v)) stack.push(u, v);
+      }
+    }
+    this.slabHere = was; this.hallsOff = off;
+    return found;
+  }
+  // What a builders' hall lays in a cell: its kind, or -1 where it lays nothing, or -2 where the cell is its collar,
+  // which is laid with no caves and no find, as a slab's is (`kindAt`).
+  hallCell(x, y) {
+    const sx = Math.floor((x - C) / HALL), sy = Math.floor((y - C) / HALL), L = this.hallLast;
+    if (L.sx !== sx || L.sy !== sy || L.seed !== this.seed) { L.hall = this.hallOf(sx, sy); L.sx = sx; L.sy = sy; L.seed = this.seed; }
+    const H = L.hall;
+    if (H === null || x < H.x0 - HALL_COLLAR || x > H.x1 + HALL_COLLAR || y < H.y0 - HALL_COLLAR || y > H.y1 + HALL_COLLAR) return -1;
+    if (x < H.x0 || x > H.x1 || y < H.y0 || y > H.y1) return -2;
+    // (u, v from its north-west corner; w, h its last column and row; t how thick its walls are.)
+    const u = x - H.x0, v = y - H.y0, w = H.x1 - H.x0, h = H.y1 - H.y0, t = H.wall, inU = u >= t && u <= w - t, inV = v >= t && v <= h - t;
+    if (inU && inV) {
+      // Its store: three cells along a wall with no door, two deep, against it.
+      if (H.ew ? u >= (w >> 1) - 1 && u <= (w >> 1) + 1 && (H.store ? v >= h - t - 1 : v <= t + 1) : v >= (h >> 1) - 1 && v <= (h >> 1) + 1 && (H.store ? u >= w - t - 1 : u <= t + 1)) return K.ORE_B;
+      return K.EMPTY;
+    }
+    // Each door two cells of soft rock across the middle of its wall.
+    if (H.ew ? inV && (v === ((h + 1) >> 1) - 1 || v === (h + 1) >> 1) : inU && (u === ((w + 1) >> 1) - 1 || u === (w + 1) >> 1)) return K.SOFT;
+    return K.VAULT;
+  }
   reset(seed) {
     this.seed = seed;
     this.chunks = new Array(CW * CW); this.genOf.fill(GEN);
@@ -1581,6 +1730,7 @@ export class World {
   forget() {
     this.slabsFor = NaN; this.firstFor = NaN; this.slabLast.seed = NaN; this.zonesFor = NaN; this.zoneLast.seed = NaN;
     this.sitesFor = NaN; this.siteLast.seed = NaN; this.sector.seed = NaN; this.asked.seed = NaN; this.setsFor = NaN;
+    this.hallsFor = NaN; this.hallLast.seed = NaN;
   }
 
   // Whose ground a cell is, from the seed alone. The rules, in the order they are asked (docs/CONTENT-PLAN.md S3):
@@ -1791,6 +1941,8 @@ export class World {
     let bare = slab !== OUT;
     // A seam's set piece, where no slab is: what it lays, and round that its collar, laid as a slab's is.
     if (!bare && r > SET_FROM - 10 && r < SET_TO + 10) { const k = this.setPiece(x, y); if (k >= 0) return k; if (k === -2) bare = true; }
+    // A builders' hall, far out (generation 2), and round it its collar, likewise.
+    if (!bare && r > HALL_FROM - HALL && !this.hallsOff) { const k = this.hallCell(x, y); if (k >= 0) return k; if (k === -2) bare = true; }
     const lift = slab === INSIDE ? LIFT : 0;
     const find = r > 12 && !bare ? this.findAt(x, y) : -1;
     if (find >= 0) return find;

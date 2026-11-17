@@ -5,7 +5,7 @@
 //   node test/regress/m-ground-worth.mjs
 // It also holds the tool to what it says of itself: its last stage is the world as it is, cell for cell (a new
 // game's, of generation 2: js/world.js, GEN), and its first has none of what the build laid in it.
-import { count, cells, worst, RINGS, WAYS, MOST, LAST } from '../../tools/ground-worth.mjs';
+import { count, cells, worst, whole, RINGS, WAYS, MOST, LAST } from '../../tools/ground-worth.mjs';
 import { World, C, K, BIOMES } from '../../js/world.js';
 
 const problems = [], sums = count(4, 5000), top = worst(sums);
@@ -24,6 +24,13 @@ RINGS.forEach((R, r) => {
 const far = sums[LAST][RINGS.length - 1].flatMap(s => s.rows.map((n, b) => n ? b : -1)).filter(b => b >= 0);
 for (const [what, has] of [['a strain', b => b >= 17 && b <= 31], ['a pocket', b => b >= 32 && b <= 63], ['a cross', b => b >= 128], ['a deep seam', b => b >= 13 && b <= 16], ['a deep strain', b => b >= 64 && b <= 79]]) if (!far.some(has)) problems.push(`the furthest ring has no cell of ${what} in \`${LAST}\``);
 RINGS.forEach((R, r) => { for (const s of sums.now[r]) s.rows.forEach((n, b) => { if (n && ((b >= 9 && b <= 16) || (b >= 64 && b <= 79))) problems.push(`ring ${R}: \`now\`, of generation 1, has ${n} cells of ${BIOMES[b].name}`); }); });
+// The builders' halls (the last stage over `depth`) lift no ring by more than 8 in a hundred over the world without
+// them: their walls are vault, worth five plain cells, and their insides open (the plan's bound; held in the ring at
+// 2,000 cells, where they are thickest, and every ring besides). And there are halls far out, and none near.
+RINGS.forEach((R, r) => {
+  const was = whole(sums.depth[r]), now = whole(sums[LAST][r]), moved = now.grit / now.solid / (was.grit / was.solid) - 1;
+  if (!(moved <= 0.08) || (R < 1500 && moved !== 0) || (R === 2000 && !(moved > 0.005))) problems.push(`ring ${R}: the halls move it ${(moved * 100).toFixed(1)}% over \`depth\``);
+});
 const seams = RINGS.indexOf(700), seamy = sums[LAST][seams].reduce((n, s) => n + s.rows.reduce((m, c, b) => m + (b >= 9 && b <= 12 ? c : 0), 0), 0) / sums[LAST][seams].reduce((n, s) => n + s.asked, 0);
 if (!(seamy > 0.06 && seamy < 0.16)) problems.push(`the seams are ${(seamy * 100).toFixed(1)}% of the ring at 700, not about a tenth`);
 // `now` is the world itself: the same cells asked of a plain World give the same sums.

@@ -11,10 +11,13 @@
 //   --where s    instead of counting: where on seed s a province of each strain lies nearest the core, as cells
 //                east and south of the core. That is a place to send tools/shot.mjs (`--at`), test/rope-fuzz.mjs and
 //                test/regress/i-fuzz-play.mjs (their start), with the tether level that reaches it.
+//   --halls s    instead of counting: the builders' halls of the old deep (js/world.js: `hallOf`) on seeds 1 to s,
+//                what share of the squares in each band of distance holds one, and on seed 1 the nearest hall in
+//                each direction and the nearest to each relic, as cells east and south of the core (its middle).
 //
 // It asks the world itself (`province`, `biomeAt`, `kindAt`) and makes no piece of it. A window of 96 x 96 cells in
 // the middle of a province is counted, if nine tenths of it and more are the province's own ground.
-import { World, C, K, B, BIOMES, PROVINCE, KIND_NAMES, DEEP_R, GRIT, digTime } from '../js/world.js';
+import { World, C, K, B, BIOMES, PROVINCE, KIND_NAMES, DEEP_R, GRIT, digTime, HALL, RELIC_R, DX, DY } from '../js/world.js';
 import { REACH } from '../js/shop.js';
 
 const SIZE = 96;
@@ -139,10 +142,10 @@ export const median = list => list.length ? list.slice().sort((a, b) => a - b)[l
 export const share = (list, from, to = Infinity) => list.length ? list.filter(v => v >= from && v <= to).length / list.length : 0;
 
 if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '/').split('/').pop())) {
-  const options = { seeds: '8', where: '' };
+  const options = { seeds: '8', where: '', halls: '' };
   for (let args = process.argv.slice(2), i = 0; i < args.length; i++) {
     const name = args[i].replace(/^--/, '');
-    if (!(name in options) || args[i + 1] === undefined) { console.error('node tools/strains.mjs [--seeds 8] [--where 7]'); process.exit(2); }
+    if (!(name in options) || args[i + 1] === undefined) { console.error('node tools/strains.mjs [--seeds 8] [--where 7] [--halls 4]'); process.exit(2); }
     options[name] = args[++i];
   }
   if (options.where) {
@@ -153,6 +156,29 @@ if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '
       const far = Math.sqrt(at[0] * at[0] + at[1] * at[1]), level = REACH.findIndex(r => r >= far + 40);
       console.log(`${String(row.id).padStart(3)} ${row.name.padEnd(10)} at ${at[0]},${at[1]}  (${Math.round(far)} out: tether level ${level}, reach ${REACH[level]})`);
     }
+    process.exit(0);
+  }
+  if (options.halls) {
+    const bands = [[1600, 1750], [1750, 1900], [1900, 2050], [2050, 2300]], tally = bands.map(() => [0, 0]), relics = [0, 0], first = {};
+    for (let seed = 1; seed <= +options.halls; seed++) {
+      const w = new World();
+      w.reset(seed);
+      for (let sy = -50; sy < 50; sy++) for (let sx = -50; sx < 50; sx++) {
+        const mx = sx * HALL + HALL / 2, my = sy * HALL + HALL / 2, far = Math.hypot(mx, my), band = bands.findIndex(([a, b]) => far >= a && far < b);
+        if (band < 0) continue;
+        const H = w.hallOf(sx, sy), near = Math.min(...[0, 1, 2, 3].map(d => Math.hypot(mx - DX[d] * RELIC_R, my - DY[d] * RELIC_R))) < 260;
+        tally[band][1]++; if (H) tally[band][0]++;
+        if (near) { relics[1]++; if (H) relics[0]++; }
+        if (!H || seed !== 1) continue;
+        const at = [Math.round((H.x0 + H.x1) / 2) - C, Math.round((H.y0 + H.y1) / 2) - C], way = near ? `by the ${['east', 'south', 'west', 'north'][[0, 1, 2, 3].find(d => Math.hypot(mx - DX[d] * RELIC_R, my - DY[d] * RELIC_R) < 260)]}'s relic` : Math.abs(mx) > Math.abs(my) ? (mx > 0 ? 'east' : 'west') : (my > 0 ? 'south' : 'north');
+        if (!first[way] || far < first[way][1]) first[way] = [at, far, H.x1 - H.x0 + 1, H.y1 - H.y0 + 1];
+      }
+    }
+    console.log(`seeds 1 to ${options.halls}: the share of the squares of ${HALL} cells that hold a builders' hall`);
+    bands.forEach(([a, b], n) => console.log(`  ${a} to ${b} cells out: ${tally[n][0]} of ${tally[n][1]}, ${(tally[n][0] / tally[n][1] * 100).toFixed(1)}%`));
+    console.log(`  within 260 cells of a relic: ${relics[0]} of ${relics[1]}, ${(relics[0] / relics[1] * 100).toFixed(1)}%
+on seed 1, the nearest:`);
+    for (const [way, [at, far, wide, high]] of Object.entries(first)) console.log(`  ${way.padEnd(22)} at ${at[0]},${at[1]} (${Math.round(far)} out), ${wide} by ${high}`);
     process.exit(0);
   }
   const counts = count(+options.seeds), kinds = [K.EMPTY, K.SOFT, K.DENSE, K.ORE_A, K.ORE_B, K.SLATE, K.HAZARD, K.ICE, K.SLAG];

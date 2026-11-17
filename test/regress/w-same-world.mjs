@@ -24,9 +24,10 @@
 // else that is not open.
 // And what generation 2 lays (js/world.js: GEN, `genOf`), under "Generation 2" below: the seams on the diagonals
 // and their set pieces, the flanks' provinces and the deep strains in them, the strains' tells, the corner heralds,
-// twin stones, fossils, a druse's geodes and the shrines, each written out as plainly. The world is read twice: as a
-// new game lays it, every piece of generation 2, and in a second pass at generation 1, as an older game's ground is
-// laid, which must be the world as it was before any of that, cell for cell (`plain(seed, 1)` leaves it all out).
+// twin stones, fossils, a druse's geodes, the shrines and the builders' halls, each written out as plainly. The world
+// is read twice: as a new game lays it, every piece of generation 2, and in a second pass at generation 1, as an older
+// game's ground is laid, which must be the world as it was before any of that, cell for cell (`plain(seed, 1)` leaves
+// it all out).
 //   node test/regress/w-same-world.mjs
 import { world } from '../harness.mjs';
 const { World, N, C, CH, CW, K, B, HOME_R, DEEP_R, RELIC_R, WORLD_R, FIND, WRECK_R, DX, DY, base, cellHash: hash } = world;
@@ -573,8 +574,93 @@ const plain = (seed, gen = 2) => {
       d2 === 0 ? K.HAZARD : u === 0 && v === 1 ? K.DENSE : d2 <= 2 ? K.EMPTY : 'collar'];
     return lays[c];
   };
-  // (`bare`: the ground as it lies with no slab, which is what is asked when one is being tried.)
-  const kindAt = (x, y, b, bare = false) => {
+  // Generation 2: the builders' halls. The world is laid out in squares of 48 cells (the finds' sectors). A square
+  // whose middle is over 1,600 cells out, and under 2,252 (its middle and 48 more short of 2,300), holds one where its
+  // hash (38) is under 0.08, and 0.17 more by 2,000 cells out, rising evenly from 1,600 and no more beyond, and 0.15
+  // more where its middle is within 260 cells of a relic. Its walls are a box 12 + 13 x hash 39 cells wide (floored)
+  // and 12 + 13 x hash 25 high, 4 cells into the square and as many more as hash 26 (across) and 27 (down) say of the
+  // room left, which leaves 4 cells at the far side. Where the square holds a find (any find named there) and the box
+  // with 7 cells round it (its collar, two, and five) holds the find's middle, the box moves the least way across
+  // that clears it, in the square (the lesser way on a tie), or else up or down; or there is no hall. Then there is
+  // none where its collar (the box and two cells round it) would come within 5 cells of a wreck's heart, 7 of a
+  // relic's or a shrine's (as a square's distance); or a slab any sector tries could have a cell, or a pocket's cell
+  // could lie, within a cell of the disc round the collar; or a sector's find has its middle under 6 cells from the
+  // collar, or a site its heart within its reach and 2; or the ground round the collar, as it lies with no hall and no
+  // slab, does not run on, a cell joined to the next by a side, to more than 24 cells beyond the collar.
+  const tryNear = (x, y, room) => {
+    for (let sy = Math.floor((y - C) / 144) - 1; sy <= Math.floor((y - C) / 144) + 1; sy++) for (let sx = Math.floor((x - C) / 144) - 1; sx <= Math.floor((x - C) / 144) + 1; sx++) {
+      if (hash(sx, sy, seed + 80) >= 0.22) continue;
+      const p = 8 + Math.floor(hash(sx, sy, seed + 81) * 9), cx = C + sx * 144 + 40 + Math.floor(hash(sx, sy, seed + 82) * 64), cy = C + sy * 144 + 40 + Math.floor(hash(sx, sy, seed + 83) * 64);
+      if (Math.hypot(cx - x, cy - y) < (hash(sx, sy, seed + 85) < 0.35 ? p + 6.5 : p + 5) + room) return true;
+    }
+    return false;
+  };
+  const halls = new Map(), side = (x, y) => [[x + 1, y], [x, y + 1], [x - 1, y], [x, y - 1]], cell = (x, y) => y * N + x;
+  const hallOf = (sx, sy) => {
+    const id = sx * 1000 + sy;
+    if (halls.has(id)) return halls.get(id);
+    let H = null;
+    const mx = sx * 48 + 24, my = sy * 48 + 24, far = Math.hypot(mx, my), relic = Math.min(...[0, 1, 2, 3].map(d => Math.hypot(mx - DX[d] * RELIC_R, my - DY[d] * RELIC_R)));
+    if (gen >= 2 && far > 1600 && far + 48 < 2300 && hash(sx, sy, seed + 38) < 0.08 + 0.17 * Math.min(1, (far - 1600) / 400) + (relic < 260 ? 0.15 : 0)) {
+      const w = 12 + Math.floor(hash(sx, sy, seed + 39) * 13), h = 12 + Math.floor(hash(sx, sy, seed + 25) * 13);
+      const xs = Array.from({ length: 41 - w }, (_, n) => C + sx * 48 + 4 + n), ys = Array.from({ length: 41 - h }, (_, n) => C + sy * 48 + 4 + n);
+      let x0 = xs[Math.floor(hash(sx, sy, seed + 26) * xs.length)], y0 = ys[Math.floor(hash(sx, sy, seed + 27) * ys.length)], ok = true;
+      const find = findMiddle(sx, sy);
+      if (find && find[0] >= x0 - 7 && find[0] <= x0 + w - 1 + 7 && find[1] >= y0 - 7 && find[1] <= y0 + h - 1 + 7) {
+        const nearest = (list, at, f, size) => list.filter(p => f < p - 7 || f > p + size - 1 + 7).sort((a, b) => Math.abs(a - at) - Math.abs(b - at) || a - b)[0];
+        const across = nearest(xs, x0, find[0], w), down = across === undefined ? nearest(ys, y0, find[1], h) : undefined;
+        if (across !== undefined) x0 = across; else if (down !== undefined) y0 = down; else ok = false;
+      }
+      const x1 = x0 + w - 1, y1 = y0 + h - 1, out = (x, y) => Math.max(x0 - 2 - x, x - x1 - 2, y0 - 2 - y, y - y1 - 2, 0);
+      const mid = [(x0 + x1) / 2, (y0 + y1) / 2], round = Math.hypot(w + 3, h + 3) / 2 + 1;
+      if (ok && wrecks.some(([x, y]) => out(x, y) < 5)) ok = false;
+      if (ok && [...[0, 1, 2, 3].map(d => [C + DX[d] * RELIC_R, C + DY[d] * RELIC_R]), ...SHRINES.map(([x, y]) => [C + x, C + y])].some(([x, y]) => out(x, y) < 7)) ok = false;
+      if (ok && (tryNear(mid[0], mid[1], round) || meets(mid[0], mid[1], round))) ok = false;
+      for (let fy = sy - 1; ok && fy <= sy + 1; fy++) for (let fx = sx - 1; fx <= sx + 1; fx++) { const m = findMiddle(fx, fy); if (m && out(m[0], m[1]) < 6) ok = false; }
+      for (let ty = Math.floor((y0 - 10 - C + 72) / 144); ok && ty <= Math.floor((y1 + 10 - C + 72) / 144); ty++) for (let tx = Math.floor((x0 - 10 - C + 72) / 144); tx <= Math.floor((x1 + 10 - C + 72) / 144); tx++) {
+        const S = siteOf(tx, ty);
+        if (S && out(S.cx, S.cy) < S.reach + 2) ok = false;
+      }
+      if (ok) {
+        const ground = (x, y) => kindAt(x, y, biomeAt(x, y), true, true) !== K.EMPTY, got = new Set(), list = [];
+        for (let y = y0 - 3; y <= y1 + 3; y++) for (let x = x0 - 3; x <= x1 + 3; x++) if (out(x, y) === 1) { got.add(cell(x, y)); if (ground(x, y)) list.push([x, y]); }
+        let held = false;
+        for (let n = 0; n < list.length && !held; n++) {
+          const [qx, qy] = list[n];
+          if (out(qx, qy) > 24) held = true;
+          for (const [u, v] of side(qx, qy)) if (out(u, v) > 0 && !got.has(cell(u, v))) { got.add(cell(u, v)); if (ground(u, v)) list.push([u, v]); }
+        }
+        // (Walls a cell thick, or two near a relic; its doors in the west and east walls where hash 28 is under a half,
+        // else the north and south; its store against the north or west wall where hash 30 is under a half, else the
+        // south or east.)
+        if (held) H = { x0, y0, x1, y1, wall: relic < 260 ? 2 : 1, ew: hash(sx, sy, seed + 28) < 0.5, store: hash(sx, sy, seed + 30) < 0.5 ? 0 : 1 };
+      }
+    }
+    halls.set(id, H);
+    return H;
+  };
+  // What a hall lays, a cell u, v from its north-west corner (`wide` by `high` cells, walls `t` thick): its collar,
+  // laid with no caves and no find; its walls, vault, but for its doors, soft rock in the two cells across the middle
+  // of each of two opposite walls (the middle two of an even count, the middle and the one before of an odd), right
+  // through the wall; and inside, open, but for its store, rich ore in the three cells across the middle of the
+  // inside (the middle one and one each side) and two deep, against the wall its hash says.
+  const hallAt = (x, y) => {
+    const H = hallOf(Math.floor((x - C) / 48), Math.floor((y - C) / 48));
+    if (!H || x < H.x0 - 2 || x > H.x1 + 2 || y < H.y0 - 2 || y > H.y1 + 2) return null;
+    if (x < H.x0 || x > H.x1 || y < H.y0 || y > H.y1) return 'collar';
+    const u = x - H.x0, v = y - H.y0, wide = H.x1 - H.x0 + 1, high = H.y1 - H.y0 + 1, t = H.wall;
+    const inside = u >= t && u < wide - t && v >= t && v < high - t;
+    if (inside) {
+      const along = H.ew ? u : v, size = H.ew ? wide : high, deep = H.ew ? v : u, depth = H.ew ? high : wide;
+      const store = Math.abs(along - Math.floor((size - 1) / 2)) <= 1 && (H.store ? deep >= depth - t - 2 : deep < t + 2);
+      return store ? K.ORE_B : K.EMPTY;
+    }
+    const door = H.ew ? (u < t || u >= wide - t) && [Math.floor(high / 2) - 1, Math.floor(high / 2)].includes(v) : (v < t || v >= high - t) && [Math.floor(wide / 2) - 1, Math.floor(wide / 2)].includes(u);
+    return door ? K.SOFT : K.VAULT;
+  };
+  // (`bare`: the ground as it lies with no slab, which is what is asked when one is being tried; `hallless`, with no
+  // builders' hall, which is what is asked when one is.)
+  const kindAt = (x, y, b, bare = false, hallless = false) => {
     const dx = x - C, dy = y - C, r = Math.sqrt(dx * dx + dy * dy);
     if (r > WORLD_R + (noise(x / 5, y / 5, seed + 4) - 0.5) * 3) return K.BEDROCK;
     if (Math.abs(dx) <= 2 && Math.abs(dy) <= 2) return K.EMPTY;
@@ -612,7 +698,10 @@ const plain = (seed, gen = 2) => {
     // A seam's set piece where no slab is (generation 2), and round it its collar, laid as a slab's ground is.
     const set = slab === 'out' && gen >= 2 ? setPiece(x, y) : null;
     if (typeof set === 'number') return set;
-    const solid = slab !== 'out' || set === 'collar';
+    // A builders' hall where no slab and no set piece is (generation 2), and round it its collar, likewise.
+    const hall = slab === 'out' && set === null && !hallless ? hallAt(x, y) : null;
+    if (typeof hall === 'number') return hall;
+    const solid = slab !== 'out' || set === 'collar' || hall === 'collar';
     const find = r > 12 && !solid ? findAt(x, y) : -1;
     if (find >= 0) return find;
     const S = ROW(b), h = hash(x, y, seed + 9), deep = b > 4 && b < 9, kin = S.kin ?? base(b);
@@ -703,10 +792,10 @@ const plain = (seed, gen = 2) => {
     if (S.threads && (k === K.SOFT || k === K.DENSE) && Math.abs(noise(x / 14, y / 14, seed + 90) - 0.5) < S.threads && noise(x / 40, y / 40, seed + 91) > 0.5) k = K.FAULT;
     return k;
   };
-  return { wrecks, biomeAt, kindAt, firstSlab, slabIn, zoneOf, siteOf, sets };
+  return { wrecks, biomeAt, kindAt, firstSlab, slabIn, zoneOf, siteOf, sets, hallOf };
 };
 
-let pieces = 0, cells = 0, wrong = 0, first = '', slabs = 0, cobbles = 0, pockets = 0, sites = 0, corners = 0;
+let pieces = 0, cells = 0, wrong = 0, first = '', slabs = 0, cobbles = 0, pockets = 0, sites = 0, corners = 0, halls = 0;
 const kinds = new Set(), biomes = new Set(), rare = new Set(), older = { pieces: 0, kinds: new Set(), biomes: new Set() };
 // One world of seed `seed` laid by generation `gen`'s rules, beside the plain reading of the same: `older` for the
 // second pass, at generation 1, where what is met is kept apart.
@@ -774,6 +863,15 @@ const compare = (seed, gen, met) => {
     for (const [u, v] of [[-6, -6], [6, -6], [-6, 6], [6, 6]]) round(S.cx + u, S.cy + v, 0);
   }
   for (const S of hearts) if (ref.kindAt(S.cx, S.cy, ref.biomeAt(S.cx, S.cy)) === K.RARE) rare.add(S.type);
+  // Builders' halls: the hall of every square of seven by seven round the north's relic, round the north-east diagonal
+  // 2,000 cells out and round the south-west's 1,730 cells out. The game must lay one in the same squares as the plain
+  // reading, in the same place, of the same shape, and nowhere else; and the pieces of the first eight are compared.
+  for (const [mx, my] of [[0, -42], [29, -30], [-26, 25]]) for (let sy = my - 3; sy <= my + 3; sy++) for (let sx = mx - 3; sx <= mx + 3; sx++) {
+    const H = ref.hallOf(sx, sy), mine = w.hallOf(sx, sy), shape = H => H && [H.x0 - C, H.y0 - C, H.x1 - C, H.y1 - C, H.wall, H.ew, H.store].join();
+    if (shape(H) !== shape(mine)) { wrong++; first ||= `seed ${seed}${at} square ${sx},${sy}: the game lays ${mine ? `a hall ${shape(mine)}` : 'no hall'}, the plain reading ${H ? `one ${shape(H)}` : 'none'}`; }
+    if (!H) continue;
+    if (halls++ % 4 === 0) { round(H.x0, H.y0, 0); round(H.x1, H.y1, 0); }
+  }
   // Asked in the game's order (a piece at a time, as play makes them) and then a second time in another order, so
   // what the layers remember from the cell before is put to the test.
   for (const id of ids) {
@@ -795,9 +893,10 @@ const now = { pieces: 0, kinds, biomes };
 for (const seed of [1, 7, 34, 99991, 123456789]) compare(seed, 2, now);
 // And at generation 1, as an older game's ground is laid: the places generation 2 lays anew are the world as it
 // was, and none of what it lays is met.
+const newer = halls;
 for (const seed of [7, 123456789]) compare(seed, 1, older);
 pieces = now.pieces;
-console.log(JSON.stringify({ pieces, older: older.pieces, cells, kindsSeen: kinds.size, biomesSeen: biomes.size, slabs, cobbles, pockets, sites, corners, wrong }));
+console.log(JSON.stringify({ pieces, older: older.pieces, cells, kindsSeen: kinds.size, biomesSeen: biomes.size, slabs, cobbles, pockets, sites, corners, halls: newer, wrong }));
 console.log(wrong ? `DEFECT: the world a seed makes has changed: ${first}` : 'no defect');
 const crosses = [...biomes].filter(b => b >= 128), donors = new Set(crosses.map(b => OTHERS[cross(b).kin][Math.floor((b - 128) % 15 / 5)])), shapes = new Set(crosses.map(b => (b - 128) % 5));
 const NEWER = [9, 10, 11, 12, 13, 14, 15, 16, 64, 65, 66, 67], NEW_KINDS = [K.GLASS, K.FAULT, K.TWIN, K.FOSSIL, K.CAP];
@@ -809,7 +908,8 @@ if (!wrong && (slabs < 20 || cobbles < 8 || !kinds.has(K.KEY) || !kinds.has(K.PR
 if (!wrong && (sites < 150 || !kinds.has(K.RARE) || rare.size < 4 || corners < 16)) console.log(`DEFECT: ${sites} rare hazards' sites were met (${corners} of them corners' heralds), with ${rare.size} of the 4 types at their hearts: ${[...rare]}`);
 const missing = [...NEWER.filter(b => !biomes.has(b)).map(b => `ground ${b}`), ...NEW_KINDS.filter(k => !kinds.has(k)).map(k => `kind ${k}`)];
 if (!wrong && missing.length) console.log(`DEFECT: of what generation 2 lays, not met: ${missing.join(', ')}`);
+if (!wrong && (newer < 30 || halls !== newer)) console.log(`DEFECT: ${newer} builders' halls were met at generation 2, and ${halls - newer} at generation 1`);
 const leaked = [...NEWER.filter(b => older.biomes.has(b)).map(b => `ground ${b}`), ...NEW_KINDS.filter(k => k !== K.CAP && older.kinds.has(k)).map(k => `kind ${k}`)];
 if (!wrong && (leaked.length || older.pieces < 100)) console.log(`DEFECT: at generation 1, ${older.pieces} pieces met ${leaked.join(', ') || 'nothing of generation 2'}`);
 process.exit(wrong || sites < 150 || corners < 16 || !kinds.has(K.RARE) || rare.size < 4 || slabs < 20 || cobbles < 8 || !kinds.has(K.KEY) || !kinds.has(K.PRISM) || kinds.size < 19 || biomes.size - crosses.length < 30 || crosses.length < 20 || donors.size < 4 || shapes.size < 5
-  || pockets < 40 || !kinds.has(K.MINERAL) || !kinds.has(K.NODE) || ![32, 33, 34].every(b => biomes.has(b)) || missing.length || leaked.length || older.pieces < 100 ? 1 : 0);
+  || pockets < 40 || !kinds.has(K.MINERAL) || !kinds.has(K.NODE) || ![32, 33, 34].every(b => biomes.has(b)) || missing.length || leaked.length || older.pieces < 100 || newer < 30 || halls !== newer ? 1 : 0);
