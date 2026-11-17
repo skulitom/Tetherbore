@@ -1582,14 +1582,18 @@ export class World {
   // it never holds more than a few hundred.
   see(cx, cy, radius) {
     let fresh = false;
-    for (let y = cy - radius; y <= cy + radius; y++) for (let x = cx - radius; x <= cx + radius; x++) {
-      const id = ((y >> 6) << 8) | (x >> 6), p = this.piece(id), at = ((y & 63) << 6) | (x & 63);
-      if (p.seen[at]) continue;
-      this.keep(id, p); p.seen[at] = 1; this.touched.add(id); this.stirred++; fresh = true;
-      const k = p.kind[at], P = (BIOMES[p.biome[at]] ?? BIOMES[0]).pocket;
-      if (NOTABLE[k] !== undefined || (P !== null && k === (P.kind ?? K.MINERAL))) this.notice(x, y, k, P, p.biome[at]);
-    }
+    for (let y = cy - radius; y <= cy + radius; y++) for (let x = cx - radius; x <= cx + radius; x++) if (this.seeCell(x, y)) fresh = true;
     return fresh;
+  }
+  // One cell shown, as `see` shows each of its square (and the drill's lamp each cell its light falls on across open
+  // ground, js/game.js: `lampSees`). Returns whether it was seen for the first time.
+  seeCell(x, y) {
+    const id = ((y >> 6) << 8) | (x >> 6), p = this.piece(id), at = ((y & 63) << 6) | (x & 63);
+    if (p.seen[at]) return false;
+    this.keep(id, p); p.seen[at] = 1; this.touched.add(id); this.stirred++;
+    const k = p.kind[at], P = (BIOMES[p.biome[at]] ?? BIOMES[0]).pocket;
+    if (NOTABLE[k] !== undefined || (P !== null && k === (P.kind ?? K.MINERAL))) this.notice(x, y, k, P, p.biome[at]);
+    return true;
   }
   notice(x, y, k, P, b = 0) {
     if (this.spotted.length >= 400) return;

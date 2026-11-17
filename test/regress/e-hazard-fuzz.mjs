@@ -3,20 +3,23 @@
 // stock tether faults, spans in a closed seam, the drill's own cell being rock, and how long the drill sat unable to
 // move while steered.
 // Fails on any frame with a fault. (Not for a start in the north: the frost has no hazard of its own.)
-//   node test/regress/e-hazard-fuzz.mjs [seed=1] [turns=500] [start x=0] [start y=170] [density=0.08] [reach=5] [second | rare]
+//   node test/regress/e-hazard-fuzz.mjs [seed=1] [turns=500] [start x=0] [start y=170] [density=0.08] [reach=5] [second | rare | plough, a comma list]
 // With `second`, every ground that has a hazard is given a second one for the flight (the south spore pods, the
 // west charged crystals, the east lava), the world lays it as it lays any row's, and half the hazards planted are
 // the second: lava among moss, arcs beside lava, pods among crystals. With `rare`, what is planted is the rare
 // hazard of the ground's direction (K.RARE), with no site round it: rime bells tolling their rings open (in the north
-// too), fumaroles firing, glowworms swimming and lodestones pulling the ore near them, many to a screen.
+// too), fumaroles firing, glowworms swimming and lodestones pulling the ore near them, many to a screen. With
+// `plough`, the drill has the bit's last level (MK8) and the diamond tip, and ploughs the plain ground among the
+// hazards keeping its run (js/game.js: `ploughs`), which they still stop.
 import { makeGame, tetherFaults, seamFaults, moreFaults, random, bandRel, rel, C, N, K } from './lib/terrain.mjs';
 import { world, tunnel, setDown, wander } from '../harness.mjs';
-const [seed = 1, turns = 500, sx = 0, sy = 170, density = 0.08, reach = 5] = process.argv.slice(2).map(Number), second = process.argv[8] === 'second', rare = process.argv[8] === 'rare';
+const [seed = 1, turns = 500, sx = 0, sy = 170, density = 0.08, reach = 5] = process.argv.slice(2).map(Number), modes = (process.argv[8] ?? '').split(',');
+const second = modes.includes('second'), rare = modes.includes('rare'), plough = modes.includes('plough');
 if (second) {
   const NEXT = { lava: { type: 'spore', rate: 1 }, spore: { type: 'spark', rate: 1 }, spark: { type: 'lava', rate: 1, t: 0.78 } };
   for (const row of world.BIOMES.slice(1, 9)) if (row.haz) world.biome({ ...row, haz2: NEXT[row.haz.type] });
 }
-const game = await makeGame(seed, { tether: reach, drill: 4 });
+const game = await makeGame(seed, { tether: reach, drill: plough ? 7 : 4, ...plough && { diamond: 1 } });
 const d = game.drill, w = game.world, rnd = random(seed + 77);
 // The tunnel is cut before the hazards are planted round its end (none in it), and the drill set down after.
 tunnel(game, sx, sy);

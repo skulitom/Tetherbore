@@ -48,15 +48,18 @@ export const giantOf = (n, area = 0) => isHalf(n, area) ? GIANTS.length + 1 : GI
 // The title of a haul of `n` cells with what was found in it, lying mostly in ground `row` (null: no one ground),
 // made by a loop round `area` cells (0: not known, as when a haul is staged by hand):
 // [title, giant, whether the place named it]. Half of everything outshouts anything; a relic and a wreck's part are
-// told before any size, as they are rarer than any; a cache and a rare hazard are told before any but a giant's.
-export function haulTitle(n, { relic = -1, parts = 0, caches = 0, rare = null } = {}, row = null, area = 0) {
+// told before any size, as they are rarer than any; a cache and a rare hazard are told before any but a giant's,
+// a rare hazard caught awake with the live catch bought as caught live (`live`); and a haul that is a link in the
+// flywheel's run of two or more before it (`spin`, how many) by that before the place it lies in or its size.
+export function haulTitle(n, { relic = -1, parts = 0, caches = 0, rare = null, live = false, spin = 0 } = {}, row = null, area = 0) {
   const giant = giantOf(n, area), place = n >= 30 ? placeHaul(row) : null;
   if (giant > GIANTS.length) return ['HALF THE WORLD!', giant, false];
   if (relic >= 0) return ['RELIC!', giant, false];
   if (parts) return ['WRECK PART! PAY +10%', giant, false];
   if (giant) return [GIANTS[giant - 1][1], giant, false];
   if (caches) return ['CACHE!', 0, false];
-  if (rare) return [`${SPOT[rare][0]}!`, 0, false];
+  if (rare) return [live ? 'CAUGHT LIVE!' : `${SPOT[rare][0]}!`, 0, false];
+  if (spin >= 2) return [`SPIN x${spin}`, 0, false];
   if (place) return [place, 0, true];
   return [SIZES.find(([at]) => n >= at)?.[1] ?? 'HAUL', 0, false];
 }
@@ -84,6 +87,9 @@ export const METAL = 3, METALS = [K.STEEL, K.KEY];
 // How far from a crystal its arc knocks the drill, in cells either way (it was 3.5: most of the screen's width).
 const ARC = 2.5;
 export const DEATH = 1.2;
+// The black box's level from which it keeps what a lost trip learnt, and a share of its gems and specimens
+// (`keepLore`): its third, 75%.
+const LORE = 3;
 // How long each blow that knocks the hull stuns, in seconds: lava cut into, lava touched, an arc, a spore burst.
 // (Before there was a hull an arc stunned for 0.7 s and lava for 0.5: with a pip gone as well, and SHIELD running
 // from the blow, that left under a second to get clear.)
@@ -147,6 +153,43 @@ const gap = (px, py, ax, ay, bx, by) => {
 // square on to each block, and the loop a thumb draws is the loop that is cut. Ore cut into there says CRUSHED no
 // more often than every CRUSH_EVERY seconds: a plough goes through a mineral a second.
 const PLOUGH = 0.3, CRUSH_EVERY = 1;
+// From its sixth level (MK6) the bit ploughs as ash is ploughed whatever it cuts in no more than so many seconds,
+// by its level (`ploughs`): soft rock, ice and the plainer ore at MK6; dense rock, basalt, slag and the richer ore at
+// MK7; slate, and steel with the diamond tip, at MK8. Only plain ground is ploughed (`ploughable`): never a hazard,
+// a find, a key, a cache, a relic, a wreck or a pocket's ground, which stop the run as they always have. And a cut
+// takes whole frames: the late bits cut a cell in two or three, so what time a ploughed cut has left in the frame it
+// ends goes on to the next cell (the drill's `carry`), or MK7 and MK8 would be rounded to the same frames as MK6.
+// (The run began again at every cell and the frame was whole: in soft rock MK6 cut no faster than MK5 nor MK8 than
+// MK7, and in dense rock MK5 to MK8 went a third faster where the bit's table says more than twice.)
+const PLOUGH_BIT = [0, 0, 0, 0, 0, 0.05, 0.06, 0.1];
+// The bellows (the lava skin's second level): woken lava quenches the slag within two cells of it, not only on its
+// four sides. The twenty-four cells round a cell out to two either way, as steps of its number, made once.
+const RING2 = [];
+for (let v = -2; v <= 2; v++) for (let u = -2; u <= 2; u++) if (u || v) RING2.push(v * N + u);
+// The capacitor (the arc coil's second level): an arc taken in charges the bit for so many seconds, and the next
+// cut while it holds shatters the dense rock and slate round the cell cut (`shatters`).
+const CHARGE = 8;
+// The lamp sees across open ground (`lampSees`): RAYS rays from the middle of the drill's cell, each the cells it
+// crosses in order out to the lamp's reach, as steps either way (dx, dy) one after another; `ends` is where each
+// ray's cells end. Made once for each reach the lamp has, when it first has it.
+const RAYS = { reach: -1, steps: null, ends: null }, RAY_COUNT = 64;
+function rays(reach) {
+  if (RAYS.reach === reach) return RAYS;
+  const steps = [], ends = new Int32Array(RAY_COUNT);
+  for (let r = 0; r < RAY_COUNT; r++) {
+    // (The cells a line crosses side to side, never corner to corner: a light seen through a crack between two
+    // cells that meet at a corner would see through a wall laid on the slant.)
+    const a = (r + 0.5) * 2 * Math.PI / RAY_COUNT, cells = cellsAlong(C + 0.5, C + 0.5, C + 0.5 + Math.cos(a) * reach, C + 0.5 + Math.sin(a) * reach);
+    for (let n = 1; n < cells.length; n++) {
+      const u = cells[n] % N - C, v = Math.floor(cells[n] / N) - C;
+      if (u * u + v * v > reach * reach) break;
+      steps.push(u, v);
+    }
+    ends[r] = steps.length;
+  }
+  RAYS.reach = reach; RAYS.steps = Int16Array.from(steps); RAYS.ends = ends;
+  return RAYS;
+}
 // A finger on the lab's list that moves less than LAB_TAP pixels is a tap; let go, the list runs on until it is
 // slower than LAB_REST pixels a second.
 const LAB_TAP = 5, LAB_REST = 6;
@@ -255,6 +298,10 @@ export class Game {
     this.chart = { zoom: 1, x: HX, y: HY };                           // the chart's view: how far it is zoomed in, and the cell at its middle
     this.chartRect = null; this.chartBase = 1; this.chartTouch = new Map();   // where the chart is on the screen this frame, its cells to a pixel unzoomed, the fingers on it
     this.shopTab = 'rig'; this.labTab = 'stats'; this.boost = 0; this.mendIn = 0;   // the tab each panel is open at; a spore's drive, in seconds left; until the mender's next pip
+    // The capacitor's charge, in seconds left (CHARGE); and the flywheel's run of quick hauls, when the last was and
+    // how many there have been (`payOf`, `haul`): kept apart from the chain a pocket's mineral pays for, and made
+    // once, never replaced.
+    this.charge = 0; this.spin = { t: -99, n: 0 };
     // The last frames that took long (see `frameTook`), kept apart from the game's own save, to find what freezes.
     this.probe = {}; this.stalls = [];
     try { this.stalls = JSON.parse(localStorage.getItem('tetherbore-stalls') ?? '[]'); } catch { this.stalls = []; }
@@ -296,13 +343,14 @@ export class Game {
     this.sparks.clear(); this.lavaVol.clear(); this.quenched.clear(); this.frostOpen.length = 0; w.lava.clear(); w.dug.clear();
     this.bells.clear(); this.vents.clear(); this.worms.clear(); this.stones.clear(); this.jets.length = 0; this.flying.length = 0; this.flares.length = 0;
     this.fuses = []; this.glowRun = 0; this.glowAt = -9;      // rings of fuse that are burning; and the caps lit one after another, and when the last was
-    this.drill = { x: HX, y: HY, px: HX, py: HY, vx: 0, vy: 0, ang: 0, mode: 'free', tx: 0, ty: 0, speed: 0, dig: -1, digT: 0, digDur: 1, stun: 0, squash: 0, run: 0, armed: true, cell: -1, home: true };
+    this.drill = { x: HX, y: HY, px: HX, py: HY, vx: 0, vy: 0, ang: 0, mode: 'free', tx: 0, ty: 0, speed: 0, dig: -1, digT: 0, digDur: 1, carry: 0, stun: 0, squash: 0, run: 0, armed: true, cell: -1, home: true };
     this.cam = { x: HX * T, y: HY * T };
     this.band = [[HX, HY], [HX, HY]];
     this.pieces = []; this.pieceOf = new CellBook(); this.taken.length = 0; this.homeKey = ''; this.homeEnd = [HX, HY];
     this.chain = null; this.hauled = null; this.specLine = null; this.pipsFor = ''; this.drifts.clear(); this.crushedAt = -9;
     // The hull is whole on a new game and on a game loaded: what is saved is its level, never its dents.
     this.dents = 0; this.shield = 0; this.tow = null; this.knocked = 0; this.mended = 0; this.notice = null; this.smokeIn = 0; this.boost = 0; this.mendIn = 0;
+    this.charge = 0; this.spin.t = -99; this.spin.n = 0;
     w.see(C, C, this.val('scanner') + 4);
     // Where the game begins is where the player already is: its name does not come up, now or as a new place later.
     const here = this.placeAt(this.di);
@@ -1029,6 +1077,21 @@ export class Game {
   }
   // The tether lets the drill go this far from the core and no further, whatever road it takes.
   within(x, y) { return Math.hypot(x - HX, y - HY) <= this.val('tether') + 0.3; }
+  // Is the cell the bit is pressed into (`i`; -1 for none, when the ground the drill stands in says) ploughed: its
+  // ground cuts like air (PLOUGH), or the late bit goes through it in a blink (PLOUGH_BIT) and it is plain ground?
+  ploughs(i) {
+    const w = this.world;
+    if (w.row(i >= 0 ? i : this.di).dig < PLOUGH) return true;
+    const blink = PLOUGH_BIT[this.S.lv.drill] ?? 0;
+    return blink > 0 && i >= 0 && this.cutTime(w.k(i), w.row(i)) <= blink && this.ploughable(i);
+  }
+  // Plain ground, which the late bit may plough: rock, ore, ice, basalt, slag, steel, slate, glass and faults
+  // (`CRUSH`, what a rare hazard may open), in no pocket, no hazard, and no part of a find as the world laid it (a
+  // geode's shell and its ore, a prism's ore round it), so the drill stops at each of those as it always has.
+  ploughable(i) {
+    const w = this.world;
+    return CRUSH[w.k(i)] && w.row(i).pocket === null && w.findAt(i % N, Math.floor(i / N)) < 0;
+  }
   // How long a cell of kind `k` in ground `row` takes to cut with the bit the drill has: metal METAL times as long
   // without the diamond tip.
   cutTime(k, row) { return digTime(k, row) * (METALS.includes(k) && !this.S.lv.diamond ? METAL : 1) / SPEED[this.S.lv.drill]; }
@@ -1168,7 +1231,10 @@ export class Game {
       // past a block at speed, the drill may be stopped by one that is no longer before the bit when the frame
       // ends: in ploughed ground, which is the ground it stands in when there is no cell to say, that does not
       // break its run either. With a bit that cuts ash in one frame it happens several times a second.)
-      const plough = w.row(i >= 0 ? i : this.di).dig < PLOUGH;
+      // (And from MK6 on, ground the bit goes through in a blink: `ploughs`. What time the last cut had left over in
+      // its frame the next cell begins with, where both are ploughed by the late bit; otherwise it begins at none.)
+      const plough = this.ploughs(i), carry = d.carry, late = plough && this.S.lv.drill >= 5;
+      d.carry = 0;
       if (!plough) d.run = 0;
       if (i < 0) { d.dig = -1; if (hitX) d.vx = 0; if (hitY) d.vy = 0; }
       else {
@@ -1178,7 +1244,7 @@ export class Game {
           d.dig = -1;
         } else if (!this.within((i % N) + 0.5, Math.floor(i / N) + 0.5)) { if (this.edge <= 0) this.refuse(); d.dig = -1; }
         else {
-          if (d.dig !== i) { d.dig = i; d.digT = 0; d.digDur = this.cutTime(k, w.row(i)); d.digX = ix; d.digY = iy; this.foresee(i, this.alsoOpens(i)); }
+          if (d.dig !== i) { d.dig = i; d.digT = late ? carry : 0; d.digDur = this.cutTime(k, w.row(i)); d.digX = ix; d.digY = iy; this.foresee(i, this.alsoOpens(i)); }
           const before = d.digT;
           d.digT += dt;
           if (((d.digT * 30) | 0) !== ((before * 30) | 0) && d.digDur > 0.15) { sfx.grind(); if (d.digDur > 0.4) this.shake = Math.max(this.shake, 1.2); }
@@ -1190,10 +1256,15 @@ export class Game {
           else if (Math.abs(cx - d.x) > Math.abs(cy - d.y)) { const ny = d.y + (cy - d.y) * Math.min(1, dt * 6); if (this.free(d.x, ny) && inReach(d.x, ny)) d.y = ny; }
           else { const nx = d.x + (cx - d.x) * Math.min(1, dt * 6); if (this.free(nx, d.y) && inReach(nx, d.y)) d.x = nx; }
           this.tend();
-          if (d.digT >= d.digDur) this.finishDig(i);
+          if (d.digT >= d.digDur) {
+            // (No more than a frame's time is carried, however quick the cut: a cell a frame is the most there is.)
+            const left = Math.min(dt, d.digT - d.digDur);
+            this.finishDig(i, plough);
+            if (late && d.mode !== 'dead') d.carry = left;
+          }
         }
       }
-    } else { if (d.dig >= 0) this.preview = []; d.dig = -1; }
+    } else { if (d.dig >= 0) this.preview = []; d.dig = -1; d.carry = 0; }
     // (The cut may have been into a hazard, and the blow the hull's last.)
     if (d.mode === 'dead') { this.look(); return; }
     // Close to the core and heading in, the tether takes over and reels the drill the rest of the way home.
@@ -1257,7 +1328,9 @@ export class Game {
     if (cell !== d.cell) {
       const r = this.val('scanner'), x = Math.floor(d.x), y = Math.floor(d.y), px = d.cell < 0 ? -1e9 : d.cell % N, py = d.cell < 0 ? -1e9 : Math.floor(d.cell / N);
       d.cell = cell;
-      if (this.world.see(x, y, r)) this.version++;
+      // (And with a lamp bought, its light across open ground: `lampSees`.)
+      const scanned = this.world.see(x, y, r), lit = this.S.lv.lamp >= 1 && this.lampSees(x, y);
+      if (scanned || lit) this.version++;
       // Ground that has come into view is looked at: an island among it is known as loose from the first sight.
       for (let v = y - r; v <= y + r; v++) for (let u = x - r; u <= x + r; u++) if (Math.abs(u - px) > r || Math.abs(v - py) > r) this.spot(v * N + u);
       this.arrive(cell);
@@ -1271,6 +1344,28 @@ export class Game {
     // Leaving the core is the docking the game goes back to if the drill is lost: everything up to now is kept.
     if (!home && d.home) this.dockMark();
     d.home = home;
+  }
+  // The lamp's light falls across open ground as far as it reaches (its value, in cells), and the drill sees what it
+  // falls on as the scan sees what lies in the rock round it: a cavern's far wall, a hazard, a prism or a cache in
+  // it are drawn and called out from across the cave. Each of RAYS rays from the middle of the drill's cell goes
+  // on through open ground, lighting the four cells beside each open cell it crosses, and stops at the first cell
+  // of ground it meets (lit already, beside the last open one). (It lit only the cells the rays crossed: past ten
+  // cells out a stone could stand between two rays and never be seen.) Asked when the drill comes into another
+  // cell (`look`), of a table made once; nothing is made. Returns whether anything was seen anew.
+  lampSees(x, y) {
+    const w = this.world, { steps, ends } = rays(Math.floor(this.val('lamp')));
+    let fresh = false;
+    for (let r = 0, n = 0; r < RAY_COUNT; n = ends[r++]) {
+      for (; n < ends[r]; n += 2) {
+        const u = x + steps[n], v = y + steps[n + 1];
+        if (w.k(v * N + u) !== K.EMPTY) break;
+        if (w.seeCell(u + 1, v)) fresh = true;
+        if (w.seeCell(u - 1, v)) fresh = true;
+        if (w.seeCell(u, v + 1)) fresh = true;
+        if (w.seeCell(u, v - 1)) fresh = true;
+      }
+    }
+    return fresh;
   }
   // The place a cell lies in: the row of its ground, and the key the place is known by. A pocket is a place of
   // its own (`zone`: the world's record of it), so two pockets of one kind are two places; any other ground is one
@@ -1463,6 +1558,8 @@ export class Game {
     if (here === 'spark') also = also.concat(this.shatters(i % N, Math.floor(i / N)));
     // A rime bell cut into tolls at once: its ring of ice opens with the cut.
     if (here === 'bell') also = also.concat(this.ringOf(i).filter(j => this.crushes(j)));
+    // A bit charged by the capacitor shatters the hard ground round the cut with it.
+    if (this.charge > 0) also = also.concat(this.shatters(i % N, Math.floor(i / N), true));
     for (let s = 0; s < 4; s++) {
       const j = i + DY[s] * N + DX[s];
       const haz = w.hazAt(j);
@@ -1472,7 +1569,9 @@ export class Game {
     const open = also.filter(j => j !== i && w.k(j) !== K.EMPTY), found = w.freed(cells, 2000, open.length ? new Set(open) : null);
     this.preview = [{ i, cells: open.concat(...found) }];
   }
-  finishDig(i) {
+  // A cell cut through. `ploughed`: the late bit ploughed it (`ploughs`), so CRUSHED is said no more often than
+  // in ground that cuts like air.
+  finishDig(i, ploughed = false) {
     const w = this.world, d = this.drill, x = i % N, y = Math.floor(i / N), k = w.k(i), b = w.b(i), row = rowOf(b), haz = hazOf(k, row);
     // (What the pocket's own rule opens with the cut is asked while the cell still stands.)
     const also = this.alsoOpens(i);
@@ -1489,7 +1588,7 @@ export class Game {
     // (A hazard cut into is crushed too, a rare one as much as lava, and is a sample: the lab learns from what goes
     // off, before it goes off. So is a keystone's iron.)
     const key = this.sampleOf(k, row);
-    if (k === K.ORE_A || k === K.ORE_B || k === K.STEEL || k === K.PRISM || k === K.RARE || mineral || key) this.analyse(key, x, y, row.dig >= PLOUGH || this.time - this.crushedAt >= CRUSH_EVERY);
+    if (k === K.ORE_A || k === K.ORE_B || k === K.STEEL || k === K.PRISM || k === K.RARE || mineral || key) this.analyse(key, x, y, (row.dig >= PLOUGH && !ploughed) || this.time - this.crushedAt >= CRUSH_EVERY);
     // (A pup beside the cut is fed by ore crushed; a roost of bats beside it wakes. The creatures only read it.)
     this.fauna.crushed(this, i, k);
     this.shake = Math.max(this.shake, 1 + tough * 0.5);
@@ -1504,6 +1603,15 @@ export class Game {
     }
     if (also.length) { w.see(x, y, 2); this.shake = Math.max(this.shake, 2.5); }
     if (k === K.NODE && row.pocket?.twist === 'fuse') this.burn(i);
+    // Charged by an arc taken in (the capacitor), the bit lets it go into this cut: the dense rock and slate round the
+    // cell shatter, and pay nothing. (Before what the cut wakes: an arc it sets off charges the bit afresh.)
+    if (this.charge > 0) {
+      const burst = this.shatters(x, y, true);
+      this.charge = 0;
+      this.openShattered(burst); opened.push(...burst);
+      this.popup(x, y - 1, 'DISCHARGE', '#d8b8ff'); sfx.zap();
+      if (burst.length) { w.see(x, y, 2); this.shake = Math.max(this.shake, 4); this.effect('zap', 'impact', (x + 0.5) * T, (y + 0.5) * T); }
+    }
     if (haz) for (const j of this.trigger(i, haz, true)) if (j !== i) opened.push(j);
     for (let s = 0; s < 4; s++) {
       const j = (y + DY[s]) * N + x + DX[s];
@@ -1627,12 +1735,19 @@ export class Game {
   //   relic             which direction's relic is among the cells, or -1
   //   caches, parts     caches; and wreck parts not held yet (`wrecks`: which wrecks they are)
   //   rares, rare       rare hazards, each of which pays a lump as a cache does, and which (the last met), or null
-  //   caught            and of them, glowworms caught awake, whose lump is twice that
+  //   caught            and of them, glowworms caught awake, whose lump is twice that; and with the live catch
+  //                     bought, any rare hazard caught awake (`alive`: a bell whose fuse burns, a fumarole between
+  //                     its jets, a lodestone humming), whose lump is the live catch's value times, a glowworm's never
+  //                     less than twice
+  //   live              whether a rare hazard was caught awake with the live catch bought
   //   mult, over        what the cells' grit is multiplied by, and the share of it left by a piece over the winch's load
+  //   spin              the hauls before this in the flywheel's run (`spin`), each of which makes the cells' grit (not
+  //                     the lumps) pay a share more, up to the flywheel's value: 0 with none, or no flywheel
   payOf(cells, extra = []) {
     const w = this.world, S = this.S, n = cells.length + extra.length, gems = [0, 0, 0, 0, 0], spec = [0, 0, 0, 0, 0], wrecks = [], held = S.wrecks ?? [];
     const chain = 1 + 0.2 * Math.min(5, this.chain && this.time - this.chain.t <= CHAIN ? this.chain.n : 0);
-    let grit = 0, lump = 0, relic = -1, caches = 0, minerals = 0, mineral = null, prisms = 0, chains = false, rares = 0, rare = null, caught = 0;
+    let grit = 0, lump = 0, relic = -1, caches = 0, minerals = 0, mineral = null, prisms = 0, chains = false, rares = 0, rare = null, caught = 0, live = false;
+    const catches = this.val('livecatch');
     const one = (k, b, x, y) => {
       const row = rowOf(b), far = Math.hypot(x - C, y - C), rich = richness(far) * row.rich * row.worth, P = row.pocket;
       // Whose gems a cell pays is its kind's and its ground's to say; the home ground pays none.
@@ -1645,11 +1760,13 @@ export class Game {
       else if (k === K.CACHE) { caches++; lump += round2(income(Math.max(22, far)) * 12); }
       else if (k === K.WRECK) { const which = w.wrecks.findIndex(([wx, wy]) => wx === x && wy === y); if (which >= 0 && !held[which] && !wrecks.includes(which)) wrecks.push(which); }
       else if (k === K.PRISM) prisms++;
-      // A rare hazard holds what a cache does; a glowworm hauled while it swims, twice that.
+      // A rare hazard holds what a cache does; a glowworm hauled while it swims, twice that; and with the live
+      // catch bought, any of them hauled awake that many times, a glowworm never less than twice.
       else if (k === K.RARE) {
-        const awake = this.swimming(y * N + x);
-        rares++; rare = RARE[row.kin] ?? null; if (awake) caught++;
-        lump += round2(income(Math.max(22, far)) * 12 * study) * (awake ? 2 : 1);
+        const worm = this.swimming(y * N + x), awake = !worm && catches > 1 && this.alive(y * N + x);
+        rares++; rare = RARE[row.kin] ?? null; if (worm || awake) caught++;
+        if (awake || (worm && catches > 1)) live = true;
+        lump += round2(income(Math.max(22, far)) * 12 * study) * (worm ? Math.max(2, catches) : awake ? catches : 1);
       }
       // A pocket's mineral pays so many seconds of what cutting out here would earn, and specimens of the
       // direction the pocket lies in.
@@ -1667,10 +1784,13 @@ export class Game {
     // are worth nothing themselves, as a loop of ash is, nothing is lost and nothing is said.)
     const parts = wrecks.length, over = grit > 0 ? overload(n, S.lv.winch) : 1, mult = haulBonus(n, this.val('winch')) * (1 + 0.1 * (held.filter(Boolean).length + parts)) * over;
     const shine = 1 + 0.5 * Math.min(prisms, 3);
+    // (The flywheel: a haul of LIGHT cells or more made within CHAIN seconds of the last of its run pays its cells'
+    // grit eight in a hundred more for each haul of the run before it, up to the row's value.)
+    const fly = this.val('flywheel'), spin = fly > 0 && n >= LIGHT && this.time - this.spin.t <= CHAIN ? this.spin.n : 0, spun = spin ? 1 + Math.min(fly, 0.08 * spin) : 1;
     // (The station's refinery multiplies a haul's grit, lumps and all; its gem cutter the gems.)
     const refined = this.val('refinery'), cut = this.val('cutter');
     for (let b = 1; b < 5; b++) gems[b] = Math.round(gems[b] * shine * over * cut);
-    return { n, grit: Math.round((Math.round(grit * mult) + lump) * refined), gems, lump, spec, minerals, mineral, prisms, shine, relic, caches, rares, rare, caught, parts, wrecks, mult, over, chain: chains ? chain : 0 };
+    return { n, grit: Math.round((Math.round(grit * mult * spun) + lump) * refined), gems, lump, spec, minerals, mineral, prisms, shine, relic, caches, rares, rare, caught, live, parts, wrecks, mult, over, spin, chain: chains ? chain : 0 };
   }
   // The tether is round these cells: they go, and what they are worth is on its way home. `area` is how much the
   // loop that took them was round, in cells (`reelIfRound`), where it is known.
@@ -1678,7 +1798,7 @@ export class Game {
     // (A haul of nothing would never be over: it ends when the last of its rubble is home.)
     if (!cells.length) return;
     const w = this.world, S = this.S, n = cells.length, pay = this.payOf(cells), { grit, gems, relic, caches, parts, mult, over } = pay;
-    const worm = pay.caught ? cells.find(i => this.swimming(i)) : -1;
+    const worm = pay.caught ? cells.find(i => this.swimming(i) || (pay.live && this.alive(i))) : -1;
     S.wrecks ??= [0, 0, 0, 0, 0, 0, 0, 0];
     for (const which of pay.wrecks) S.wrecks[which] = 1;
     // A very large piece is shown by a share of its cells: by no more blocks than there is room for among the
@@ -1709,6 +1829,8 @@ export class Game {
     // A haul made soon after another is a link in a chain: `n` is how many came before it.
     const linked = this.chain && this.time - this.chain.t <= CHAIN ? this.chain.n : 0;
     this.chain = { t: this.time, n: linked + 1 };
+    // And with the flywheel, a haul of LIGHT cells or more is the next of its run (begun again after CHAIN seconds).
+    if (this.val('flywheel') > 0 && n >= LIGHT) { this.spin.n = (this.time - this.spin.t <= CHAIN ? this.spin.n : 0) + 1; this.spin.t = this.time; }
     // Small, and with nothing in it to make a show of, it is a light haul: flight is not stopped for it. (A prism
     // is something to make a show of: the banner says what it did to the gems. So is a rare hazard.)
     const light = n < LIGHT && relic < 0 && !caches && !parts && !pay.prisms && !pay.rares;
@@ -1755,12 +1877,12 @@ export class Game {
     this.effect('haul', 'impact', cx, cy);
     sfx.crack(n, linked);
     for (const sp of sprites) if (count < 60 || cellHash(sp.x, sp.y, 9) < 0.4) this.chips(sp.x, sp.y, sp.debris, 2, null, 0.7);
-    const [title, giant, named] = haulTitle(n, { relic, parts, caches, rare: pay.rare }, ground, area), half = giant > GIANTS.length;
+    const [title, giant, named] = haulTitle(n, { relic, parts, caches, rare: pay.rare, live: pay.live, spin: pay.spin }, ground, area), half = giant > GIANTS.length;
     // What the last haul was and paid (`hauled`). Any but a light one says so across the screen, with a flash and
     // a beat of stillness. A light one says what it paid where it lay, and leaves the banner of a bigger haul up.
     // (A haul named by its place has its title in the place's colour; a giant's stays up longer, and HALF's longest.)
     const mineral = pay.mineral && sheets.minerals?.frames[pay.mineral] ? pay.mineral : null;
-    this.hauled = { title, n, mult, over, grit, gems, light, shine: pay.shine, minerals: pay.minerals, mineral, spec: specUp, specOf, chain: pay.chain, t: 0,
+    this.hauled = { title, n, mult, over, grit, gems, light, shine: pay.shine, minerals: pay.minerals, mineral, spec: specUp, specOf, chain: pay.chain, spin: pay.spin, t: 0,
       life: half ? 7 : 2.2 + Math.min(1.2, n * 0.01) + giant * 0.4, giant, colour: named ? bright(ground.map) : null, sub: half ? 'HALF THE REACH IN ONE HAUL' : null };
     if (light) {
       this.shake = Math.max(this.shake, Math.min(1.5, 0.7 + n * 0.08));
@@ -1792,7 +1914,7 @@ export class Game {
       if (giant) this.grand(cx, cy, giant);
     }
     if (parts || caches || (pay.rares && !pay.caught)) sfx.relic();
-    // A glowworm caught alive says so where it was.
+    // A glowworm caught alive says so where it was (and with the live catch, any rare hazard caught awake).
     if (worm >= 0) { this.popup(worm % N, Math.floor(worm / N) - 1, 'CAUGHT', SPOT.worm[1]); this.sparkle((worm % N + 0.5) * T, (Math.floor(worm / N) + 0.5) * T, 8, SPOT.worm[1]); sfx.caught(); }
     if (relic >= 0) { S.relics[relic] = 1; sfx.relic(); if (S.relics.every(Boolean) && !S.won) { S.won = true; this.wonAt = this.time; } }
   }
@@ -2010,6 +2132,12 @@ export class Game {
   // Is the glowworm in cell `i` out of its coil and swimming? One the very cut that frees it woke is caught asleep:
   // it is caught alive, and paid twice, only once it has been awake as long as it takes to uncoil.
   swimming(i) { const m = this.worms.get(i); return m !== undefined && m.t >= WORM.uncoil; }
+  // Is the rare hazard in cell `i` awake, and not cooling after: a rime bell whose fuse burns, a fumarole rumbling
+  // or between its jets, a lodestone humming or pulling (the live catch pays for it so)?
+  alive(i) {
+    const b = this.bells.get(i), v = this.vents.get(i), s = this.stones.get(i);
+    return (b !== undefined && b.cool <= 0) || (v !== undefined && v.cool <= 0) || (s !== undefined && s.cool <= 0);
+  }
   // A rare hazard opens cell `j`, if it may (`crushes`), as a cut would: in ground that freezes it closes over
   // again in time. Returns whether it opened; whoever asked tells the books of loose ground, with everything that
   // opened together.
@@ -2157,18 +2285,22 @@ export class Game {
   // Lava has come into cell `i`: the slag beside it is quenched to steel, white for a moment. A sleeping pocket's
   // rind is dull slag, worth little; woken, the lava makes steel of all the slag it touches, where it lay and
   // wherever it pours. Nothing opens or closes, so the books of loose ground are as they were, and the ground is
-  // drawn again. Returns how many cells turned.
+  // drawn again. With the bellows (the lava skin's second level) the lava quenches every cell of slag within two of
+  // it (RING2), in no pocket and within the tether's reach, as everything the ground does in play is, and the fitting
+  // is told when three or more turn at once. Returns how many cells turned.
   quench(i) {
-    const w = this.world;
+    const w = this.world, bellows = this.val('lavaskin') >= 2, ring = bellows ? RING2 : SIDE;
     let turned = 0;
-    for (const s of SIDE) {
-      const j = i + s;
+    for (let n = 0; n < ring.length; n++) {
+      const j = i + ring[n];
       if (w.k(j) !== K.SLAG) continue;
-      w.setK(j, K.STEEL); this.quenched.set(j, QUENCH); turned++;
       const x = j % N, y = Math.floor(j / N);
+      if (bellows && (w.row(j).pocket !== null || !this.within(x + 0.5, y + 0.5))) continue;
+      w.setK(j, K.STEEL); this.quenched.set(j, QUENCH); turned++;
       if (this.onScreen(x, y)) this.sparkle((x + 0.5) * T, (y + 0.5) * T, 4, '#d8e8ff');
     }
     if (turned) { this.version++; if (this.onScreen(i % N, Math.floor(i / N))) { sfx.clink(); sfx.hiss(); } }
+    if (bellows && turned >= 3) this.fitter.fire('lavaskin');
     return turned;
   }
   // A charged crystal arcs. The drill is jolted if it is near; every crystal within three cells is set to follow;
@@ -2182,7 +2314,8 @@ export class Game {
     sfx.zap();
     if (Math.max(Math.abs(d.x - x - 0.5), Math.abs(d.y - y - 0.5)) <= ARC) {
       // (Fitted with the arc coil, the arc is taken in: it mends a pip where it would have taken one.)
-      if (this.val('arccoil')) { if (this.dents) { this.dents--; this.mended = 0.5; } this.popup(d.x - 0.5, d.y - 1, 'CHARGED', '#d8b8ff'); sfx.gem(4); this.fitter.fire('arccoil'); }
+      // (And at its second level, the capacitor, the bit holds the charge for the next cut: CHARGE.)
+      if (this.val('arccoil')) { if (this.dents) { this.dents--; this.mended = 0.5; } if (this.val('arccoil') >= 2) this.charge = CHARGE; this.popup(d.x - 0.5, d.y - 1, 'CHARGED', '#d8b8ff'); sfx.gem(4); this.fitter.fire('arccoil'); }
       else this.hit(JOLT.arc);
       this.shake = Math.max(this.shake, 5); this.twang = 0.3;
     }
@@ -2191,28 +2324,37 @@ export class Game {
       if ((u || v) && w.hazAt(j) === 'spark' && !this.sparks.has(j)) this.sparks.set(j, { fuse: 0.3 + cellHash(u, v, 7) * 0.3, cool: 0 });
     }
     const opened = this.shatters(x, y);
-    for (const j of opened) {
-      const jx = j % N, jy = Math.floor(j / N);
-      w.setK(j, K.EMPTY);
-      // (Open ground in the north closes over with ice, whatever opened it.)
-      if (w.row(j).freeze > 0) { w.dug.set(j, this.clock); this.frostOpen.push(j); }
-      if (!this.onScreen(jx, jy)) continue;
-      this.chips(jx, jy, DEBRIS.slate, 8, null, 0.9);
-      this.effect('shatter', 'shatter', (jx + 0.5) * T, (jy + 0.5) * T);
-    }
+    this.openShattered(opened);
     // An arc lights what it breaks: the ground it opened, and what stood behind, is seen.
     if (opened.length) { sfx.dig(3); w.see(x, y, 2); }
     return opened;
   }
   // The slate an arc from the crystal at (x, y) shatters: every cell of slate among the eight round it that the
-  // tether can reach.
-  shatters(x, y) {
+  // tether can reach. With `dense` (the capacitor's charge let go into a cut there), dense rock too, and never a
+  // cell of a pocket's ground.
+  shatters(x, y, dense = false) {
     const w = this.world, cells = [];
     for (let v = -1; v <= 1; v++) for (let u = -1; u <= 1; u++) {
-      const j = (y + v) * N + x + u;
-      if ((u || v) && w.k(j) === K.SLATE && this.within(x + u + 0.5, y + v + 0.5)) cells.push(j);
+      const j = (y + v) * N + x + u, k = w.k(j);
+      if (!(u || v) || !(k === K.SLATE || (dense && k === K.DENSE)) || !this.within(x + u + 0.5, y + v + 0.5)) continue;
+      if (dense && w.row(j).pocket !== null) continue;
+      cells.push(j);
     }
     return cells;
+  }
+  // Shattered ground opens: each cell with a crack and chips of its own on the screen, and in the north each to
+  // be closed over by the frost, as any cut is. Whoever shattered it tells the books of loose ground.
+  openShattered(cells) {
+    const w = this.world;
+    for (const j of cells) {
+      const jx = j % N, jy = Math.floor(j / N), k = w.k(j);
+      w.setK(j, K.EMPTY);
+      // (Open ground in the north closes over with ice, whatever opened it.)
+      if (w.row(j).freeze > 0) { w.dug.set(j, this.clock); this.frostOpen.push(j); }
+      if (!this.onScreen(jx, jy)) continue;
+      this.chips(jx, jy, k === K.SLATE ? DEBRIS.slate : this.debris(k, w.b(j)), 8, null, 0.9);
+      this.effect('shatter', 'shatter', (jx + 0.5) * T, (jy + 0.5) * T);
+    }
   }
   // Vein frost: does a cut that is closing over lie beside ore? Then it heals as ore, the plainer kind, where it
   // would have closed with ice: a vein grows a cell into the cut made against it. Only ore the world itself laid
@@ -2258,6 +2400,8 @@ export class Game {
     if (d.mode === 'dead' || this.shield > 0) return false;
     this.jolt(time);
     this.dents++; this.knocks++; this.shield = SHIELD; this.knocked = 0.5; this.mendIn = 0;
+    // (A knock stops the flywheel's run.)
+    this.spin.n = 0;
     this.shake = Math.max(this.shake, 4);
     sfx.knock();
     this.effect('sparks', 'sparks', d.x * T, d.y * T);
@@ -2318,19 +2462,41 @@ export class Game {
   // The drill was lost: the game is again what it was at the last docking. What was banked, bought, analysed, met
   // and found since is gone, and so is every cut made and every haul taken since: the ground is as it was. The
   // drill stands whole in the middle of the core, and the screen says what the trip cost.
+  //
+  // The black box keeps a share of the grit the trip had earned; and from its third level (LORE) the same share of
+  // the trip's gems and specimens, and everything learnt on it besides: the lab's samples, the grounds and pockets
+  // met, the rare hazards met and the kinds of creature. (Not a wreck's part or a relic: those lie where the drill
+  // was lost, and are fetched again.)
   revert() {
-    const earned = Math.max(0, Math.round(this.S.grit - JSON.parse(this.docked).grit));
-    this.S = JSON.parse(this.docked);
-    // (The black box keeps a share of what the trip had earned.)
-    const kept = Math.round(earned * this.val('blackbox')), lost = earned - kept;
+    const lost = this.S, was = JSON.parse(this.docked), earned = Math.max(0, Math.round(lost.grit - was.grit));
+    this.S = was;
+    const share = this.val('blackbox'), kept = Math.round(earned * share), gone = earned - kept;
     this.S.grit += kept;
+    if (lost.lv.blackbox >= LORE) this.keepLore(lost, share);
     this.world.back();
     this.version++;
     this.begin();
     this.drill.armed = false; this.drill.park = true;
-    this.notice = { title: 'TRIP LOST', sub: lost > 0 ? `-${compact(lost)} GRIT${kept > 0 ? `, ${compact(kept)} KEPT` : ''}` : '', colour: '#ff7a5a', t: 0, life: 3 };
+    this.notice = { title: 'TRIP LOST', sub: gone > 0 ? `-${compact(gone)} GRIT${kept > 0 ? `, ${compact(kept)} KEPT` : ''}` : '', colour: '#ff7a5a', t: 0, life: 3 };
     this.flash = 0.25; sfx.dock();
     this.save();
+  }
+  // What the black box keeps from the game that was lost (`lost`, its state at the wreck) in the one gone back to
+  // (`this.S`): `share` of the gems and the specimens of each direction earned since the docking, whole; and every
+  // sample, ground, pocket, rare hazard and kind of creature met since, as many samples of a thing as either has.
+  keepLore(lost, share) {
+    const S = this.S;
+    for (let b = 1; b < 5; b++) {
+      S.gems[b] += Math.floor(share * Math.max(0, (lost.gems[b] ?? 0) - (S.gems[b] ?? 0)));
+      S.spec[b] = (S.spec[b] ?? 0) + Math.floor(share * Math.max(0, (lost.spec?.[b] ?? 0) - (S.spec[b] ?? 0)));
+    }
+    S.lab ??= {}; S.met ??= {}; S.visited ??= {}; S.rare ??= {};
+    for (const key in lost.lab ?? {}) S.lab[key] = Math.max(S.lab[key] ?? 0, lost.lab[key]);
+    for (const key in lost.met ?? {}) S.met[key] = 1;
+    for (const key in lost.visited ?? {}) S.visited[key] = 1;
+    for (const key in lost.rare ?? {}) S.rare[key] = 1;
+    const met = lost.fauna?.met;
+    if (met && Object.keys(met).length) { S.fauna ??= { pal: null, met: {}, spent: [] }; S.fauna.met ??= {}; for (const key in met) S.fauna.met[key] = 1; }
   }
   // The hull is made whole, for nothing, whenever the drill rides on to the core.
   // Returns whether there was anything to mend.
@@ -2425,10 +2591,19 @@ export class Game {
         for (let v = -1; v <= 1; v++) for (let u = -1; u <= 1; u++) { const j = (c.y + v) * N + c.x + u; if (w.hazAt(j) === 'spore') opened.push(...this.trigger(j, 'spore', false)); }
       }
       if (c.t < c.life) continue;
+      // (With the graft, the spore drive's second level, moss that closes beside ore the world laid heals as that
+      // ore does under the frost, `veined`: never beside ore that healed, so a graft cannot run on cell by cell.)
+      const graft = this.val('sporedrive') >= 2;
+      let grafted = 0;
       for (let v = -1; v <= 1; v++) for (let u = -1; u <= 1; u++) {
         const j = (c.y + v) * N + c.x + u;
-        if (w.k(j) === K.EMPTY && !lies(j) && !w.lava.has(j) && Math.max(Math.abs(dcx - c.x - u), Math.abs(dcy - c.y - v)) > 1 && w.row(j).pocket === null) { w.setK(j, K.SOFT); closed.push(j); }
+        if (w.k(j) === K.EMPTY && !lies(j) && !w.lava.has(j) && Math.max(Math.abs(dcx - c.x - u), Math.abs(dcy - c.y - v)) > 1 && w.row(j).pocket === null) {
+          const ore = graft && this.veined(j);
+          w.setK(j, ore ? K.ORE_A : K.SOFT); closed.push(j);
+          if (ore) { grafted++; if (this.onScreen(c.x + u, c.y + v)) this.sparkle((c.x + u + 0.5) * T, (c.y + v + 0.5) * T, 6, '#b8f06a'); }
+        }
       }
+      if (grafted) { this.fitter.fire('sporedrive'); if (this.onScreen(c.x, c.y)) sfx.gem(0); }
     }
     this.clouds = this.clouds.filter(c => c.t < c.life);
     // Charged crystals: a short fuse, then an arc that jumps to every crystal near it.
@@ -2716,7 +2891,7 @@ export class Game {
     this.shake = Math.max(0, this.shake - dt * 22);
     // How far out the drill has ever been.
     if (this.far > (this.S.out ?? 0)) this.S.out = this.far;
-    this.boost = Math.max(0, this.boost - dt);
+    this.boost = Math.max(0, this.boost - dt); this.charge = Math.max(0, this.charge - dt);
     // The mender gives a pip back every so many seconds out in the ground, counted from the last knock or mend.
     if (this.val('mender') && this.dents > 0 && d.mode !== 'dead') {
       this.mendIn += dt;

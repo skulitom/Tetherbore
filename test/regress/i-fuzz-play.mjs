@@ -1,6 +1,6 @@
 // The whole game played at random and checked after every frame (the verifiers' fuzz of the hunt's fixes, kept):
 //   node test/regress/i-fuzz-play.mjs <seed> <turns> <reach level> <start x> <start y> <dt: 60|30|mix> [flags]
-// flags (comma list): bombs, shop, home, forceshop, lowdrill, ram, pillars, known, wake, fauna
+// flags (comma list): bombs, shop, home, forceshop, lowdrill, plough, ram, pillars, known, wake, fauna
 // Steering only, or with trips home and throws, bombs, the shop. Checked: the tether (tetherFaults); the books of
 // loose ground (every piece really cut off, one piece, no cell twice); the lasso (an island the tether is right
 // round, found by flooding with none of the game's books, is reeled within two seconds); every haul (what is
@@ -20,6 +20,9 @@
 // goes, every CROWD_EVERY seconds one more is set down beside the drill, a foe woken at once: bats, a leech, a
 // spitter, a puffling, a wren, moths and a pup, in turn.
 //
+// With `plough` the drill has the bit's last level (MK8) and the diamond tip, so that it ploughs through soft rock,
+// dense rock, slate and steel keeping its run (js/game.js: `ploughs`), and the tether is checked as it is in ash.
+//
 // One thing is counted and not failed: a drill hemmed in by lava (`hemmedByLava`). Lava is shut to it until it
 // drains or sets, and at the very end of the reach the ways out are refused, so there it waits, 14 s in the
 // longest seen. That is the hazard as it was designed, not a fault of the tether; whether lava should hold the
@@ -36,7 +39,8 @@ const [seed = 30, turns = 300, reach = 5, sx = 0, sy = 0] = argv.slice(0, 5).map
 const dtMode = argv[5] ?? '60', flags = new Set((argv[6] ?? '').split(',').filter(Boolean));
 const HX = C + 0.5, HY = C + 0.5, HARD = world.HARD;
 Math.random = random(seed + 5);
-const lv = { tether: reach, drill: flags.has('lowdrill') ? 1 : 4 };
+const lv = { tether: reach, drill: flags.has('lowdrill') ? 1 : flags.has('plough') ? 7 : 4 };
+if (flags.has('plough')) lv.diamond = 1;
 if (flags.has('ram')) lv.momentum = 4;
 const game = await makeGame(seed, lv, { fauna: flags.has('fauna') });
 const d = game.drill, w = game.world, rnd = random(seed * 7 + 1);

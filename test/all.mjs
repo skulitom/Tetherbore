@@ -33,7 +33,10 @@ const ARGS = {
     [7, 300, -128, -1408, 0.08, 9, 'second'], [7, 300, 1920, 640, 0.08, 9, 'second'],
     // Each direction's rare hazard planted thickly, with no site round it: rime bells (in the north, which has no
     // other hazard), fumaroles, glowworms and lodestones.
-    [2, 300, 0, -200, 0.02, 5, 'rare'], [3, 300, 0, 200, 0.02, 5, 'rare'], [4, 300, -200, 0, 0.02, 5, 'rare'], [5, 300, 200, 0, 0.02, 5, 'rare']],
+    [2, 300, 0, -200, 0.02, 5, 'rare'], [3, 300, 0, 200, 0.02, 5, 'rare'], [4, 300, -200, 0, 0.02, 5, 'rare'], [5, 300, 200, 0, 0.02, 5, 'rare'],
+    // The east's own ground again with the bit's last level and the diamond tip, which plough the slate of its
+    // ribs and the rock round them keeping the drill's run (js/game.js: `ploughs`).
+    [9, 300, 200, 0, 0.02, 7, 'plough']],
   'f-big': [[71], [250], [205, 'jog'], [150, 'bump']],
   'f-freed-diff': [[1, 4000, 14, 0.55], [5, 6000, 20, 0.62], [9, 3000, 20, 0.62]],
   'f-fuzz-books': [[2, 300], [7, 300], [9, 300], [12, 300]],
@@ -48,6 +51,8 @@ const ARGS = {
     // The east's own ground, where arcs shatter slate (at mixed frame lengths too), the south's own,
     // where lava quenches its slag to steel, and the north's own, where a cut beside ore heals as ore.
     [21, 300, 5, 190, 10, 60], [23, 300, 5, 190, 10, 'mix'], [22, 300, 5, 20, 180, 60], [24, 300, 5, 10, -190, 60],
+    // And the east's own ground on a far reach with the bit's last level and the diamond tip, ploughing.
+    [21, 300, 7, 190, 10, 60, 'plough'],
     // From a start inside a province of a generated cross, one of each host with each donor between them and
     // each structure: buzzmire, hollow flashrock, thaw, crazed rimemoss, crazed quench, kilnstone, crazed tundra,
     // mouldstone, frothy hailstone, banded kilnstone.
