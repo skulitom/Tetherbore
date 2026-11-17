@@ -1,11 +1,12 @@
-// The lab at forty-eight. What the lab can know is forty-eight things in five parts (home and all round, then each
-// direction), each drawn from a frame the atlas has; every ground that has ore says what its two ores are (`ores`),
+// The lab at forty-eight and on. What the lab can know is forty-eight things and more, in parts (home and all round,
+// then each direction and the corner after it, going round with the sun; a part with nothing in it is not shown;
+// js/shop.js: `LAB_PARTS`), each drawn from a frame the atlas has; every ground that has ore says what its two ores are (`ores`),
 // and that is both what the cell is drawn as and what the lab knows it by, so a strain's and a deep flank's ores are
 // their own, the four directions' and the crosses' as they were; a hazard of any type and a keystone's iron are
 // samples, an inert hazard and a prism are not. An ore that is its own now pays exactly as the cell paid before,
 // and what is known of it makes it, and nothing else, worth more. A hazard cut into is analysed and still goes off;
 // a rare hazard's lump takes what is known of it. A game saved with the sixteen first keys loads and counts them,
-// and the gem cutter asks for kinds out of the forty-eight. And the art of the new ores keeps to its rules, read
+// and the gem cutter asks for kinds as a share of the list (out of the forty-eight it was priced against). And the art of the new ores keeps to its rules, read
 // from the sheets as built: outlined in their direction's outline, each apart from its neighbours in shape or
 // colour, none in the colour of what hurts in its direction, none lost against its own rock, a common ore in
 // pieces and a rich one in one.
@@ -14,7 +15,7 @@ import { readFile } from 'node:fs/promises';
 import { makeGame, N, C, K, world } from '../harness.mjs';
 import { decodePNG } from '../../tools/png.mjs';
 import { ROCKS, STRAINS } from '../../art/tiles.mjs';
-const { LAB, LAB_OF, LAB_KINS, CORE, labLevel } = await import('../../js/shop.js');
+const { LAB, LAB_OF, LAB_PARTS, PART_INDEX, CORE, labLevel, kinds } = await import('../../js/shop.js');
 const { sheets } = await import('../../js/atlas.js');
 const { BIOMES, HAZARDS, RARE, B, rowOf, crossRow } = world;
 
@@ -26,18 +27,31 @@ const SIXTEEN = ['lode-items:oreA', 'lode-items:oreB', 'frost-items:oreA', 'fros
   'minerals:amber', 'minerals:aerolite', 'minerals:tektite', 'minerals:starglass', 'minerals:opal', 'minerals:lantern', 'minerals:agate'];
 const GROUNDS = ['firn', 'serac', 'scoria', 'forge', 'tangle', 'sporefall', 'redrock', 'loess', 'rime', 'magma', 'bloom', 'gilt'];
 const NEW_ORES = GROUNDS.flatMap(g => [`ores:${g}A`, `ores:${g}B`]);
-check(LAB.length === 48, `the lab knows ${LAB.length} things, not forty-eight`);
+check(LAB.length >= 48, `the lab knows ${LAB.length} things, fewer than forty-eight`);
 check(new Set(LAB.map(e => e.key)).size === LAB.length, 'two things of the lab share a key');
 check(SIXTEEN.every(key => LAB_OF[key]), `the sixteen first keys are not all there: ${SIXTEEN.filter(key => !LAB_OF[key])}`);
 check(NEW_ORES.every(key => LAB_OF[key]), `the strains' and flanks' ores are not all there: ${NEW_ORES.filter(key => !LAB_OF[key])}`);
-const parts = [0, 1, 2, 3, 4].map(kin => LAB.filter(e => e.kin === kin).length);
-check(parts.join() === '4,10,13,12,9', `the parts of the list hold ${parts}, not 4, 10, 13, 12 and 9`);
-check(LAB.every((e, i) => i === 0 || e.kin >= LAB[i - 1].kin), 'the parts of the list are not each in one run');
-check(LAB_KINS.length === 5 && LAB_KINS.every(([title, icon]) => title && atlas.icons.frames[icon]), 'a part of the list has no title or no icon');
+// (The first forty-eight, each in the part of its direction, as many to each as there were.)
+const FIRST = [
+  'lode-items:oreA', 'lode-items:oreB', 'finds:key', 'minerals:aerolite', 'frost-items:oreA', 'frost-items:oreB',
+  'ores:firnA', 'ores:firnB', 'ores:seracA', 'ores:seracB', 'minerals:starglass', 'bell-items:hazard', 'ores:rimeA',
+  'ores:rimeB', 'lode-items:hazard', 'ores:redrockA', 'ores:redrockB', 'ores:loessA', 'ores:loessB',
+  'minerals:agate', 'lodestone-items:hazard', 'ores:giltA', 'ores:giltB', 'ember-items:oreA', 'ember-items:oreB',
+  'ember-items:steel', 'ember-items:hazard', 'minerals:tektite', 'ores:scoriaA', 'ores:scoriaB', 'ores:forgeA',
+  'ores:forgeB', 'minerals:opal', 'vent-items:hazard', 'ores:magmaA', 'ores:magmaB', 'mire-items:oreA',
+  'mire-items:oreB', 'mire-items:hazard', 'minerals:amber', 'ores:tangleA', 'ores:tangleB', 'ores:sporefallA',
+  'ores:sporefallB', 'minerals:lantern', 'worm-items:hazard', 'ores:bloomA', 'ores:bloomB'
+];
+const KIN_PART = ['home', 'n', 's', 'w', 'e'], first = [0, 1, 2, 3, 4].map(kin => FIRST.filter(key => LAB_OF[key]?.kin === kin && LAB_OF[key].part === KIN_PART[kin]).length);
+check(first.join() === '4,10,13,12,9', `the first forty-eight lie in their parts as ${first}, not 4, 10, 13, 12 and 9`);
+check(LAB.every((e, i) => i === 0 || PART_INDEX[e.part] >= PART_INDEX[LAB[i - 1].part]), 'the parts of the list are not each in one run, in order');
+check(LAB_PARTS.map(p => p.id).join() === 'home,n,ne,e,se,s,sw,w,nw', `the parts go ${LAB_PARTS.map(p => p.id)}, not round with the sun`);
+check(LAB_PARTS.every(p => p.title && p.colour && atlas.icons.frames[p.icon]), 'a part of the list has no title, colour or icon');
+check(kinds([8, 18, 28, 36]).join() === [8, 18, 28, 36].map(n => Math.round(n * LAB.length / 48)).join(), 'the kinds asked are not the share of the list they were of forty-eight');
 for (const e of LAB) {
   const [sheet, frame] = e.key.split(':');
   check(atlas[sheet]?.frames[frame], `${e.name}: the atlas has no ${e.key}`);
-  check(e.name && e.at && e.where && e.note && [0, 1, 2, 3, 4].includes(e.kin), `${e.key}: no name, place, where or part`);
+  check(e.name && e.at && e.where && e.note && [0, 1, 2, 3, 4].includes(e.kin) && e.part in PART_INDEX, `${e.key}: no name, place, where, direction or part`);
 }
 check(atlas.ores && Object.keys(atlas.ores.frames).length === 24, `the ores sheet has ${Object.keys(atlas.ores?.frames ?? {}).length} frames, not 24`);
 

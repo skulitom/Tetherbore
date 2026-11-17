@@ -10,7 +10,7 @@
 // one SAMPLE.
 import { makeGame, K, N, C } from '../harness.mjs';
 const { LAB, labLevel, labNext } = await import('../../js/game.js');
-const { LAB_KINS } = await import('../../js/shop.js');
+const { LAB_PARTS } = await import('../../js/shop.js');
 const { LAB_LIST, LAB_RH, LAB_SEC, NOTE_LINES, labCount } = await import('../../js/drawing.js');
 const { textWidth } = await import('../../js/atlas.js');
 
@@ -224,11 +224,11 @@ LAB.forEach((e, i) => {
   check(wrapped(e.note).length <= NOTE_LINES, `${e.name}: its note takes ${wrapped(e.note).length} lines, of ${NOTE_LINES}`);
   check(wrapped(found).length <= NOTE_LINES, `${e.name}: where it is found takes ${wrapped(found).length} lines`);
   // (Before it is known, a thing is not drawn or spoken of as another of its part is.)
-  LAB.forEach((f, j) => { if (j > i && f.kin === e.kin) check(LAB_LIST.line[j].label !== label && LAB_LIST.line[j].found !== found, `${e.name} and ${f.name} are both '${label}' before they are known`); });
+  LAB.forEach((f, j) => { if (j > i && f.part === e.part) check(LAB_LIST.line[j].label !== label && LAB_LIST.line[j].found !== found, `${e.name} and ${f.name} are both '${label}' before they are known`); });
 });
 check(labCount(1) === '1 SAMPLE. +1% AT 2' && labCount(5) === '5 SAMPLES. +1% AT 8', `a count of samples is said as '${labCount(1)}' and '${labCount(5)}'`);
 check(textWidth(labCount(99999)) <= text, `what is said of a count of samples ('${labCount(99999)}') is wider than the notes`);
-LAB_KINS.forEach(([title], kin) => { const all = LAB.filter(e => e.kin === kin).length; check(16 + textWidth(title) + 4 + textWidth(`${all}/${all}`) <= right, `the head ${title} is too long for its line`); });
+LAB_PARTS.forEach(({ id, title }) => { const all = LAB.filter(e => e.part === id).length || 19; check(16 + textWidth(title) + 4 + textWidth(`${all}/${all}`) <= right, `the head ${title} is too long for its line`); });
 
 console.log(fails.length ? `DEFECT:\n  ${fails.join('\n  ')}` : 'no defect: what is crushed is analysed, what is known pays a hundredth more a level, and the notes open from the bar as a list of forty-eight that scrolls');
 process.exit(fails.length ? 1 : 0);

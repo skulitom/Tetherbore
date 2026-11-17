@@ -8,7 +8,7 @@ import { sheets, draw, drawScaled, frameAt, duration, slice9, text, textWidth, t
 import { tr, words, LANGS, lang, chooseLang } from './lang.js';
 import { decorAt, markAt, natural, framesOf, placeOf } from './decor.js';
 import { sfx, soundVolume, musicVolume, setSoundVolume, setMusicVolume, STEPS_OF_VOLUME } from './audio.js';
-import { WORKS, MAPS, TABS, LAB, LAB_OF, LAB_KINS, labLevel, labNext, ROWS, FOUND, FINDER, CUT, WINCH_LOAD } from './shop.js';
+import { WORKS, MAPS, TABS, LAB, LAB_OF, LAB_PARTS, PART_INDEX, labLevel, labNext, ROWS, FOUND, FINDER, CUT, WINCH_LOAD } from './shop.js';
 import { pickGoal, goalShare } from './goal.js';
 import { TETHERS, BODY, BODY_A, HOT, HOT_A, RAM, PLATE, FLAME, FLAME_TIER, FITS, FIT_BIT, CORE_IDLE, CORE_C, CORE_FLASH, DISH, REFINERY, CUTTER, BOX, ORBIT, BEACON, STATION_PARTS } from './fit.js';
 // (The middle of the core and two figures of the rules are the game's, read from js/game.js, which imports this
@@ -39,10 +39,11 @@ const wrap = (said, wide) => {
   }
   return lines;
 };
-// The lab's notes are one list in five parts, laid out once here: a line of SEC pixels at the head of each part (its
-// icon, its title and how many of it are known) and a line of RH for each thing, in the order of `LAB`. `lines` is
-// every line from the top, `line[i]` thing i's (with what is said of it before it is known, `found`), `at[i]` where
-// it begins, `head[k]` where part k's head does, and `content` how tall the whole list is. A thing not yet known is
+// The lab's notes are one list in parts (js/shop.js: `LAB_PARTS`), laid out once here: a line of SEC pixels at the
+// head of each part that has anything in it (its icon, its title and how many of it are known) and a line of RH for
+// each thing, in the order of `LAB`. `lines` is every line from the top, `line[i]` thing i's (with what is said of it
+// before it is known, `found`), `at[i]` where it begins, `head[k]` where part k's head does (k its place in
+// `LAB_PARTS`), and `content` how tall the whole list is. A thing not yet known is
 // drawn as where it is found (`label`), and two of one part found in one place (a ground's common ore and its rich
 // one) are told apart there and in what is said of them by which they are. NOTE is the room under
 // the list for what is said of the thing chosen: a line of its count, and up to NOTE_LINES lines of its note
@@ -52,9 +53,10 @@ export const LAB_LIST = (() => {
   const lines = [], line = [], at = [], head = [];
   let y = 0;
   LAB.forEach((e, i) => {
-    if (i === 0 || LAB[i - 1].kin !== e.kin) { head[e.kin] = y; lines.push({ y, h: LAB_SEC, kin: e.kin, entry: null, i: -1, total: LAB.filter(f => f.kin === e.kin).length }); y += LAB_SEC; }
-    const [sheet, frame] = e.key.split(':'), twin = LAB.some(f => f !== e && f.kin === e.kin && f.at === e.at), which = twin ? (frame.endsWith('A') ? 'COMMON' : 'RICH') : null;
-    at[i] = y; lines.push(line[i] = { y, h: LAB_RH, kin: e.kin, entry: e, i, sheet, frame, label: which ? `${e.at}, ${which}` : e.at,
+    const part = PART_INDEX[e.part];
+    if (i === 0 || LAB[i - 1].part !== e.part) { head[part] = y; lines.push({ y, h: LAB_SEC, part, entry: null, i: -1, total: LAB.filter(f => f.part === e.part).length }); y += LAB_SEC; }
+    const [sheet, frame] = e.key.split(':'), twin = LAB.some(f => f !== e && f.part === e.part && f.at === e.at), which = twin ? (frame.endsWith('A') ? 'COMMON' : 'RICH') : null;
+    at[i] = y; lines.push(line[i] = { y, h: LAB_RH, part, entry: e, i, sheet, frame, label: which ? `${e.at}, ${which}` : e.at,
       found: `${which ? `A ${which} ORE. ` : ''}CUT THROUGH ONE WITH THE BIT. FOUND: ${e.where}.` });
     y += LAB_RH;
   });
@@ -1771,15 +1773,15 @@ export class Drawing {
   // The head of a part of the lab's list, at (x, y) and `w` wide, over whatever lies under it: its icon, its title
   // in its gems' colour and how many of it are known (`known`, by part).
   labHead(line, x, y, w, known) {
-    const { ctx } = this, [title, icon] = LAB_KINS[line.kin], f = sheets.icons.frames[icon];
+    const { ctx } = this, { title, icon, colour } = LAB_PARTS[line.part], f = sheets.icons.frames[icon];
     ctx.fillStyle = '#1c1a28'; ctx.fillRect(x, y, w, LAB_SEC);
     ctx.drawImage(sheets.icons.image, f[0], f[1], f[2], f[3], x + 2, y + 1, f[2], f[3]);
-    text(ctx, title, x + 16, y + 1, GEM_COLOR[line.kin] ?? '#f4ecd8');
-    text(ctx, `${known[line.kin]}/${line.total}`, x + w - 5, y + 1, '#8a84a0', 1);
+    text(ctx, title, x + 16, y + 1, colour);
+    text(ctx, `${known[line.part]}/${line.total}`, x + w - 5, y + 1, '#8a84a0', 1);
     ctx.fillStyle = '#4a4468'; ctx.fillRect(x + 2, y + LAB_SEC - 1, w - 8, 1);
   }
   // The panel the bar opens: STATS, the lab's notes (LAB), the chart (MAP) and MENU. The lab's notes are everything
-  // the lab can know, in five parts, a line each: what is analysed with its picture and its worth, what is not with
+  // the lab can know, in parts by where it lies, a line each: what is analysed with its picture and its worth, what is not with
   // where it is found. The list scrolls (dragged, flicked, wheeled or stepped with the keys: js/game.js), clipped to
   // its window, the head of the part at the top held there until the next pushes it up; a bar at its edge says how
   // far down it is and marks the line chosen, and under it the lab says what it knows of the line chosen.
@@ -1818,9 +1820,9 @@ export class Drawing {
     this.labScroll = Math.max(0, Math.min(most, this.labScroll));
     const top = Math.round(this.labScroll), RIGHT = vx + vw - 5;
     // How many of each part are known, counted once a frame with no list made.
-    const known = this.labKnown ??= [0, 0, 0, 0, 0];
+    const known = this.labKnown ??= LAB_PARTS.map(() => 0);
     known.fill(0);
-    for (const e of LAB) if (S.lab[e.key]) known[e.kin]++;
+    for (const e of LAB) if (S.lab[e.key]) known[PART_INDEX[e.part]]++;
     ctx.save(); ctx.beginPath(); ctx.rect(vx, vy, vw, view); ctx.clip();
     for (const line of LAB_LIST.lines) {
       if (line.y + line.h <= top) continue;

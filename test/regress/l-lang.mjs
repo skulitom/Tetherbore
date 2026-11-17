@@ -117,7 +117,7 @@ check(!missing.length, `${missing.length} lines have no turn in ${lang}: ${missi
   const { textWidth } = await import('../../js/atlas.js');
   const { words } = await import('../../js/lang.js');
   const { NOTE_LINES } = await import('../../js/drawing.js');
-  const { LAB_KINS } = await import('../../js/shop.js');
+  const { LAB_PARTS } = await import('../../js/shop.js');
   game.resize(320, 568, 1);
   const g = game.labGeom(), wide = g.pw - 16, right = g.vw - 5;
   const lines = said => { const out = [], { parts, join } = words(tr(said)); for (const p of parts) { const last = out.at(-1); if (last !== undefined && textWidth(`${last}${join}${p}`) <= wide) out[out.length - 1] = `${last}${join}${p}`; else out.push(p); } return out; };
@@ -130,7 +130,7 @@ check(!missing.length, `${missing.length} lines have no turn in ${lang}: ${missi
       check(l.length <= NOTE_LINES && l.every(x => textWidth(x) <= wide), `${e.name}: '${tr(said)}' takes ${l.length} lines, of ${NOTE_LINES}`);
     }
   });
-  LAB_KINS.forEach(([title], kin) => { const all = LAB.filter(e => e.kin === kin).length; check(16 + textWidth(title) + 4 + textWidth(`${all}/${all}`) <= right, `the head '${tr(title)}' is too long for its line`); });
+  LAB_PARTS.forEach(({ id, title }) => { const all = LAB.filter(e => e.part === id).length || 19; check(16 + textWidth(title) + 4 + textWidth(`${all}/${all}`) <= right, `the head '${tr(title)}' is too long for its line`); });
   check(textWidth(labCount(99999)) <= wide, `'${tr(labCount(99999))}' is wider than the notes`);
 }
 

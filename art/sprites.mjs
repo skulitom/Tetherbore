@@ -875,17 +875,29 @@ const icons8 = {
   // The lab: a flask, for what has been analysed.
   lab: ['..www...', '..wiw...', '..wiw...', '.wiiiw..', '.wgggw..', 'wgggggw.', '.wwwww..', '........'],
 };
+// (One stone for every corner, cut along the diagonal: `a` and `c` the half toward the first direction going round
+// with the sun, light and dark, `e` and `f` the half toward the second, and a white glint on the cut.)
+const CORNER_STONE = Array.from({ length: 8 }, (_, y) => Array.from({ length: 8 }, (_, x) => {
+  if (Math.hypot(x - 3.5, y - 3.5) > 3.9) return '.';
+  const side = x + y;
+  return side === 7 ? 'w' : side < 7 ? (x + 2 * y > 9 ? 'c' : 'a') : (2 * x + y > 15 ? 'f' : 'e');
+}).join(''));
 const SPECIMEN = ['..aaa...', '.abaac..', 'abaaaac.', 'aaaaacc.', 'aaaaccc.', '.aaccc..', '..ccc...', '........'];
 export const icons = {
   version: 1, name: 'icons', width: 10, height: 10,
   palette: { k: '#16121c', w: '#ffffff', i: '#bfe6ff', o: '#ff7a1c', y: '#ffd84a', W: '#fff6c8', g: '#8ce060', G: '#4aa040', s: '#d8d0c0',
-    p: '#d8b8ff', q: '#ffffff', P: '#8a5ad8', z: '#ffe14a', d: '#9a8a74', l: '#d4c4a8', D: '#6a5c4c', a: '#bfe6ff', b: '#ffffff', c: '#5a9ad8' },
+    p: '#d8b8ff', q: '#ffffff', P: '#8a5ad8', z: '#ffe14a', d: '#9a8a74', l: '#d4c4a8', D: '#6a5c4c', a: '#bfe6ff', b: '#ffffff', c: '#5a9ad8', e: '#d8b8ff', f: '#8a5ad8' },
   frames: [
     ...Object.entries(icons8).map(([name, rows]) => ({ name, ops: [{ op: 'grid', x: 1, y: 1, rows }, { op: 'outline', color: 'k', position: 'outside' }] })),
     // A specimen: a cut stone, six-sided, in the colour of the direction it was found in (north, south, west,
     // east, as the gems are). One drawing, each frame with its own three colours.
     ...[['frost', '#bfe6ff', '#ffffff', '#5a9ad8'], ['ember', '#ffb060', '#fff6c8', '#c8501c'], ['mire', '#b8f06a', '#f4ffd8', '#4aa040'], ['lode', '#d8b8ff', '#ffffff', '#8a5ad8']]
       .map(([name, a, b, c]) => ({ name: `spec-${name}`, palette: { a, b, c }, ops: [{ op: 'grid', x: 1, y: 1, rows: SPECIMEN }, { op: 'outline', color: 'k', position: 'outside' }] })),
+    // A corner, where two directions meet, for its part of the lab's list: a stone cut in two, each half in the
+    // colours of one of the two directions, as the corner's own ground is made of both.
+    ...[['ne', '#bfe6ff', '#5a9ad8', '#d8b8ff', '#8a5ad8'], ['se', '#d8b8ff', '#8a5ad8', '#ffb060', '#c8501c'], ['sw', '#ffb060', '#c8501c', '#b8f06a', '#4aa040'],
+      ['nw', '#b8f06a', '#4aa040', '#bfe6ff', '#5a9ad8']]
+      .map(([name, a, c, e, f]) => ({ name: `corner-${name}`, palette: { a, c, e, f }, ops: [{ op: 'grid', x: 1, y: 1, rows: CORNER_STONE }, { op: 'outline', color: 'k', position: 'outside' }] })),
   ],
 };
 

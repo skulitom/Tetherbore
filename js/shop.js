@@ -57,7 +57,9 @@ const levels = (beside, share) => ({ beside, grit: beside.map(at => priced(at, s
 // Grit and gems are not enough for the levels of the first tab: each level also asks that something has been
 // found, so that the rig grows no faster than the ground is explored. `needs` on a row is [what, how many for each
 // level]: 'parts', parts of the older machine brought home from its wrecks, which lie one to each stretch of
-// ground (45, 90, 160 ... cells out); 'kinds', kinds of thing the lab has analysed, of the forty-eight of `LAB`:
+// ground (45, 90, 160 ... cells out); 'kinds', kinds of thing the lab has analysed, out of all of `LAB` (written as
+// so many of forty-eight, the list it was first priced against, and asked as the same share of the list as it is:
+// `kinds`), so a longer list asks as far out as the short one did:
 // near the core the ores of the home ground and of the four directions' own, the hazards of the south, the west and
 // the east (the north has none so near), keystone iron where a slab lies on the road (the first is 52 cells out, in
 // one direction only) and the minerals of the nearer pockets, with steel wherever lava has been woken onto slag;
@@ -182,9 +184,31 @@ export const LAB = [
   { kin: 4, key: 'ores:giltA', name: 'SPINEL', at: 'GILT', where: 'GILT, THE DEEP FLANKS OF THE EAST', note: 'RED STONES THAT KINGS TOOK FOR RUBIES. THE GILT HAS THEM BY THE HANDFUL.' },
   { kin: 4, key: 'ores:giltB', name: 'ALEXANDRITE', at: 'GILT', where: 'GILT, THE DEEP FLANKS OF THE EAST', note: 'GREEN IN THE DARK AND RED IN THE LAMP. THE LAB HAS NEVER SEEN IT THE SAME COLOUR TWICE.' },
 ];
-// The five parts of the list: a title, and the frame of the `icons` sheet drawn beside it.
-export const LAB_KINS = [['HOME AND ALL ROUND', 'home'], ['NORTH', 'frost'], ['SOUTH', 'ember'], ['WEST', 'mire'], ['EAST', 'lode']];
+// The parts of the list, in order: home and all round, then each direction and the corner after it, going round
+// with the sun from the north (north, north east, east ... north west): its id, title, the frame of the `icons`
+// sheet drawn beside it and the colour its title is said in. A thing's part is its `part` (one of these ids), or
+// where it says none the part of its direction (`kin`: home, north, south, west, east, as the gems are counted); its
+// direction is still what it counts toward wherever it is listed. The corners' parts hold what lies where two
+// directions meet (js/world.js: the seams), and a part with nothing in it yet is not shown. LAB is put in the
+// parts' order here, each part's things in the order written.
+export const LAB_PARTS = [
+  { id: 'home', title: 'HOME AND ALL ROUND', icon: 'home', colour: '#f4ecd8' },
+  { id: 'n', title: 'NORTH', icon: 'frost', colour: '#bfe6ff' },
+  { id: 'ne', title: 'NORTH EAST', icon: 'corner-ne', colour: '#cccfff' },
+  { id: 'e', title: 'EAST', icon: 'lode', colour: '#d8b8ff' },
+  { id: 'se', title: 'SOUTH EAST', icon: 'corner-se', colour: '#ecb4b0' },
+  { id: 's', title: 'SOUTH', icon: 'ember', colour: '#ffb060' },
+  { id: 'sw', title: 'SOUTH WEST', icon: 'corner-sw', colour: '#dcd066' },
+  { id: 'w', title: 'WEST', icon: 'mire', colour: '#b8f06a' },
+  { id: 'nw', title: 'NORTH WEST', icon: 'corner-nw', colour: '#bcebb5' },
+];
+const PART_OF_KIN = ['home', 'n', 's', 'w', 'e'];
+export const PART_INDEX = Object.fromEntries(LAB_PARTS.map((p, i) => [p.id, i]));
+for (const e of LAB) { e.part ??= PART_OF_KIN[e.kin]; if (!(e.part in PART_INDEX)) throw new Error(`${e.key}: there is no part of the lab called ${e.part}`); }
+LAB.sort((a, b) => PART_INDEX[a.part] - PART_INDEX[b.part]);
 export const LAB_OF = Object.fromEntries(LAB.map(e => [e.key, e]));
+// So many kinds of forty-eight, as the same share of the list as it is (`needs` 'kinds', below).
+export const kinds = of48 => of48.map(n => Math.round(n * LAB.length / 48));
 // The levels a count of samples has earned (0 for none; 1 for the first; one more at 2, 4, 8 ...), and the count
 // the next level comes at.
 export const labLevel = n => { let l = 0; while (n >> l) l++; return l; };
@@ -268,13 +292,13 @@ export const MAPS = [
 const deep = (steps, gems) => ({ beside: steps.map(([at]) => at), grit: steps.map(([at, share]) => priced(at, share)), gems });
 export const CORE = [
   { id: 'refinery', pic: 'grit', name: 'REFINERY', what: 'HAULS PAY MORE GRIT', values: [1, 1.15, 1.3, 1.5, 1.75, 2], gem: B.FROST, needs: ['places', [6, 9, 12, 16, 20]], ...deep([[5, 1.5], [6, 2], [7, 2.5], [8, 3], [8, 6]], [600, 1500, 4000, 10000, 25000]), show: v => `x${v}` },
-  { id: 'cutter', pic: 'lode', name: 'GEM CUTTER', what: 'HAULS PAY MORE GEMS', values: [1, 1.2, 1.4, 1.7, 2], gem: B.LODE, needs: ['kinds', [8, 18, 28, 36]], ...deep([[5.5, 1.5], [6.5, 2], [7.5, 3], [8, 5]], [800, 2500, 8000, 20000]), show: v => `x${v}` },
+  { id: 'cutter', pic: 'lode', name: 'GEM CUTTER', what: 'HAULS PAY MORE GEMS', values: [1, 1.2, 1.4, 1.7, 2], gem: B.LODE, needs: ['kinds', kinds([8, 18, 28, 36])], ...deep([[5.5, 1.5], [6.5, 2], [7.5, 3], [8, 5]], [800, 2500, 8000, 20000]), show: v => `x${v}` },
   { id: 'lamp', pic: 'bolt', name: 'LAMP', what: 'LIGHT SEES CAVERNS', values: [8.5, 10, 12, 14], gem: B.EMBER, needs: ['parts', [1, 3, 5]], ...deep([[4, 0.5], [6, 0.8], [8, 1.1]], [0, 600, 3000]), show: v => `${v}` },
   { id: 'blackbox', pic: 'lock', name: 'BLACK BOX', what: 'KEEPS GRIT WHEN LOST', values: [0, 0.25, 0.5, 0.75], gem: B.MIRE, needs: ['places', [5, 10, 15]], ...deep([[5, 1], [6.5, 2], [8, 3]], [400, 2000, 9000]), show: v => `${Math.round(v * 100)}%`,
     // (From its third level it keeps what a lost trip learnt, as well as its grit: js/game.js, `keepLore`.)
     says: l => l === 2 ? 'KEEPS WHAT IT LEARNT' : null },
   // (The live catch's value is what a woken rare's lump is multiplied by: 1, by nothing, before it is bought.)
-  { id: 'livecatch', pic: 'mire', name: 'LIVE CATCH', what: 'WOKEN RARES PAY MORE', values: [1, 2, 3], gem: B.MIRE, needs: ['kinds', [30, 40]], ...deep([[6.5, 1.5], [7.5, 2]], [1500, 4000]), show: v => v > 1 ? `ALL x${v}` : 'WORM x2',
+  { id: 'livecatch', pic: 'mire', name: 'LIVE CATCH', what: 'WOKEN RARES PAY MORE', values: [1, 2, 3], gem: B.MIRE, needs: ['kinds', kinds([30, 40])], ...deep([[6.5, 1.5], [7.5, 2]], [1500, 4000]), show: v => v > 1 ? `ALL x${v}` : 'WORM x2',
     says: l => l ? `WOKEN RARES PAY x${CORE[4].values[l + 1]}` : 'BELLS, VENTS, STONES' },
   { id: 'trophy', pic: 'spec-ember', name: 'TROPHY LINE', what: 'LOOPS CATCH FOES', values: [0, 2, 3], gem: B.EMBER, needs: ['beasts', [6, 10]], ...deep([[6, 1], [7, 1.5]], [1000, 3000]), show: v => v ? `${v} SPEC` : 'OFF',
     says: l => `A FOE PAYS ${CORE[5].values[l + 1]} SPEC` },
@@ -315,7 +339,7 @@ const LATE = {
   arccoil: [[2, 15e6, 0, 0, 60]],
   maprange: [[7, 10e6, 2000, ['out', 1000]], [10, 60e6, 6000, ['out', 1700]]],
   refinery: [[2.5, 80e6, 30000, ['relics', 1]], [3, 450e6, 45000, ['relics', 2]]],
-  cutter: [[2.5, 60e6, 22000, ['kinds', 42]], [3, 330e6, 35000, ['relics', 1]]],
+  cutter: [[2.5, 60e6, 22000, ['kinds', kinds([42])[0]]], [3, 330e6, 35000, ['relics', 1]]],
   lamp: [[16, 30e6, 10000, 7], [18, 135e6, 25000, 8]],
   blackbox: [[0.9, 50e6, 15000, ['out', 1600]]],
   livecatch: [[4, 40e6, 12000, ['relics', 1]]],

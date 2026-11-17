@@ -296,6 +296,10 @@ export const WORDS = [
   ['SOUTH', 'ЮГ', '南方'],
   ['WEST', 'ЗАПАД', '西方'],
   ['EAST', 'ВОСТОК', '东方'],
+  ['NORTH EAST', 'СЕВЕРО-ВОСТОК', '东北'],
+  ['SOUTH EAST', 'ЮГО-ВОСТОК', '东南'],
+  ['SOUTH WEST', 'ЮГО-ЗАПАД', '西南'],
+  ['NORTH WEST', 'СЕВЕРО-ЗАПАД', '西北'],
   // where a thing is found, said in the list before it is known
   ['HOME AND EAST', 'ДОМ И ВОСТОК', '家园与东方'],
   ['KEYSTONE SLABS', 'ЗАМКОВЫЕ ПЛИТЫ', '拱心石板'],
