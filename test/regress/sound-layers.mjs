@@ -308,11 +308,11 @@ if (heard.size < GROUNDS.length - 3) fails.push(`in ten minutes of ${GROUNDS.len
 if (made.length - before > 5) fails.push(`the music made ${made.length - before} nodes in ten minutes (the bed's five, the first time the ground is told, are all that is meant)`);
 const notes = posts() - posted;
 if (!(notes > 1500 && notes < 36000)) fails.push(`the music posted ${notes} changes in ten minutes (thousands are meant: a note is three to five)`);
-// A long stay: four and a half minutes in each of a direction, a deep flank, a strain, a cross and a pocket. Each but
-// the pocket goes round its first piece, gives its second a turn and comes back to its first; every second is in its
-// first's key, scale and air, the strain's carries its twist and the cross's its donor's voice; and the pocket, which
-// has none, plays on. (Its checks below hold these minutes too.)
-const longStay = [[0, false, 'crust'], [1, true, 'rime'], ['firn', false, 'firn'], [THAW, false, THAW.name], ['hive', false, 'hive']];
+// A long stay: four and a half minutes in each of a direction, a deep flank, a strain, a cross, a pocket, a seam, a
+// deep seam and a deep strain. Each but the pocket goes round its first piece, gives its second a turn and comes back
+// to its first; every second is in its first's key, scale and air, the strain's carries its twist and the cross's its
+// donor's voice; and the pocket, which has none, plays on. (Its checks below hold these minutes too.)
+const longStay = [[0, false, 'crust'], [1, true, 'rime'], ['firn', false, 'firn'], [THAW, false, THAW.name], ['hive', false, 'hive'], ['glassdune', false, 'glassdune'], ['skarn', false, 'skarn'], ['glacier', false, 'glacier']];
 for (const [g, deep, name] of longStay) {
   audio.setAmbience(g, deep, 300);
   const order = [];

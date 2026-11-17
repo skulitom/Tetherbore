@@ -850,10 +850,11 @@ sfx.ping = sound('ping', (near = 0) => tone(620 + 260 * near, 0.08, { type: 'sin
 // and a cross plays its host's piece with the donor's own voice in it (the north gives its glass, the south its
 // drum, the west its swaying pads, the east its reed) and its structure's change.
 //
-// Each direction, the home ground and each deep flank has a second piece (`SECONDS`), in the same key and scale as
-// its first so that every drop, cue and reward rings in tune with either: a long stay hears the first go round its
-// form `rounds` times, then the second, then the first again. A strain plays its direction's second with its own
-// twist, and a cross its host's second with the donor's voice, as each does the first (`secondOf`).
+// Each direction, the home ground, each deep flank, each seam and each deep strain has a second piece (`SECONDS`), in
+// the same key and scale as its first so that every drop, cue and reward rings in tune with either: a long stay
+// hears the first go round its form `rounds` times, then the second, then the first again. A strain plays its
+// direction's second with its own twist, a deep seam its seam's with its own, and a cross its host's second with the
+// donor's voice, as each does the first (`secondOf`).
 //
 // A piece goes round its form, a phrase of four bars to a letter: an A phrase plays as written, a B phrase thinner
 // (no drum, fewer plucks, the motif a little higher, the lead more), and a rest only the pads; every phrase but a
@@ -994,31 +995,76 @@ const SCORES = {
   redrock: { of: 'lode', twist: { bass: { wave: 'bass', pattern: '0.0.0.0.0.0.0.0.', decay: 0.12, gain: 0.02, oct: 0 } }, perc: { pattern: 'd...w...d...w...' } },
   loess: { of: 'lode', twist: { tempo: 1.2, perc: { pattern: 's.s.s.s.s.s.s.s.', gain: 0.6 } }, pluck: null, lead: { every: 0.2 }, bright: 1900 },
 
-  // The seams, each its own direction's piece with its other parent's voice in it, and each deep seam its seam's
-  // piece gone slower or lower. Hoarstone: the north's glass waltz rung on the east's music box, brighter, a
-  // shaker in it. Skarn: the same a fourth lower and slower still, an organ held under it. Glassdune: the east's
-  // caravan on the scale it all but is, its reed turned to the south's saw, soft. Obsidian: slower and darker, its
-  // pads of glass, a stone drum. Cinderfen: the south's march swung, sung over by the west's choir, a hollow drip
-  // in it. Tarpit: heavier and lower, on a harmonic scale, the drum doubled, the dark closing in. Frostfen: the west's lilt in a bright scale
-  // with the north's glass for its drips. Muskeg: slower, colder, a knock in the bog now and then.
-  hoarstone: { of: 'frost', bell: 'keys', bright: 2800, pluck: { wave: 'keys', pattern: '7.....9...b.', chance: 0.7 }, perc: { pattern: 'h.....s.....' } },
-  skarn: { of: 'hoarstone', bpm: 40, root: 247, bright: 2000, air: [1100, 62], bass: { wave: 'organ', pattern: '0...........', decay: 2.5, gain: 0.016 } },
-  glassdune: { of: 'lode', mode: 'hijaz', bright: 1700, air: [600, 73], lead: { wave: 'sawtooth', gain: 0.008 } },
-  obsidian: { of: 'glassdune', bpm: 50, root: 196, bright: 900, air: [380, 49], pad: { wave: 'glass', gain: 0.013 }, perc: { pattern: 'd.......w.......' } },
-  cinderfen: { of: 'ember', swing: 0.15, pad: { wave: 'choir', gain: 0.014 },
-    pluck: { wave: 'hollow', pattern: '..4.....2.......', chance: 0.5, lp: [2000, 800], q: 0.8, decay: 0.3, gain: 0.011, oct: 1 } },
-  tarpit: { of: 'cinderfen', bpm: 66, root: 131, mode: 'harmonic', bright: 650, air: [200, 38], bass: { decay: 0.25 }, perc: { pattern: 'd...d.w.d...d.w.', gain: 1.1 } },
-  frostfen: { of: 'mire', bell: 'glass', mode: 'lydian', bright: 1700, air: [1100, 62], pluck: { wave: 'glass' } },
-  muskeg: { of: 'frostfen', bpm: 50, swing: 0.1, bright: 1000, air: [900, 60], perc: { pattern: '..........w.....', gain: 0.5 } },
-  // The deep strains, each its flank's piece with one thing of its own. Glacier: the deep north at its stillest,
-  // its glass rarer and its pads slower to swell, a breath of wind for its drum, the bed's wind high (and the wind of its halls a layer of its
-  // own, `setWind`). Caldera: the deep south on a lower root, a low drum each bar and a knock after it, dark.
-  // Mycelium: the deep west's garden quicker, its pads pulsing, its arpeggio climbing all the way, a shaker in it. Druse: the deep east's
-  // procession with a music box chiming high over it (and its geodes ringing, `resonate`).
-  glacier: { of: 'rime', bpm: 36, air: [1400, 70], pad: { rise: 4 }, pluck: { chance: 0.35 }, perc: { pattern: 'h.........h.........', gain: 0.8 } },
-  caldera: { of: 'magma', root: 117, bright: 600, air: [160, 34], perc: { pattern: 'd.......d.w.....' } },
-  mycelium: { of: 'bloom', bpm: 96, bright: 1200, pad: { vib: [1.2, 25] }, pluck: { pattern: '0.2.4.6.8.a.' }, perc: { pattern: 's.....s.s...', gain: 0.7 } },
-  druse: { of: 'gilt', bright: 1700, pluck: { wave: 'keys', pattern: '4...7...b...7...', chance: 0.6, lp: [5000, 2500], q: 0.3, decay: 0.9, gain: 0.011, oct: 2 } },
+  // The seams, each a piece of its own made `of` its direction's (whose key, scale and air it keeps), and each deep
+  // seam its seam's piece slower and lower, its `twist` the change it carries into its second too.
+  // Hoarstone: a caravan crossing the ice, the east's reed in the north's open fifths over a music box going round,
+  // the wind and a shaker for its drum. Skarn: the same three quarters as fast and a fourth lower, an organ held under.
+  hoarstone: { of: 'frost', bell: 'keys', bpm: 76, bar: 16, chords: [0, 2, 3, 1], motif: '5.4.2.4.5...7...', bright: 2600, form: 'AABAr',
+    pad: { wave: 'sine', tones: [0, 2], spread: 0.6, gain: 0.015, rise: 2, fall: 0.35, oct: 1 },
+    lead: { wave: 'reed', grid: 4, every: 0.25, range: [5, 10], len: 0.5, rise: 0.03, fall: 0.35, gain: 0.011, oct: 1, vib: [5, 14] },
+    pluck: { wave: 'keys', pattern: '0.2.4.2.0.2.4.7.', chance: 0.75, lp: [5000, 2500], q: 0.4, decay: 0.5, gain: 0.011, oct: 2 },
+    bass: { wave: 'sine', pattern: '0.......2.......', decay: 1.2, gain: 0.016 },
+    perc: { pattern: 'h...s...h...s.s.', gain: 0.8 } },
+  skarn: { of: 'hoarstone', twist: { tempo: 0.75, bass: { wave: 'organ', pattern: '0'.padEnd(32, '.'), decay: 2.5, gain: 0.016 } },
+    root: 247, bright: 2000, air: [1100, 62], pluck: { chance: 0.5 } },
+  // Glassdune: the dunes at noon, a slow swaying six, glass glinting high off the ribbons, a reed held long and
+  // bending, a low drum like lava far under. Obsidian: slower, its pads gone to glass, a lone stone drum.
+  glassdune: { of: 'lode', mode: 'hijaz', air: [600, 73], bpm: 60, bar: 12, swing: 0.1, chords: [0, 1, 0, 5], motif: '4.5.7.5.4...', bright: 1700, form: 'AABr',
+    pad: { wave: 'triangle', tones: [0, 4], spread: 0.5, gain: 0.014, rise: 2.2, fall: 0.4, oct: 0, vib: [0.3, 12] },
+    lead: { wave: 'reed', grid: 6, every: 0.35, range: [5, 10], len: 1.1, rise: 0.1, fall: 0.6, gain: 0.011, oct: 1, vib: [4, 24] },
+    pluck: { wave: 'glass', pattern: '7.....9..7..', chance: 0.6, lp: [6000, 3000], q: 0.3, decay: 0.7, gain: 0.01, oct: 2 },
+    bass: { wave: 'bass', pattern: '0.....0.....', decay: 0.9, gain: 0.018 },
+    perc: { pattern: 'd.....w.....', gain: 0.8 } },
+  obsidian: { of: 'glassdune', twist: { tempo: 0.8, pad: { wave: 'glass', gain: 0.013 } }, root: 196, bright: 900, air: [380, 49], perc: { pattern: 'd...........' } },
+  // Cinderfen: the fen smouldering, a lazy swung four, hollow pods popping and rising as they go, a choir low in the
+  // smoke, the stone drum muffled to a knock. Tarpit: heavier and lower on a harmonic scale, the drum doubled.
+  cinderfen: { of: 'ember', bpm: 68, swing: 0.2, chords: [0, 1, 3, 1], motif: '3.1.0.......1...', bright: 900, glide: 1.4, form: 'AABr',
+    pad: { wave: 'choir', tones: [0, 2], spread: 0.5, gain: 0.014, rise: 1.6, fall: 0.35, oct: 1, vib: [0.3, 18] },
+    lead: null,
+    pluck: { wave: 'hollow', pattern: '..4.....2...5...', chance: 0.6, lp: [2000, 800], q: 0.8, decay: 0.3, gain: 0.012, oct: 1 },
+    bass: { wave: 'bass', pattern: '0.......0...4...', decay: 0.6, gain: 0.022 },
+    perc: { pattern: 'w.......d.....w.', gain: 0.8 } },
+  tarpit: { of: 'cinderfen', twist: { tempo: 0.85, bass: { decay: 0.25 } }, root: 131, mode: 'harmonic', bright: 650, air: [200, 38], perc: { pattern: 'd...d.w.d...d.w.', gain: 1.1 } },
+  // Frostfen: a bog frozen at night, a slow waltz, its glass drips falling in pairs, the west's pads swaying cold, a
+  // hollow call across it. Muskeg: slower, darker, a knock in the bog now and then.
+  frostfen: { of: 'mire', bell: 'glass', mode: 'lydian', air: [1100, 62], bpm: 58, bar: 12, swing: 0.08, chords: [0, 4, 1, 4], motif: '7.6.4.....2.', bright: 1700, form: 'AABr', burst: [2, -2],
+    pad: { wave: 'triangle', tones: [0, 2], spread: 0.6, gain: 0.016, rise: 2, fall: 0.4, oct: 1, vib: [0.3, 20] },
+    lead: { wave: 'hollow', grid: 6, every: 0.25, range: [7, 12], len: 0.9, rise: 0.08, fall: 0.7, gain: 0.01, oct: 1, vib: [0.4, 15] },
+    pluck: { wave: 'glass', pattern: '0.....4.....', chance: 0.65, lp: [5000, 2500], q: 0.4, decay: 0.6, gain: 0.011, oct: 2 },
+    bass: { wave: 'sine', pattern: '0...........', decay: 1.6, gain: 0.016 },
+    perc: null },
+  muskeg: { of: 'frostfen', twist: { tempo: 0.8 }, bright: 1000, air: [900, 60], perc: { pattern: '........w...', gain: 0.5 } },
+  // The deep strains, each a piece of its own made `of` its flank's, in its key. Glacier: the ice moving, very slow,
+  // an organ pedal, a low hollow groan wandering, the choir slow to swell, a breath of wind for its drum, and glass
+  // rarely (and the wind of its halls a layer of its own, `setWind`). Caldera: a lake of lava simmering, bubbles
+  // rising and bursting all through it, an organ smouldering, the bass a slow swell, a deep drum once a bar.
+  // Mycelium: a living network in five, signals ticking along it and coming back down the threads, its pads
+  // pulsing, a shaker of spores. Druse: inside a geode, slow, every chime coming back off the crystal walls, pads of
+  // glass, an organ under it (and its geodes ringing, `resonate`).
+  glacier: { of: 'rime', air: [1400, 70], bpm: 38, bar: 16, chords: [0, 4, 1, 0], motif: '0...2...4.......', bright: 1600, form: 'AABr',
+    pad: { wave: 'choir', tones: [0, 4], spread: 0.7, gain: 0.016, rise: 4, fall: 0.6, oct: 1, vib: [0.15, 10] },
+    lead: { wave: 'hollow', grid: 8, every: 0.35, range: [0, 5], len: 2, rise: 0.5, fall: 1.5, gain: 0.011, oct: 0, vib: [0.2, 25] },
+    pluck: { wave: 'glass', pattern: '..........b.....', chance: 0.4, lp: [5000, 2500], q: 0.3, decay: 1.4, gain: 0.009, oct: 2 },
+    bass: { wave: 'organ', pattern: '0...............', decay: 3, gain: 0.017 },
+    perc: { pattern: 'h.......h.......', gain: 0.8 } },
+  caldera: { of: 'magma', root: 117, air: [160, 34], bpm: 52, chords: [0, 6, 0, 1], motif: '4.5.4...0.......', bright: 650, glide: 1.8, form: 'AABr',
+    pad: { wave: 'organ', tones: [0, 4], spread: 0.3, gain: 0.012, rise: 2.2, fall: 0.4, oct: 1 },
+    lead: null,
+    pluck: { wave: 'sine', pattern: '..4..7....2.9...', chance: 0.55, lp: [1800, 1200], q: 0.5, decay: 0.22, gain: 0.012, oct: 1 },
+    bass: { wave: 'bass', pattern: '0.......0.......', decay: 1.6, gain: 0.022 },
+    perc: { pattern: 'd...........w...', gain: 0.8 } },
+  mycelium: { of: 'bloom', bpm: 100, bar: 20, swing: 0, chords: [0, 2, 1, 3], motif: '4.6.4.2.0...........', bright: 1300, echo: [3, 0.4], form: 'AABAr',
+    pad: { wave: 'sine', tones: [0, 2], spread: 0.6, gain: 0.015, rise: 1.2, fall: 0.3, oct: 1, vib: [1.2, 25] },
+    lead: null,
+    pluck: { wave: 'square', pattern: '0.2...4.2...6...4...', chance: 0.8, lp: [2200, 500], q: 2, decay: 0.1, gain: 0.011, oct: 1 },
+    bass: { wave: 'bass', pattern: '0.........0.....4...', decay: 0.7, gain: 0.017 },
+    perc: { pattern: 's.s...s.s...s...w...', gain: 0.6 } },
+  druse: { of: 'gilt', bpm: 54, bar: 12, chords: [0, 5, 3, 4], motif: '7...4...2...', bright: 1800, echo: [4, 0.5], form: 'AABr',
+    pad: { wave: 'glass', tones: [0, 2], spread: 0.6, gain: 0.014, rise: 2.5, fall: 0.5, oct: 1 },
+    lead: null,
+    pluck: { wave: 'keys', pattern: '0...4...7...', chance: 0.7, lp: [5000, 2500], q: 0.3, decay: 1, gain: 0.011, oct: 2 },
+    bass: { wave: 'organ', pattern: '0...........', decay: 2, gain: 0.017 },
+    perc: { pattern: '....w.......', gain: 0.5 } },
 
   // The pockets. Where a pocket's own rule rings rewards (the drift's chain, the grotto's caps), its key holds
   // the major five-note scale on A that they ring in.
@@ -1070,7 +1116,7 @@ const SECONDS = {
     bass: { wave: 'bass', pattern: '0...........', decay: 1.4, gain: 0.017 },
     perc: { pattern: '........w...', gain: 0.45 } },
   // The north, an aurora: very slow, choir pads swaying, a glass lead drifting high, no drum at all.
-  frost: { bpm: 40, chords: [0, 3, 1, 3], motif: '4...7...9...7...', bright: 2600, form: 'AB', rounds: 1,
+  frost: { bpm: 44, chords: [0, 3, 1, 3], motif: '4...7...9...7...', bright: 2600, form: 'AB', rounds: 1,
     pad: { wave: 'choir', tones: [0, 3], spread: 0.8, gain: 0.016, rise: 3, fall: 0.5, oct: 1, vib: [0.2, 16] },
     lead: { wave: 'glass', grid: 4, every: 0.3, range: [7, 13], len: 1.4, rise: 0.2, fall: 1.2, gain: 0.011, oct: 1, vib: [0.3, 10] },
     bass: { wave: 'sine', pattern: '0...............', decay: 3, gain: 0.014 } },
@@ -1087,7 +1133,7 @@ const SECONDS = {
     pluck: { wave: 'hollow', pattern: '0.....4.....', chance: 0.6, lp: [2200, 800], q: 1, decay: 0.4, gain: 0.013, oct: 1 },
     bass: { wave: 'bass', pattern: '0...........', decay: 1.2, gain: 0.018 } },
   // The east, a night market: fast, the oud running, a shaker between the drum's strokes, the reed now and then.
-  lode: { bpm: 110, chords: [0, 1, 0, 3], motif: '7.8.7.5.4.......', bright: 1700, form: 'AABAr', rounds: 1,
+  lode: { bpm: 104, chords: [0, 1, 0, 3], motif: '7.8.7.5.4.......', bright: 1700, form: 'AABAr', rounds: 1,
     pad: { wave: 'triangle', tones: [0, 4], spread: 0.25, gain: 0.01, rise: 2, fall: 0.3, oct: 0 },
     lead: { wave: 'reed', grid: 4, every: 0.15, range: [6, 12], len: 0.4, rise: 0.02, fall: 0.3, gain: 0.012, oct: 1, vib: [6, 20] },
     pluck: { wave: 'sawtooth', pattern: '0.1.4.1.0.4.5.4.', chance: 0.85, lp: [2400, 450], q: 2, decay: 0.1, gain: 0.011, oct: 0 },
@@ -1115,6 +1161,56 @@ const SECONDS = {
     lead: { wave: 'brass', grid: 6, every: 0.12, range: [5, 11], len: 0.6, rise: 0.05, fall: 0.35, gain: 0.01, oct: 1, vib: [5, 7] },
     pluck: { wave: 'sawtooth', pattern: '0.2.4.2.4.7.', chance: 0.9, lp: [3200, 600], q: 1.5, decay: 0.14, gain: 0.011, oct: 1 },
     bass: { wave: 'organ', pattern: '0.....4.....', decay: 1, gain: 0.017 } },
+  // The seams' seconds (a deep seam's is its seam's with its twist, `secondOf`). Hoarstone: the caravan camped on
+  // the ice at night, a slow three, the reed alone and far off, the music box idling. Glassdune: a sandstorm, quick,
+  // the oud running and a driving drum with the wind in it. Cinderfen: a will-o'-the-wisp over the embers, a three,
+  // a pure note flickering over pods. Frostfen: the bog at dawn, swung four, the drips quickening in threes.
+  hoarstone: { bpm: 54, bar: 12, chords: [0, 3, 1, 2], motif: '7.5.4.2.....', bright: 2400, form: 'AABr', rounds: 1,
+    pad: { wave: 'choir', tones: [0, 3], spread: 0.7, gain: 0.015, rise: 2.5, fall: 0.4, oct: 1, vib: [0.2, 12] },
+    lead: { wave: 'reed', grid: 6, every: 0.3, range: [5, 10], len: 1, rise: 0.1, fall: 0.6, gain: 0.01, oct: 1, vib: [4.5, 16] },
+    pluck: { wave: 'keys', pattern: '0.....2.....', chance: 0.6, lp: [5000, 2500], q: 0.4, decay: 0.8, gain: 0.01, oct: 2 },
+    perc: { pattern: 'h...........', gain: 0.7 } },
+  glassdune: { bpm: 104, chords: [0, 0, 1, 5], motif: '7.8.7.5.4.......', bright: 1600, form: 'AABAr', rounds: 1,
+    pad: { wave: 'triangle', tones: [0, 4], spread: 0.3, gain: 0.011, rise: 1.5, fall: 0.3, oct: 0 },
+    pluck: { wave: 'sawtooth', pattern: '0.1.0.4.0.1.5.4.', chance: 0.85, lp: [2400, 450], q: 2, decay: 0.1, gain: 0.011, oct: 0 },
+    bass: { wave: 'bass', pattern: '0...0...0...1...', decay: 0.3, gain: 0.019 },
+    perc: { pattern: 'd.h.w.h.d.d.w.h.', gain: 0.9 } },
+  cinderfen: { bpm: 80, bar: 12, swing: 0.15, chords: [0, 1, 0, 4], motif: '4.3.1.0.....', bright: 1000, glide: 1.3, form: 'AABr', rounds: 1,
+    pad: { wave: 'sawtooth', tones: [0, 4], spread: 0.4, gain: 0.011, rise: 1.4, fall: 0.3, oct: 1, vib: [0.3, 15] },
+    lead: { wave: 'sine', grid: 3, every: 0.3, range: [7, 12], len: 0.4, rise: 0.03, fall: 0.4, gain: 0.011, oct: 1, vib: [6, 20] },
+    pluck: { wave: 'hollow', pattern: '0.....3..5..', chance: 0.6, lp: [2200, 800], q: 0.8, decay: 0.3, gain: 0.012, oct: 1 },
+    bass: { wave: 'bass', pattern: '0.....0.....', decay: 0.6, gain: 0.02 },
+    perc: { pattern: 'd.....w.....', gain: 0.7 } },
+  frostfen: { bpm: 72, swing: 0.18, chords: [0, 1, 4, 1], motif: '4.6.7...4.......', bright: 1800, form: 'AABAr', rounds: 1, burst: [3, 1],
+    pad: { wave: 'choir', tones: [0, 2], spread: 0.6, gain: 0.015, rise: 1.8, fall: 0.35, oct: 1, vib: [0.35, 22] },
+    pluck: { wave: 'glass', pattern: '0...2...4...2...', chance: 0.55, lp: [5500, 2500], q: 0.4, decay: 0.5, gain: 0.01, oct: 2 },
+    bass: { wave: 'bass', pattern: '0.......4.......', decay: 1, gain: 0.018 },
+    perc: { pattern: '......w.......w.', gain: 0.55 } },
+  // The deep strains' seconds. Glacier: the wind dropping and light through the ice, a slow three, keys chiming down.
+  // Caldera: a geyser's clock, a three, each bubble setting off three more rising, then still. Mycelium: spores
+  // drifting, slow and swung, a hollow lead in the air over the choir. Druse: the geodes singing, quicker, each chime
+  // rung in a run of three up the scale, an organ under it.
+  glacier: { bpm: 48, bar: 12, chords: [0, 1, 4, 1], motif: 'b.9.7.6.4...', bright: 2200, form: 'AB', rounds: 1,
+    pad: { wave: 'sine', tones: [0, 4], spread: 0.8, gain: 0.016, rise: 3, fall: 0.5, oct: 1 },
+    pluck: { wave: 'keys', pattern: '7.6.4.2.0...', chance: 0.55, lp: [5000, 2500], q: 0.3, decay: 1.2, gain: 0.01, oct: 2 },
+    bass: { wave: 'organ', pattern: '0...........', decay: 2.5, gain: 0.015 },
+    perc: { pattern: 'h...........', gain: 0.6 } },
+  caldera: { bpm: 70, bar: 12, chords: [0, 0, 4, 1], motif: '4.....7.8.7.', bright: 700, form: 'AABr', rounds: 1, burst: [4, 1], glide: 1.5,
+    pad: { wave: 'sawtooth', tones: [0, 4], spread: 0.35, gain: 0.011, rise: 1.2, fall: 0.3, oct: 1 },
+    pluck: { wave: 'sine', pattern: '0...........', chance: 0.8, lp: [1800, 1200], q: 0.5, decay: 0.2, gain: 0.012, oct: 1 },
+    bass: { wave: 'bass', pattern: '0.....0.0...', decay: 0.5, gain: 0.022 },
+    perc: { pattern: 'd.....w.....', gain: 0.8 } },
+  mycelium: { bpm: 66, swing: 0.15, chords: [0, 4, 0, 1], motif: '9.7...6.4.......', bright: 1300, form: 'AABr', rounds: 1,
+    pad: { wave: 'choir', tones: [0, 2], spread: 0.7, gain: 0.016, rise: 2.2, fall: 0.4, oct: 1, vib: [0.4, 20] },
+    lead: { wave: 'hollow', grid: 4, every: 0.25, range: [7, 12], len: 0.7, rise: 0.06, fall: 0.6, gain: 0.011, oct: 1, vib: [0.5, 15] },
+    pluck: { wave: 'keys', pattern: '0.......4.......', chance: 0.5, lp: [3500, 1500], q: 0.5, decay: 0.6, gain: 0.01, oct: 2 },
+    bass: { wave: 'bass', pattern: '0...............', decay: 1.4, gain: 0.016 },
+    perc: { pattern: '....s.......s...', gain: 0.5 } },
+  druse: { bpm: 88, chords: [0, 3, 4, 0], motif: '4.6.7.6.4.......', bright: 1800, form: 'AABAr', rounds: 1, burst: [3, 2],
+    pad: { wave: 'organ', tones: [0, 2], spread: 0.2, gain: 0.011, rise: 1, fall: 0.3, oct: 1 },
+    pluck: { wave: 'keys', pattern: '0...2...4...7...', chance: 0.6, lp: [5000, 2500], q: 0.3, decay: 0.6, gain: 0.011, oct: 2 },
+    bass: { wave: 'bass', pattern: '0.......4.......', decay: 0.8, gain: 0.018 },
+    perc: { pattern: 'w.......w...w...', gain: 0.6 } },
 };
 // A direction's score by its number, and its deep flank's; and the strain whose twist each structure of a cross
 // takes (HOLLOW, CRAZED, FROTHY, BANDED). The numbers are the world's, which never move.
@@ -1494,8 +1590,9 @@ export function hear(ground, far = 300) {
 }
 // For the tests: every phrase a score's voices play (each chord's pads and patterns, the lead's range, the motif
 // and its answer), as degrees and as the pitches they sound at; and the names of the waves there are.
+// (`ground` as scoreOf takes it, or a score itself, as secondOf gives one.)
 export function phrasesOf(ground) {
-  const s = scoreOf(ground), fit = s.fit, out = [], take = (voice, degrees, up, motif = false) => out.push({ voice, motif, degrees, hz: degrees.map(k => pitch(s, voice, k, up)) });
+  const s = ground?.fit ? ground : scoreOf(ground), fit = s.fit, out = [], take = (voice, degrees, up, motif = false) => out.push({ voice, motif, degrees, hz: degrees.map(k => pitch(s, voice, k, up)) });
   for (const c of new Set(s.chords)) {
     if (s.pad) take('pad', s.pad.tones.map(k => c + k), fit.pad[c]);
     for (const voice of ['pluck', 'bass']) if (s[voice]) take(voice, digits(s[voice].pattern).map(d => c + d), fit[voice][c]);
