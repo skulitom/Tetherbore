@@ -262,8 +262,8 @@ export const rowOf = b => BIOMES[b] ?? BIOMES[0];
 // What hazard a cell of kind `k` in ground `row` is: 'lava', 'spore', 'spark', one of the four rare ('bell',
 // 'vent', 'worm', 'lodestone': by the ground's kin), or null (not a hazard, or one of a kind this ground has none of).
 export const hazOf = (k, row) => k === K.RARE ? RARE[row.kin] ?? null : (k === K.HAZARD ? row.haz : k === K.HAZARD2 ? row.haz2 : null)?.type ?? null;
-// Whose gems a cell pays (1 north, 2 south, 3 west, 4 east). A rare hazard's are its ground's direction's, which is
-// its type's.
+// Whose gems a cell pays (1 north, 2 south, 3 west, 4 east; and a deep seam's rich ore its corner's, 5 to 8: G). A
+// rare hazard's are its ground's direction's, which is its type's.
 export const gemKin = (k, row) => k === K.ORE_A ? row.gemA : k === K.ORE_B ? row.gemB : k === K.STEEL ? B.EMBER : k === K.CAP || k === K.CAP_LIT ? B.MIRE
   : k === K.HAZARD || k === K.HAZARD2 ? HAZARDS[hazOf(k, row)]?.kin ?? row.kin : row.kin;
 // How long a cell takes to cut with the first bit, in seconds.
@@ -328,7 +328,9 @@ strain(24, 'loess', B.LODE, { rich: 0.85, dig: 0.5, gen: { dense: 0.76, oreA: 0.
 // the reaction between the two that the game plays by (`react`). Past the flanks' own distance from the core it is
 // a deep seam: a rock of its own over its seam's floor and caves' pieces (so that coming into it reads as somewhere
 // new, where the seam's sheet alone could not be told from it), two ores of its own (`ownOres` of its own name: its
-// common ore outlined as its first parent's, its rich ore in its corner's own outline), deep ground's richer, meaner
+// common ore outlined as its first parent's, its rich ore in its corner's own outline and paying its corner's own
+// gems, CORNER_GEM, where the seam's pays its second parent's: no other ore pays them, so the deep seams, from DEEP_R
+// out, are where they are had; its common ore and its hazards still pay its parents'), deep ground's richer, meaner
 // figures (as `deep` makes a flank of its direction's ground) and looks of its own. `rich` follows the danger, as a
 // strain's and a cross's do: a quarter more than a direction's ground, and a deep seam's twice. The four, by corner:
 //   north-east  HOARSTONE / SKARN       the north's ground, frozen quartz: charged crystals on its slate, and a cut
@@ -351,7 +353,7 @@ strain(24, 'loess', B.LODE, { rich: 0.85, dig: 0.5, gen: { dense: 0.76, oreA: 0.
 export const SEAMS = [[9, 13], [10, 14], [11, 15], [12, 16]];
 const seam = (corner, f, under) => {
   const name = f.name, shallow = biome({ id: SEAMS[corner][0], seam: corner, ores: ownOres(name), ...f });
-  biome({ ...f, id: SEAMS[corner][1], seam: corner, deep: true, sheet: under.name, floor: `${name}-floor`, ores: ownOres(under.name), rich: 2, gemx: 2,
+  biome({ ...f, id: SEAMS[corner][1], seam: corner, deep: true, sheet: under.name, floor: `${name}-floor`, ores: ownOres(under.name), gemB: CORNER_GEM[corner], rich: 2, gemx: 2,
     gen: { ...shallow.gen, oreA: 0.6, oreB: 0.66 }, haz: deeper(f.haz), haz2: f.haz2 && deeper(f.haz2), ...under });
 };
 seam(0, { name: 'hoarstone', kin: B.FROST, gemA: B.FROST, gemB: B.LODE, rich: 1.25, react: 'thaw', gen: { ...GROUND, slate: 0.05 }, haz: { type: 'spark', rate: 1 }, freeze: 30,

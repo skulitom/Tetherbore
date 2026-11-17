@@ -39,7 +39,7 @@ import { makeGame, farStart, wander, random, world, C, N, K } from '../harness.m
 const { sfx } = await import(new URL('../../js/audio.js', import.meta.url));
 const { feelOf, FEELS } = await import(new URL('../../js/feel.js', import.meta.url));
 const { falls } = await import(new URL('../../js/decor.js', import.meta.url));
-const { BIOMES, B } = world;
+const { BIOMES, B, SEAMS } = world;
 const fails = [], check = (ok, what) => { if (!ok) fails.push(what); };
 
 // ---------------------------------------------------------------- rows
@@ -480,7 +480,8 @@ const cellsAbout = (w, i) => { let h = 0; for (let v = -12; v <= 12; v++) for (l
     const ctx = new Proxy({}, { get: (t, k) => k in t ? t[k] : () => {}, set: (t, k, v) => { if (k === 'fillStyle') inks.add(v); t[k] = v; return true; } });
     f.dust(game, ctx, ox, oy); f.glow({ W: game.W, H: game.H, drill: d, world: w, sparks: new Map(), daylight: true, scale: 1 }, ctx, ox, oy);
     if (!row.react) { check(shown === 0 && f.live === 0, `${name} has no reaction, and a burst of one showed ${f.live} particles`); continue; }
-    const a = BIOMES[row.kin].mote[0], b = BIOMES[row.gemB].mote[0];
+    // (A deep seam's rich ore pays its corner's gems: its parents are its shallow seam's.)
+    const a = BIOMES[row.kin].mote[0], b = BIOMES[row.seam != null ? BIOMES[SEAMS[row.seam][0]].gemB : row.gemB].mote[0];
     check(shown === 3 && f.live >= 25 && inks.has(a) && inks.has(b), `in ${name} six reactions in a frame showed ${shown} bursts (three are meant), ${f.live} particles, drawn in ${[...inks].join(' ')} (its parents' ${a} and ${b} are meant)`);
     check(said.length === 3 && said.every(([near]) => near > 0.8), `in ${name} a reaction beside the drill was heard as ${row.react} ${said.length} times at ${said.map(([n]) => n?.toFixed?.(2)).join(', ')}`);
   }

@@ -6,6 +6,12 @@
 // for it), the prices and their icons, measured as the glyphs and icons are drawn. And STATS, with every row at its
 // last level, every rare hazard and creature met, every shrine and fossil, and thousands of everything, fits above
 // the bar a line a line, and says what the bit and the winch are.
+// The eight levels paid in a corner's gems (js/shop.js: LATE) are among them, short of their gems and not: where
+// they are had is said whole where it fits the line and short where it does not (GEM_SHORT: the Russian of the north
+// east is too wide for the narrowest phone), and the footer's note of a tap refused for want of them too. And the
+// bar at the foot of the screen, with the corners' gems in the directions' places (`cornerBar`: a corner's level
+// saved for) and with all eight on a screen 330 wide, at the widest figures a count can have there ('9.9K', and
+// '999K' with all eight): each gem's icon is its own, and no figure runs into the next icon or off the bar.
 //   node test/regress/h-shop-fit.mjs
 import '../harness.mjs';
 
@@ -13,7 +19,8 @@ import '../harness.mjs';
 const make = document.createElement;
 document.createElement = () => { const c = make(); const ctx = c.getContext('2d'); c.getContext = () => new Proxy(ctx, { set: (t, k, v) => { if (k === 'fillStyle') c.tint = v; t[k] = v; return true; } }); return c; };
 const { makeGame, B } = await import('../harness.mjs');
-const { TABS, LAB, CORE } = await import('../../js/shop.js');
+const { TABS, LAB, CORE, ROWS } = await import('../../js/shop.js');
+const { GEM_ICON, GEM_SHORT } = await import('../../js/drawing.js');
 const { KINDS } = await import('../../js/fauna.js');
 const { sheets, textWidth } = await import('../../js/atlas.js');
 const { lang } = await import('../../js/lang.js');
@@ -21,16 +28,22 @@ const { lang } = await import('../../js/lang.js');
 const fails = [], check = (ok, what) => { if (!ok && fails.length < 40) fails.push(what); };
 const game = await makeGame(7), S = game.S;
 // What is drawn while the shop (or the panel) is drawn: each glyph of the font's (its shadow left out) and each icon.
-let drawing = false;
-const glyphs = [], icons = [];
+// (And, apart, what the rest of the HUD draws, the bar among it, with each icon's place on its sheet.)
+let drawing = false, hud = false;
+const glyphs = [], icons = [], hudGlyphs = [], hudIcons = [];
 game.ctx.drawImage = (image, sx, sy, sw, sh, dx, dy, dw, dh) => {
-  if (!drawing || dw === undefined) return;
-  if (image?.tint && sh === 10 && sy % 10 === 0) { if (image.tint !== '#0c0a12') glyphs.push({ x: dx, y: dy, w: dw }); }
-  else if (image === sheets.icons.image) icons.push({ x: dx, y: dy, w: dw, h: dh });
+  if (!(drawing || hud) || dw === undefined) return;
+  const [g, c] = drawing ? [glyphs, icons] : [hudGlyphs, hudIcons];
+  if (image?.tint && sh === 10 && sy % 10 === 0) { if (image.tint !== '#0c0a12') g.push({ x: dx, y: dy, w: dw }); }
+  else if (image === sheets.icons.image) c.push({ x: dx, y: dy, w: dw, h: dh, sx, sy });
 };
 for (const name of ['drawShop', 'drawStats']) {
   const own = game[name];
   game[name] = function (...args) { drawing = true; try { return own.apply(this, args); } finally { drawing = false; } };
+}
+{
+  const own = game.drawHud;
+  game.drawHud = function (...args) { hud = true; try { return own.apply(this, args); } finally { hud = false; } };
 }
 // Runs of glyphs, a line of text each (glyphs one or two pixels apart on one line), to say what ran over.
 const runs = () => {
@@ -43,10 +56,10 @@ const runs = () => {
 };
 // Two glyphs or a glyph and an icon that share pixels. (A glyph's ink is its rows 1 to 7.)
 const meets = (a, b, bh = 7, bt = 1) => a.x < b.x + b.w && b.x < a.x + a.w && a.y + 1 < b.y + bt + bh && b.y + bt < a.y + 8;
-const clashes = () => {
+const clashes = (gs = glyphs, cs = icons) => {
   let n = 0;
-  for (let i = 0; i < glyphs.length; i++) for (let j = i + 1; j < glyphs.length; j++) if (meets(glyphs[i], glyphs[j])) n++;
-  for (const g of glyphs) for (const c of icons) if (meets(g, c, c.h - 2, 1)) n++;
+  for (let i = 0; i < gs.length; i++) for (let j = i + 1; j < gs.length; j++) if (meets(gs[i], gs[j])) n++;
+  for (const g of gs) for (const c of cs) if (meets(g, c, c.h - 2, 1)) n++;
   return n;
 };
 
@@ -62,7 +75,8 @@ const found = all => {
   S.fauna = all ? { met: Object.fromEntries(Array.from({ length: KINDS }, (_, n) => [`kind${n}`, 1])), pal: { fed: 3 } } : undefined;
   game.recount();
 };
-const hold = rich => { S.grit = rich ? 1e13 : 0; for (let g = 1; g < 5; g++) { S.gems[g] = rich ? 1e9 : 0; S.spec[g] = rich ? 999 : 0; } };
+// (The corners' gems as well as the directions': the levels paid in them are drawn short of them and not.)
+const hold = rich => { S.grit = rich ? 1e13 : 0; for (let g = 1; g < 9; g++) S.gems[g] = rich ? 1e9 : 0; for (let g = 1; g < 5; g++) S.spec[g] = rich ? 999 : 0; };
 
 let renders = 0;
 for (const [cssW, cssH] of [[320, 568], [360, 640]]) {
@@ -124,6 +138,58 @@ for (const [cssW, cssH] of [[320, 568], [360, 640]]) {
     const [name, value] = game.stats().find(([name]) => name === 'REFINERY');
     check(textWidth(name) + 4 + textWidth(value) <= sw - 16, `${W}x${H}: STATS's ${name} and '${value}' come within four pixels of each other`);
   }
+}
+
+// The levels paid in a corner's gems, each tapped with too few of them in hand and all else found: the footer says
+// where they are had, whole or short, within the panel; and that level, now saved for, puts the corners' gems on
+// the bar in the directions' places (at their widest, '9.9K'), each with its own icon, clear of the next and on the
+// bar. And on a screen 330 wide the bar has all eight, at '999K'.
+const moved = ROWS.flatMap(u => (u.gemAt ?? []).map((gem, l) => [u, l, gem]).filter(([, , gem]) => gem >= 5));
+check(moved.length === 8, `${moved.length} levels are paid in a corner's gems, not eight`);
+const bar = (W, H, at) => {
+  const row = hudGlyphs.filter(g => g.y === H - 44 + 18), marks = hudIcons.filter(c => c.y === H - 44 + 17);
+  for (const g of row) check(g.x >= 6 && g.x + g.w <= W - 6, `${at}: a figure on the bar's gems runs from ${g.x} to ${g.x + g.w}, off the bar (6 to ${W - 6})`);
+  check(clashes(row, marks) === 0, `${at}: a figure on the bar's gems runs into another or into an icon`);
+  return marks.map(c => Object.entries(sheets.icons.frames).find(([, f]) => f[0] === c.sx && f[1] === c.sy)?.[0]);
+};
+for (const [cssW, cssH] of [[320, 568], [360, 640]]) {
+  game.resize(cssW, cssH, 1);
+  const { W, H } = game, pw = Math.min(W - 8, 200), px = Math.round((W - pw) / 2);
+  // (Where the footer's line is: js/drawing.js, `drawShop`, risen.)
+  const most = Math.max(...TABS.map(t => t.rows.length)), rh = Math.max(24, Math.min(32, Math.floor((H - 100) / most))), ph = 22 + rh * most + 22;
+  const foot = Math.max(2, Math.round((H - 44 - ph) / 2)) + ph - 19 + 4;
+  for (const [u, l, gem] of moved) {
+    for (const v of TABS.flatMap(t => t.rows)) S.lv[v.id] = 0;
+    S.lv[u.id] = l; found(true); hold(true);
+    for (let g = 5; g < 9; g++) S.gems[g] = 9999;
+    game.pending.grit = 0; game.pending.gems.fill(0);
+    game.goal = undefined; game.bought = null; game.shopNote = null; game.banner = null; game.notice = null; game.place = null;
+    game.shop = true; game.shopRise = 1; game.shopTab = TABS.find(t => t.rows.includes(u)).id; game.lab = false;
+    game.buy(u);
+    glyphs.length = 0; icons.length = 0; hudGlyphs.length = 0; hudIcons.length = 0;
+    game.render(); renders++;
+    const at = `${W}x${H}, ${u.name} ${l + 1} tapped with too few gems of the ${GEM_SHORT[gem]}`, note = game.shopNote;
+    check(S.lv[u.id] === l && note?.text === `GEMS: ${['', '', '', '', '', 'NORTH EAST', 'SOUTH EAST', 'SOUTH WEST', 'NORTH WEST'][gem]}, PAST 900` && note.short === `GEMS: ${GEM_SHORT[gem]}, PAST 900`, `${at}: it was ${S.lv[u.id] === l ? 'refused' : 'bought'}, and the note is '${note?.text}' and short '${note?.short}'`);
+    for (const r of runs()) check(r.x >= px + 4 && r.x + r.w <= px + pw - 4, `${at}: a line of ${r.n} letters at y ${r.y} runs from x ${r.x} to ${r.x + r.w}, past the panel (${px + 4} to ${px + pw - 4})`);
+    check(clashes() === 0, `${at}: in the shop a glyph runs into another glyph or an icon`);
+    check(glyphs.some(g => g.y === foot), `${at}: the footer's note was not drawn`);
+    check(game.goal.id === u.id && game.goal.gem === gem && game.cornerBar(), `${at}: the goal is ${game.goal.id} paid in gem ${game.goal.gem}, and the bar shows the corners: ${game.cornerBar()}`);
+    const shown = bar(W, H, at);
+    check(shown.join() === 'gem-nw,gem-se,gem-sw,gem-ne', `${at}: the bar's gems are ${shown}`);
+  }
+  game.shop = false;
+}
+{
+  game.resize(330, 450, 1);
+  const { W, H } = game;
+  check(W === 330, `a screen 330 wide is ${W} of the game's pixels`);
+  game.shop = false; game.banner = null;
+  for (let g = 1; g < 9; g++) S.gems[g] = 999999;
+  hudGlyphs.length = 0; hudIcons.length = 0; game.render(); renders++;
+  const shown = bar(W, H, `${W}x${H}, every gem at 999K`);
+  check(shown.join() === GEM_ICON.slice(1).join(), `${W}x${H}: the bar's gems are ${shown}`);
+  // (Back to the common phone, where the lines below were measured.)
+  game.resize(360, 640, 1);
 }
 
 // What the bit and the winch are, said on their lines: which bit, its cut, and from its sixth level its plough;

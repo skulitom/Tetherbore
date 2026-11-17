@@ -21,7 +21,8 @@ import { N, C, K } from './world.js';
 // a cell, the middle of the core in cells, and the cells only the diamond tip cuts at its own pace, METALS.)
 const T = 16, HX = C + 0.5, HY = C + 0.5;
 const METALS = [K.STEEL, K.KEY];
-const GEM_COLOR = [null, '#bfe6ff', '#ffb060', '#b8f06a', '#d8b8ff', '#5a8cff', '#f2346c', '#aaa6bc', '#2ed060'];
+// (And the gems' colours, as js/drawing.js has them: test/regress/e-corner-gems.mjs holds the two the same.)
+export const GEM_COLOR = [null, '#bfe6ff', '#ffb060', '#b8f06a', '#d8b8ff', '#5a8cff', '#f2346c', '#aaa6bc', '#2ed060'];
 
 // ---------------------------------------------------------------- how the tether looks
 // At each level of reach a tether of its own, and named so (js/shop.js: `tiers`): TWINE; HEMP, a twisted rope;

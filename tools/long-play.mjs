@@ -19,7 +19,9 @@
 //   - At the core it buys whatever can be bought, reach first and then the cheapest.
 //   - A trip goes out along one of twelve spokes (the four directions and thirty degrees to either side of each),
 //     the directions taken in turn, unless a level that the grit is there for wants gems: then to that gem's ground
-//     (the reach's gems before any other level's).
+//     (the reach's gems before any other level's). A corner's gems are had only in its deep seam, from 900 cells
+//     out on its diagonal, which the twelve pass 260 cells off: a level that wants them sends the trip down a spoke
+//     of its own on the diagonal, from the deep seam's edge on, once the reach goes past 1,000.
 //   - Out there it cuts a square ring round a block and flies the ring shut, so the block comes home: a block about
 //     a third of the reach across, 48 cells at the most (the loop the game's prices are worked out from), from four
 //     tenths of the reach out, each block beyond the last on its spoke. Up to three blocks a trip; home sooner when
@@ -49,8 +51,11 @@ const { HARD, rowOf } = world;
 const WAYS = ['', 'north', 'south', 'west', 'east', 'north east', 'south east', 'south west', 'north west'];
 // The gems banked as they are printed: the four directions', and the corners' after them once there are any.
 const gemsSaid = gems => gems.slice(1, 5).join('/') + (gems.slice(5).some(Boolean) ? ` +${gems.slice(5).join('/')}` : '');
-// The twelve spokes: [x, y, whose direction]. (0.866 and 0.5: thirty degrees off the direction's own line.)
-const SPOKES = [[0, -1, 1], [0.5, -0.866, 1], [-0.5, -0.866, 1], [0, 1, 2], [0.5, 0.866, 2], [-0.5, 0.866, 2], [-1, 0, 3], [-0.866, 0.5, 3], [-0.866, -0.5, 3], [1, 0, 4], [0.866, 0.5, 4], [0.866, -0.5, 4]];
+// The twelve spokes: [x, y, whose direction]. (0.866 and 0.5: thirty degrees off the direction's own line.) And the
+// four diagonals', [x, y, whose gems], taken only for a corner's gems (`wanted`), past CORNER_REACH.
+const SPOKES = [[0, -1, 1], [0.5, -0.866, 1], [-0.5, -0.866, 1], [0, 1, 2], [0.5, 0.866, 2], [-0.5, 0.866, 2], [-1, 0, 3], [-0.866, 0.5, 3], [-0.866, -0.5, 3], [1, 0, 4], [0.866, 0.5, 4], [0.866, -0.5, 4],
+  [0.707, -0.707, 5], [0.707, 0.707, 6], [-0.707, 0.707, 7], [-0.707, -0.707, 8]];
+const CORNER_REACH = 1000, { GEM_PAST } = world;
 const compact = n => n < 1000 ? `${Math.floor(n)}` : n < 1e6 ? `${(n / 1000).toFixed(n < 1e4 ? 1 : 0)}K` : n < 1e9 ? `${(n / 1e6).toFixed(n < 1e7 ? 2 : 1)}M` : `${(n / 1e9).toFixed(2)}B`;
 // Every row of every tab, in the shop's order.
 export const ALL = [...UPGRADES, ...WORKS, ...MAPS, ...CORE];
@@ -231,12 +236,13 @@ export async function play(seed = 7, minutes = 40, every = 120, each = null, fau
   const worthHome = () => rows.some(u => { const c = game.cost(u); return c && S.grit >= c.grit && S.gems[c.gem] >= c.gems; });
   // Whose gems a level wants that the grit is there for, or half there: that direction is worked next (the
   // reach's first, as it is bought first, and then the cheapest such level's). Not before the reach is 230: the
-  // gems' ground begins 130 out.
+  // gems' ground begins 130 out. (Nor a corner's before the reach goes past CORNER_REACH: its deep seam begins 900
+  // out.)
   const wanted = () => {
     let gem = 0, least = Infinity;
     if (reach() >= 230) for (const u of rows) {
       const c = game.cost(u);
-      if (!c || c.gems <= S.gems[c.gem] || S.grit < c.grit * 0.5) continue;
+      if (!c || c.gems <= S.gems[c.gem] || S.grit < c.grit * 0.5 || (c.gem >= 5 && reach() <= CORNER_REACH)) continue;
       if (u.id === 'tether') return c.gem;
       if (c.grit < least) { least = c.grit; gem = c.gem; }
     }
@@ -279,13 +285,14 @@ export async function play(seed = 7, minutes = 40, every = 120, each = null, fau
       tried.add(Z.key); site = { cx, cy, q, what: rowOf(Z.row).name };
       break;
     }
-    // A block on a spoke: of the direction whose gems are wanted, or the directions in turn.
+    // A block on a spoke: of the direction whose gems are wanted, or the directions in turn. (A corner's, down its
+    // diagonal from its deep seam's edge out.)
     if (!site) {
       const want = wanted(), order = [1, 4, 2, 3], kins = want ? [want, ...order.filter(k => k !== want)] : order.map((k, n) => order[(n + turn) % 4]);
       if (!want) turn++;
       for (const kin of kins) {
         const list = spokes.filter(s => s.kin === kin).sort((a, b) => a.at - b.at);
-        for (const spoke of list) { site = blockOn(spoke, Math.max(0.4 * R, want === kin ? 165 : 0)); if (site) break; }
+        for (const spoke of list) { site = blockOn(spoke, Math.max(0.4 * R, want === kin ? (kin >= 5 ? GEM_PAST[kin] + 20 : 165) : 0)); if (site) break; }
         if (site) break;
       }
     }

@@ -37,7 +37,7 @@
 //     drill, and none while a wreck ticks, a haul comes in or a banner is up. Those the drill sets off itself are
 //     kept apart only by their own least gap, and are heard only within HEAR cells of it too.
 //   - The layers over the whole screen are not drawn in a lit view (a staged picture of the ground).
-import { N, C, K, BIOMES, rowOf, cellHash, hazOf } from './world.js';
+import { N, C, K, BIOMES, SEAMS, rowOf, cellHash, hazOf } from './world.js';
 import { sheets, draw } from './atlas.js';
 import { sfx, PLINK, setWind } from './audio.js';
 import { framesOf, falls, placeOf } from './decor.js';
@@ -761,7 +761,8 @@ export class Feel {
     if (near > 0) sfx.zip(n, near);
   }
   // A seam's reaction at cell `i` (js/game.js: its row's `react`), shown in the colours of the seam's two parents
-  // (the motes of its `kin` and of its rich ore's direction, `gemB`) and heard as its own sound (`sfx[react]`):
+  // (the motes of its `kin` and of its rich ore's direction, `gemB`, the shallow seam's: a deep seam's rich ore pays
+  // its corner's gems, which are no ground's) and heard as its own sound (`sfx[react]`):
   // steam for a thaw, glints and sparks for glass, sparks flying up and smoke for a burn, a ring of frost for rime.
   // No more than BURSTS a frame are shown (a reaction may take many cells at once), and the sound keeps its own gap.
   // Whether it showed.
@@ -769,7 +770,7 @@ export class Feel {
     const w = game.world, x = i % N, y = Math.floor(i / N), row = this.rowAt(w, x, y), what = row?.react;
     if (!what || this.bursts >= BURSTS) return false;
     this.bursts++;
-    const a = ink(rowOf(row.kin).mote[0]), b = ink(rowOf(row.gemB).mote[0]), cx = x * T + 8, cy = y * T + 8;
+    const a = ink(rowOf(row.kin).mote[0]), b = ink(rowOf(row.seam != null ? rowOf(SEAMS[row.seam][0]).gemB : row.gemB).mote[0]), cx = x * T + 8, cy = y * T + 8;
     for (let n = 0; n < 10; n++) {
       const ang = n / 10 * 6.283 + this.rnd() * 0.5, sp = 20 + this.rnd() * 30, c = n & 1 ? b : a, vx = Math.cos(ang) * sp, vy = Math.sin(ang) * sp;
       if (what === 'thaw') this.spawn(n < 6 ? PUFF : GLINT, cx + vx * 0.1, cy + vy * 0.1, vx * 0.4, n < 6 ? -10 - this.rnd() * 14 : 0, 0.7 + this.rnd() * 0.5, c, n < 6 ? 2 : 1);

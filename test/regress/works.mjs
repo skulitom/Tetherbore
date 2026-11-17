@@ -415,6 +415,12 @@ for (const coil of [0, 1]) {
   const fit = ['hull', 'momentum'].flatMap(id => { const u = by(id); return u.beside.map((at, l) => [id, l, u.needs[1][l], REACH[Math.ceil(at)]]).filter(([, , n, R]) => n > 0.8 * R); });
   check(!fit.length, `levels that ask more than eight tenths of their reach: ${fit.map(([id, l, n, R]) => `${id} ${l + 1} asks ${n} of ${R}`).join(', ')}`);
   check(all.every(u => u.values.length === u.grit.length + 1 && u.gems.length === u.grit.length && (!u.needs || u.needs[1].length === u.grit.length) && (!u.spec || u.spec.length === u.grit.length)), `a row's prices and its levels are not of a length: ${all.find(u => u.values.length !== u.grit.length + 1)?.id}`);
+  // Eight of them, two to a corner, are paid in a corner's gems (G: 5 north east, 6 south east, 7 south west, 8
+  // north west), at these figures; every other level in its row's own, and no row has a gem for each level but
+  // those eight's.
+  const corner = all.flatMap(u => (u.gemAt ?? []).map((g, l) => g >= 5 ? `${u.id} ${u.values[l + 1]} ${u.gems[l]} ${g}` : null).filter(Boolean)).join(', ');
+  check(corner === 'drill 8 75000 5, winch 5 80000 8, scanner 13 40000 5, momentum 2.8 30000 6, hull 12 75000 6, maprange 10 25000 8, lamp 18 60000 7, blackbox 0.9 35000 7', `the levels paid in a corner's gems: ${corner}`);
+  check(all.every(u => !u.gemAt || (u.gemAt.length === u.gems.length && u.gemAt.every(g => g === u.gem || g >= 5))), `a row's levels are paid in another direction's gems: ${all.filter(u => u.gemAt).map(u => `${u.id} ${u.gemAt}`).join('; ')}`);
   const whole = all.reduce((sum, u) => sum + u.grit.reduce((a, b) => a + b, 0), 0), first = whole - late.reduce((sum, e) => sum + e.g, 0);
   check(whole > 2e9 && whole > first * 20, `the whole shop costs ${whole} grit, the levels before the late game ${first}`);
   check(by('tether').values.at(-1) === 2300, `the reach goes to ${by('tether').values.at(-1)}`);

@@ -6,7 +6,8 @@
 // kept. Riding on to the core mends a hull that is only dented. HULL is the shop's sixth row, a pip a level from
 // five to nine, and a game saved before there was a hull loads with five.
 // Ground hauled away is known to be gone without the drill going to look (the map shows it open).
-import { makeGame, tetherFaults, random, DEATH, UPGRADES, K, B, N, C } from '../harness.mjs';
+import { makeGame, tetherFaults, random, DEATH, UPGRADES, K, B, N, C, world } from '../harness.mjs';
+const { G } = world;
 
 const fails = [], check = (ok, what) => { if (!ok) fails.push(what); };
 const HX = C + 0.5, HY = C + 0.5;
@@ -111,7 +112,8 @@ for (const seed of [7, 19, 23]) {
   for (let l = 0; l < 3; l++) game.buy(row);
   check(game.S.lv.hull === 4 && game.val('hull') === 9 && game.hull === 9 && game.lacks(row) === 'NEEDS 660/1200 CELLS OUT', `having been 660 cells out: level ${game.S.lv.hull}, ${game.hull} pips, and the next says '${game.lacks(row)}'`);
   // The three levels of the late game ask for 1,200, 1,500 and 1,800 cells out; the last makes twelve pips, drawn with the last plates there are.
-  game.S.out = 1800;
+  // (And is paid in the south east's gems: js/shop.js, LATE.)
+  game.S.out = 1800; game.S.gems[G.SE] = 1e6;
   for (let l = 0; l < 4; l++) game.buy(row);
   check(game.S.lv.hull === 7 && game.val('hull') === 12 && game.hull === 12 && game.cost(row) === null, `having been 1,800 cells out: level ${game.S.lv.hull}, ${game.hull} pips`);
   game.resize(320, 568, 1); game.render();

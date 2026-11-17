@@ -44,7 +44,7 @@ const { makeGame } = await import('../harness.mjs');
 const { TABS, LAB, NEEDS, CORE } = await import('../../js/shop.js');
 const { BIOMES, GEM_PAST } = await import('../../js/world.js');
 const { GIANTS, placeHaul, haulTitle, SIZES, QUIPS, GIANT_SAYS, OVER_SAYS } = await import('../../js/game.js');
-const { SPOT, GEM_WHERE, LAB_LIST, labCount } = await import('../../js/drawing.js');
+const { SPOT, GEM_WHERE, GEM_SHORT, LAB_LIST, labCount } = await import('../../js/drawing.js');
 const { CREATURES } = await import('../../js/fauna.js');
 const { readFileSync } = await import('node:fs');
 
@@ -86,6 +86,8 @@ for (const tab of TABS) {
 for (const what of Object.values(NEEDS)) { names.add(`NEEDS 3/5 ${what}`); names.add(`3/5 ${what}`); }
 // (Where each gem is found and how far out; and the pockets, of the four directions alone, which have specimens.)
 for (const [g, w] of GEM_WHERE.entries()) if (w) { names.add(w); names.add(`GEMS: ${w}, PAST ${GEM_PAST[g]}`); names.add(`${w}, PAST ${GEM_PAST[g]}`); if (g <= 4) names.add(`${w} POCKETS`); }
+// (And a corner's said short, in the shop's line and its footer.)
+for (const [g, w] of GEM_SHORT.entries()) if (w) { names.add(w); names.add(`GEMS: ${w}, PAST ${GEM_PAST[g]}`); names.add(`${w}, PAST ${GEM_PAST[g]}`); }
 for (const e of LAB) { names.add(e.name); names.add(e.note); names.add(e.at); names.add(e.where); }
 for (const line of LAB_LIST.line) { names.add(line.label); names.add(line.found); }
 // (What each thing is worth, said under the list: js/worth.js.)

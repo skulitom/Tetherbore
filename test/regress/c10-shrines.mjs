@@ -13,10 +13,13 @@
 //     they were), pays SHRINE_LUMP seconds of what cutting 1,400 out earns and SHRINE_SPEC specimens of each of its
 //     parents (the north and the east), is held from then on and is saved so;
 //   - every gem paid to a parent's direction is SHRINE_PERK times as many for each shrine held of that direction's
-//     two corners (the north with both the north-east's and the north-west's, 1.21), and no other's.
-// The game's part fails on the game before shrines paid: the haul is a RELIC! and nothing is held.
+//     two corners (the north with both the north-east's and the north-west's, 1.21), and no other's;
+//   - and its corner's own: hauled it pays SHRINE_GEMS of the north east's gems besides what its cells pay, and
+//     held, every one of the north east's gems paid is SHRINE_OWN times as many, and no other corner's.
+// The game's part fails on the game before shrines paid: the haul is a RELIC! and nothing is held. (And its corner's
+// gems on the game before they were paid: none.)
 //   node test/regress/c10-shrines.mjs
-import { World, N, C, K, SHRINES, SHRINE_R, SEAMS, SLAB } from '../../js/world.js';
+import { World, N, C, K, G, SHRINES, SHRINE_R, SEAMS, SLAB, CORNER_GEM } from '../../js/world.js';
 
 const fails = [], check = (ok, what) => { if (!ok && fails.length < 16) fails.push(what); };
 check(SHRINE_R === 1400 && JSON.stringify(SHRINES) === JSON.stringify([[990, -990], [990, 990], [-990, 990], [-990, -990]]), `the shrines lie at ${JSON.stringify(SHRINES)}`);
@@ -70,6 +73,7 @@ check(ore > 30 && vault > 100, `the shrines' stone is ${vault} cells of vault an
   for (let y = C + sy - 5; y <= C + sy + 5; y++) for (let x = C + sx - 5; x <= C + sx + 5; x++) if (w.at(x, y) !== K.EMPTY) cells.push(y * N + x);
   const pay = game.payOf(cells), spec0 = S.spec.slice(), relics = S.relics.slice();
   check(pay.shrine === 0 && pay.relic === -1 && pay.lump >= round2(income(SHRINE_R) * 30), `the north-east's shrine is shrine ${pay.shrine}, relic ${pay.relic}, and pays a lump of ${pay.lump}`);
+  check(pay.gems[G.NE] > 10000 && [G.SE, G.SW, G.NW].every(g => pay.gems[g] === 0), `the north-east's shrine pays the corners' gems ${pay.gems.slice(5)}`);
   game.haul(cells);
   check(game.hauled.title === 'SHRINE!', `the north-east's shrine hauled is called ${game.hauled.title}`);
   check(JSON.stringify(S.shrines) === '[1,0,0,0]' && JSON.stringify(S.relics) === JSON.stringify(relics) && !S.won, `after it the shrines held are ${JSON.stringify(S.shrines)}, the relics ${JSON.stringify(S.relics)}`);
@@ -80,12 +84,16 @@ check(ore > 30 && vault > 100, `the shrines' stone is ${vault} cells of vault an
   // north-east's and the north-west's.
   const ore = [];
   for (let k = 1; k <= 4; k++) for (let n = 0; n < 40; n++) { const i = (C - 30 + k) * N + C + 20 + n; w.setK(i, K.ORE_B); w.setB(i, k); ore.push(i); }
+  // (And the deep seams' rich ore, each paying its corner's gems.)
+  for (let c = 0; c < 4; c++) for (let n = 0; n < 40; n++) { const i = (C - 20 + c) * N + C + 20 + n; w.setK(i, K.ORE_B); w.setB(i, SEAMS[c][1]); ore.push(i); }
   const gems = held => { S.shrines = held; return game.payOf(ore).gems; };
   const none = gems([0, 0, 0, 0]), ne = gems([1, 0, 0, 0]), both = gems([1, 0, 0, 1]);
   const near = (a, b, by) => Math.abs(a - b * by) <= 1;
   check(near(ne[B.FROST], none[B.FROST], 1.1) && near(ne[B.LODE], none[B.LODE], 1.1) && ne[B.EMBER] === none[B.EMBER] && ne[B.MIRE] === none[B.MIRE], `with the north-east's shrine the gems are ${ne}, with none ${none}`);
   check(near(both[B.FROST], none[B.FROST], 1.21) && near(both[B.MIRE], none[B.MIRE], 1.1) && near(both[B.LODE], none[B.LODE], 1.1) && both[B.EMBER] === none[B.EMBER], `with the north's two shrines the gems are ${both}, with none ${none}`);
+  check(CORNER_GEM.every(g => none[g] > 0) && near(ne[G.NE], none[G.NE], 1.25) && [G.SE, G.SW, G.NW].every(g => ne[g] === none[g]), `with the north-east's shrine the corners' gems are ${ne.slice(5)}, with none ${none.slice(5)}`);
+  check(near(both[G.NE], none[G.NE], 1.25) && near(both[G.NW], none[G.NW], 1.25) && both[G.SE] === none[G.SE] && both[G.SW] === none[G.SW], `with the north's two shrines the corners' gems are ${both.slice(5)}, with none ${none.slice(5)}`);
 }
 
-console.log(fails.length ? `DEFECT: ${fails.join('\n        ')}` : `ok: a shrine on each diagonal in its deep seam, ${laid} cells laid as written and kept clear of, and none in an older game's ground; one hauled pays, is held, and makes its parents' gems more`);
+console.log(fails.length ? `DEFECT: ${fails.join('\n        ')}` : `ok: a shrine on each diagonal in its deep seam, ${laid} cells laid as written and kept clear of, and none in an older game's ground; one hauled pays, is held, and makes its parents' gems more and its corner's most`);
 process.exit(fails.length ? 1 : 0);

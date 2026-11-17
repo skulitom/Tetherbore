@@ -300,6 +300,11 @@ export const WORDS = [
   ['SOUTH EAST', 'ЮГО-ВОСТОК', '东南'],
   ['SOUTH WEST', 'ЮГО-ЗАПАД', '西南'],
   ['NORTH WEST', 'СЕВЕРО-ЗАПАД', '西北'],
+  // (the corners said short, where the whole will not fit a line of the shop: js/drawing.js, GEM_SHORT)
+  ['NE', 'СВ', '东北'],
+  ['SE', 'ЮВ', '东南'],
+  ['SW', 'ЮЗ', '西南'],
+  ['NW', 'СЗ', '西北'],
   // (what a thing of the lab's is worth, against plain rock: js/worth.js)
   ['WORTH x# ROCK', 'x# ПОРОДЫ', '价值：岩石 x#'],
   ['~x# ROCK, +# GEMS', '~x# ПОРОДЫ, +# КАМН.', '岩石 ~x#，+# 宝石'],

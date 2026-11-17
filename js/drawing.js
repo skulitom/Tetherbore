@@ -34,6 +34,14 @@ export const GEM_ICON = [null, 'frost', 'ember', 'mire', 'lode', 'gem-ne', 'gem-
 export const GEM_COLOR = [null, '#bfe6ff', '#ffb060', '#b8f06a', '#d8b8ff', '#5a8cff', '#f2346c', '#aaa6bc', '#2ed060'];
 // The gems a haul's banner lists, in order: every gem but none.
 const GEM_ORDER = [1, 2, 3, 4, 5, 6, 7, 8];
+// The bar's four places for gems: the four directions', or the four corners' each in one of its parents' places (the
+// north west's in the north's, the south east's in the south's, the south west's in the west's, the north east's in
+// the east's), where the corners' are what matter (`cornerBar`); and on a screen wide enough for eight (BAR_ALL_W:
+// each as much room as one of four has on the common phone), all eight in their order.
+const BAR_DIRS = [1, 2, 3, 4], BAR_CORNERS = [8, 6, 7, 5], BAR_ALL = GEM_ORDER, BAR_ALL_W = 330;
+// Where the corners' gems are what matter: out where they are had, past CORNER_BAR cells from the core and within
+// CORNER_LANE of the distance of a diagonal (the deep seams lie along them from 900 out).
+export const CORNER_BAR = 840, CORNER_LANE = 0.3;
 // Text broken into lines no wider than `wide` pixels, at the spaces: in the language chosen, turned whole before it
 // is broken (and in Mandarin broken between characters: js/lang.js, `words`).
 const wrap = (said, wide) => {
@@ -1244,6 +1252,30 @@ export class Drawing {
   // And third, where the haul held a pocket's mineral that raised a count of specimens: by how many. (A foe caught
   // as a trophy, js/fauna.js, is no haul: its banner has the specimens it paid and nothing else.)
   bannerSays(b) { if (b.trophy) return ['', null, `+${b.spec}`]; return [`${b.n} x${b.mult.toFixed(1)}${b.over < 1 ? ' WINCH OVER LOAD' : ''}`, b.shine > 1 ? `PRISM x${b.shine}` : null, b.spec > 0 ? `+${b.spec}` : null]; }
+  // How a banner's line of what it paid is laid out, for a screen `W` wide: worked out once a banner (and again only
+  // if the screen changes), so that drawing it every frame measures and makes nothing. `lw` is the line's width;
+  // where that is wider than the screen, the gems go on over a second line, `lw2` wide, from the gem `split` (0:
+  // one line): from the first of the corners' where the line up to it fits, else from the first that would not fit.
+  // The specimens go last, on the second line where there is one.
+  bannerSplit(b, spec) {
+    const W = this.W, room = W - 8, gemW = g => textWidth(`+${compact(b.gems[g])}`) + 15, specW = spec ? textWidth(spec) + 17 : 0;
+    let lw = b.trophy ? -4 : textWidth(`+${compact(b.grit)}`) + 11;
+    for (const g of GEM_ORDER) if (b.gems[g] > 0) lw += gemW(g);
+    b.splitW = W; b.split = 0; b.lw = lw + specW; b.lw2 = 0;
+    if (b.lw <= room) return;
+    let first = b.trophy ? -4 : textWidth(`+${compact(b.grit)}`) + 11, corner = 0, over = 0, upTo = first, w1 = first;
+    for (const g of GEM_ORDER) {
+      if (!(b.gems[g] > 0)) continue;
+      if (!corner && g >= 5) { corner = g; w1 = upTo; }
+      if (!over && upTo + gemW(g) > room) over = g;
+      upTo += gemW(g);
+    }
+    const split = corner && w1 <= room && w1 > first ? corner : over;
+    if (!split) return;
+    let a = first, c = 0;
+    for (const g of GEM_ORDER) if (b.gems[g] > 0) { if (g < split) a += gemW(g); else c += gemW(g); }
+    b.split = split; b.lw = a; b.lw2 = c + specW - 4;
+  }
   // What the next thing to be bought with a direction's specimens asks of them, or 0 where nothing is left to buy.
   specNeed(kin) { const u = WORKS.find(u => u.kin === kin && this.cost(u)); return u ? this.cost(u).spec : 0; }
   drawHud(ox, oy) {
@@ -1264,19 +1296,23 @@ export class Drawing {
       text(ctx, b.title, W / 2, y, colour, 0.5, big);
       const [size, prism, spec] = this.bannerSays(b);
       if (size) text(ctx, size, W / 2, y + 11 * big + 2, b.over < 1 ? '#ffb060' : '#bfe6ff', 0.5);
-      let line = `+${compact(b.grit)}`, lw = b.trophy ? -4 : textWidth(line) + 11;
-      // (The gems it paid, in their order: those it paid none of are passed over.)
-      for (const g of GEM_ORDER) if (b.gems[g] > 0) lw += textWidth(`+${compact(b.gems[g])}`) + 15;
-      if (spec) lw += textWidth(spec) + 17;
-      let lx = Math.round(W / 2 - lw / 2), ly = y + 11 * big + (size ? 14 : 2);
-      if (!b.trophy) { draw(ctx, 'icons', 'grit', lx, ly - 1); text(ctx, line, lx + 11, ly, '#ffe14a'); lx += textWidth(line) + 15; }
-      for (const g of GEM_ORDER) if (b.gems[g] > 0) { draw(ctx, 'icons', GEM_ICON[g], lx, ly - 1); text(ctx, `+${compact(b.gems[g])}`, lx + 11, ly, GEM_COLOR[g]); lx += textWidth(`+${compact(b.gems[g])}`) + 15; }
+      // (The gems it paid, in their order: those it paid none of are passed over. Too wide for the screen, they
+      // go on over a second line from the gem `split` says: `bannerSplit`, measured once a banner.)
+      if (b.splitW !== W) this.bannerSplit(b, spec);
+      const line = `+${compact(b.grit)}`, ly = y + 11 * big + (size ? 14 : 2), down = b.split ? 12 : 0;
+      let lx = Math.round(W / 2 - b.lw / 2), at = ly;
+      if (!b.trophy) { draw(ctx, 'icons', 'grit', lx, at - 1); text(ctx, line, lx + 11, at, '#ffe14a'); lx += textWidth(line) + 15; }
+      for (const g of GEM_ORDER) {
+        if (!(b.gems[g] > 0)) continue;
+        if (g === b.split) { lx = Math.round(W / 2 - b.lw2 / 2); at = ly + 12; }
+        draw(ctx, 'icons', GEM_ICON[g], lx, at - 1); text(ctx, `+${compact(b.gems[g])}`, lx + 11, at, GEM_COLOR[g]); lx += textWidth(`+${compact(b.gems[g])}`) + 15;
+      }
       // The specimens a pocket's mineral added, with the mineral itself beside the figure.
-      if (spec) { if (b.mineral) this.drawMineral(ctx, b.mineral, lx - 1, ly - 3); else draw(ctx, 'icons', `spec-${GEM_ICON[b.specOf]}`, lx, ly - 1); text(ctx, spec, lx + 13, ly, GEM_COLOR[b.specOf]); }
+      if (spec) { if (b.mineral) this.drawMineral(ctx, b.mineral, lx - 1, at - 3); else draw(ctx, 'icons', `spec-${GEM_ICON[b.specOf]}`, lx, at - 1); text(ctx, spec, lx + 13, at, GEM_COLOR[b.specOf]); }
       // A prism among the cells: what it multiplied the gems by, in the gems' colours by turns.
-      if (prism) text(ctx, prism, W / 2, ly + 12, GEM_COLOR[1 + ((now / 240) | 0) % 4], 0.5);
+      if (prism) text(ctx, prism, W / 2, ly + down + 12, GEM_COLOR[1 + ((now / 240) | 0) % 4], 0.5);
       // A word more under the rest, where the haul has one (HALF's).
-      if (b.sub) text(ctx, b.sub, W / 2, ly + (prism ? 24 : 12), '#fff6c8', 0.5);
+      if (b.sub) text(ctx, b.sub, W / 2, ly + down + (prism ? 24 : 12), '#fff6c8', 0.5);
       ctx.globalAlpha = 1;
     }
     // Over a dead drill the screen goes dark.
@@ -1305,7 +1341,7 @@ export class Drawing {
         }
         if (best) lines = [best[0], best[1]]; else big = 1;
       }
-      const under = this.banner ? Math.round(head) + 11 * (this.banner.n >= 10 ? 2 : 1) + (this.banner.shine > 1 ? 42 : 30) + (this.banner.sub ? 12 : 0) : 0, y = Math.max(under, Math.round(Math.max(head + 14, H * 0.3) - (1 - pop) * 8));
+      const under = this.banner ? Math.round(head) + 11 * (this.banner.n >= 10 ? 2 : 1) + (this.banner.shine > 1 ? 42 : 30) + (this.banner.sub ? 12 : 0) + (this.banner.split ? 12 : 0) : 0, y = Math.max(under, Math.round(Math.max(head + 14, H * 0.3) - (1 - pop) * 8));
       ctx.globalAlpha = Math.min(1, (place.life - place.t) * 3);
       lines.forEach((line, n) => text(ctx, line, W / 2, y + n * 11 * big, place.colour, 0.5, big + (n === 0 && lines.length === 1 && place.t < 0.07 ? 1 : 0)));
       ctx.globalAlpha = 1;
@@ -1324,9 +1360,10 @@ export class Drawing {
     }
     draw(ctx, 'icons', 'grit', 6, B + 5);
     text(ctx, compact(S.grit - this.pending.grit), 18, B + 6 - (this.counted > 0 ? 1 : 0), this.counted > 0 ? '#ffffff' : '#ffe14a');
-    const gw = (W - 30) / 4;
-    for (let g = 1; g < 5; g++) {
-      const gx = Math.round(6 + (g - 1) * gw), have = S.gems[g] - this.pending.gems[g];
+    // The gems: the four directions', or the corners' where they are what matter, or all eight where there is room.
+    const gems = W >= BAR_ALL_W ? BAR_ALL : this.cornerBar() ? BAR_CORNERS : BAR_DIRS, gw = (W - 30) / gems.length;
+    for (let n = 0; n < gems.length; n++) {
+      const g = gems[n], gx = Math.round(6 + n * gw), have = (S.gems[g] ?? 0) - (this.pending.gems[g] ?? 0);
       ctx.globalAlpha = S.gems[g] > 0 ? 1 : 0.35;
       draw(ctx, 'icons', GEM_ICON[g], gx, B + 17);
       text(ctx, compact(have), gx + 12, B + 18, GEM_COLOR[g]);
@@ -1748,6 +1785,15 @@ export class Drawing {
   }
   // What the player is saving for, chosen for this game where it has not been yet (js/goal.js).
   saving() { const g = this.goal; return g !== undefined && g.of === this.S ? g : pickGoal(this); }
+  // Whether the bar shows the corners' gems in the directions' places: while what is saved for is paid in a corner's
+  // gems (js/goal.js), or the drill is out where they are had, far out on a diagonal (CORNER_BAR, CORNER_LANE). A few
+  // sums a frame, so it cannot flicker with anything but where the drill is.
+  cornerBar() {
+    const g = this.saving();
+    if (g.id !== null && g.gem >= 5) return true;
+    const dx = this.drill.x - C, dy = this.drill.y - C, r2 = dx * dx + dy * dy;
+    return r2 > CORNER_BAR * CORNER_BAR && Math.abs(Math.abs(dx) - Math.abs(dy)) < CORNER_LANE * Math.sqrt(r2);
+  }
   // What the drill is now, a line a thing: every figure read from the game itself, so it cannot say otherwise than
   // the game plays. What a hazard does to this drill is in green where something fitted has turned it.
   stats() {
@@ -2124,8 +2170,11 @@ export class Drawing {
           draw(ctx, 'icons', `spec-${GEM_ICON[u.kin]}`, cx, cy - 1);
           text(ctx, asks, cx - 2, cy, have >= c.spec ? GEM_COLOR[u.kin] : '#ff7a5a', 1);
         }
+        // (Where gems are short, where they are had: a corner's said short where the whole will not fit the line.)
         const short = c.gems > 0 && this.banked(c.gem) < c.gems;
-        if (!wide || tall) text(ctx, short ? `${GEM_WHERE[c.gem]}, PAST ${GEM_PAST[c.gem]}` : what, px + 25, wide ? y + 11 : y + rh - 12, short ? GEM_COLOR[c.gem] : spent ? '#8ce060' : '#c8c2d4');
+        let where = short ? `${GEM_WHERE[c.gem]}, PAST ${GEM_PAST[c.gem]}` : what;
+        if (short && GEM_SHORT[c.gem] && px + 25 + textWidth(where) > edge) where = `${GEM_SHORT[c.gem]}, PAST ${GEM_PAST[c.gem]}`;
+        if (!wide || tall) text(ctx, where, px + 25, wide ? y + 11 : y + rh - 12, short ? GEM_COLOR[c.gem] : spent ? '#8ce060' : '#c8c2d4');
       } else text(ctx, u.what, px + 25, y + rh - 12, '#e8c070');
       this.buttons.unshift({ x: px + 4, y, w: pw - 8, h: rh - 1, act: () => this.buy(u) });
     });
@@ -2135,6 +2184,7 @@ export class Drawing {
     // Why a tap was refused is said on the footer's line: the header is the tabs'. (A new world is in the menu.)
     const note = this.shopNote && this.shopNote.t > 0 ? this.shopNote : null;
     if (note) note.t -= 1 / 60;
-    if (note) text(ctx, note.text, px + pw / 2, fy + 4, note.color, 0.5);
+    // (A corner's gems said short where the whole will not fit: js/game.js, `buy`.)
+    if (note) text(ctx, note.short && textWidth(note.text) > pw - 8 ? note.short : note.text, px + pw / 2, fy + 4, note.color, 0.5);
   }
 }

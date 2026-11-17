@@ -1,10 +1,10 @@
 // Tetherbore: the game. A drill flies free on a tether from a fixed core, cuts whatever ground it is pushed into,
 // and reels in any piece of ground it has drawn the tether round.
-import { World, CellBook, N, C, K, B, HARD, GRIT, GEMS, DX, DY, HAZARDS, RARE, CRUSH, ZONE, FIND, rowOf, hazOf, gemKin, digTime, cellHash, sight, cellsAlong, GEN, SEAMS, SHRINE_R, FOSSILS, fossilKin, GEM_N, GEM_PAST, noGems, STONES } from './world.js';
+import { World, CellBook, N, C, K, B, HARD, GRIT, GEMS, DX, DY, HAZARDS, RARE, CRUSH, ZONE, FIND, rowOf, hazOf, gemKin, digTime, cellHash, sight, cellsAlong, GEN, SEAMS, SHRINE_R, FOSSILS, fossilKin, GEM_N, GEM_PAST, CORNER_GEM, noGems, STONES } from './world.js';
 import { sheets, frameAt, duration } from './atlas.js';
 import { sfx, unlock, setAmbience } from './audio.js';
 import { richness, haulBonus, overload, income, round2, NEEDS, UPGRADES, LAB, LAB_OF, labLevel, labNext, CORE, ROWS, REACH, CUT, TABS } from './shop.js';
-import { Drawing, T, DIR_BIOME, GEM_ICON, GEM_COLOR, GEM_WHERE, SPOT, bright, compact, DEBRIS, LAB_LIST, LAB_RH, LAB_SEC } from './drawing.js';
+import { Drawing, T, DIR_BIOME, GEM_ICON, GEM_COLOR, GEM_WHERE, GEM_SHORT, SPOT, bright, compact, DEBRIS, LAB_LIST, LAB_RH, LAB_SEC } from './drawing.js';
 import { Feel } from './feel.js';
 import { Fitter } from './fit.js';
 import { Fauna } from './fauna.js';
@@ -214,8 +214,10 @@ export const ZIP = { rate: 25, most: 60, ring: 128 };
 // What the deep finds pay (`payOf`), in seconds of what cutting out there would earn: twin stones both in one haul,
 // a fossil whole (for each bone), a shrine; and the specimens of each, its direction's (a shrine's, each of its two
 // parents'). A shrine held makes every gem paid to each of its parents' directions SHRINE_PERK times as many, for
-// good: a direction with both its corners' shrines pays 1.21 times.
-export const TWIN_LUMP = 16, BONE_LUMP = 4, SHRINE_LUMP = 30, TWIN_SPEC = 1, BONE_SPEC = 2, SHRINE_SPEC = 5, SHRINE_PERK = 1.1;
+// good: a direction with both its corners' shrines pays 1.21 times. And a shrine is its corner's own: hauled, it pays
+// SHRINE_GEMS of its corner's gems (CORNER_GEM) besides, as they are, uncut, and held, it makes every one of them paid
+// after SHRINE_OWN times as many (its deep seam's rich ore is what pays them: js/world.js, `seam`).
+export const TWIN_LUMP = 16, BONE_LUMP = 4, SHRINE_LUMP = 30, TWIN_SPEC = 1, BONE_SPEC = 2, SHRINE_SPEC = 5, SHRINE_PERK = 1.1, SHRINE_GEMS = 10000, SHRINE_OWN = 1.25;
 // The two directions whose ground each corner's seam is made of (its gems' and its rich ore's), north-east,
 // south-east, south-west, north-west.
 export const CORNER_KINS = SEAMS.map(([id]) => [rowOf(id).gemA, rowOf(id).gemB]);
@@ -2050,14 +2052,16 @@ export class Game {
     const fly = this.val('flywheel'), spin = fly > 0 && n >= LIGHT && this.time - this.spin.t <= CHAIN ? this.spin.n : 0, spun = spin ? 1 + Math.min(fly, SPIN_STEP[Math.min(2, S.lv.flywheel)] * spin) : 1;
     // (The station's refinery multiplies a haul's grit, lumps and all; its gem cutter the gems.)
     const refined = this.val('refinery'), cut = this.val('cutter');
-    // (And each shrine held makes the gems of both its parents' directions SHRINE_PERK times as many, for good. The
-    // corners' gems are cut, shone and overloaded as the directions' are.)
+    // (And each shrine held makes the gems of both its parents' directions SHRINE_PERK times as many, for good, and
+    // its own corner's SHRINE_OWN times. The corners' gems are cut, shone and overloaded as the directions' are; a
+    // shrine hauled pays its SHRINE_GEMS after, not cut.)
     const holy = S.shrines;
     for (let b = 1; b < GEM_N; b++) {
       let perk = 1;
-      if (holy) for (let d = 0; d < 4; d++) if (holy[d] && (CORNER_KINS[d][0] === b || CORNER_KINS[d][1] === b)) perk *= SHRINE_PERK;
+      if (holy) for (let d = 0; d < 4; d++) if (holy[d]) perk *= CORNER_KINS[d][0] === b || CORNER_KINS[d][1] === b ? SHRINE_PERK : CORNER_GEM[d] === b ? SHRINE_OWN : 1;
       gems[b] = Math.round(gems[b] * shine * over * cut * perk);
     }
+    for (const d of shrines) gems[CORNER_GEM[d]] += SHRINE_GEMS;
     return { n, grit: Math.round((Math.round(grit * mult * spun) + lump) * refined), gems, lump, spec, minerals, mineral, prisms, shine, relic, caches, rares, rare, caught, live, parts, wrecks, mult, over, spin, chain: chains ? chain : 0,
       ores, hazards, twins, fossils, fossil, shrine, shrines };
   }
@@ -2206,7 +2210,12 @@ export class Game {
     if (worm >= 0) { this.popup(worm % N, Math.floor(worm / N) - 1, 'CAUGHT', SPOT.worm[1]); this.sparkle((worm % N + 0.5) * T, (Math.floor(worm / N) + 0.5) * T, 8, SPOT.worm[1]); sfx.caught(); }
     if (relic >= 0) { S.relics[relic] = 1; sfx.relic(); if (S.relics.every(Boolean) && !S.won) { S.won = true; this.wonAt = this.time; } }
     // (A shrine has a chord of its own, a fossil or twin stones the relic's call; geodes that ring, a chime.)
-    if (pay.shrine >= 0) { sfx.shrine?.(pay.shrine); this.ring(cx, cy, GEM_COLOR[CORNER_KINS[pay.shrine][1]], 140, 0.1); }
+    // (And what it paid of its corner's gems, over it, by the gems' own icon.)
+    if (pay.shrine >= 0) {
+      const own = CORNER_GEM[pay.shrine];
+      sfx.shrine?.(pay.shrine); this.ring(cx, cy, GEM_COLOR[CORNER_KINS[pay.shrine][1]], 140, 0.1);
+      this.popup(mx, my - 1.2, `+${compact(SHRINE_GEMS)}`, GEM_COLOR[own], GEM_ICON[own]);
+    }
     else if (pay.fossil || pay.twins) sfx.relic();
     if (rang) { sfx.resonate?.(rang); this.ring(cx, cy, '#fff0a0', 200, 0.08, 1.2); if (light) this.popup(mx, my - 1.2, `${rang} RING`, '#fff0a0'); }
   }
@@ -3137,11 +3146,13 @@ export class Game {
   canBuy(u) { const c = this.cost(u); return !!c && this.banked() >= c.grit && this.banked(c.gem) >= c.gems && (!c.spec || this.specs(u.kin) >= c.spec) && !this.lacks(u); }
   buy(u) {
     if (!this.canBuy(u)) {
-      // Says what is missing, and where gems are to be had.
+      // Says what is missing, and where gems are to be had. (A corner's said short as well, `short`, for where the
+      // whole will not fit the footer: js/drawing.js, `drawShop`.)
       const c = this.cost(u);
       if (c) {
         const gems = c.gems > this.banked(c.gem), spec = c.spec > 0 && this.specs(u.kin) < c.spec, lack = this.lacks(u);
-        this.shopNote = { t: 2.5, color: lack ? '#ff9a6a' : gems ? GEM_COLOR[c.gem] : spec ? GEM_COLOR[u.kin] : '#ff7a5a', text: lack ?? (gems ? `GEMS: ${GEM_WHERE[c.gem]}, PAST ${GEM_PAST[c.gem]}` : spec ? `${GEM_WHERE[u.kin]} POCKETS` : 'NOT ENOUGH GRIT') };
+        this.shopNote = { t: 2.5, color: lack ? '#ff9a6a' : gems ? GEM_COLOR[c.gem] : spec ? GEM_COLOR[u.kin] : '#ff7a5a', text: lack ?? (gems ? `GEMS: ${GEM_WHERE[c.gem]}, PAST ${GEM_PAST[c.gem]}` : spec ? `${GEM_WHERE[u.kin]} POCKETS` : 'NOT ENOUGH GRIT'),
+          short: !lack && gems && GEM_SHORT[c.gem] ? `GEMS: ${GEM_SHORT[c.gem]}, PAST ${GEM_PAST[c.gem]}` : null };
         // (A row that asks only to be paid for is what the player is saving for now: js/goal.js.)
         if (!lack) pickGoal(this, u);
       }

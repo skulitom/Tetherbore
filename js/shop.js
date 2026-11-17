@@ -3,7 +3,7 @@
 // needs the game, a canvas or a sound, so a tool may ask the prices and the reaches of this alone. (A name in the
 // notes below that is not made here is the game's: `reelIfRound` or BOOST in js/game.js, `findsNear` or LENS in
 // js/drawing.js, which draws it.)
-import { B } from './world.js';
+import { B, G } from './world.js';
 
 // ---------------------------------------------------------------- the economy
 // Everything here is worked out from one model of how fast a player earns, so that prices keep pace with income
@@ -382,6 +382,15 @@ export const ROWS = [...UPGRADES, ...WORKS, ...MAPS, ...CORE];
 // score, and, the station's last, that relics have. (No level of reach: the tether already goes past the relics.)
 // Each of them is drawn as a step up on the drill, the tether or the station, as every level above is
 // (js/fit.js). `EARLY` is each row's last level before these, for a picture of a game there.
+// Eight of the dearest, two to a corner, are paid in a corner's gems (G), which only its deep seam's rich ore and its
+// shrine pay, from 900 cells out on the diagonals (js/world.js: `seam`; js/game.js: SHRINE_GEMS): the north east's for
+// the bit's MK8 and the scanner's 13, the south east's for the ram's x2.8 and the hull's 12, the south west's for the
+// black box's 90% and the lamp's 18, the north west's for the map's range of 10 and the winch's x5. They ask about
+// three times the gems they asked of their row's direction (420 thousand in all where they asked 143 thousand, 95 to
+// 115 thousand a corner): a cell of a deep seam's rich ore pays ten of them (five, twice over, as deep ground's ore
+// pays), and a corner's deep seam holds more than its two prices within 1,500 cells of the core once the gem cutter
+// doubles them. Their grit and what they ask found are as they were, and no level is added or taken away for them,
+// so a game saved before has its levels where they were.
 // No two of them ask the same distance, and none what a level of reach asks (900, for 2,300): they open one at a
 // time, forty or fifty cells apart, as the drill goes further out, the first three (the ram, the spore drive's
 // graft and the mender, 760 to 850) while it works its way out to the last reach's 900. (They asked 900, 1,000,
@@ -391,11 +400,11 @@ export const ROWS = [...UPGRADES, ...WORKS, ...MAPS, ...CORE];
 // second and third at half as much again, so that from about a hundred minutes on, when levels open faster than
 // grit comes in, there is still something to save for.
 const LATE = {
-  drill: [[6, 25e6, 4000, 950], [7, 120e6, 10000, 1350], [8, 375e6, 25000, 1750]],
-  winch: [[3.5, 25e6, 5000, 1050], [4, 120e6, 12000, 1450], [5, 375e6, 30000, 1850]],
-  scanner: [[11, 20e6, 3000, 6], [13, 105e6, 8000, 8]],
-  momentum: [[2.5, 30e6, 5000, 760], [2.8, 150e6, 14000, 1550]],
-  hull: [[10, 25e6, 3000, 1200], [11, 120e6, 8000, 1500], [12, 375e6, 20000, 1800]],
+  drill: [[6, 25e6, 4000, 950], [7, 120e6, 10000, 1350], [8, 375e6, 75000, 1750, 0, G.NE]],
+  winch: [[3.5, 25e6, 5000, 1050], [4, 120e6, 12000, 1450], [5, 375e6, 80000, 1850, 0, G.NW]],
+  scanner: [[11, 20e6, 3000, 6], [13, 105e6, 40000, 8, 0, G.NE]],
+  momentum: [[2.5, 30e6, 5000, 760], [2.8, 150e6, 30000, 1550, 0, G.SE]],
+  hull: [[10, 25e6, 3000, 1200], [11, 120e6, 8000, 1500], [12, 375e6, 75000, 1800, 0, G.SE]],
   // (The mender's asked 60 and 120 of the north's specimens, the scarcest kind, where a long game gathers sixty to a
   // hundred in three hours: they were bought on two worlds of six. And they mended every 3 and 2 seconds, no slower
   // than the shield: no steady fire could wear the hull down. See WORKS.)
@@ -403,11 +412,11 @@ const LATE = {
   lavaskin: [[2, 12e6, 0, 0, 60]],
   sporedrive: [[2, 12e6, 0, 810, 40]],
   arccoil: [[2, 15e6, 0, 0, 60]],
-  maprange: [[7, 10e6, 2000, ['out', 1000]], [10, 60e6, 6000, ['out', 1700]]],
+  maprange: [[7, 10e6, 2000, ['out', 1000]], [10, 60e6, 25000, ['out', 1700], 0, G.NW]],
   refinery: [[2.5, 80e6, 30000, ['relics', 1]], [3, 450e6, 45000, ['relics', 2]]],
   cutter: [[2.5, 60e6, 22000, ['kinds', 43]], [3, 330e6, 35000, ['relics', 1]]],
-  lamp: [[16, 30e6, 10000, 7], [18, 135e6, 25000, 8]],
-  blackbox: [[0.9, 50e6, 15000, ['out', 1600]]],
+  lamp: [[16, 30e6, 10000, 7], [18, 135e6, 60000, 8, 0, G.SW]],
+  blackbox: [[0.9, 50e6, 35000, ['out', 1600], 0, G.SW]],
   livecatch: [[4, 40e6, 12000, ['relics', 1]]],
   trophy: [[4, 30e6, 10000, ['beasts', 12]]],
 };
