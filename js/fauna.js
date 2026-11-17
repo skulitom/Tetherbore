@@ -1341,7 +1341,7 @@ export class Fauna {
         game.changed([], closed);
         return true;
       }
-      // A leech on the hull (its drag is the frame's own: `drag`).
+      // A leech on the hull, or the west's lord's tendril holding the drill (its drag is the frame's own: `drag`).
       case 'drag': return d.mode === 'free';
       // The wren's find shown: the ground about it is seen, as the scanner would see it, and the game calls it out.
       // (Ground seen afresh is painted again, as the drill's own look has it: `Game.look`.)

@@ -68,11 +68,30 @@ export function ramInto(game, b, { speed = 6, off = 1, away = false } = {}) {
   [d.x, d.y, d.vx, d.vy] = was;
   return B.blows[b] > blows;
 }
-// Each lord's verb as a test lands it on a lord that is open to it: the north's a loop, the south's a ram.
-export const VERB = { 1: ramInto, 3: loopRound };
+// The cell lord `b`'s tendril is anchored in (or `cell`) cut, as `Game.finishDig` tells the creatures of a cut
+// (`Bosses.crushed`), the cell itself left standing. Returns whether it was a blow.
+export function cutAt(game, b, cell = game.fauna.bosses.anchor[b]) {
+  const B = game.fauna.bosses, blows = B.blows[b];
+  B.crushed(game, cell, cell >= 0 ? game.world.k(cell) : 0);
+  return B.blows[b] > blows;
+}
+// Each lord's verb as a test lands it on a lord that is open to it: the north's a loop, the south's a ram, the
+// west's a cut.
+export const VERB = { 1: ramInto, 2: cutAt, 3: loopRound };
+// The drill dodging every lash of the west's lord, as a drill stepped off her line does: her tendril never latches
+// on (the deed refused), and goes on to the rock behind. Nothing for another lord.
+const dodging = new WeakSet();
+export function dodge(game, b) {
+  if (BOSS[b].verb !== 'cut' || dodging.has(game)) return;
+  const deed = game.fauna.deed.bind(game.fauna);
+  game.fauna.deed = (g, what, a, c) => what === 'drag' ? false : deed(g, what, a, c);
+  dodging.add(game);
+}
 // A lord fought to the end by its verb, landed each time it is open to it: whether it was beaten (its husk left).
+// (The west's lashes dodged, so that she rests.)
 export function beat(game, b, steer = null) {
   const B = game.fauna.bosses;
+  dodge(game, b);
   for (let n = 0; n < 3; n++) {
     if (until(game, () => B.st[b] === ST.REST, 60 * 30, steer) < 0 || !VERB[b](game, b)) return false;
   }

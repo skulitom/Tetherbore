@@ -1,5 +1,6 @@
 // The lords' fights, played at their lairs with the hull taking its knocks (js/bosses.js; js/fauna.js, its deeds;
-// js/game.js: `lordBeaten`, `payOf`, `keepLore`). Each lord whose fight is built is held: the north's and the south's.
+// js/game.js: `lordBeaten`, `payOf`, `keepLore`). Each lord whose fight is built is held: the north's, the south's and
+// the west's.
 //   - The north, FROST WYRM: a band wound round it while it rests is a blow, and flown round it, the tether bent on
 //     the rock behind its perch, too; the same band while it rises, tells, breathes, swims or is hurt is not, nor
 //     one too far from it or with the drill too far; and a band left wound round it from before its rest began is
@@ -10,6 +11,14 @@
 //     standing in its lane once, through the rock between them, and changes no cell; it rests where the drill stood; a
 //     drill stepped off the lane after it locks is not hit; and in its last stage it tells a charge back along the
 //     same lane and rests where it rose.
+//   - The west, SPORE MOTHER: the cell her tendril is anchored in, cut while she rests taut, is a blow, and flown into
+//     and cut in a room at her lair, too; a cell beside it is not, nor that cell cut while she rises, tells, lashes,
+//     tells her second tendril, holds the drill, follows it sunk or is hurt, nor after her rest when the tendril has
+//     gone back. Her tendril holds a drill standing on her line: it flies at 0.6 of its speed, she drinks 1.5 seconds
+//     on and 3.5 after, each a hit landed, and lets go at 6 seconds; 12 cells a second for half a second shakes her
+//     off, 11 does not, nor 12 broken off short, and the drill reeled home is let go. Lashed at vault, bedrock or
+//     unseen rock, the tendril comes back unanchored. From her second stage a second tendril is told 0.4 seconds
+//     after the first, and comes back while the first is anchored.
 //   - Every lord: three blows give exactly one beaten, which pays BOSS_LUMP seconds of what cutting at the lair
 //     earns with the refinery's share, BOSS_SPEC of its direction's specimens and its bit, and its banner; its
 //     direction's gems are paid BOSS_PERK times as many for good (1.1 cubed with both its shrines), the others not;
@@ -19,22 +28,26 @@
 //     kept as met and not as beaten; and led away past its leash for HEAL seconds it is whole, and wakes whole.
 //   - The tether: 600 seconds of a seeded thumb in each fight, blows landed along the way: no cell a lord lays is
 //     under the tether or within 1.5 of a drill flying free; no more than PLUGS of its ice a fight (the north lays
-//     some, the south none); the tether never goes wrong.
+//     some, the south and the west none); the tether never goes wrong; and every cell the west's tendril is
+//     anchored in is seen rock a drill can cut, not vault, relic, bedrock, the core or lava, inside the tether's
+//     reach, ten times and more, and she holds the drill three times and more.
 //   - Old saves: one with no `bosses` loads as nothing met or beaten, and one of generation 1 near a lair meets the
 //     lord as a new game does, tell for tell.
-// Fails on the game before the lords, which has no js/bosses.js, and on the game before the south's, whose lord
-// never wakes.
+// (The west's lashes are dodged, her latch refused, wherever a test waits for her rest: `dodge`.)
+// Fails on the game before the lords, which has no js/bosses.js, and on the games before the south's and the west's,
+// whose lords never wake.
 //   node test/regress/s9-boss-play.mjs
 import { makeGame, random, tetherFaults, setDown, farStart, tunnel, C, N, K, B as G } from '../harness.mjs';
 import { income, round2 } from '../../js/shop.js';
 import { BOSS_LUMP, BOSS_SPEC, BOSS_PERK } from '../../js/game.js';
-import { BOSS, LAIR, LEASH, HEAL, PLUGS, SHARDS, ST } from '../../js/bosses.js';
+import { BOSS, LAIR, LEASH, HEAL, PLUGS, SHARDS, ST, TW } from '../../js/bosses.js';
 import { flyTo, rect } from './lib/lasso.mjs';
-import { LORDS, NAMES, VERB, atLair, run, until, loopBand, loopRound, ramInto, beat, thumb, lairX, lairY, DX, DY } from './lib/lords.mjs';
+import { LORDS, NAMES, VERB, atLair, run, until, loopBand, loopRound, ramInto, cutAt, dodge, beat, thumb, lairX, lairY, DX, DY } from './lib/lords.mjs';
 
 const fails = [], check = (ok, what) => { if (!ok) fails.push(what); };
 check(LORDS.includes(3), 'the north\'s lord is not ready');
 check(LORDS.includes(1), 'the south\'s lord is not ready');
+check(LORDS.includes(2), 'the west\'s lord is not ready');
 const wound = (game, band) => { const was = game.band; game.band = band; game.fauna.wound(game); game.band = was; };
 const wreck = game => { while (game.drill.mode !== 'dead') { game.shield = 0; game.hit(0.3); } };
 
@@ -141,6 +154,89 @@ const southRoom = async () => {
   check(rose[0] === from[0] && rose[1] === from[1], 'the south\'s lord rose in another place');
 }
 
+// ---- the west: the cut
+// A room at her lair, the drill in it, a floor of soft rock under it: she roots five cells above the drill (on the
+// narrowest screen), and her line down through the drill runs to the floor, seven cells under the drill.
+const westRoom = async (wall = K.SOFT) => {
+  const game = await atLair(2, { hull: false }), B = game.fauna.bosses;
+  rect(game, -2206, -6, -2198, 6, K.EMPTY); rect(game, -2206, 7, -2198, 7, wall);
+  game.world.see(C - 2202, C, 12); game.changed(); game.pieces = [];
+  return { game, B, her: (C - 5) * N + C - 2202, wall: (C + 7) * N + C - 2202 };
+};
+const unsee = (game, x, y) => { const w = game.world; w.k(y * N + x); w.chunks[((y >> 6) << 8) | (x >> 6)].seen[((y & 63) << 6) | (x & 63)] = 0; };
+{
+  const { game, B, her, wall } = await westRoom();
+  B.stageAs(game, 2, 'rest', 1, her);
+  check(B.st[2] === ST.REST && B.anchor[2] === wall, `the west's lord at rest is not anchored in the wall behind the drill (${B.anchor[2] % N - C},${Math.floor(B.anchor[2] / N) - C})`);
+  check(!cutAt(game, 2, wall + 1) && B.blows[2] === 0, 'a cell cut beside the west\'s anchor was a blow');
+  check(cutAt(game, 2) && B.blows[2] === 1 && B.stage[2] === 2 && B.st[2] === ST.HURT && B.anchor[2] === -1 && B.latch[2] === -1, `her anchor cut while the west's lord rests taut was not a blow (blows ${B.blows[2]}, state ${B.st[2]})`);
+  check(!cutAt(game, 2, wall), 'her anchor cut as the west\'s lord is hurt was a blow');
+  for (const what of ['rise', 'tell', 'act', 'second', 'latch', 'sunk']) { B.stageAs(game, 2, what, 2, her); check(!cutAt(game, 2, wall) && B.blows[2] === 1, `her anchor's cell cut as the west's lord ${what === 'latch' ? 'holds the drill' : what + 's'} was a blow (state ${B.st[2]})`); }
+  // Cut after her rest, the tendril gone back: no blow.
+  B.stageAs(game, 2, 'rest', 2, her);
+  check(until(game, () => B.st[2] !== ST.REST, 60 * 4) > 0 && B.anchor[2] === -1 && !cutAt(game, 2, wall) && B.blows[2] === 1, `her anchor cut after the west's lord had gone back was a blow (blows ${B.blows[2]}, state ${B.st[2]})`);
+}
+// Flown: the drill flies to her anchor and cuts it, as she rests taut.
+{
+  const { game, B, her, wall } = await westRoom();
+  B.stageAs(game, 2, 'rest', 1, her);
+  let faults = null;
+  const hold = () => { if (B.st[2] === ST.REST) B.t[2] = 0; const f = tetherFaults(game); if (f.length && !faults) faults = f[0]; };
+  flyTo(game, -2202, 7, { frames: 600, each: hold });
+  check(B.blows[2] === 1 && game.world.k(wall) === K.EMPTY, `the drill flown into the west's anchor and cutting it was not a blow (state ${B.st[2]}, blows ${B.blows[2]}, the cell ${game.world.k(wall)})`);
+  check(!faults, `the tether went wrong flying to the west's anchor: ${faults}`);
+}
+// Her latch: the drill standing on her line is held, flies at 0.6 of its speed, is drunk from 1.5 seconds on and
+// 3.5 seconds after (each a hit through the shield's end), and let go after 6 seconds.
+{
+  const { game, B, her } = await westRoom(), hits = [], deed = game.fauna.deed.bind(game.fauna);
+  game.fauna.deed = (g, what, a, c) => { const done = deed(g, what, a, c); if (what === 'hit') hits.push({ at: game.time, stun: a, done }); return done; };
+  B.stageAs(game, 2, 'tell', 1, her);
+  check(until(game, () => B.st[2] === ST.LATCH, 60 * 3) > 0, `the west's tendril did not hold a drill standing on her line (state ${B.st[2]})`);
+  const t0 = game.time;
+  run(game, 1);
+  check(B.drag === BOSS[2].drag && game.fauna.drag === BOSS[2].drag && BOSS[2].drag === 0.6, `the drill held by the west's tendril flies at ${game.fauna.drag} of its speed`);
+  const gone = until(game, () => B.latch[2] < 0, 60 * 8);
+  const near = (a, b) => Math.abs(a - b) <= 1 / 60 + 1e-6;
+  check(hits.length === 2 && hits.every(h => h.done && h.stun === 0.3) && near(hits[0].at - t0, 1.5) && near(hits[1].at - hits[0].at, 3.5), `held, the west's lord drank ${hits.map(h => `${(h.at - t0).toFixed(2)} s${h.done ? '' : ' (not landed)'}`).join(', ')}`);
+  check(gone > 0 && near(game.time - t0, 6) && B.st[2] !== ST.LATCH && (run(game, 1), game.fauna.drag === 1), `the west's lord let the drill go ${(game.time - t0).toFixed(2)} s after holding it (drag ${game.fauna.drag})`);
+}
+// Shaken off: 12 cells a second for half a second frees the drill; 11 does not, nor 12 broken off; reeled home frees it.
+{
+  const { game, B, her } = await westRoom(), d = game.drill;
+  B.stageAs(game, 2, 'latch', 1, her);
+  const fly = (v, secs) => { for (let n = 0; n < Math.round(secs * 60); n++) { d.vx = v; d.vy = 0; B.step(game, 1 / 60); } d.vx = 0; };
+  fly(11, 1);
+  check(B.latch[2] >= 0, 'the drill flying 11 cells a second shook the west\'s tendril off');
+  fly(12.5, 0.4); fly(6, 0.1); fly(12.5, 0.4);
+  check(B.latch[2] >= 0, 'the drill flying 12 cells a second twice for less than half a second shook the west\'s tendril off');
+  fly(12.5, 0.15);
+  check(B.latch[2] < 0 && B.st[2] !== ST.LATCH, 'the drill flying 12 cells a second for half a second did not shake the west\'s tendril off');
+  B.stageAs(game, 2, 'latch', 1, her);
+  d.mode = 'home'; B.step(game, 1 / 60); d.mode = 'free';
+  check(B.latch[2] < 0, 'the drill reeled home was still held by the west\'s tendril');
+}
+// Never anchored in vault, bedrock or unseen ground: the tendril comes back.
+for (const [what, kind] of [['vault', K.VAULT], ['bedrock', K.BEDROCK], ['unseen ground', K.SOFT]]) {
+  const { game, B, her, wall } = await westRoom(kind);
+  if (what === 'unseen ground') for (let x = -2206; x <= -2198; x++) unsee(game, C + x, C + 7);
+  dodge(game, 2);
+  B.stageAs(game, 2, 'act', 1, her);
+  const back = until(game, () => B.st[2] !== ST.ACT, 60 * 2);
+  check(back > 0 && B.anchor[2] === -1 && B.st[2] === ST.RISE && game.world.peek(C - 2202, C + 7) === (what === 'unseen ground' ? -1 : kind), `the west's tendril lashed at ${what} left her ${B.st[2]}, anchored at ${B.anchor[2]}`);
+}
+// From her second stage, a second tendril told 0.4 seconds after the first; one anchored, the other back.
+{
+  const { game, B, her } = await westRoom(), tells = [], T0 = B.tendril, TD = T0.length / 3;
+  dodge(game, 2);
+  B.onTell = (lord, what) => tells.push({ what, at: game.time });
+  B.stageAs(game, 2, 'tell', 2, her);
+  let both = 0;
+  until(game, () => { if (T0[0] === TW.ANCHOR && T0[TD] === TW.ANCHOR) both++; return B.st[2] === ST.REST && T0[TD] === TW.NONE; }, 60 * 4);
+  check(tells.length === 2 && tells[0].what === 'lash' && tells[1].what === 'second' && Math.abs(tells[1].at - tells[0].at - BOSS[2].second) <= 1 / 60 + 1e-6, `the west's lord at her second stage told ${tells.map(t => `${t.what} at ${t.at.toFixed(2)}`).join(', ')}`);
+  check(!both && B.st[2] === ST.REST && T0[0] === TW.ANCHOR && T0[TD] === TW.NONE, `both the west's tendrils were anchored (${both} frames), or the second did not come back (${T0[0]}, ${T0[TD]})`);
+}
+
 // ---- every lord: beaten, paid, once
 for (const b of LORDS) {
   const game = await atLair(b, { hull: false }), B = game.fauna.bosses, S = game.S, kin = [4, 2, 3, 1][b];
@@ -169,14 +265,14 @@ for (const b of LORDS) {
 }
 // The perk: ore of each direction paid with no lord beaten, with each lord's beaten, and with each and its
 // direction's two shrines (the north's the north east's and the north west's, the south's the south east's and the
-// south west's).
+// south west's, the west's the south west's and the north west's).
 {
   const game = await makeGame(7), w = game.world, S = game.S, ore = [];
   for (let k = 1; k <= 4; k++) for (let n = 0; n < 40; n++) { const i = (C - 30 + k) * N + C + 20 + n; w.setK(i, K.ORE_B); w.setB(i, k); ore.push(i); }
   const gems = (bits, held) => { S.bosses = bits; S.shrines = held; return game.payOf(ore).gems; };
   const none = gems(0, [0, 0, 0, 0]), met = gems(15, [0, 0, 0, 0]);
   const near = (a, b, by) => Math.abs(a - b * by) <= 1;
-  const GEM = { 1: G.EMBER, 3: G.FROST }, SHRINES = { 1: [0, 1, 1, 0], 3: [1, 0, 0, 1] };
+  const GEM = { 1: G.EMBER, 2: G.MIRE, 3: G.FROST }, SHRINES = { 1: [0, 1, 1, 0], 2: [0, 0, 1, 1], 3: [1, 0, 0, 1] };
   for (const b of LORDS) {
     const g = GEM[b], one = gems(1 << (4 + b) | 1 << b, [0, 0, 0, 0]), all = gems(1 << (4 + b), SHRINES[b]);
     check(near(one[g], none[g], BOSS_PERK) && [G.FROST, G.EMBER, G.MIRE, G.LODE].every(k => k === g || one[k] === none[k]) && one.slice(5).join() === none.slice(5).join(), `with the ${NAMES[b]}'s lord beaten the gems are ${one}, with none ${none}`);
@@ -195,6 +291,7 @@ for (const b of LORDS) {
     for (let y = ly - 40; y <= ly + 40; y++) for (let x = lx - 40; x <= lx + 40; x++) cells.push(w.k(y * N + x));
     const toward = [DX[b], DY[b], 1];
     game.shield = 999;
+    dodge(game, b);
     check(until(game, () => B.st[b] !== ST.SLEEP, 60 * 10, toward) >= 0, `flown toward its lair the ${NAMES[b]}'s lord never woke`);
     // (The north's fight with its ice laid.)
     const iced = BOSS[b].verb === 'loop';
@@ -226,6 +323,7 @@ for (const b of LORDS) {
   // Led away: past its leash for HEAL seconds it is whole, and it wakes whole.
   {
     const game = await atLair(b, { hull: false }), B = game.fauna.bosses;
+    dodge(game, b);
     until(game, () => B.st[b] === ST.REST, 60 * 20);
     check(VERB[b](game, b) && B.blows[b] === 1, `no blow on the ${NAMES[b]}'s lord before it was led away`);
     const home = [-DX[b], -DY[b], 1];
@@ -255,14 +353,25 @@ for (const b of LORDS) {
     return deed(g, what, a, c);
   };
   const steer = thumb(game, b, random(600 + b), 12);
-  let faults = null, rests = 0, wasRest = false, fights = 1, beaten = 0;
+  let faults = null, rests = 0, wasRest = false, fights = 1, beaten = 0, anchored = 0, held = 0, wasHeld = false, anchor = -1;
   run(game, 600 * 60, steer, f => {
     most = Math.max(most, fight, B.plugs[b]);
     // (A blow landed on every third rest that no flight has, so that it fights at its last stage too; and beaten,
-    // it is fought again: its bit taken back, it wakes anew.)
+    // it is fought again: its bit taken back, it wakes anew. The thumb seldom cuts the west's anchor by chance, so
+    // her third blow is landed too.)
     const rest = B.st[b] === ST.REST;
-    if (rest && !wasRest && ++rests % 3 === 0 && B.blows[b] < 2 && VERB[b](game, b)) blows++;
+    if (rest && !wasRest && ++rests % 3 === 0 && B.blows[b] < (BOSS[b].verb === 'cut' ? 3 : 2) && VERB[b](game, b)) blows++;
     wasRest = rest;
+    // (Every cell the west's tendril is anchored in, as it is anchored: seen rock a drill can cut, not vault, relic,
+    // bedrock, the core or lava, inside the tether's reach; and the drill held now and then.)
+    if (B.anchor[b] >= 0 && B.anchor[b] !== anchor) {
+      const j = B.anchor[b], k = game.world.peek(j % N, Math.floor(j / N));
+      anchored++;
+      if (k <= 0 || k === K.VAULT || k === K.RELIC || k === K.BEDROCK || k === K.CORE || game.world.lava.has(j) || !game.within(j % N + 0.5, Math.floor(j / N) + 0.5)) bad.push(`an anchor in ${k} at ${j % N - C},${Math.floor(j / N) - C}`);
+    }
+    anchor = B.anchor[b];
+    if (B.latch[b] >= 0 && !wasHeld) held++;
+    wasHeld = B.latch[b] >= 0;
     if (B.st[b] === ST.GONE) { beaten++; game.S.bosses &= ~(1 << (4 + b)); B.heal(b); fights++; }
     if (f % 10 === 0 && !faults) { const t = tetherFaults(game); if (t.length) faults = `${(f / 60).toFixed(1)} s: ${t[0]}`; }
   });
@@ -270,6 +379,7 @@ for (const b of LORDS) {
   check(most <= PLUGS && [...B.shards].every(n => n <= SHARDS), `in the ${NAMES[b]}'s fight a lord laid ${most} cells of ice in a fight`);
   check(!faults, `in the ${NAMES[b]}'s fight the tether went wrong at ${faults}`);
   check(blows >= 2 && fights >= 2 && (BOSS[b].verb === 'loop' ? most > 0 : most === 0), `the ${NAMES[b]}'s fight landed ${blows} blows, was fought ${fights} times and laid ${most} cells`);
+  check(BOSS[b].verb !== 'cut' || (anchored >= 10 && held >= 3), `the west's fight was anchored ${anchored} times and held the drill ${held} times`);
 }
 
 // ---- old saves

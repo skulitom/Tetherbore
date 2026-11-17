@@ -1,7 +1,8 @@
 // The four lords at the ends: one at the far end of each direction's axis, LAIR cells out, past the relic and inside
 // the last reach, the living kind of its direction's fossil. Each has a verb of its own that beats it, the game's own
 // verbs: the north's FROST WYRM is beaten by a loop of the tether wound round it while it rests (LOOP), the south's
-// MAGMA BEHEMOTH by the drill flown into it while it rests (RAM), the west's by a cut, the east's by a haul. Each
+// MAGMA BEHEMOTH by the drill flown into it while it rests (RAM), the west's SPORE MOTHER by the cell her tendril is
+// anchored in cut while she rests taut (CUT), the east's by a haul. Each
 // takes BLOWS blows, and each blow raises its stage: every tell and rest of the stage after is shorter, and the last
 // stage has a trick more. Nothing hurts on contact; only a told attack does, and every tell starts on the screen and
 // lasts LEAST_TELL seconds at the least.
@@ -17,9 +18,10 @@
 // What must stay true (test/regress/s9-bosses.mjs holds it):
 //   - It never draws from Math.random: it has a generator of its own on the seed (salt 808; the creatures' own
 //     stream is untouched).
-//   - Everything it does to the game is one of the creatures' deeds (js/fauna.js: `deed`): a hit, a plug of ice, a
-//     thaw, a blow's jolt, the meeting and the beating. With the creatures tame none is done, a lord's blows with
-//     them, and the game is the game with none; with them off it is never stepped.
+//   - Everything it does to the game is one of the creatures' deeds (js/fauna.js: `deed`): a hit, a hold on the
+//     drill (whose drag it puts on it only then, as a leech does), a plug of ice, a thaw, a blow's jolt, the meeting
+//     and the beating. With the creatures tame none is done, a lord's blows and holds with them, and the game is the
+//     game with none; with them off it is never stepped.
 //   - It reads the world only where it has been seen (`peek`), makes no piece of it, and only reads the band.
 //   - What it keeps is in typed arrays made once, a slot a lord; nothing it does in a frame makes an object. What it
 //     looks at in a frame is counted (`work`).
@@ -44,7 +46,12 @@ export const ICEFALL = { tell: 1.0, fall: 0.25, reach: 1.0, stun: 0.4, lead: 0.5
 export const PLUGS = 24, SHARDS = 6;
 // The states a lord is in.
 export const ST = { SLEEP: 0, SUNK: 1, RISE: 2, TELL: 3, ACT: 4, REST: 5, HURT: 6, YIELD: 7, LATCH: 8, BLINK: 9, GONE: 10 };
-const { SLEEP, SUNK, RISE: UP, TELL, ACT, REST, HURT: HURTING, YIELD: YIELDING, GONE } = ST;
+const { SLEEP, SUNK, RISE: UP, TELL, ACT, REST, HURT: HURTING, YIELD: YIELDING, LATCH, GONE } = ST;
+// The west's tendrils, TD numbers a slot (`tendril`): what it is doing (TP, one of TW), how long it has been at it
+// (TT), the end of its line (TX, TY: where it was told to, or the drill it holds), how far out its tip is (TIP), and
+// the cell it stops in at the end of its line (TC; -1 for none: open ground, or the edge of the screen).
+export const TW = { NONE: 0, TELL: 1, LASH: 2, HOLD: 3, ANCHOR: 4, BACK: 5 };
+const TD = 6, TP = 0, TT = 1, TX = 2, TY = 3, TIP = 4, TC = 5;
 
 // ---------------------------------------------------------------- who they are
 // By direction (0 east, 1 south, 2 west, 3 north, as DX and DY): its frames' key, its name and title, the direction
@@ -68,8 +75,19 @@ export const BOSS = [
   { key: 'behemoth', name: 'MAGMA BEHEMOTH', lord: 'LORD OF THE SOUTH', kin: 2, look: 'ember', fossil: 'EMBER RIBS', verb: 'ram', ready: true, attack: 'charge',
     poses: POSES, tell: [1.2, 1.0, 0.9], again: 0.9, act: 0, rest: [2.6, 2.2, 1.9], near: [4, 7], charge: [16, 18, 20], lane: 1.6, hit: 1.0, over: 2, reach: 14,
     slide: 8, burrow: 3, arc: 6, ram: 1.6, rush: 3, stun: 0.4 },
-  { key: 'mother', name: 'SPORE MOTHER', lord: 'LORD OF THE WEST', kin: 3, look: 'mire', fossil: 'ROOT WYRM', verb: 'cut', ready: false,
-    poses: POSES, tell: [1.1, 0.95, 0.8], act: 0, rest: [3.2, 2.7, 2.3], near: [4, 7], stun: 0.3 },
+  // The west: she roots near the drill where she sees it (`perch` 'sight') and stays there, sinking to follow it
+  // through the rock at `follow` cells a second should it get `loose` cells from her, and rooting again once she is
+  // near it. She tells a line through the
+  // drill and lashes a tendril along it at `lash` cells a second to the first rock, `reach` cells at the most.
+  // Passing within `latch` of the drill it latches on: the drill flies at `drag` of its speed, and she drinks (a hit)
+  // `drink` seconds on and every `sip` after, until the drill flies `free` cells a second for `shake` seconds, is
+  // reeled home, or `most` seconds pass. Stopping in rock she can be anchored in, she is anchored there and rests
+  // taut, and that cell cut is a blow; else it comes back at `back` cells a second. From her second stage a second
+  // tendril is told `second` seconds after the first, which never anchors while another is. Then she cools `cool`
+  // seconds, and tells no sooner than `every` after her last tell began.
+  { key: 'mother', name: 'SPORE MOTHER', lord: 'LORD OF THE WEST', kin: 3, look: 'mire', fossil: 'ROOT WYRM', verb: 'cut', ready: true, attack: 'lash',
+    poses: POSES, tell: [1.1, 0.95, 0.8], act: 0, rest: [3.2, 2.7, 2.3], cool: [1.4, 1.2, 1.0], every: [4.5, 3.8, 3.2], near: [4, 7], reach: 14, lash: 30, back: 40,
+    latch: 0.8, drag: 0.6, drink: 1.5, sip: 3.5, free: 12, shake: 0.5, most: 6, follow: 4, loose: 14, second: 0.4, arc: 6, stun: 0.3, perch: 'sight' },
   // The north: it swims at `swim` cells a second in arcs `arc` cells round the drill, rises on a perch (rock behind
   // it for the tether to bend on), and breathes `reach` cells at the most along a line to the drill; a drill within
   // `breath` of the line is hit.
@@ -122,8 +140,11 @@ export class Bosses {
     this.toX = new Float64Array(4); this.toY = new Float64Array(4); this.fromX = new Float64Array(4); this.fromY = new Float64Array(4); this.leg = new Uint8Array(4);
     // The cells of ice each has laid this fight (PLUGS a lord), which only it thaws.
     this.laid = new Int32Array(4 * PLUGS);
-    // The west's tendrils (three slots) and the drag they put on the drill (1: none).
-    this.tendril = new Float64Array(3 * 6); this.drag = 1;
+    // The west's tendrils (three slots of TD) and the drag they put on the drill (1: none); how long one has held
+    // the drill (-1: none), how long the drill has flown fast since, and how often she has drunk; and the time
+    // before which she tells no more.
+    this.tendril = new Float64Array(3 * TD); this.drag = 1;
+    this.latch = new Float32Array(4); this.fast = new Float32Array(4); this.sips = new Uint8Array(4); this.next = new Float64Array(4);
     this.near = new Float64Array(1);
     // (Asked when a lord's tell begins, by the tests: what, where its line or rings are. Null in play.)
     this.onTell = null;
@@ -135,13 +156,14 @@ export class Bosses {
     this.st.fill(SLEEP); this.t.fill(0); this.stage.fill(1); this.blows.fill(0); this.away.fill(0); this.armed.fill(0);
     this.plugs.fill(0); this.shards.fill(0); this.shard.fill(-1); this.anchor.fill(-1); this.cell.fill(-1); this.struck.fill(0);
     this.beat.fill(0); this.heard.fill(-99); this.fallT.fill(-1); this.tendril.fill(0); this.leg.fill(0);
+    this.latch.fill(-1); this.fast.fill(0); this.sips.fill(0); this.next.fill(0);
     this.time = 0; this.tick = 0; this.work = 0; this.drag = 1; this.v = -1;
   }
   rnd() { return (this.seed = (Math.imul(this.seed, 1664525) + 1013904223) >>> 0) / 4294967296; }
   // Whether lord `b` is beaten, by what is saved; and whether any lord is up and fighting.
   beaten(game, b) { return ((game.S.bosses ?? 0) >> (4 + b) & 1) === 1; }
   awake(b) { const s = this.st[b]; return s !== SLEEP && s !== GONE; }
-  up(b) { const s = this.st[b]; return s === UP || s === TELL || s === ACT || s === REST || s === HURTING || s === YIELDING; }
+  up(b) { const s = this.st[b]; return s === UP || s === TELL || s === ACT || s === REST || s === LATCH || s === HURTING || s === YIELDING; }
 
   // ---------------------------------------------------------------- a frame
   // With a panel up they only breathe.
@@ -161,6 +183,7 @@ export class Bosses {
       if (st === GONE) continue;
       if (BOSS[b].verb === 'loop') { this.north(game, b, dt); this.icefall(game, b, dt); }
       else if (BOSS[b].verb === 'ram') this.south(game, b, dt);
+      else if (BOSS[b].verb === 'cut') this.west(game, b, dt);
     }
     if (game.version !== this.v) { this.v = game.version; this.settle(game); }
   }
@@ -196,25 +219,30 @@ export class Bosses {
   // Leashed: asleep again, whole, its fight forgotten.
   heal(b) {
     this.st[b] = SLEEP; this.t[b] = 0; this.stage[b] = 1; this.blows[b] = 0; this.away[b] = 0; this.fallT[b] = -1; this.cell[b] = -1; this.leg[b] = 0;
+    this.unroot(b);
   }
   // Into the rock, to swim about the drill until it rises again.
   sink(game, b) {
     const d = game.drill;
     this.st[b] = SUNK; this.t[b] = 0; this.cell[b] = -1;
     this.ph[b] = Math.atan2(this.y[b] - d.y, this.x[b] - d.x);
+    this.unroot(b);
   }
   // Up out of the rock at cell `c`, facing the drill.
   surface(game, b, c) {
     this.st[b] = UP; this.t[b] = 0; this.cell[b] = c;
     this.x[b] = c % N + 0.5; this.y[b] = Math.floor(c / N) + 0.5;
     this.face[b] = game.drill.x >= this.x[b] ? 1 : -1;
+    this.next[b] = Math.max(this.next[b], this.time + RISE);
   }
-  // The ground changed: a lord whose cell has closed under it sinks.
+  // The ground changed: a lord whose cell has closed under it sinks; the west's tendril whose anchor has opened by
+  // anything but a cut (which was a blow) comes back.
   settle(game) {
     const w = game.world;
     for (let b = 0; b < 4; b++) {
-      const st = this.st[b], c = this.cell[b];
-      if ((st === UP || st === TELL || st === ACT || st === REST) && c >= 0 && w.peek(c % N, Math.floor(c / N)) !== K.EMPTY) this.sink(game, b);
+      const st = this.st[b], c = this.cell[b], a = this.anchor[b];
+      if ((st === UP || st === TELL || st === ACT || st === REST || st === LATCH) && c >= 0 && w.peek(c % N, Math.floor(c / N)) !== K.EMPTY) this.sink(game, b);
+      else if (a >= 0 && w.peek(a % N, Math.floor(a / N)) <= 0) this.letGo(b, TW.ANCHOR);
     }
   }
 
@@ -287,6 +315,10 @@ export class Bosses {
   fair(game, b) { return this.inView(game, this.x[b], this.y[b]) && this.inView(game, this.ax[b], this.ay[b]); }
   tell(game, b, what) {
     this.st[b] = TELL; this.t[b] = 0; this.struck[b] = 0;
+    this.told(game, b, what);
+  }
+  // Said as a tell begins: the roar, the pal's yip, and (to the tests) what and where.
+  told(game, b, what) {
     this.voice(game, 'roar', b, 1);
     this.fauna.yip(game, this.x[b], this.y[b]);
     this.onTell?.(b, what, this.x[b], this.y[b], this.ax[b], this.ay[b]);
@@ -349,6 +381,7 @@ export class Bosses {
   blow(game, b) {
     if (!this.fauna.deed(game, 'blow', b)) return false;
     this.blows[b]++; this.st[b] = HURTING; this.t[b] = 0; this.fallT[b] = -1;
+    if (BOSS[b].verb === 'cut') this.withdraw(b);
     if (this.blows[b] < BLOWS) { this.stage[b]++; if (this.stage[b] === 3 && BOSS[b].verb === 'loop') this.fauna.deed(game, 'thaw', b); }
     this.voice(game, 'groan', b, 1);
     return true;
@@ -357,8 +390,13 @@ export class Bosses {
   yielded(game, b) {
     if (this.fauna.deed(game, 'beaten', b)) { this.st[b] = GONE; this.t[b] = 0; } else this.heal(b);
   }
-  // A cell was cut (js/fauna.js: `crushed`, from `Game.finishDig`). It only reads. (The west's verb.)
-  crushed(game, i, k) { }
+  // A cell was cut (js/fauna.js: `crushed`, from `Game.finishDig`): the cell the west's tendril is anchored in, cut
+  // while she rests taut, is a blow. Returns whether it was.
+  crushed(game, i, k) {
+    if (i < 0 || game.drill.mode === 'dead') return false;
+    for (let b = 0; b < 4; b++) if (BOSS[b].verb === 'cut' && this.st[b] === REST && this.anchor[b] === i) return this.blow(game, b);
+    return false;
+  }
 
   // ---------------------------------------------------------------- the south: MAGMA BEHEMOTH
   // Sunk, it burrows in straight lines about the drill; it rises; it tells a lane to the drill, which tracks it and
@@ -473,12 +511,159 @@ export class Bosses {
     return this.blow(game, b);
   }
 
+  // ---------------------------------------------------------------- the west: SPORE MOTHER
+  // Sunk, she follows the drill through the rock and roots near it; rooted, she stays, telling a line through the
+  // drill that tracks it and locks LOCK seconds before she lashes her tendril along it. It latches onto the drill it
+  // passes (`hold`), or is anchored in the rock it stops in, when she rests taut and that cell cut is a blow
+  // (`crushed`), or comes back. From her second stage a second tendril is told after the first. Got LOOSE cells
+  // from her, the drill is followed again.
+  west(game, b, dt) {
+    const d = game.drill, B = BOSS[b], s = this.stage[b] - 1, t = this.t[b], far = Math.hypot(d.x - this.x[b], d.y - this.y[b]);
+    switch (this.st[b]) {
+      case SUNK: {
+        // (Drawn only: toward the drill, and rooting once near it.)
+        if (far > 0.5) { this.x[b] += (d.x - this.x[b]) / far * Math.min(far, B.follow * dt); this.y[b] += (d.y - this.y[b]) / far * Math.min(far, B.follow * dt); }
+        if (t < SINK || far > B.near[1] + 2) break;
+        const c = this.spotNear(game, b, B.near[0], B.near[1], B.perch);
+        if (c < 0) { this.t[b] = SINK - 0.5; break; }
+        this.surface(game, b, c);
+        break;
+      }
+      case HURTING:
+        this.tendrils(game, b, dt);
+        if (t >= HURT) { if (this.blows[b] >= BLOWS) { this.st[b] = YIELDING; this.t[b] = 0; } else this.cool(b); }
+        break;
+      case YIELDING: if (t >= YIELD) this.yielded(game, b); break;
+      default: {
+        if (far >= B.loose) { this.sink(game, b); break; }
+        this.tendrils(game, b, dt);
+        const o = 0, T0 = this.tendril;
+        if (this.st[b] === TELL) {
+          // (From her second stage, the second tendril told SECOND seconds into the first's tell, if it is fair.)
+          if (this.stage[b] >= 2 && t >= B.second && T0[TD + TP] === TW.NONE) { this.aimTendril(game, b, 1); if (this.fair(game, b)) this.lash(game, b, 1, 'second'); }
+          if (T0[o + TP] === TW.TELL) break;
+        }
+        // What she is doing is what her tendrils are: taut on an anchor, holding the drill, lashing or telling, or
+        // all home and cooling.
+        let busy = false;
+        for (let k = 0; k < 2; k++) if (T0[k * TD + TP] !== TW.NONE) busy = true;
+        const want = this.anchor[b] >= 0 ? REST : this.latch[b] >= 0 ? LATCH : busy ? ACT : UP;
+        if (want !== this.st[b]) { if (want === UP) this.cool(b); else { this.st[b] = want; this.t[b] = 0; } }
+        if (this.st[b] !== UP) break;
+        this.face[b] = d.x >= this.x[b] ? 1 : -1;
+        if (this.t[b] < RISE || this.time < this.next[b]) break;
+        this.aimTendril(game, b, 0);
+        if (this.fair(game, b)) { this.tell(game, b, B.attack); this.lash(game, b, 0, null); this.next[b] = this.time + B.every[s]; }
+        // (The drill has gone where she cannot tell it fairly: down, to follow it and root elsewhere.)
+        else if (this.time - this.next[b] > WAIT) this.sink(game, b);
+      }
+    }
+  }
+  // Rooted and cooling: no tell for `cool` seconds.
+  cool(b) {
+    this.st[b] = UP; this.t[b] = RISE;
+    this.next[b] = Math.max(this.next[b], this.time + BOSS[b].cool[this.stage[b] - 1]);
+  }
+  // Tendril `k` told (said as `what`; the first is said by `tell`) along the line it was aimed.
+  lash(game, b, k, what) {
+    const o = k * TD, T0 = this.tendril;
+    T0[o + TP] = TW.TELL; T0[o + TT] = 0; T0[o + TIP] = 0;
+    if (what) this.told(game, b, what);
+  }
+  // Where tendril `k` is told to: from her middle through the drill, `reach` cells at the most, up to the first cell
+  // that is not open and seen, the cell it stops in (-1 for none). Its far end as told (`ax`, `ay`) is as far as the
+  // narrowest screen shows it; past that the tendril flies on to the rock, where it can find no drill to hold (the
+  // screen keeps the drill on it).
+  aimTendril(game, b, k) {
+    const d = game.drill, w = game.world, T0 = this.tendril, o = k * TD, x0 = this.x[b], y0 = this.y[b];
+    const dx = d.x - x0, dy = d.y - y0, len = Math.hypot(dx, dy) || 1, ux = dx / len, uy = dy / len;
+    let ex = x0, ey = y0, tx = x0, ty = y0, stop = -1, seen = true;
+    for (let s = 0.25; s <= BOSS[b].reach + 1e-9; s += 0.25) {
+      const x = x0 + ux * s, y = y0 + uy * s, cx = Math.floor(x), cy = Math.floor(y);
+      this.work++;
+      if (w.peek(cx, cy) !== K.EMPTY) { stop = cy * N + cx; break; }
+      if (seen && !this.inView(game, x, y)) seen = false;
+      if (seen) { tx = x; ty = y; }
+      ex = x; ey = y;
+    }
+    T0[o + TX] = ex; T0[o + TY] = ey; T0[o + TC] = stop; this.ax[b] = tx; this.ay[b] = ty;
+  }
+  // Her tendrils, a frame: told, tracking the drill until LOCK seconds before they lash; lashing, latching onto the
+  // drill they pass or anchored where they stop (`anchorable`; only one at a time), else coming back; holding the
+  // drill; taut on an anchor for her rest; and coming home.
+  tendrils(game, b, dt) {
+    const d = game.drill, B = BOSS[b], T0 = this.tendril, s = this.stage[b] - 1, x0 = this.x[b], y0 = this.y[b];
+    for (let k = 0; k < 2; k++) {
+      const o = k * TD, ph = T0[o + TP];
+      if (ph === TW.NONE) continue;
+      const tt = T0[o + TT] += dt;
+      switch (ph) {
+        case TW.TELL:
+          if (tt < B.tell[s] - LOCK) this.aimTendril(game, b, k);
+          if (tt >= B.tell[s]) { T0[o + TP] = TW.LASH; T0[o + TT] = 0; }
+          break;
+        case TW.LASH: {
+          const ex = T0[o + TX], ey = T0[o + TY], len = Math.hypot(ex - x0, ey - y0) || 1, ux = (ex - x0) / len, uy = (ey - y0) / len;
+          const was = T0[o + TIP], tip = T0[o + TIP] = Math.min(len, tt * B.lash);
+          if (this.latch[b] < 0 && d.mode !== 'dead' && toSegment(d.x, d.y, x0 + ux * was, y0 + uy * was, x0 + ux * tip, y0 + uy * tip) <= B.latch && this.fauna.deed(game, 'drag', b)) {
+            T0[o + TP] = TW.HOLD; T0[o + TT] = 0; this.latch[b] = 0; this.fast[b] = 0; this.sips[b] = 0;
+            this.voice(game, 'roar', b, 0.6);
+            break;
+          }
+          if (tip < len) break;
+          const c = T0[o + TC];
+          if (this.anchor[b] < 0 && c >= 0 && this.anchorable(game, c)) { T0[o + TP] = TW.ANCHOR; T0[o + TT] = 0; this.anchor[b] = c; }
+          else { T0[o + TP] = TW.BACK; T0[o + TT] = 0; }
+          break;
+        }
+        case TW.HOLD: this.hold(game, b, o, dt); break;
+        case TW.ANCHOR: if (this.st[b] === REST && this.t[b] >= B.rest[s]) this.letGo(b, TW.ANCHOR); break;
+        case TW.BACK: if ((T0[o + TIP] -= B.back * dt) <= 0) { T0[o + TP] = TW.NONE; T0[o + TIP] = 0; } break;
+      }
+    }
+  }
+  // Holding the drill: it flies at `drag` of its speed (none of it with the creatures tame), and she drinks; she
+  // lets go once it has flown `free` cells a second for `shake` seconds, is reeled home or lies dead, or after `most`.
+  hold(game, b, o, dt) {
+    const d = game.drill, B = BOSS[b], T0 = this.tendril;
+    T0[o + TX] = d.x; T0[o + TY] = d.y; T0[o + TIP] = Math.hypot(d.x - this.x[b], d.y - this.y[b]);
+    const held = this.latch[b] += dt;
+    if (!this.fauna.tame) this.drag = Math.min(this.drag, B.drag);
+    this.fast[b] = Math.hypot(d.vx, d.vy) >= B.free ? this.fast[b] + dt : 0;
+    if (held >= B.drink + this.sips[b] * B.sip) { this.sips[b]++; this.fauna.deed(game, 'hit', B.stun); }
+    if (this.fast[b] >= B.shake || d.mode === 'home' || d.mode === 'dead' || held >= B.most) this.letGo(b, TW.HOLD);
+  }
+  // A tendril doing `what` (holding the drill, or anchored) lets go and comes home.
+  letGo(b, what) {
+    const T0 = this.tendril;
+    for (let k = 0; k < 2; k++) if (T0[k * TD + TP] === what) { T0[k * TD + TP] = TW.BACK; T0[k * TD + TT] = 0; }
+    if (what === TW.HOLD) this.latch[b] = -1; else this.anchor[b] = -1;
+  }
+  // Every tendril comes home (a blow): told ones are not lashed.
+  withdraw(b) {
+    const T0 = this.tendril;
+    for (let k = 0; k < 2; k++) { const o = k * TD; if (T0[o + TP] === TW.TELL) T0[o + TP] = TW.NONE; else if (T0[o + TP] !== TW.NONE) { T0[o + TP] = TW.BACK; T0[o + TT] = 0; } }
+    this.latch[b] = -1; this.anchor[b] = -1;
+  }
+  // Gone at once (sunk, healed): no tendril out, nothing held, no anchor.
+  unroot(b) {
+    if (BOSS[b].verb !== 'cut') return;
+    this.tendril.fill(0); this.latch[b] = -1; this.anchor[b] = -1; this.fast[b] = 0;
+  }
+  // A cell a tendril may be anchored in: seen rock that a drill can cut, not vault, relic, bedrock or the core, not
+  // lava, and inside the tether's reach.
+  anchorable(game, c) {
+    const w = game.world, x = c % N, y = Math.floor(c / N), k = w.peek(x, y);
+    return k > 0 && k !== K.VAULT && k !== K.RELIC && k !== K.BEDROCK && k !== K.CORE && !w.lava.has(c) && game.within(x + 0.5, y + 0.5);
+  }
+
   // ---------------------------------------------------------------- where it rises
   // A cell for lord `b` to rise in, near the drill: tried at 16 of WAYS ways round from a place its own generator
   // picks, each between `least` and `most` cells off, the first that is seen and open (not lava), inside the
   // tether's reach, `least` or more from the drill, within NEAR of its lair and on the narrowest screen; with
   // `perch`, the first with seen rock (not vault) within three cells behind it from the drill, and failing that the
-  // first. Failing all, every way at two cells and more. -1 where there is none. It only peeks.
+  // first (with `perch` 'sight', the first with open ground seen all the way to the drill: `sees`). Failing all, every
+  // way at two cells and more. -1 where there is none. It only peeks.
   spotNear(game, b, least, most, perch) {
     const d = game.drill, w = game.world, lx = lairX(b), ly = lairY(b);
     for (let pass = 0; pass < 2; pass++) {
@@ -490,7 +675,7 @@ export class Bosses {
         this.work++;
         if (w.peek(x, y) !== K.EMPTY || w.lava.has(c) || Math.hypot(mx - d.x, my - d.y) < lo || Math.hypot(mx - lx, my - ly) > NEAR) continue;
         if (!game.within(mx, my) || !this.inView(game, mx, my)) continue;
-        if (!perch || this.perched(game, mx, my)) return c;
+        if (!perch || (perch === 'sight' ? this.sees(game, mx, my) : this.perched(game, mx, my))) return c;
         if (first < 0) first = c;
       }
       if (first >= 0) return first;
@@ -507,6 +692,15 @@ export class Bosses {
     }
     return false;
   }
+  // Open ground seen all the way from a spot to the drill, looked at every half cell: a line her tendril can lash along.
+  sees(game, x, y) {
+    const d = game.drill, w = game.world, len = Math.hypot(d.x - x, d.y - y), n = Math.ceil(len * 2);
+    for (let s = 1; s < n; s++) {
+      this.work++;
+      if (w.peek(Math.floor(x + (d.x - x) * s / n), Math.floor(y + (d.y - y) * s / n)) !== K.EMPTY) return false;
+    }
+    return true;
+  }
   // Whether a point (cells) is on the narrowest screen, NARROW.margin pixels inside its edges, about the camera.
   inView(game, x, y) {
     const px = x * T - game.cam.x, py = y * T - game.cam.y, hw = NARROW.W / 2 - NARROW.margin, hh = (NARROW.H - NARROW.bar) / 2 - NARROW.margin;
@@ -522,15 +716,19 @@ export class Bosses {
 
   // ---------------------------------------------------------------- staging (js/shot.js and the tests)
   // Lord `b` set up beside the drill in a state of its own (`sunk`, `rise`, `tell`, `act`, `rest`, `hurt`, `yield`,
-  // `gone`, `sleep`, `icefall` for the north, `return` for the south) at stage `n` (its blows one fewer), in cell
-  // `at`, or where `spotNear` would raise it, or failing that four cells above the drill. Nothing is done to the game:
-  // it is not met. Returns its cell.
+  // `gone`, `sleep`, `icefall` for the north, `return` for the south, `second` and `latch` for the west) at stage
+  // `n` (its blows one fewer), in cell `at`, or where `spotNear` would raise it, or failing that four cells above the
+  // drill. Nothing is done to the game: it is not met. Returns its cell. (The west at rest is anchored where her
+  // tendril would stop, or failing that in the rock `anchorable` nearest the drill.)
   stageAs(game, b, what = 'rest', n = 1, at = -1) {
     const d = game.drill, B = BOSS[b];
     this.stage[b] = n; this.blows[b] = n - 1; this.away[b] = 0; this.fallT[b] = -1; this.struck[b] = 0; this.leg[b] = 0;
-    let c = at >= 0 ? at : this.spotNear(game, b, B.near[0], B.near[1], !!B.perch);
+    let c = at >= 0 ? at : this.spotNear(game, b, B.near[0], B.near[1], B.perch ?? false);
     if (c < 0) c = Math.floor(d.y - 4) * N + Math.floor(d.x);
+    this.unroot(b);
     this.surface(game, b, c);
+    this.next[b] = 0;
+    if (B.verb === 'cut' && this.stageWest(game, b, what)) { this.t[b] = 0; return c; }
     switch (what) {
       case 'sleep': this.heal(b); break;
       case 'sunk': this.sink(game, b); break;
@@ -547,6 +745,37 @@ export class Bosses {
     this.t[b] = 0;
     return c;
   }
+  stageWest(game, b, what) {
+    const T0 = this.tendril, d = game.drill;
+    switch (what) {
+      case 'tell': case 'act': case 'second':
+        this.aimTendril(game, b, 0); this.tell(game, b, BOSS[b].attack); this.lash(game, b, 0, null);
+        if (what === 'act') { T0[TP] = TW.LASH; this.st[b] = ACT; }
+        if (what === 'second') { this.aimTendril(game, b, 1); this.lash(game, b, 1, 'second'); }
+        return true;
+      case 'latch':
+        T0[TP] = TW.HOLD; T0[TX] = d.x; T0[TY] = d.y; T0[TIP] = Math.hypot(d.x - this.x[b], d.y - this.y[b]);
+        this.latch[b] = 0; this.fast[b] = 0; this.sips[b] = 0; this.st[b] = LATCH;
+        return true;
+      case 'rest': {
+        this.aimTendril(game, b, 0);
+        let a = T0[TC] >= 0 && this.anchorable(game, T0[TC]) ? T0[TC] : -1;
+        const x0 = Math.floor(d.x), y0 = Math.floor(d.y);
+        for (let r = 1; r <= 6 && a < 0; r++) for (let y = y0 - r; y <= y0 + r && a < 0; y++) for (let x = x0 - r; x <= x0 + r; x++) {
+          if (Math.max(Math.abs(x - x0), Math.abs(y - y0)) !== r) continue;
+          const c = y * N + x;
+          this.work++;
+          if (this.anchorable(game, c) && Math.hypot(x + 0.5 - this.x[b], y + 0.5 - this.y[b]) <= BOSS[b].reach) { a = c; break; }
+        }
+        if (a < 0) return false;
+        if (a !== T0[TC]) { T0[TX] = a % N + 0.5; T0[TY] = Math.floor(a / N) + 0.5; T0[TC] = a; }
+        T0[TP] = TW.ANCHOR; T0[TIP] = Math.hypot(T0[TX] - this.x[b], T0[TY] - this.y[b]);
+        this.anchor[b] = a; this.st[b] = REST;
+        return true;
+      }
+    }
+    return false;
+  }
 
   // ---------------------------------------------------------------- drawing
   // The pose a lord is drawn in now.
@@ -556,7 +785,7 @@ export class Bosses {
       case SLEEP: case SUNK: return beat ? P.swim_b : P.swim_a;
       case UP: return t < RISE ? P.rise : ((this.time * 1.5) | 0) & 1 ? P.idle_b : P.idle_a;
       case TELL: return P.tell;
-      case ACT: return P.act;
+      case ACT: case LATCH: return P.act;
       case HURTING: case YIELDING: return P.hurt;
       default: return P.rest;
     }
@@ -578,8 +807,8 @@ export class Bosses {
     ctx.globalAlpha = 1;
   }
   // Over the dark: a lord sunk (or asleep, near) as a hump through the rock; a tell's line, ringed in FOE_EYE; the
-  // breath; the icefall's rings and shards; the south's lane (`drawLane`); and under a lord up, its blows as three
-  // diamonds.
+  // breath; the icefall's rings and shards; the south's lane (`drawLane`); the west's tendrils (`drawTendrils`); and
+  // under a lord up, its blows as three diamonds.
   signs(game, ctx, ox, oy) {
     if (!frames()) return;
     const image = sheets.bosses.image, now = this.time, d = game.drill;
@@ -597,21 +826,15 @@ export class Bosses {
       }
       const x0 = this.x[b] * T - ox, y0 = this.y[b] * T - oy;
       ctx.fillStyle = EYE;
-      if ((st === TELL || st === ACT) && BOSS[b].verb === 'ram') this.drawLane(game, ctx, ox, oy, b);
+      if (BOSS[b].verb === 'cut') this.drawTendrils(game, ctx, ox, oy, b);
+      else if ((st === TELL || st === ACT) && BOSS[b].verb === 'ram') this.drawLane(game, ctx, ox, oy, b);
       else if (st === TELL || st === ACT) {
         const s = this.stage[b] - 1, locked = st === ACT || this.t[b] >= BOSS[b].tell[s] - LOCK;
         const ex = this.lockX[b] * T - ox, ey = this.lockY[b] * T - oy, len = Math.hypot(ex - x0, ey - y0) || 1, ux = (ex - x0) / len, uy = (ey - y0) / len;
         if (st === TELL) {
           ctx.globalAlpha = locked ? 0.95 : 0.4 + 0.3 * Math.sin(now * 30);
           for (let u = (now * 40) % 4; u < len; u += 4) ctx.fillRect(Math.round(x0 + ux * u), Math.round(y0 + uy * u), 1, 1);
-          // (The lord itself ringed in the warning's colour.)
-          const r = FR[b][this.pose(b)][this.face[b] < 0 ? 1 : 0].r;
-          if (r) {
-            const lit = tinted('bosses', EYE), px = Math.round(x0 - 24), py = Math.round(y0 - 24);
-            ctx.globalAlpha = 0.45 + 0.35 * Math.sin(now * 24);
-            for (let n = 0; n < 4; n++) ctx.drawImage(lit, r[0], r[1], r[2], r[3], px + SIDES[n][0], py + SIDES[n][1], 48, 48);
-            ctx.globalAlpha = 1; ctx.drawImage(image, r[0], r[1], r[2], r[3], px, py, 48, 48);
-          }
+          this.ringed(ctx, b, x0, y0);
         } else {
           // The breath: a band of frost along the line.
           ctx.fillStyle = '#eef8ff';
@@ -660,11 +883,45 @@ export class Bosses {
     }
     // (Its far end, a bar across the lane.)
     for (let v = -hw; v <= hw; v += 2) ctx.fillRect(Math.round(ex - uy * v), Math.round(ey + ux * v), 1, 1);
-    if (st !== TELL) return;
+    if (st === TELL) this.ringed(ctx, b, sx, sy);
+  }
+  // The west's tendrils: each told as a dotted line through the drill, flickering until it locks, and she ringed in
+  // the warning's colour; lashed, holding or coming home, a vine from her middle to its tip, swaying as it flies,
+  // slack as it holds, pulled straight when taut; and the cell it is anchored in outlined in the warning's colour.
+  drawTendrils(game, ctx, ox, oy, b) {
+    const T0 = this.tendril, now = this.time, s = this.stage[b] - 1, x0 = this.x[b] * T - ox, y0 = this.y[b] * T - oy;
+    let telling = false;
+    for (let k = 0; k < 2; k++) {
+      const o = k * TD, ph = T0[o + TP];
+      if (ph === TW.NONE) continue;
+      const ex = T0[o + TX] * T - ox, ey = T0[o + TY] * T - oy, len = Math.hypot(ex - x0, ey - y0) || 1, ux = (ex - x0) / len, uy = (ey - y0) / len;
+      if (ph === TW.TELL) {
+        telling = true;
+        ctx.fillStyle = EYE; ctx.globalAlpha = T0[o + TT] >= BOSS[b].tell[s] - LOCK ? 0.95 : 0.4 + 0.3 * Math.sin(now * 30 + k * 2);
+        for (let u = (now * 40) % 4; u < len; u += 4) ctx.fillRect(Math.round(x0 + ux * u), Math.round(y0 + uy * u), 1, 1);
+        continue;
+      }
+      const tip = Math.min(len, T0[o + TIP] * T), sway = ph === TW.ANCHOR ? 0 : ph === TW.HOLD ? 3 : 5, nx = -uy, ny = ux;
+      ctx.globalAlpha = 1;
+      for (let u = 0; u < tip; u += 2) {
+        const bend = Math.sin(u / tip * Math.PI) * sway * Math.sin(now * 9 + u * 0.15), px = Math.round(x0 + ux * u + nx * bend), py = Math.round(y0 + uy * u + ny * bend);
+        ctx.fillStyle = VINE[0]; ctx.fillRect(px - 1, py - 1, 3, 3);
+        ctx.fillStyle = u % 6 === 0 ? VINE[2] : VINE[1]; ctx.fillRect(px, py, 1, 1);
+      }
+      if (ph !== TW.ANCHOR || this.anchor[b] < 0) continue;
+      const c = this.anchor[b], cx = (c % N) * T - ox, cy = Math.floor(c / N) * T - oy;
+      ctx.fillStyle = EYE; ctx.globalAlpha = 0.6 + 0.4 * Math.sin(now * 8);
+      ctx.fillRect(cx, cy, T, 1); ctx.fillRect(cx, cy + T - 1, T, 1); ctx.fillRect(cx, cy + 1, 1, T - 2); ctx.fillRect(cx + T - 1, cy + 1, 1, T - 2);
+    }
+    if (telling) this.ringed(ctx, b, x0, y0);
+    ctx.globalAlpha = 1; ctx.fillStyle = EYE;
+  }
+  // A lord as it tells, ringed in the warning's colour.
+  ringed(ctx, b, x0, y0) {
     const r = FR[b][this.pose(b)][this.face[b] < 0 ? 1 : 0].r;
     if (!r) return;
-    const lit = tinted('bosses', EYE), image = sheets.bosses.image, px = Math.round(sx - 24), py = Math.round(sy - 24);
-    ctx.globalAlpha = 0.45 + 0.35 * Math.sin(now * 24);
+    const lit = tinted('bosses', EYE), image = sheets.bosses.image, px = Math.round(x0 - 24), py = Math.round(y0 - 24);
+    ctx.globalAlpha = 0.45 + 0.35 * Math.sin(this.time * 24);
     for (let n = 0; n < 4; n++) ctx.drawImage(lit, r[0], r[1], r[2], r[3], px + SIDES[n][0], py + SIDES[n][1], 48, 48);
     ctx.globalAlpha = 1; ctx.drawImage(image, r[0], r[1], r[2], r[3], px, py, 48, 48);
   }
@@ -693,6 +950,8 @@ export class Bosses {
 const SIDES = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 // The colour of each lord's own lamps: the east's crown, the south's seam, the west's spores, the north's frost.
 const LAMP = ['#e8d0ff', '#ffb060', '#d8f070', '#bfe6ff'];
+// The west's vine: its dark edge, its body, and the spores lit along it.
+const VINE = ['#1f2a10', '#7ea83a', '#d8f070'];
 // How far a point is from a segment.
 function toSegment(x, y, x0, y0, x1, y1) {
   const ex = x1 - x0, ey = y1 - y0, len2 = ex * ex + ey * ey || 1, u = Math.max(0, Math.min(1, ((x - x0) * ex + (y - y0) * ey) / len2));
