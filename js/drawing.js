@@ -10,6 +10,7 @@ import { decorAt, markAt, natural, framesOf, placeOf } from './decor.js';
 import { sfx, soundVolume, musicVolume, setSoundVolume, setMusicVolume, STEPS_OF_VOLUME } from './audio.js';
 import { WORKS, MAPS, TABS, LAB, LAB_OF, LAB_PARTS, PART_INDEX, labLevel, labNext, ROWS, FOUND, FINDER, CUT, WINCH_LOAD } from './shop.js';
 import { pickGoal, goalShare } from './goal.js';
+import { WORTH_AT } from './worth.js';
 import { TETHERS, BODY, BODY_A, HOT, HOT_A, RAM, PLATE, FLAME, FLAME_TIER, FITS, FIT_BIT, CORE_IDLE, CORE_C, CORE_FLASH, DISH, REFINERY, CUTTER, BOX, ORBIT, BEACON, STATION_PARTS } from './fit.js';
 // (The middle of the core and two figures of the rules are the game's, read from js/game.js, which imports this
 // module in turn. The two may import each other because these names are read only inside the methods, which run
@@ -46,9 +47,9 @@ const wrap = (said, wide) => {
 // `LAB_PARTS`), and `content` how tall the whole list is. A thing not yet known is
 // drawn as where it is found (`label`), and two of one part found in one place (a ground's common ore and its rich
 // one) are told apart there and in what is said of them by which they are. NOTE is the room under
-// the list for what is said of the thing chosen: a line of its count, and up to NOTE_LINES lines of its note
-// (test/regress/l-analysis.mjs holds every note to them on the narrowest panel).
-export const LAB_RH = 13, LAB_SEC = 12, LAB_HEAD = 20, NOTE_LINES = 4, LAB_NOTE = 12 + NOTE_LINES * 10 + 4;
+// the list for what is said of the thing chosen: a line of its count, a line of what it is worth (js/worth.js), and
+// up to NOTE_LINES lines of its note (test/regress/l-analysis.mjs holds every note to them on the narrowest panel).
+export const LAB_RH = 13, LAB_SEC = 12, LAB_HEAD = 20, NOTE_LINES = 4, LAB_NOTE = 22 + NOTE_LINES * 10 + 4;
 export const LAB_LIST = (() => {
   const lines = [], line = [], at = [], head = [];
   let y = 0;
@@ -62,6 +63,14 @@ export const LAB_LIST = (() => {
   });
   return { lines, line, at, head, content: y };
 })();
+// A thing's chip in the lab's list, 12 pixels square with its corners cut; and the rim round it in a tier's colour
+// (js/worth.js: `tier`): none for the first, silver for the second, gold for the third.
+export const TIER_RIM = [null, null, '#9cc4f0', '#ffcc40'];
+const chip = (ctx, x, y, rim, fill) => { ctx.fillStyle = fill; ctx.fillRect(x + 1, y, 10, 12); ctx.fillRect(x, y + 1, 12, 10); };
+const ring = (ctx, x, y, rim) => {
+  ctx.fillStyle = rim;
+  ctx.fillRect(x + 1, y, 10, 1); ctx.fillRect(x + 1, y + 11, 10, 1); ctx.fillRect(x, y + 1, 1, 10); ctx.fillRect(x + 11, y + 1, 1, 10);
+};
 // What is said under the list of a thing analysed n times: its count, and the count its next level comes at.
 // Two values of a shop's row, `a>b`, in no more than `room` pixels: a word the two share said once ('ALL x3>x4',
 // '3>4 SPEC'), and failing that the next alone ('>ALL x2'). (What the row says on its second line says the rest.)
@@ -1820,7 +1829,7 @@ export class Drawing {
     this.labScroll = Math.max(0, Math.min(most, this.labScroll));
     const top = Math.round(this.labScroll), RIGHT = vx + vw - 5;
     // How many of each part are known, counted once a frame with no list made.
-    const known = this.labKnown ??= LAB_PARTS.map(() => 0);
+    const known = this.labKnown ??= LAB_PARTS.map(() => 0), worthNow = WORTH_AT[Math.min(WORTH_AT.length - 1, S.lv.winch)];
     known.fill(0);
     for (const e of LAB) if (S.lab[e.key]) known[PART_INDEX[e.part]]++;
     ctx.save(); ctx.beginPath(); ctx.rect(vx, vy, vw, view); ctx.clip();
@@ -1831,16 +1840,21 @@ export class Drawing {
       if (!line.entry) { this.labHead(line, vx, y, vw, known); continue; }
       const e = line.entry, n = S.lab[e.key] ?? 0, on = line.i === chosen;
       if (on) { ctx.fillStyle = '#3a3260'; ctx.fillRect(vx, y, vw - 4, LAB_RH - 1); }
+      // (What it is worth shows in the rim of its chip, known or not: none, silver or gold by its tier, with the
+      // winch as it is; js/worth.js. The rim is laid over the picture, so no picture hides it.)
+      const rim = TIER_RIM[worthNow[e.key]?.tier ?? 1];
       if (n) {
         // (Each picture on a chip a little lighter than the panel: a dark stone, drawn to be seen on its own pale
         // rock, would be lost on the panel's dark.)
-        ctx.fillStyle = on ? '#6e6896' : '#5a5674'; ctx.fillRect(vx + 3, y, 10, 12); ctx.fillRect(vx + 2, y + 1, 12, 10);
+        chip(ctx, vx + 2, y, null, on ? '#6e6896' : '#5a5674');
         const f = sheets[line.sheet].frames[line.frame];
         ctx.drawImage(sheets[line.sheet].image, f[0] + 2, f[1] + 2, 12, 12, vx + 2, y, 12, 12);
+        if (rim) ring(ctx, vx + 2, y, rim);
         text(ctx, e.name, vx + 18, y + 2, on ? '#ffe14a' : '#ffffff');
         text(ctx, `+${labLevel(n)}%`, RIGHT, y + 2, '#8cf2c4', 1);
       } else {
         // (What is not yet known says where it is found.)
+        if (rim) { chip(ctx, vx + 2, y, null, '#1c1a28'); ring(ctx, vx + 2, y, rim); }
         text(ctx, '?', vx + 6, y + 2, on ? '#bcb4cc' : '#6a6478');
         text(ctx, line.label, vx + 18, y + 2, on ? '#bcb4cc' : '#6a6478');
       }
@@ -1872,7 +1886,10 @@ export class Drawing {
     ctx.fillStyle = '#4a4468'; ctx.fillRect(px + 6, ny - 2, pw - 12, 1);
     if (n) text(ctx, labCount(n), px + 8, ny + 1, '#bfe6ff');
     else text(ctx, 'NOT ANALYSED YET', px + 8, ny + 1, '#bcb4cc');
-    for (let l = 0; l < w.lines.length; l++) text(ctx, w.lines[l], px + 8, ny + 12 + l * 10, n ? '#d8d0c0' : '#9a94a8');
+    // (What it is worth, against plain rock out where it lies, known or not.)
+    const worth = worthNow[sel.key];
+    if (worth) text(ctx, worth.said, px + 8, ny + 11, '#ffe14a');
+    for (let l = 0; l < w.lines.length; l++) text(ctx, w.lines[l], px + 8, ny + 22 + l * 10, n ? '#d8d0c0' : '#9a94a8');
   }
   // The shop's picture of level `next` of row `u`, in the 16 x 16 at (vx, vy), as it will look and move: the reach's
   // span with light running along it, the bit spinning and hot, the ram's flame behind the tail, the plates with a

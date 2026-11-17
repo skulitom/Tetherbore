@@ -300,6 +300,16 @@ export const WORDS = [
   ['SOUTH EAST', 'ЮГО-ВОСТОК', '东南'],
   ['SOUTH WEST', 'ЮГО-ЗАПАД', '西南'],
   ['NORTH WEST', 'СЕВЕРО-ЗАПАД', '西北'],
+  // (what a thing of the lab's is worth, against plain rock: js/worth.js)
+  ['WORTH x# ROCK', 'x# ПОРОДЫ', '价值：岩石 x#'],
+  ['~x# ROCK, +# GEMS', '~x# ПОРОДЫ, +# КАМН.', '岩石 ~x#，+# 宝石'],
+  ['~x# ROCK, +# SPEC', '~x# ПОРОДЫ, +# ЭКЗ', '岩石 ~x#，+# 标本'],
+  ['~x# ROCK, +# GEMS, +SPEC', '~x# ПОРОДЫ +# КАМН. +ЭКЗ', '~x#，+# 宝石 +标本'],
+  ['HOME x#, EAST x# +# GEM', 'ДОМ x#, ВОСТ. x# +# КАМ.', '家园 x#，东方 x# +# 宝石'],
+  ['HOME x#, EAST x# +# GEMS', 'ДОМ x#, ВОСТ. x# +# КАМН.', '家园 x#，东方 x# +# 宝石'],
+  ['WORTH x# ROCK, +# GEM', 'x# ПОРОДЫ, +# КАМЕНЬ', '价值：岩石 x#，+# 宝石'],
+  ['WORTH x# ROCK, +# GEMS', 'x# ПОРОДЫ, +# КАМН.', '价值：岩石 x#，+# 宝石'],
+  ['WORTH x# ROCK, +# SPEC', 'x# ПОРОДЫ, +# ЭКЗ', '价值：岩石 x#，+# 标本'],
   // where a thing is found, said in the list before it is known
   ['HOME AND EAST', 'ДОМ И ВОСТОК', '家园与东方'],
   ['KEYSTONE SLABS', 'ЗАМКОВЫЕ ПЛИТЫ', '拱心石板'],

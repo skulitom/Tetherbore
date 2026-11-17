@@ -11,6 +11,7 @@
 import { makeGame, K, N, C } from '../harness.mjs';
 const { LAB, labLevel, labNext } = await import('../../js/game.js');
 const { LAB_PARTS } = await import('../../js/shop.js');
+const { WORTH, WORTH_AT } = await import('../../js/worth.js');
 const { LAB_LIST, LAB_RH, LAB_SEC, NOTE_LINES, labCount } = await import('../../js/drawing.js');
 const { textWidth } = await import('../../js/atlas.js');
 
@@ -25,6 +26,14 @@ const block = (x0, k) => { const cells = []; for (let y = 0; y < 5; y++) for (le
 const copper = block(-20, K.ORE_A), quartz = block(-5, K.ORE_B), plain = block(10, K.SOFT);
 const pay = cells => game.payOf(cells).grit;
 const base = { copper: pay(copper), quartz: pay(quartz), plain: pay(plain) };
+// (The lab says of copper and violet quartz what a cell of each pays against plain rock in its place: forty of it, so the
+// haul's rounding is nothing.)
+{
+  const i = (C + 30) * N + C + 30, was = w.k(i), as = k => { w.setK(i, k); return game.payOf(Array(40).fill(i)).grit; };
+  const rock = as(K.SOFT), a = as(K.ORE_A) / rock, b = as(K.ORE_B) / rock;
+  w.setK(i, was);
+  check(Math.abs(a - WORTH['lode-items:oreA'].home.x) < 0.1 && Math.abs(b - WORTH['lode-items:oreB'].home.x) < 0.1, `copper and violet quartz pay ${a.toFixed(2)} and ${b.toFixed(2)} times rock, and the lab says ${WORTH['lode-items:oreA'].home.x} and ${WORTH['lode-items:oreB'].home.x} at home`);
+}
 check(Object.keys(game.S.lab).length === 0, `a new game's lab holds ${JSON.stringify(game.S.lab)}`);
 
 // One cell of copper crushed: one sample, the first level, said on the cell, and copper alone is worth more.
@@ -220,6 +229,8 @@ LAB.forEach((e, i) => {
   const { label, found } = LAB_LIST.line[i];
   check(18 + textWidth(e.name) + 4 + textWidth('+11%') <= right, `${e.name} is too long for its line`);
   check(18 + textWidth(label) <= right, `${e.name}: '${label}' is too long for its line`);
+  // (What it is worth is said of everything, on one line.)
+  for (const at of WORTH_AT) check(at[e.key] && textWidth(at[e.key].said) <= text && [1, 2, 3].includes(at[e.key].tier), `${e.name}: its worth is ${at[e.key] ? `'${at[e.key].said}', tier ${at[e.key].tier}` : 'not said'}`);
   for (const word of `${e.note} ${found}`.split(' ')) check(textWidth(word) <= text, `'${word}' is wider than the notes`);
   check(wrapped(e.note).length <= NOTE_LINES, `${e.name}: its note takes ${wrapped(e.note).length} lines, of ${NOTE_LINES}`);
   check(wrapped(found).length <= NOTE_LINES, `${e.name}: where it is found takes ${wrapped(found).length} lines`);

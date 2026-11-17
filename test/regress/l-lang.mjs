@@ -87,6 +87,9 @@ for (const what of Object.values(NEEDS)) { names.add(`NEEDS 3/5 ${what}`); names
 for (const w of GEM_WHERE.slice(1)) { names.add(w); names.add(`GEMS: ${w}, PAST 130`); names.add(`${w}, PAST 130`); names.add(`${w} POCKETS`); }
 for (const e of LAB) { names.add(e.name); names.add(e.note); names.add(e.at); names.add(e.where); }
 for (const line of LAB_LIST.line) { names.add(line.label); names.add(line.found); }
+// (What each thing is worth, said under the list: js/worth.js.)
+const { WORTH_AT } = await import('../../js/worth.js');
+for (const at of WORTH_AT) for (const w of Object.values(at)) if (w) names.add(w.said);
 names.add(labCount(1)); names.add(labCount(5)); names.add(labCount(2400));
 for (const b of BIOMES) if (b) { names.add(b.title); const h = placeHaul(b); if (h) names.add(h); }
 for (const [, g] of GIANTS) names.add(g);
@@ -123,6 +126,7 @@ check(!missing.length, `${missing.length} lines have no turn in ${lang}: ${missi
   const lines = said => { const out = [], { parts, join } = words(tr(said)); for (const p of parts) { const last = out.at(-1); if (last !== undefined && textWidth(`${last}${join}${p}`) <= wide) out[out.length - 1] = `${last}${join}${p}`; else out.push(p); } return out; };
   LAB.forEach((e, i) => {
     const { label, found } = LAB_LIST.line[i];
+    for (const at of WORTH_AT) if (at[e.key]) check(textWidth(at[e.key].said) <= wide, `${e.name}: '${tr(at[e.key].said)}' is wider than the notes`);
     check(18 + textWidth(e.name) + 4 + textWidth('+11%') <= right, `${e.name}: '${tr(e.name)}' is too long for its line`);
     check(18 + textWidth(label) <= right, `${e.name}: '${tr(label)}' is too long for its line`);
     for (const said of [e.note, found]) {
