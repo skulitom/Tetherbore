@@ -16,7 +16,7 @@ for (const [name, sx, sy, reach] of [['home', 0, 0, 4], ['north', 0, -260, 6], [
   const game = await makeGame(seed, { tether: reach, drill: 3 });
   const d = game.drill, rnd = random(seed + sx * 3 + sy * 7);
   if (sx || sy) farStart(game, sx, sy);
-  game.S.grit = 5e6; game.S.gems = [0, 5000, 5000, 5000, 5000];
+  game.S.grit = 5e6; game.S.gems = [0, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000];
   let heading = rnd() * 6.283, frames = 0;
   try {
     for (let turn = 0; turn < turns; turn++) {

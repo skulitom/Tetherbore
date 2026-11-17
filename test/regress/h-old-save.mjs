@@ -45,8 +45,11 @@ if (!loaded) note('the old save did not load');
 const S = game.S;
 
 // 1. What was bought and banked, and what an old save lacks. (Every level it had it has; the hull, which it had
-// not, is at its first.)
-if (S.seed !== was.seed || S.grit !== was.grit || Object.keys(was.lv).some(id => S.lv[id] !== was.lv[id]) || S.lv.hull !== 0 || JSON.stringify(S.gems) !== JSON.stringify(was.gems)) note(`what was banked is not as saved: seed ${S.seed}, grit ${S.grit}, levels ${JSON.stringify(S.lv)}`);
+// not, is at its first; the four gems it banked are where they were, and the corners', which it had no places for,
+// are none.)
+const gemsWas = [...was.gems, 0, 0, 0, 0];
+if (was.gems.length !== 5) note(`the old save banked ${was.gems.length} gems' places, not the four directions' and none`);
+if (S.seed !== was.seed || S.grit !== was.grit || Object.keys(was.lv).some(id => S.lv[id] !== was.lv[id]) || S.lv.hull !== 0 || JSON.stringify(S.gems) !== JSON.stringify(gemsWas)) note(`what was banked is not as saved: seed ${S.seed}, grit ${S.grit}, levels ${JSON.stringify(S.lv)}`);
 for (const u of UPGRADES) if (!(S.lv[u.id] >= 0)) note(`no level of ${u.id}`);
 if (JSON.stringify(S.spec) !== '[0,0,0,0,0]' || !Array.isArray(S.marks) || typeof S.visited !== 'object' || !S.met || !S.met[0]) note(`what the old save lacks was not made: spec ${JSON.stringify(S.spec)}, marks ${JSON.stringify(S.marks)}, visited ${JSON.stringify(S.visited)}, met ${JSON.stringify(S.met)}`);
 

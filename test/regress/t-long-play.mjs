@@ -54,13 +54,14 @@ if (first) {
   if (JSON.stringify(again.S) !== JSON.stringify(S) || again.bought.length !== bought.length) note('the same seed played another game the second time');
 }
 // The pilot that shops in every tab (`--all`) buys in the other three as well, and what held each level up is a
-// table of seconds by level and by what was short: gems or specimens of a direction, or a need.
+// table of seconds by level and by what was short: gems of a direction or a corner, specimens of a direction, or a
+// need.
 let every = null;
 try { every = await play(seed, minutes, { every: 60, all: true }); } catch (error) { note(`every tab: threw: ${error.stack.split('\n').slice(0, 4).join(' | ')}`); }
 if (every) {
   const others = every.bought.filter(b => ['works', 'map', 'core'].some(tab => TABS.find(t => t.id === tab).rows.some(u => u.id === b.id)));
   if (!others.length) note(`shopping in every tab, nothing was bought but in the first: ${every.bought.map(b => `${b.id} ${b.level}`).join(', ')}`);
-  const WHY = /^(gems|spec) (north|south|west|east)$|^need (out|parts|kinds|places|relics|beasts)$/;
+  const WHY = /^(gems|spec) (north|south|west|east)$|^gems (north|south) (east|west)$|^need (out|parts|kinds|places|relics|beasts)$/;
   const bad = Object.entries(every.blockers).filter(([at, why]) => {
     const [id, level] = at.split(' '), u = ALL.find(r => r.id === id);
     return !u || !(+level >= 1 && +level < u.values.length) || !Object.keys(why).length || Object.entries(why).some(([what, n]) => !WHY.test(what) || !(Number.isInteger(n) && n > 0 && n <= minutes * 60));

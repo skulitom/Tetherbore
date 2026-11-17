@@ -22,7 +22,7 @@ const fly = (game, x, y, seconds) => { game.input.auto = [x, y, 1]; for (let f =
 const trip = async box => {
   fixRandom(12);
   const game = await makeGame(7, { drill: 4, blackbox: box }, { hull: true }), S0 = game.S;
-  S0.grit = 1000; S0.gems = [0, 100, 100, 100, 100]; S0.spec = [0, 10, 10, 10, 10]; S0.lab['lode-items:oreA'] = 2;
+  S0.grit = 1000; S0.gems = [0, 100, 100, 100, 100, 0, 0, 0, 0]; S0.spec = [0, 10, 10, 10, 10]; S0.lab['lode-items:oreA'] = 2;
   fly(game, 1, 0, 2);
   const S = game.S;
   // Earned on the trip.
@@ -45,7 +45,7 @@ const trip = async box => {
   const { game, S, earned } = await trip(3);
   check(game.drill.mode === 'free' && game.notice?.title === 'TRIP LOST', `the trip was not lost: ${game.drill.mode}, ${game.notice?.title}`);
   check(S.grit === 1000 + Math.round(0.75 * earned), `at the black box's third level ${S.grit - 1000} grit was kept of ${earned}`);
-  check(S.gems.join() === '0,100,100,100,100' && S.spec.join() === '0,10,10,10,10', `at the third level the gems are ${S.gems} and the specimens ${S.spec}, not as they were at the docking`);
+  check(S.gems.join() === '0,100,100,100,100,0,0,0,0' && S.spec.join() === '0,10,10,10,10', `at the third level the gems are ${S.gems} and the specimens ${S.spec}, not as they were at the docking`);
   check(S.lab['lode-items:oreA'] === 5 && S.lab['ember-items:oreA'] === 1 && S.lab['frost-items:oreB'] === 1 && S.lab['lode-items:oreB'] === 1, `at the third level the lab is ${JSON.stringify(S.lab)}`);
   check(game.known === 4, `the count of kinds analysed is ${game.known}, not 4`);
   check(S.met[30] === 1 && S.visited['z7,-3'] === 1 && S.rare.bell === 1, `at the third level the grounds, pockets and rare hazards met: ${JSON.stringify({ met: S.met[30], visited: S.visited, rare: S.rare })}`);
@@ -56,7 +56,7 @@ const trip = async box => {
 {
   const { S, earned } = await trip(2);
   check(S.grit === 1000 + Math.round(0.5 * earned), `at the black box's second level ${S.grit - 1000} grit was kept of ${earned}`);
-  check(S.gems.join() === '0,100,100,100,100' && S.spec.join() === '0,10,10,10,10', `at the second level the gems are ${S.gems} and the specimens ${S.spec}`);
+  check(S.gems.join() === '0,100,100,100,100,0,0,0,0' && S.spec.join() === '0,10,10,10,10', `at the second level the gems are ${S.gems} and the specimens ${S.spec}`);
   check(S.lab['lode-items:oreA'] === 2 && !S.lab['ember-items:oreA'] && !S.met[30] && !S.rare.bell && !S.fauna?.met?.bat, `at the second level the lore was kept: ${JSON.stringify({ lab: S.lab, met: S.met[30], rare: S.rare, fauna: S.fauna })}`);
 }
 {

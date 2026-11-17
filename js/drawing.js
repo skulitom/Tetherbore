@@ -3,7 +3,7 @@
 // from its rules: js/game.js copies them onto the game as they are, so `this` in them is the game. Nothing here is a
 // rule of play: what these methods keep on the game is what was drawn and where (the pieces of ground, the chart's
 // picture and view, what can be tapped this frame).
-import { N, C, K, B, DX, DY, BIOMES, HAZARDS, CRUSH, ZONE, FIND, rowOf, hazOf, cellHash, RELIC_R, HOME_R, SEAMS, SHRINES, CORNER_HERALDS, fossilKin } from './world.js';
+import { N, C, K, B, DX, DY, BIOMES, HAZARDS, CRUSH, ZONE, FIND, rowOf, hazOf, cellHash, RELIC_R, SEAMS, SHRINES, CORNER_HERALDS, fossilKin, GEM_PAST } from './world.js';
 import { sheets, draw, drawScaled, frameAt, duration, slice9, text, textWidth, tinted } from './atlas.js';
 import { tr, words, LANGS, lang, chooseLang } from './lang.js';
 import { decorAt, markAt, natural, framesOf, placeOf } from './decor.js';
@@ -28,8 +28,12 @@ const LANG_ROW = 18, LANG_ROWS = 3 * LANG_ROW + 2; // the menu's list of languag
 const HEART = ['.##...##.', '####.####', '#########', '#########', '.#######.', '..#####..', '...###...', '....#....']
   .flatMap((row, r) => [...row.matchAll(/#+/g)].map(m => [m.index, m.index + m[0].length - 1, r])), HEART_PITCH = 10, HEART_MID = 4;
 export const DIR_BIOME = [B.LODE, B.EMBER, B.MIRE, B.FROST];
-export const GEM_ICON = [null, 'frost', 'ember', 'mire', 'lode'];
-export const GEM_COLOR = [null, '#bfe6ff', '#ffb060', '#b8f06a', '#d8b8ff'];
+// Each gem's icon and colour, by its number: the four directions' (whose icons are their grounds' names, and whose
+// specimens' are those with `spec-` before them) and the four corners' (js/world.js: `G`), which have no specimens.
+export const GEM_ICON = [null, 'frost', 'ember', 'mire', 'lode', 'gem-ne', 'gem-se', 'gem-sw', 'gem-nw'];
+export const GEM_COLOR = [null, '#bfe6ff', '#ffb060', '#b8f06a', '#d8b8ff', '#5a8cff', '#f2346c', '#aaa6bc', '#2ed060'];
+// The gems a haul's banner lists, in order: every gem but none.
+const GEM_ORDER = [1, 2, 3, 4, 5, 6, 7, 8];
 // Text broken into lines no wider than `wide` pixels, at the spaces: in the language chosen, turned whole before it
 // is broken (and in Mandarin broken between characters: js/lang.js, `words`).
 const wrap = (said, wide) => {
@@ -101,8 +105,10 @@ const RARE_LENS = [undefined, [2, 170, 236, 255], [2, 255, 150, 40], [2, 190, 25
 // every find within the tether's reach, and listed no more than two hundred, from the north down: on the chart of
 // a long reach that was a solid band of dots across the north and none anywhere else.)
 // (They are js/shop.js's, beside the row that buys them, where the creatures' wren reads them too.)
-// Where each direction's gems are found, for a price that cannot be met yet.
-export const GEM_WHERE = [null, 'NORTH', 'SOUTH', 'WEST', 'EAST'];
+// Where each gem is found, for a price that cannot be met yet (and how far out: js/world.js, GEM_PAST); and a
+// corner's said short, where the whole will not fit.
+export const GEM_WHERE = [null, 'NORTH', 'SOUTH', 'WEST', 'EAST', 'NORTH EAST', 'SOUTH EAST', 'SOUTH WEST', 'NORTH WEST'];
+export const GEM_SHORT = [null, null, null, null, null, 'NE', 'SE', 'SW', 'NW'];
 // What is called out the first time it is seen (`World.see` says what it is): the name that comes up, and the
 // colour of that name, of the ring round the thing and of its dot on the map. A relic's colour is its direction's
 // gem's, and a pocket's mineral has its own name and its pocket's colour. Names only: nothing here says what a
@@ -1254,12 +1260,12 @@ export class Drawing {
       const [size, prism, spec] = this.bannerSays(b);
       if (size) text(ctx, size, W / 2, y + 11 * big + 2, b.over < 1 ? '#ffb060' : '#bfe6ff', 0.5);
       let line = `+${compact(b.grit)}`, lw = b.trophy ? -4 : textWidth(line) + 11;
-      const gems = [1, 2, 3, 4].filter(g => b.gems[g] > 0);
-      for (const g of gems) lw += textWidth(`+${compact(b.gems[g])}`) + 15;
+      // (The gems it paid, in their order: those it paid none of are passed over.)
+      for (const g of GEM_ORDER) if (b.gems[g] > 0) lw += textWidth(`+${compact(b.gems[g])}`) + 15;
       if (spec) lw += textWidth(spec) + 17;
       let lx = Math.round(W / 2 - lw / 2), ly = y + 11 * big + (size ? 14 : 2);
       if (!b.trophy) { draw(ctx, 'icons', 'grit', lx, ly - 1); text(ctx, line, lx + 11, ly, '#ffe14a'); lx += textWidth(line) + 15; }
-      for (const g of gems) { draw(ctx, 'icons', GEM_ICON[g], lx, ly - 1); text(ctx, `+${compact(b.gems[g])}`, lx + 11, ly, GEM_COLOR[g]); lx += textWidth(`+${compact(b.gems[g])}`) + 15; }
+      for (const g of GEM_ORDER) if (b.gems[g] > 0) { draw(ctx, 'icons', GEM_ICON[g], lx, ly - 1); text(ctx, `+${compact(b.gems[g])}`, lx + 11, ly, GEM_COLOR[g]); lx += textWidth(`+${compact(b.gems[g])}`) + 15; }
       // The specimens a pocket's mineral added, with the mineral itself beside the figure.
       if (spec) { if (b.mineral) this.drawMineral(ctx, b.mineral, lx - 1, ly - 3); else draw(ctx, 'icons', `spec-${GEM_ICON[b.specOf]}`, lx, ly - 1); text(ctx, spec, lx + 13, ly, GEM_COLOR[b.specOf]); }
       // A prism among the cells: what it multiplied the gems by, in the gems' colours by turns.
@@ -2104,8 +2110,8 @@ export class Drawing {
         text(ctx, grit, cx - 2, cy, this.banked() >= c.grit ? '#ffe14a' : '#ff7a5a', 1);
         if (gems) {
           cx -= textWidth(last) + 16; last = gems;
-          draw(ctx, 'icons', GEM_ICON[u.gem], cx, cy - 1);
-          text(ctx, gems, cx - 2, cy, this.banked(u.gem) >= c.gems ? GEM_COLOR[u.gem] : '#ff7a5a', 1);
+          draw(ctx, 'icons', GEM_ICON[c.gem], cx, cy - 1);
+          text(ctx, gems, cx - 2, cy, this.banked(c.gem) >= c.gems ? GEM_COLOR[c.gem] : '#ff7a5a', 1);
         }
         // Specimens: how many are in hand of how many are asked, with the direction's own stone.
         if (asks) {
@@ -2113,8 +2119,8 @@ export class Drawing {
           draw(ctx, 'icons', `spec-${GEM_ICON[u.kin]}`, cx, cy - 1);
           text(ctx, asks, cx - 2, cy, have >= c.spec ? GEM_COLOR[u.kin] : '#ff7a5a', 1);
         }
-        const short = c.gems > 0 && this.banked(u.gem) < c.gems;
-        if (!wide || tall) text(ctx, short ? `${GEM_WHERE[u.gem]}, PAST ${HOME_R}` : what, px + 25, wide ? y + 11 : y + rh - 12, short ? GEM_COLOR[u.gem] : spent ? '#8ce060' : '#c8c2d4');
+        const short = c.gems > 0 && this.banked(c.gem) < c.gems;
+        if (!wide || tall) text(ctx, short ? `${GEM_WHERE[c.gem]}, PAST ${GEM_PAST[c.gem]}` : what, px + 25, wide ? y + 11 : y + rh - 12, short ? GEM_COLOR[c.gem] : spent ? '#8ce060' : '#c8c2d4');
       } else text(ctx, u.what, px + 25, y + rh - 12, '#e8c070');
       this.buttons.unshift({ x: px + 4, y, w: pw - 8, h: rh - 1, act: () => this.buy(u) });
     });

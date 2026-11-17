@@ -45,7 +45,10 @@ import { fileURLToPath } from 'node:url';
 import { makeGame, random, UPGRADES, WORKS, MAPS, CORE, income, C, N, K, world } from '../test/harness.mjs';
 
 const { HARD, rowOf } = world;
-const WAYS = ['', 'north', 'south', 'west', 'east'];
+// (Whose gems, by their numbers: the four directions' and the four corners'.)
+const WAYS = ['', 'north', 'south', 'west', 'east', 'north east', 'south east', 'south west', 'north west'];
+// The gems banked as they are printed: the four directions', and the corners' after them once there are any.
+const gemsSaid = gems => gems.slice(1, 5).join('/') + (gems.slice(5).some(Boolean) ? ` +${gems.slice(5).join('/')}` : '');
 // The twelve spokes: [x, y, whose direction]. (0.866 and 0.5: thirty degrees off the direction's own line.)
 const SPOKES = [[0, -1, 1], [0.5, -0.866, 1], [-0.5, -0.866, 1], [0, 1, 2], [0.5, 0.866, 2], [-0.5, 0.866, 2], [-1, 0, 3], [-0.866, 0.5, 3], [-0.866, -0.5, 3], [1, 0, 4], [0.866, 0.5, 4], [0.866, -0.5, 4]];
 const compact = n => n < 1000 ? `${Math.floor(n)}` : n < 1e6 ? `${(n / 1000).toFixed(n < 1e4 ? 1 : 0)}K` : n < 1e9 ? `${(n / 1e6).toFixed(n < 1e7 ? 2 : 1)}M` : `${(n / 1e9).toFixed(2)}B`;
@@ -77,7 +80,7 @@ export async function play(seed = 7, minutes = 40, every = 120, each = null, fau
   const reach = () => game.val('tether');
   // What holds a level up that is on offer and whose grit is in hand: gems or specimens of a direction, or a need;
   // null if nothing does.
-  const short = (u, c) => game.banked(u.gem) < c.gems ? `gems ${WAYS[u.gem]}` : c.spec && game.specs(u.kin) < c.spec ? `spec ${WAYS[u.kin]}` : game.lacks(u) ? `need ${game.need(u).what}` : null;
+  const short = (u, c) => game.banked(c.gem) < c.gems ? `gems ${WAYS[c.gem]}` : c.spec && game.specs(u.kin) < c.spec ? `spec ${WAYS[u.kin]}` : game.lacks(u) ? `need ${game.need(u).what}` : null;
 
   // What a haul holds is looked at before the game takes it: keys, a pocket's mineral, what kind of ground.
   const haul = game.haul.bind(game);
@@ -116,10 +119,10 @@ export async function play(seed = 7, minutes = 40, every = 120, each = null, fau
         const c = game.cost(u);
         if (!c) continue;
         open++; least = Math.min(least, c.grit); most = Math.max(most, c.grit);
-        if (game.banked() >= c.grit && game.banked(u.gem) < c.gems) {
+        if (game.banked() >= c.grit && game.banked(c.gem) < c.gems) {
           held[u.id] ??= { seconds: 0, spells: [] };
           const h = held[u.id];
-          if (!h.now) { h.now = { from: clock.t, reach: reach(), level: S.lv[u.id], gems: c.gems, gem: u.gem }; h.spells.push(h.now); }
+          if (!h.now) { h.now = { from: clock.t, reach: reach(), level: S.lv[u.id], gems: c.gems, gem: c.gem }; h.spells.push(h.now); }
           h.seconds++; h.now.to = clock.t;
         } else if (held[u.id]) held[u.id].now = null;
         if (game.banked() >= c.grit) {
@@ -137,7 +140,7 @@ export async function play(seed = 7, minutes = 40, every = 120, each = null, fau
     if (clock.t - lastSample >= every - 1e-6) {
       const next = rows.map(u => game.cost(u)).filter(Boolean);
       samples.push({ t: clock.t, lv: { ...S.lv }, reach: reach(), banked: game.banked(), earned: sum.earned, rate: (sum.earned - lastEarned) / (clock.t - lastSample), model: income(reach()),
-        gems: S.gems.slice(1), spec: S.spec.slice(1).map(n => Math.floor(n + 1e-9)), far: sum.far, hauls: sum.hauls, cells: sum.cells, pockets: visited,
+        gems: gemsSaid(S.gems), spec: S.spec.slice(1).map(n => Math.floor(n + 1e-9)), far: sum.far, hauls: sum.hauls, cells: sum.cells, pockets: visited,
         cheapest: next.length ? Math.min(...next.map(c => c.grit)) : 0, dearest: next.length ? Math.max(...next.map(c => c.grit)) : 0 });
       lastSample = clock.t; lastEarned = sum.earned;
     }
@@ -217,7 +220,7 @@ export async function play(seed = 7, minutes = 40, every = 120, each = null, fau
         if (!game.canBuy(u)) continue;
         const c = game.cost(u);
         game.buy(u); sum.spent += c.grit;
-        bought.push({ t: clock.t, id: u.id, name: u.name, level: S.lv[u.id], grit: c.grit, gems: c.gems, gem: u.gem, spec: c.spec, kin: u.kin, banked: game.banked() });
+        bought.push({ t: clock.t, id: u.id, name: u.name, level: S.lv[u.id], grit: c.grit, gems: c.gems, gem: c.gem, spec: c.spec, kin: u.kin, banked: game.banked() });
         again = true;
         break;
       }
@@ -225,7 +228,7 @@ export async function play(seed = 7, minutes = 40, every = 120, each = null, fau
   };
   // Whether what has been hauled, banked or on its way, would buy anything.
   // (Grit and gems alone are asked: a pilot in a hurry does not read the rest of the row.)
-  const worthHome = () => rows.some(u => { const c = game.cost(u); return c && S.grit >= c.grit && S.gems[u.gem] >= c.gems; });
+  const worthHome = () => rows.some(u => { const c = game.cost(u); return c && S.grit >= c.grit && S.gems[c.gem] >= c.gems; });
   // Whose gems a level wants that the grit is there for, or half there: that direction is worked next (the
   // reach's first, as it is bought first, and then the cheapest such level's). Not before the reach is 230: the
   // gems' ground begins 130 out.
@@ -233,9 +236,9 @@ export async function play(seed = 7, minutes = 40, every = 120, each = null, fau
     let gem = 0, least = Infinity;
     if (reach() >= 230) for (const u of rows) {
       const c = game.cost(u);
-      if (!c || c.gems <= S.gems[u.gem] || S.grit < c.grit * 0.5) continue;
-      if (u.id === 'tether') return u.gem;
-      if (c.grit < least) { least = c.grit; gem = u.gem; }
+      if (!c || c.gems <= S.gems[c.gem] || S.grit < c.grit * 0.5) continue;
+      if (u.id === 'tether') return c.gem;
+      if (c.grit < least) { least = c.grit; gem = c.gem; }
     }
     return gem;
   };
@@ -320,7 +323,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   console.log(`world ${seed}, ${minutes} minutes of the game's time${all ? ', every tab' : ''}${hull ? ', the hull taking harm' : ''} (played in ${((Date.now() - began) / 1000).toFixed(0)} s)\n`);
   console.log(' time  reach  bit winch scan ram   banked   earned   a second (model)   gems n/s/w/e          specimens   far  hauls  pockets  dearest on offer');
   for (const s of r.samples) {
-    console.log(`${clockOf(s.t)}  ${String(s.reach).padStart(5)}   ${s.lv.drill}    ${s.lv.winch}     ${s.lv.scanner}    ${s.lv.momentum}   ${compact(s.banked).padStart(7)}  ${compact(s.earned).padStart(7)}  ${compact(s.rate).padStart(7)} (${compact(s.model).padStart(6)})   ${s.gems.join('/').padEnd(20)} ${s.spec.join('/').padEnd(10)} ${String(s.far).padStart(5)}  ${String(s.hauls).padStart(5)}  ${String(s.pockets).padStart(5)}    ${compact(s.dearest)}`);
+    console.log(`${clockOf(s.t)}  ${String(s.reach).padStart(5)}   ${s.lv.drill}    ${s.lv.winch}     ${s.lv.scanner}    ${s.lv.momentum}   ${compact(s.banked).padStart(7)}  ${compact(s.earned).padStart(7)}  ${compact(s.rate).padStart(7)} (${compact(s.model).padStart(6)})   ${s.gems.padEnd(20)} ${s.spec.join('/').padEnd(10)} ${String(s.far).padStart(5)}  ${String(s.hauls).padStart(5)}  ${String(s.pockets).padStart(5)}    ${compact(s.dearest)}`);
   }
   console.log('\nbought:');
   for (const b of r.bought) console.log(`  ${clockOf(b.t)}  ${b.name} ${b.level}${b.id === 'tether' ? ` (reach ${UPGRADES[0].values[b.level]})` : ''}: ${compact(b.grit)} grit${b.gems ? ` and ${b.gems} gems of the ${WAYS[b.gem]}` : ''}${b.spec ? ` and ${b.spec} specimens of the ${WAYS[b.kin]}` : ''}; ${compact(b.banked)} left`);
@@ -340,7 +343,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const id = at.split(' ')[0];
     console.log(`  ${`${rowOfId(id).name} ${at.split(' ')[1]}`.padEnd(16)} ${Object.entries(why).map(([what, n]) => `${what} ${n}`).join(', ')}${r.S.lv[id] >= +at.split(' ')[1] ? '' : ' (not bought)'}`);
   }
-  console.log(`at the end: reach ${UPGRADES[0].values[r.S.lv.tether]}, levels ${JSON.stringify(r.S.lv)}, grit ${compact(r.S.grit)}, gems ${r.S.gems.slice(1).join('/')}, specimens ${r.S.spec.slice(1).map(n => n.toFixed(1)).join('/')}`);
+  console.log(`at the end: reach ${UPGRADES[0].values[r.S.lv.tether]}, levels ${JSON.stringify(r.S.lv)}, grit ${compact(r.S.grit)}, gems ${gemsSaid(r.S.gems)}, specimens ${r.S.spec.slice(1).map(n => n.toFixed(1)).join('/')}`);
   console.log(`grounds met: ${r.met.join(', ')}`);
   if (fauna) {
     const f = r.game.fauna, F = r.S.fauna ?? {};

@@ -41,7 +41,7 @@
 //     the place one in AMBIENT seconds at the most, within HEAR cells, and none while anything that matters sounds;
 //     a warning (a bat's chitter and screech, a spitter's wheeze, a leech's drips, the pal's yip) is kept apart only
 //     by its own least gap, for it is what the player plays by.
-import { N, C, K, rowOf, hazOf, cellHash } from './world.js';
+import { N, C, K, rowOf, hazOf, cellHash, noGems } from './world.js';
 import { sheets, tinted, text, textWidth } from './atlas.js';
 import { voices } from './audio.js';
 import { income, round2, FOUND, FINDER } from './shop.js';
@@ -203,7 +203,7 @@ const ink = color => { let n = INK.get(color); if (n === undefined) { n = INKS.l
 // A direction's specimens as they are shown, by its number (1 north to 4 east): the icon's name after `spec-` and its
 // colour, as js/drawing.js has them (GEM_ICON, GEM_COLOR; not imported, for js/drawing.js imports this file).
 const SPEC_LOOK = [null, ['frost', '#bfe6ff'], ['ember', '#ffb060'], ['mire', '#b8f06a'], ['lode', '#d8b8ff']];
-const NO_GEMS = [0, 0, 0, 0, 0];
+const NO_GEMS = noGems();
 const HEART_INK = ink('#ff8aa0'), DUST_INK = ink('#a89880'), ICE_INK = ink('#eef8ff'), SPORE_INK = ink('#f4dcc4'), DRIP_INK = ink('#cab4ca'), EYE_INK = ink(FOE_EYE), LIGHT_INK = ink('#f0e8a8'), WHITE = ink('#ffffff');
 
 // Creature states, shared by name where they mean the same (each kind reads its own few).
@@ -263,7 +263,7 @@ export class Fauna {
     for (const d of this.dens.values()) { d.key = -1; this.spare.push(d); }
     this.dens.clear(); this.quiet.clear(); this.spentAt.clear(); this.index.length = 0; this.met.clear();
     this.time = 0; this.tick = 0; this.frame = 0; this.work = 0; this.heard = -9; this.drag = 1; this.latched = -1; this.pal = -1;
-    this.paid = { grit: 0, gems: [0, 0, 0, 0, 0], spec: [0, 0, 0, 0, 0] }; this.deeds = 0; this.searches = 0;
+    this.paid = { grit: 0, gems: noGems(), spec: [0, 0, 0, 0, 0] }; this.deeds = 0; this.searches = 0;
     this.lastSpeed = 0; this.stillFor = 0; this.fastFor = 0; this.hunt = 0; this.lit = 0;
     if (!game) return;
     const F = game.S.fauna;

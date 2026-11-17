@@ -316,7 +316,7 @@ export function stage(game, query) {
     if (game.S.lv[buying.id] >= buying.values.length - 1) game.S.lv[buying.id] = buying.values.length - 2;
     const can = game.canBuy, cost = game.cost, open = game.shop;
     game.canBuy = u => u === buying || can.call(game, u);
-    game.cost = u => u === buying ? { grit: 0, gems: 0, spec: 0 } : cost.call(game, u);
+    game.cost = u => u === buying ? { grit: 0, gems: 0, gem: u.gem, spec: 0 } : cost.call(game, u);
     game.shop = true; game.buy(buying); game.shop = open;
     game.canBuy = can; game.cost = cost;
   }

@@ -21,7 +21,7 @@ import { N, C, K } from './world.js';
 // a cell, the middle of the core in cells, and the cells only the diamond tip cuts at its own pace, METALS.)
 const T = 16, HX = C + 0.5, HY = C + 0.5;
 const METALS = [K.STEEL, K.KEY];
-const GEM_COLOR = [null, '#bfe6ff', '#ffb060', '#b8f06a', '#d8b8ff'];
+const GEM_COLOR = [null, '#bfe6ff', '#ffb060', '#b8f06a', '#d8b8ff', '#5a8cff', '#f2346c', '#aaa6bc', '#2ed060'];
 
 // ---------------------------------------------------------------- how the tether looks
 // At each level of reach a tether of its own, and named so (js/shop.js: `tiers`): TWINE; HEMP, a twisted rope;
@@ -143,7 +143,7 @@ const COLOURS = [], COLOUR = new Map();
 const col = c => { let n = COLOUR.get(c); if (n === undefined) { n = COLOURS.length; COLOURS.push(c); COLOUR.set(c, n); } return n; };
 const cols = list => list && list.map(col);
 const SPARK_CI = SPARK_COLOURS.map(cols), EXHAUST_CI = EXHAUST_COLOURS.map(cols), SHIMMER_CI = SHIMMER.map(c => c && col(c));
-for (const c of [...Object.values(TAB_COLOUR), ...GEM_COLOR.slice(1)]) col(c);
+for (const c of [...Object.values(TAB_COLOUR), ...GEM_COLOR.slice(1, 5)]) col(c);
 const SPORE_CI = cols(SPORE), LAVA_CI = cols(LAVA), GOLD_CI = cols(GOLD), SMOKE_CI = col(SMOKE), GLINT_CI = cols(GLINT), WHITE_CI = col('#ffffff');
 const ARC_CI = cols(ARC);
 // The kinds of particle: a spark (a pixel, laid on as light), a star (a cross of pixels, as the game's own), an
@@ -151,10 +151,12 @@ const ARC_CI = cols(ARC);
 const SPARK = 0, STAR = 1, EMBER = 2, PUFF = 3;
 
 // The sheets in the colours they are flashed and lit in, and the font in the colours the words are written in:
-// each made once (js/atlas.js: `tinted`), one a frame in a game's first frames.
+// each made once (js/atlas.js: `tinted`), one a frame in a game's first frames. (The corners' gems' come last, so
+// that the rest are made in the frames they always were.)
 const TINTS = [['drill', '#ffffff'], ['drill', '#ff8a2a'], ['drill', '#aab4c8'], ['drill', '#8ce060'], ['core', '#ffffff'], ['dish', '#ffffff'], ['station', '#ffffff'],
-  ['station', '#ffd84a'], ['station', WARM], ...GEM_COLOR.slice(1).map(c => ['station', c]),
-  ...['#8ce060', '#5cc4f0', '#ffe14a', '#fff6c8', '#ffffff', ...GEM_COLOR.slice(1)].map(c => ['font', c])];
+  ['station', '#ffd84a'], ['station', WARM], ...GEM_COLOR.slice(1, 5).map(c => ['station', c]),
+  ...['#8ce060', '#5cc4f0', '#ffe14a', '#fff6c8', '#ffffff', ...GEM_COLOR.slice(1, 5)].map(c => ['font', c]),
+  ...GEM_COLOR.slice(5).map(c => ['station', c]), ...GEM_COLOR.slice(5).map(c => ['font', c])];
 
 // Whose tab a row is in, what its fitting is a part of (0 the drill or the tether, 1 the station, 2 the map), and
 // its colour.
@@ -375,7 +377,7 @@ export class Fitter {
         this.wellGold = 0.15;
         if (home) for (let k = 0; k < mouths.length; k += 2) for (let n = 0; n < 2 + Math.ceil(lv.refinery / 2); n++) this.emit(this.pool, coreX + mouths[k], coreY + mouths[k + 1], (this.rnd() - 0.5) * 40, -30 - this.rnd() * 40, 0.4, 140, GOLD_CI[(this.rnd() * 2) | 0], this.rnd() < 0.3 ? STAR : SPARK);
       }
-      if (lv.cutter > 0) for (let n = 0; n < 4; n++) { this.gemTurn = this.gemTurn % 4 + 1; if (game.pending.gems[this.gemTurn] > 0) { this.wellGem = this.gemTurn; this.wellGems = 0.15; break; } }
+      if (lv.cutter > 0) for (let n = 0; n < 8; n++) { this.gemTurn = this.gemTurn % 8 + 1; if (game.pending.gems[this.gemTurn] > 0) { this.wellGem = this.gemTurn; this.wellGems = 0.15; break; } }
     }
     if (home && lv.scanner > 0 && game.atCore && !game.shop) {
       this.pingIn -= dt;

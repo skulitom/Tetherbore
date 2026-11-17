@@ -72,8 +72,8 @@ check(digTime(K.SLAG, BIOMES[2]) === 0.45 && digTime(K.STEEL, BIOMES[2]) === 0.6
 {
   const north = at(0, -20), deep = at(0, 20);
   w.setB(north, B.FROST); w.setK(north, K.STEEL); w.setB(deep, 6); w.setK(deep, K.STEEL);
-  check(game.payOf([north]).gems.join() === '0,0,4,0,0', `steel in the north's ground pays gems ${game.payOf([north]).gems}`);
-  check(game.payOf([deep]).gems.join() === '0,0,8,0,0', `steel in a deep flank of the south pays gems ${game.payOf([deep]).gems}, not twice 4`);
+  check(game.payOf([north]).gems.join() === '0,0,4,0,0,0,0,0,0', `steel in the north's ground pays gems ${game.payOf([north]).gems}`);
+  check(game.payOf([deep]).gems.join() === '0,0,8,0,0,0,0,0,0', `steel in a deep flank of the south pays gems ${game.payOf([deep]).gems}, not twice 4`);
 }
 // Lava that is a ground's second hazard quenches as the first does.
 {

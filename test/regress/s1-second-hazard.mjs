@@ -92,8 +92,8 @@ check(w.hazAt(inert) === null && w.k(inert) === K.HAZARD2 && !game.sparks.has(in
 // Lassoed asleep, a hazard pays its type's gems, twice over: 2 a cell.
 const pay = cells => { const before = S.gems.slice(); game.haul(cells); return S.gems.map((g, n) => g - before[n]); };
 const crystal = at(25, 5), ember = at(26, 5); w.setK(crystal, K.HAZARD2); w.setK(ember, K.HAZARD);
-check(JSON.stringify(pay([crystal])) === JSON.stringify([0, 0, 0, 0, 2]), 'a charged crystal hauled from the north\'s kin of ground did not pay 2 of the east\'s gems');
-check(JSON.stringify(pay([ember])) === JSON.stringify([0, 0, 2, 0, 0]), 'a lava pocket hauled from the north\'s kin of ground did not pay 2 of the south\'s gems');
+check(JSON.stringify(pay([crystal])) === JSON.stringify([0, 0, 0, 0, 2, 0, 0, 0, 0]), 'a charged crystal hauled from the north\'s kin of ground did not pay 2 of the east\'s gems');
+check(JSON.stringify(pay([ember])) === JSON.stringify([0, 0, 2, 0, 0, 0, 0, 0, 0]), 'a lava pocket hauled from the north\'s kin of ground did not pay 2 of the south\'s gems');
 // It is drawn from its type's sheet.
 check(JSON.stringify([game.overlay(K.HAZARD2, rows.lavaSpark), game.overlay(K.HAZARD, rows.lavaSpark), game.overlay(K.HAZARD2, rows.sporeLava)]) === JSON.stringify([['lode-items', 'hazard'], ['ember-items', 'hazard'], ['ember-items', 'hazard']]),
   'a second hazard is not drawn from its type\'s sheet');

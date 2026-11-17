@@ -51,7 +51,7 @@ async function make(seed = 7, levels = {}) {
 // A purchase as the shop makes one, with nothing asked for it.
 const buy = (game, u) => {
   const can = game.canBuy, cost = game.cost;
-  game.canBuy = v => v === u || can.call(game, v); game.cost = v => v === u ? { grit: 0, gems: 0, spec: 0 } : cost.call(game, v);
+  game.canBuy = v => v === u || can.call(game, v); game.cost = v => v === u ? { grit: 0, gems: 0, gem: u.gem, spec: 0 } : cost.call(game, v);
   game.buy(u);
   game.canBuy = can; game.cost = cost;
 };

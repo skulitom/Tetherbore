@@ -84,7 +84,8 @@ const GEMS = [
   [MOULDSTONE, K.ORE_A, [0, 0, 0, 0, 1]], [MOULDSTONE, K.ORE_B, [0, 0, 0, 5, 0]], [MOULDSTONE, K.HAZARD, [0, 0, 0, 0, 2]], [MOULDSTONE, K.HAZARD2, [0, 0, 0, 2, 0]],
   [QUENCH, K.ORE_B, [0, 5, 0, 0, 0]], [QUENCH, K.HAZARD, [0, 0, 2, 0, 0]], [RIMEMOSS, K.ORE_B, [0, 5, 0, 0, 0]], [FLASHROCK, K.HAZARD2, [0, 0, 0, 0, 2]],
 ];
-for (const [ground, kind, want] of GEMS) check(same(gemsOf(kind, ground), want), `a cell of kind ${kind} in ${BIOMES[ground].name} pays gems ${gemsOf(kind, ground)}, not ${want}`);
+// (Each list as the four directions' gems, and none of any corner's.)
+for (const [ground, kind, want] of GEMS) check(same(gemsOf(kind, ground), [...want, 0, 0, 0, 0]), `a cell of kind ${kind} in ${BIOMES[ground].name} pays gems ${gemsOf(kind, ground)}, not ${want}`);
 
 // ---- sheets and colours
 for (const row of BIOMES.filter(row => row?.cross)) {

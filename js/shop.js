@@ -339,7 +339,8 @@ export const ROWS = [...UPGRADES, ...WORKS, ...MAPS, ...CORE];
 // the relics lie two thousand out in each of four directions: a game had the whole shop at its last levels, and
 // 64 million grit over, with a twentieth of the ground inside its reach explored. Each row here is the levels
 // added to a row above: [what the level gives, grit, gems, what must have been found (as `needs`: a count of the
-// row's own kind, or [kind, count]), specimens]. They cost from ten million to four hundred and fifty million
+// row's own kind, or [kind, count]), specimens (0 for none), and whose gems they are where they are not the row's
+// own (`gemAt`, then, a gem for each level)]. They cost from ten million to four hundred and fifty million
 // grit, 3.4 thousand million in all, and gems by the thousand of the direction each row takes them from; and they
 // ask that the drill has been further out than any level above asks (760 to 1,850 cells), that the far wrecks'
 // parts have come home (the last lie 1,200 and 1,700 out), kinds analysed, creatures met or specimens by the
@@ -376,10 +377,13 @@ const LATE = {
   trophy: [[4, 30e6, 10000, ['beasts', 12]]],
 };
 export const EARLY = Object.fromEntries(ROWS.map(u => [u.id, u.values.length - 1]));
-for (const u of ROWS) for (const [value, grit, gems, need, spec] of LATE[u.id] ?? []) {
-  // (A row that asked for nothing asks nothing for the levels it had.)
+for (const u of ROWS) for (const [value, grit, gems, need, spec, gem] of LATE[u.id] ?? []) {
+  // (A row that asked for nothing asks nothing for the levels it had; and where a level is paid in gems not the
+  // row's, every level before it is paid in the row's own.)
   if (need && !u.needs) u.needs = ['out', u.grit.map(() => 0)];
+  if (gem !== undefined) u.gemAt ??= u.gems.map(() => u.gem);
   u.values.push(value); u.grit.push(grit); u.gems.push(gems);
+  if (u.gemAt) u.gemAt.push(gem ?? u.gem);
   if (u.needs) u.needs[1].push(need);
   if (u.spec) u.spec.push(spec);
 }

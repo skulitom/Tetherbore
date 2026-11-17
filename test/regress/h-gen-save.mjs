@@ -76,7 +76,9 @@ let loaded = false;
 try { loaded = await game.restore(); } catch (error) { note(`restore threw: ${error.message}`); }
 if (!loaded) note('the old save did not load');
 const S = game.S;
-if (S.seed !== was.seed || S.grit !== was.grit || JSON.stringify(S.gems) !== JSON.stringify(was.gems)) note(`what was banked is not as saved: seed ${S.seed}, grit ${S.grit}`);
+// (Its four gems where they were, and the corners', which it had no places for, none.)
+if (was.gems.length !== 5) note(`the old save banked ${was.gems.length} gems' places, not the four directions' and none`);
+if (S.seed !== was.seed || S.grit !== was.grit || JSON.stringify(S.gems) !== JSON.stringify([...was.gems, 0, 0, 0, 0])) note(`what was banked is not as saved: seed ${S.seed}, grit ${S.grit}, gems ${S.gems}`);
 if (S.gen !== GEN || JSON.stringify(S.shrines) !== '[0,0,0,0]' || S.fossils !== 0) note(`what an old save lacks was not made: gen ${S.gen}, shrines ${JSON.stringify(S.shrines)}, fossils ${S.fossils}`);
 if (game.notice?.title !== 'NEW GROUND') note(`loaded, the game says ${JSON.stringify(game.notice?.title)}, not NEW GROUND`);
 

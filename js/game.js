@@ -1,6 +1,6 @@
 // Tetherbore: the game. A drill flies free on a tether from a fixed core, cuts whatever ground it is pushed into,
 // and reels in any piece of ground it has drawn the tether round.
-import { World, CellBook, N, C, K, B, HARD, GRIT, GEMS, DX, DY, HAZARDS, RARE, CRUSH, ZONE, FIND, rowOf, hazOf, gemKin, digTime, cellHash, sight, cellsAlong, HOME_R, GEN, SEAMS, SHRINE_R, FOSSILS, fossilKin } from './world.js';
+import { World, CellBook, N, C, K, B, HARD, GRIT, GEMS, DX, DY, HAZARDS, RARE, CRUSH, ZONE, FIND, rowOf, hazOf, gemKin, digTime, cellHash, sight, cellsAlong, GEN, SEAMS, SHRINE_R, FOSSILS, fossilKin, GEM_N, GEM_PAST, noGems } from './world.js';
 import { sheets, frameAt, duration } from './atlas.js';
 import { sfx, unlock, setAmbience } from './audio.js';
 import { richness, haulBonus, overload, income, round2, NEEDS, UPGRADES, LAB, LAB_OF, labLevel, labNext, CORE, ROWS, REACH, CUT, TABS } from './shop.js';
@@ -418,7 +418,7 @@ export class Game {
 
   // ------------------------------------------------------------ state
   fresh(seed, quiet = false) {
-    this.S = { seed, grit: 0, gems: [0, 0, 0, 0, 0], lv: Object.fromEntries(ROWS.map(u => [u.id, 0])), relics: [0, 0, 0, 0], wrecks: [0, 0, 0, 0, 0, 0, 0, 0],
+    this.S = { seed, grit: 0, gems: noGems(), lv: Object.fromEntries(ROWS.map(u => [u.id, 0])), relics: [0, 0, 0, 0], wrecks: [0, 0, 0, 0, 0, 0, 0, 0],
       stats: { hauls: 0, best: 0, buys: 0, moves: 0, time: 0 }, won: false, met: {}, marks: [], visited: {}, spec: [0, 0, 0, 0, 0], lab: {}, out: 0, rare: {},
       gen: GEN, shrines: [0, 0, 0, 0], fossils: 0, unshrined: 0 };
     this.world.reset(seed);
@@ -435,7 +435,7 @@ export class Game {
   }
   begin() {
     const w = this.world;
-    this.pending = { grit: 0, gems: [0, 0, 0, 0, 0] };
+    this.pending = { grit: 0, gems: noGems() };
     this.parts.length = 0; this.rings.length = 0; this.effects.length = 0; this.popups.length = 0; this.hauls.length = 0; this.clouds.length = 0;
     this.sparks.clear(); this.lavaVol.clear(); this.quenched.clear(); this.frostOpen.length = 0; w.lava.clear(); w.dug.clear();
     this.bells.clear(); this.vents.clear(); this.worms.clear(); this.stones.clear(); this.jets.length = 0; this.flying.length = 0; this.flares.length = 0;
@@ -550,6 +550,8 @@ export class Game {
       // in (the ground it saved is told apart piece by piece; this says only whether to say the deep has changed),
       // the corner shrines hauled and the fossils whole.
       S.gen ??= 1; S.shrines ??= [0, 0, 0, 0]; S.fossils ??= 0; S.unshrined ??= 0;
+      // (And the corners' gems, which a game saved before them has no places for: each gem keeps its number.)
+      S.gems ??= []; while (S.gems.length < GEM_N) S.gems.push(0);
       for (const u of ROWS) this.S.lv[u.id] = Math.min(this.S.lv[u.id] ?? 0, u.values.length - 1);
       this.world.reset(S.seed);
       // (The shrines an older game's seen ground left unlaid, before anything asks where one is.)
@@ -1958,7 +1960,7 @@ export class Game {
   //   spin              the hauls before this in the flywheel's run (`spin`), each of which makes the cells' grit (not
   //                     the lumps) pay a share more, up to the flywheel's value: 0 with none, or no flywheel
   payOf(cells, extra = []) {
-    const w = this.world, S = this.S, n = cells.length + extra.length, gems = [0, 0, 0, 0, 0], spec = [0, 0, 0, 0, 0], wrecks = [], held = S.wrecks ?? [];
+    const w = this.world, S = this.S, n = cells.length + extra.length, gems = noGems(), spec = [0, 0, 0, 0, 0], wrecks = [], held = S.wrecks ?? [];
     const chain = 1 + 0.2 * Math.min(5, this.chain && this.time - this.chain.t <= CHAIN ? this.chain.n : 0);
     let grit = 0, lump = 0, relic = -1, caches = 0, minerals = 0, mineral = null, prisms = 0, chains = false, rares = 0, rare = null, caught = 0, live = false, ores = 0, hazards = 0;
     // (The deep finds: the twin stones and fossils' bones in the haul, counted by their sectors and kind, and the
@@ -2036,9 +2038,10 @@ export class Game {
     const fly = this.val('flywheel'), spin = fly > 0 && n >= LIGHT && this.time - this.spin.t <= CHAIN ? this.spin.n : 0, spun = spin ? 1 + Math.min(fly, SPIN_STEP[Math.min(2, S.lv.flywheel)] * spin) : 1;
     // (The station's refinery multiplies a haul's grit, lumps and all; its gem cutter the gems.)
     const refined = this.val('refinery'), cut = this.val('cutter');
-    // (And each shrine held makes the gems of both its parents' directions SHRINE_PERK times as many, for good.)
+    // (And each shrine held makes the gems of both its parents' directions SHRINE_PERK times as many, for good. The
+    // corners' gems are cut, shone and overloaded as the directions' are.)
     const holy = S.shrines;
-    for (let b = 1; b < 5; b++) {
+    for (let b = 1; b < GEM_N; b++) {
       let perk = 1;
       if (holy) for (let d = 0; d < 4; d++) if (holy[d] && (CORNER_KINS[d][0] === b || CORNER_KINS[d][1] === b)) perk *= SHRINE_PERK;
       gems[b] = Math.round(gems[b] * shine * over * cut * perk);
@@ -2103,7 +2106,7 @@ export class Game {
     // A shrine hauled is held for good (its gems' share, `payOf`), and a fossil whole is counted by its direction.
     if (pay.shrines.length) { S.shrines ??= [0, 0, 0, 0]; for (const d of pay.shrines) S.shrines[d] = 1; }
     if (pay.fossils) S.fossils = (S.fossils ?? 0) | pay.fossils;
-    for (let b = 1; b < 5; b++) { S.gems[b] += gems[b]; this.pending.gems[b] += gems[b]; }
+    for (let b = 1; b < GEM_N; b++) if (gems[b]) { S.gems[b] = (S.gems[b] ?? 0) + gems[b]; this.pending.gems[b] += gems[b]; }
     // Specimens of a pocket's mineral: a count for each direction, kept to the fraction and shown whole. `specUp`
     // is how far the whole count rose, of the direction that gained most (`specOf`).
     S.spec ??= [0, 0, 0, 0, 0];
@@ -2164,7 +2167,7 @@ export class Game {
       this.popup(mx, my - 0.6, `+${compact(grit)}`, '#ffe14a', mineral ? ['minerals', mineral] : 'grit');
       let up = 1;
       if (specUp > 0) this.popup(mx, my - 0.6 - 0.6 * up++, `+${specUp}`, GEM_COLOR[specOf], `spec-${GEM_ICON[specOf]}`);
-      for (let g = 1; g < 5; g++) if (gems[g] > 0) this.popup(mx, my - 0.6 - 0.6 * up++, `+${compact(gems[g])}`, GEM_COLOR[g], GEM_ICON[g]);
+      for (let g = 1; g < GEM_N; g++) if (gems[g] > 0) this.popup(mx, my - 0.6 - 0.6 * up++, `+${compact(gems[g])}`, GEM_COLOR[g], GEM_ICON[g]);
     } else {
       if (n >= 20) this.effect('bank', 'area', cx, cy);
       this.shake = Math.max(this.shake, Math.min(9, 2.5 + n * 0.12));
@@ -3063,11 +3066,13 @@ export class Game {
   }
 
   // ------------------------------------------------------------ shop
+  // What a row's next level costs: { grit, gems, gem, spec }, `gem` being whose gems they are (the row's, or the
+  // level's own where a late level asks another's: js/shop.js, `gemAt`); or null at its last level.
   cost(u) {
     const l = this.S.lv[u.id];
     if (l >= u.values.length - 1) return null;
     // (The next reach costs less where little is left of the ground this one reaches: `groundLeft`.)
-    return { grit: u.id === 'tether' ? round2(Math.max(1, u.grit[l] * this.groundLeft())) : u.grit[l], gems: u.gems[l], spec: u.spec ? u.spec[l] : 0 };
+    return { grit: u.id === 'tether' ? round2(Math.max(1, u.grit[l] * this.groundLeft())) : u.grit[l], gems: u.gems[l], gem: u.gemAt?.[l] ?? u.gem, spec: u.spec ? u.spec[l] : 0 };
   }
   // What the next reach costs, as a share of its price, for the ground that is left within this one: the whole
   // price while three cells in ten of the reach still stand (ground as the seed lays it is two thirds rock or
@@ -3115,22 +3120,23 @@ export class Game {
   specs(kin) { return Math.floor((this.S.spec[kin] ?? 0) + 1e-9); }
   // What can be spent is what has come home: grit and gems still on their way up the tether are not banked yet,
   // and the top bar never shows them (nor ever less than nothing).
-  banked(gem) { return gem === undefined ? this.S.grit - this.pending.grit : this.S.gems[gem] - this.pending.gems[gem]; }
-  canBuy(u) { const c = this.cost(u); return !!c && this.banked() >= c.grit && this.banked(u.gem) >= c.gems && (!c.spec || this.specs(u.kin) >= c.spec) && !this.lacks(u); }
+  // (A gem a game has no place for yet is none.)
+  banked(gem) { return gem === undefined ? this.S.grit - this.pending.grit : (this.S.gems[gem] ?? 0) - (this.pending.gems[gem] ?? 0); }
+  canBuy(u) { const c = this.cost(u); return !!c && this.banked() >= c.grit && this.banked(c.gem) >= c.gems && (!c.spec || this.specs(u.kin) >= c.spec) && !this.lacks(u); }
   buy(u) {
     if (!this.canBuy(u)) {
       // Says what is missing, and where gems are to be had.
       const c = this.cost(u);
       if (c) {
-        const gems = c.gems > this.banked(u.gem), spec = c.spec > 0 && this.specs(u.kin) < c.spec, lack = this.lacks(u);
-        this.shopNote = { t: 2.5, color: lack ? '#ff9a6a' : gems ? GEM_COLOR[u.gem] : spec ? GEM_COLOR[u.kin] : '#ff7a5a', text: lack ?? (gems ? `GEMS: ${GEM_WHERE[u.gem]}, PAST ${HOME_R}` : spec ? `${GEM_WHERE[u.kin]} POCKETS` : 'NOT ENOUGH GRIT') };
+        const gems = c.gems > this.banked(c.gem), spec = c.spec > 0 && this.specs(u.kin) < c.spec, lack = this.lacks(u);
+        this.shopNote = { t: 2.5, color: lack ? '#ff9a6a' : gems ? GEM_COLOR[c.gem] : spec ? GEM_COLOR[u.kin] : '#ff7a5a', text: lack ?? (gems ? `GEMS: ${GEM_WHERE[c.gem]}, PAST ${GEM_PAST[c.gem]}` : spec ? `${GEM_WHERE[u.kin]} POCKETS` : 'NOT ENOUGH GRIT') };
         // (A row that asks only to be paid for is what the player is saving for now: js/goal.js.)
         if (!lack) pickGoal(this, u);
       }
       sfx.deny(); return;
     }
     const c = this.cost(u);
-    this.S.grit -= c.grit; this.S.gems[u.gem] -= c.gems; if (c.spec) this.S.spec[u.kin] -= c.spec; this.S.lv[u.id]++; this.S.stats.buys++;
+    this.S.grit -= c.grit; this.S.gems[c.gem] -= c.gems; if (c.spec) this.S.spec[u.kin] -= c.spec; this.S.lv[u.id]++; this.S.stats.buys++;
     sfx.buy();
     this.ring(HX * T, HY * T, '#8ce060', 70); this.sparkle(HX * T, HY * T, 16, '#c8f4a0'); this.flash = 0.15;
     if (u.id === 'scanner') { this.world.see(Math.floor(this.drill.x), Math.floor(this.drill.y), this.val('scanner')); this.version++; }
@@ -3168,7 +3174,7 @@ export class Game {
   // The show a giant haul makes about (cx, cy), in pixels: `giant` is which (`giantOf`), the last being HALF, which
   // also sets the core blazing and sends rings out from it.
   grand(cx, cy, giant) {
-    const half = giant > GIANTS.length, colours = ['#ffe14a', '#fff6c8', ...GEM_COLOR.slice(1)];
+    const half = giant > GIANTS.length, colours = ['#ffe14a', '#fff6c8', ...GEM_COLOR.slice(1, 5)];
     for (let k = 0; k < 2 + giant; k++) this.ring(cx, cy, colours[k % colours.length], 120 + 50 * k, 0.09 * k, 0.6 + 0.08 * k);
     for (let k = 0; k < colours.length; k++) this.sparkle(cx, cy, 6 + giant * 3, colours[k]);
     this.hitstop = Math.max(this.hitstop, Math.min(0.4, 0.18 + giant * 0.03));

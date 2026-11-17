@@ -79,7 +79,7 @@ check(w.k(south) === K.EMPTY, `a cut beside ore in ground that never freezes is 
   check(w.k(again) === K.ICE, `a cut beside ore that had healed closed as ${state([again])}, not ice`);
 }
 // Healed ore is ore: hauled, it pays the north's gems.
-check(game.payOf([near]).gems.join() === '0,1,0,0,0', `healed ore pays gems ${game.payOf([near]).gems}`);
+check(game.payOf([near]).gems.join() === '0,1,0,0,0,0,0,0,0', `healed ore pays gems ${game.payOf([near]).gems}`);
 
 // On screen it heals with a sparkle of its own.
 {

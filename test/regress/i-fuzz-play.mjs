@@ -32,6 +32,7 @@
 // (basalt that set in the open), 60 and 50 (stuck at the end of the reach), 57 (a bend hooked beyond the string's
 // end), 39 (throws), 51 (bombs and the shop).
 import { makeGame, random, tetherFaults, farStart, UPGRADES, C, N, K, world } from '../harness.mjs';
+const { GEM_N } = world;
 import { WORM } from '../../js/game.js';
 
 const argv = process.argv.slice(2);
@@ -79,7 +80,7 @@ if (flags.has('known')) {
 const openedInPlay = new Set(), setK0 = w.setK.bind(w);
 const grownInPlay = new Set();
 w.setK = (i, v) => { if (v === K.EMPTY) openedInPlay.add(i); else grownInPlay.add(i); setK0(i, v); };
-if (flags.has('shop')) { game.S.grit = 5e6; game.S.gems = [0, 5000, 5000, 5000, 5000]; }
+if (flags.has('shop')) { game.S.grit = 5e6; game.S.gems = [0, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000]; }
 
 let frames = 0, clock = 0;
 const kinds = new Map();
@@ -128,9 +129,9 @@ game.haul = cells => {
   if (!b) { note('haul: no banner', ''); return; }
   if (game.S.grit - g0 !== b.grit) note('haul: banner grit is not what was credited', `banner ${b.grit}, credited ${game.S.grit - g0}`);
   if (game.pending.grit - p0 !== b.grit) note('haul: banner grit is not what was put on its way', `banner ${b.grit}, pending ${game.pending.grit - p0}`);
-  for (let g = 1; g < 5; g++) if (game.S.gems[g] - m0[g] !== b.gems[g]) note('haul: banner gems are not what was credited', `gem ${g}: banner ${b.gems[g]}, credited ${game.S.gems[g] - m0[g]}`);
+  for (let g = 1; g < GEM_N; g++) if (game.S.gems[g] - m0[g] !== b.gems[g]) note('haul: banner gems are not what was credited', `gem ${g}: banner ${b.gems[g]}, credited ${game.S.gems[g] - m0[g]}`);
   if (!Number.isFinite(b.grit) || b.grit < 0) note('haul: banner grit is not a sound number', `${b.grit}`);
-  expectGrit += b.grit; for (let g = 1; g < 5; g++) expectGems[g] += b.gems[g];
+  expectGrit += b.grit; for (let g = 1; g < GEM_N; g++) expectGems[g] += b.gems[g];
 };
 
 // ---------------------------------------------------------------- the books of loose ground
@@ -355,16 +356,16 @@ function step(dt, steering, mayProbe = true) {
   const S = game.S, trick = Math.ceil(Math.max(1, game.val('tether') / 2 / 12));
   // (A puffling caught pays at once: so much is the creatures', and is in the books.)
   expectGrit += game.fauna.paid.grit - caught;
-  for (let g = 1; g < 5; g++) expectGems[g] += game.fauna.paid.gems[g] - caughtGems[g];
+  for (let g = 1; g < GEM_N; g++) expectGems[g] += game.fauna.paid.gems[g] - caughtGems[g];
   if (game.fauna.paid.grit > caught) stats.caught = (stats.caught ?? 0) + 1;
   const extra = S.grit - g0 - (expectGrit - e0);
   if (extra !== 0 && extra !== trick) note('money: grit changed by something that is neither a haul nor the trickle', `${extra} (trickle is ${trick}), hauls this frame ${haulsThisFrame}`);
   expectGrit += extra;
   if (!Number.isFinite(S.grit) || S.grit < 0) note('money: grit is not a sound number', `${S.grit}`);
-  for (let g = 0; g < 5; g++) if (!Number.isFinite(S.gems[g]) || S.gems[g] < 0) note('money: gems are not sound numbers', `${S.gems}`);
+  for (let g = 0; g < GEM_N; g++) if (!Number.isFinite(S.gems[g]) || S.gems[g] < 0) note('money: gems are not sound numbers', `${S.gems}`);
   if (!Number.isFinite(game.pending.grit) || game.pending.grit < 0) note('money: grit on its way is not a sound number', `${game.pending.grit}`);
   if (game.banked() < 0) note('money: banked grit below nothing', `${game.banked()}`);
-  for (let g = 1; g < 5; g++) if (!(game.banked(g) >= 0) || !(game.pending.gems[g] >= 0)) note('money: banked gems below nothing', `gem ${g}: ${game.banked(g)}, pending ${game.pending.gems[g]}`);
+  for (let g = 1; g < GEM_N; g++) if (!(game.banked(g) >= 0) || !(game.pending.gems[g] >= 0)) note('money: banked gems below nothing', `gem ${g}: ${game.banked(g)}, pending ${game.pending.gems[g]}`);
   if (game.banked() < shown0 - 1e-9) note('money: the grit shown went down with nothing bought', `${shown0} to ${game.banked()}`);
   if (!game.hauls.length && (game.pending.grit !== 0 || game.pending.gems.some(Boolean))) note('money: something still on its way with no haul in flight', JSON.stringify(game.pending));
   if (game.hauls.length) {
@@ -382,11 +383,12 @@ const nextDt = () => dtMode === '30' ? 1 / 30 : dtMode === 'mix' ? (rnd() < 0.05
 function buySome() {
   for (const u of UPGRADES) {
     if (u.id === 'tether' || rnd() > 0.35) continue;
-    const c = game.cost(u), can = game.canBuy(u), g0 = game.S.grit, m0 = game.S.gems[u.gem], l0 = game.S.lv[u.id];
+    // (Whose gems a level is paid in is its own: `cost`.)
+    const c = game.cost(u), gem = c?.gem ?? u.gem, can = game.canBuy(u), g0 = game.S.grit, m0 = game.S.gems[gem], l0 = game.S.lv[u.id];
     game.buy(u);
-    if (can) { stats.buys++; expectGrit -= c.grit; expectGems[u.gem] -= c.gems; if (game.S.lv[u.id] !== l0 + 1 || game.S.grit !== g0 - c.grit || game.S.gems[u.gem] !== m0 - c.gems) note('money: a purchase took something other than its price', `${u.id}`); }
+    if (can) { stats.buys++; expectGrit -= c.grit; expectGems[gem] -= c.gems; if (game.S.lv[u.id] !== l0 + 1 || game.S.grit !== g0 - c.grit || game.S.gems[gem] !== m0 - c.gems) note('money: a purchase took something other than its price', `${u.id}`); }
     else if (game.S.lv[u.id] !== l0 || game.S.grit !== g0) note('money: something was bought that could not be afforded', `${u.id}`);
-    if (game.banked() < 0 || game.banked(u.gem) < 0) note('money: buying left the bank below nothing', `${u.id}: ${game.banked()} ${game.banked(u.gem)}`);
+    if (game.banked() < 0 || game.banked(gem) < 0) note('money: buying left the bank below nothing', `${u.id}: ${game.banked()} ${game.banked(gem)}`);
   }
 }
 // Fly to the core (cutting straight at it), then throw from its middle with whatever the band is wound round.
@@ -444,7 +446,7 @@ game.input.auto = null;
 for (let f = 0; f < 3600 && game.hauls.length; f++) step(1 / 60, false);
 if (game.hauls.length) note('money: hauls never ended', `${game.hauls.length}`);
 if (game.pending.grit || game.pending.gems.some(Boolean)) note('money: something left on its way at the end', JSON.stringify(game.pending));
-for (let g = 1; g < 5; g++) if (game.S.gems[g] !== expectGems[g]) note('money: gems are not the sum of what the banners said', `gem ${g}: ${game.S.gems[g]} against ${expectGems[g]}`);
+for (let g = 1; g < GEM_N; g++) if (game.S.gems[g] !== expectGems[g]) note('money: gems are not the sum of what the banners said', `gem ${g}: ${game.S.gems[g]} against ${expectGems[g]}`);
 if (flags.has('wake') && !stats.rareWakes) note('wake: no rare hazard was ever woken', `none within 20 cells of ${sx},${sy}, or never near enough`);
 stats.longestHeld = +stats.longestHeld.toFixed(2); stats.maxHaulT = +stats.maxHaulT.toFixed(1);
 console.log(JSON.stringify({ seed, turns, reach, start: [sx, sy], dt: dtMode, flags: [...flags].join(','), frames, seconds: +clock.toFixed(0), at: at(), bends: game.band.length, ...stats,

@@ -70,6 +70,13 @@ export const CRUSH = KINDS.map(({ id }) => [K.SOFT, K.DENSE, K.ORE_A, K.ORE_B, K
 // The four directions' own grounds, by number: north, south, west, east. The same numbers are the four gems', and a
 // ground's `kin` is which of the four it belongs to (0: none, the home ground).
 export const B = { CRUST: 0, FROST: 1, EMBER: 2, MIRE: 3, LODE: 4 };
+// And four gems more, the corners': numbered after the four directions' and never among B, whose numbers past 4 are
+// grounds (the deep kinds), so that no gem past 4 is ever a ground's kin, a specimen's direction or a lab thing's.
+// CORNER_GEM is each corner's, in the order SEAMS and SHRINES have the corners (north east, south east, south
+// west, north west). Every list of gems is GEM_N long, from 0 (no gem) to the last corner's (`noGems`): a list a
+// haul pays into, the bank and what is on its way home.
+export const G = { NE: 5, SE: 6, SW: 7, NW: 8 }, GEM_N = 9, CORNER_GEM = [G.NE, G.SE, G.SW, G.NW];
+export const noGems = () => new Array(GEM_N).fill(0);
 // (The kin of grounds 0 to 8 by arithmetic, as the world was first written. Only the plain reading of that first
 // world in test/regress/w-same-world.mjs still asks this way: everything else reads the ground's row.)
 export const base = b => b > 4 ? b - 4 : b;
@@ -216,6 +223,9 @@ const withIt = (haz, what) => haz ? haz[what] ?? HAZARDS[haz.type][what] ?? 0 : 
 export function biome(f) {
   const { id, name } = f, kin = f.kin ?? 0;
   if (!Number.isInteger(id) || id < 0 || id > 255 || typeof name !== 'string') throw new Error(`a ground needs a number from 0 to 255 and a name: ${id} ${name}`);
+  // (A ground belongs to one of the four directions or to none; its ores may pay any gem, a corner's among them.)
+  if (!Number.isInteger(kin) || kin < 0 || kin > 4) throw new Error(`${name}: a ground's kin is a direction, 0 to 4, not ${kin}`);
+  for (const gem of [f.gemA ?? kin, f.gemB ?? kin]) if (!Number.isInteger(gem) || gem < 0 || gem >= GEM_N) throw new Error(`${name}: there is no gem ${gem}`);
   for (const need of ['gloom', 'mote', 'map', 'debris']) if (!Array.isArray(f[need])) throw new Error(`${name}: a ground says its ${need}`);
   const [haz, hazT] = laid(f.haz, name), [haz2, haz2T] = laid(f.haz2, name), g = f.gen ?? null, tells = { ...OFF };
   const items = f.items ?? KIN_ITEMS[kin], itemsB = f.itemsB ?? items, ores = f.ores ?? [[items, 'oreA'], [itemsB, 'oreB']];
@@ -711,6 +721,9 @@ const STEP = [1, N, -1, -N], OUTLINE = 600, JOIN = 60000, WALK = 150000, HOLLOW 
 // Plain home ground runs out to HOME_R before any direction's ground begins; the flanks turn strange past DEEP_R;
 // what each direction hides lies RELIC_R out; the world ends at WORLD_R.
 export const HOME_R = 130, DEEP_R = 900, RELIC_R = 2000, WORLD_R = 2400;
+// How far out each gem is first to be had, as the shop says where to find what is short: the directions' past the
+// home ground, the corners' past where the flanks turn deep.
+export const GEM_PAST = [0, HOME_R, HOME_R, HOME_R, HOME_R, DEEP_R, DEEP_R, DEEP_R, DEEP_R];
 // And in generation 2 a shrine on each diagonal SHRINE_R out, in the deep seam there (`SHRINES`: north-east,
 // south-east, south-west, north-west), laid as a relic's vault is: its heart a relic, sealed in ancient stone that
 // holds both its parents' ores, in soft rock (`kindAt`). It is laid only where the piece holding its heart is of

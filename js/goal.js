@@ -26,7 +26,7 @@ const fresh = () => ({ of: null, id: null, name: '', level: -1, grit: 0, gems: 0
 function hold(game, g, u, pinned) {
   const c = game.cost(u);
   g.id = u.id; g.name = u.name; g.level = game.S.lv[u.id]; g.pinned = pinned;
-  g.grit = c.grit; g.gems = c.gems; g.gem = u.gem; g.spec = c.spec; g.kin = u.kin ?? 0;
+  g.grit = c.grit; g.gems = c.gems; g.gem = c.gem; g.spec = c.spec; g.kin = u.kin ?? 0;
   return g;
 }
 const ROW = new Map(ROWS.map(u => [u.id, u]));
@@ -44,7 +44,7 @@ export function pickGoal(game, row = null) {
   for (const u of ROWS) {
     const c = game.cost(u);
     if (!c || game.lacks(u) || game.canBuy(u)) continue;
-    const has = game.banked(u.gem) >= c.gems && (!c.spec || game.specs(u.kin) >= c.spec);
+    const has = game.banked(c.gem) >= c.gems && (!c.spec || game.specs(u.kin) >= c.spec);
     if (best === null || (has && !held) || (has === held && c.grit < least)) { best = u; least = c.grit; held = has; }
   }
   if (best) return hold(game, g, best, false);
