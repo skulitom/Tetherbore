@@ -9,7 +9,10 @@ import { WORTH_AT, figOf } from './worth.js';
 import { Feel } from './feel.js';
 import { Fitter } from './fit.js';
 import { Fauna } from './fauna.js';
+import { winds } from './winds.js';
+import { LAIR, BOSS } from './bosses.js';
 import { pickGoal, goalHome } from './goal.js';
+import { fits } from './lang.js';
 export { richness, haulBonus, overload, income, UPGRADES, LAB, labLevel, labNext, WORKS, MAPS, CORE } from './shop.js';
 
 export { T };
@@ -219,6 +222,10 @@ export const ZIP = { rate: 25, most: 60, ring: 128 };
 // SHRINE_GEMS of its corner's gems (CORNER_GEM) besides, as they are, uncut, and held, it makes every one of them paid
 // after SHRINE_OWN times as many (its deep seam's rich ore is what pays them: js/world.js, `seam`).
 export const TWIN_LUMP = 16, BONE_LUMP = 4, SHRINE_LUMP = 30, TWIN_SPEC = 1, BONE_SPEC = 2, SHRINE_SPEC = 5, SHRINE_PERK = 1.1, SHRINE_GEMS = 10000, SHRINE_OWN = 1.25;
+// A lord at the end of an axis beaten (js/bosses.js): BOSS_LUMP seconds of what cutting at its lair earns, BOSS_SPEC
+// specimens of its direction's, banked at once, and for good every gem of its direction paid BOSS_PERK times as many
+// (with the direction's two shrines held, 1.1 cubed at the most).
+export const BOSS_LUMP = 240, BOSS_SPEC = 12, BOSS_PERK = 1.1;
 // The two directions whose ground each corner's seam is made of (its gems' and its rich ore's), north-east,
 // south-east, south-west, north-west.
 export const CORNER_KINS = SEAMS.map(([id]) => [rowOf(id).gemA, rowOf(id).gemB]);
@@ -1198,17 +1205,9 @@ export class Game {
     const pts = this.band;
     // (The loops of a wreck's tether are dropped as it is wound in: nothing is hauled by a dead drill.)
     if (!this.pieces.length || pts.length < 3 || this.drill.mode === 'dead') return;
-    // How many times the tether, closed by the straight line from the core back to the drill, winds round a point.
-    const winds = (x, y) => {
-      let turns = 0;
-      for (let n = 0; n < pts.length; n++) {
-        const a = pts[n], b = pts[(n + 1) % pts.length];
-        if (a[1] <= y) { if (b[1] > y && (b[0] - a[0]) * (y - a[1]) - (x - a[0]) * (b[1] - a[1]) > 0) turns++; }
-        else if (b[1] <= y && (b[0] - a[0]) * (y - a[1]) - (x - a[0]) * (b[1] - a[1]) < 0) turns--;
-      }
-      return turns;
-    };
-    const inside = i => winds((i % N) + 0.5, Math.floor(i / N) + 0.5) !== 0;
+    // (How many times the tether, closed by the straight line from the core back to the drill, winds round a point:
+    // js/winds.js.)
+    const inside = i => winds(pts, (i % N) + 0.5, Math.floor(i / N) + 0.5) !== 0;
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, crossed = null;
     for (const p of pts) { if (p[0] < x0) x0 = p[0]; if (p[1] < y0) y0 = p[1]; if (p[0] > x1) x1 = p[0]; if (p[1] > y1) y1 = p[1]; }
     // Everything the tether is round goes in as one haul: every piece all of whose cells are wound.
@@ -2132,10 +2131,12 @@ export class Game {
     // (And each shrine held makes the gems of both its parents' directions SHRINE_PERK times as many, for good, and
     // its own corner's SHRINE_OWN times. The corners' gems are cut, shone and overloaded as the directions' are; a
     // shrine hauled pays its SHRINE_GEMS after, not cut.)
-    const holy = S.shrines;
+    // (And each lord beaten its direction's BOSS_PERK times.)
+    const holy = S.shrines, lords = (S.bosses ?? 0) >> 4 & 15;
     for (let b = 1; b < GEM_N; b++) {
       let perk = 1;
       if (holy) for (let d = 0; d < 4; d++) if (holy[d]) perk *= CORNER_KINS[d][0] === b || CORNER_KINS[d][1] === b ? SHRINE_PERK : CORNER_GEM[d] === b ? SHRINE_OWN : 1;
+      if (lords) for (let d = 0; d < 4; d++) if (lords >> d & 1 && BOSS[d].kin === b) perk *= BOSS_PERK;
       gems[b] = Math.round(gems[b] * shine * over * cut * perk);
     }
     for (const d of shrines) gems[CORNER_GEM[d]] += SHRINE_GEMS;
@@ -2940,6 +2941,34 @@ export class Game {
     for (const key in lost.rare ?? {}) S.rare[key] = 1;
     const met = lost.fauna?.met;
     if (met && Object.keys(met).length) { S.fauna ??= { pal: null, met: {}, spent: [] }; S.fauna.met ??= {}; for (const key in met) S.fauna.met[key] = 1; }
+    // (The lords met, and not a lord beaten: that is a relic's kind, kept only by getting home.)
+    if (lost.bosses & 15) S.bosses = (S.bosses ?? 0) | (lost.bosses & 15);
+  }
+  // A lord at the end of an axis woken (js/fauna.js: the deed 'boss-met'): its name across the screen, its title
+  // under it, as a ground met for the first time is named. (Only where the table has its name: js/lang.js.)
+  lordMet(d) {
+    const B = BOSS[d];
+    if (!fits(B.name)) return;
+    this.place = { title: B.name, sub: fits(B.lord) ? B.lord : null, icon: GEM_ICON[B.kin] ?? 'grit', mineral: null, also: null, colour: GEM_COLOR[B.kin], t: 0, card: true, life: CARD * 1.5 };
+  }
+  // A lord beaten (the deed 'beaten'), where it sank, (x, y) in cells: BOSS_LUMP seconds of what cutting at its lair
+  // earns, with the refinery's share, and BOSS_SPEC of its direction's specimens, banked at once; its bit set, which
+  // makes its direction's gems BOSS_PERK times as many for good (`payOf`); said across the screen, with the grand
+  // show of the biggest haul. All four beaten, the game says so. What it paid, for the creatures' books.
+  lordBeaten(d, x, y) {
+    const S = this.S, B = BOSS[d], kin = B.kin, grit = Math.round(round2(income(LAIR) * BOSS_LUMP) * this.val('refinery'));
+    S.grit += grit; (S.spec ??= [0, 0, 0, 0, 0])[kin] += BOSS_SPEC;
+    S.bosses = (S.bosses ?? 0) | (1 << d) | (1 << (4 + d));
+    this.popup(Math.floor(x), Math.floor(y) - 1, `+${grit} GRIT`, '#ffe14a');
+    this.popup(Math.floor(x), Math.floor(y), `+${BOSS_SPEC}`, GEM_COLOR[kin], `spec-${GEM_ICON[kin]}`);
+    this.banner = { title: fits(B.name) ? B.name : 'TROPHY', n: 1, mult: 1, over: 1, grit, gems: noGems(), light: false, shine: 0, spec: BOSS_SPEC, specOf: kin, giant: 0, colour: GEM_COLOR[kin],
+      sub: fits('BEATEN!') ? 'BEATEN!' : null, trophy: true, lord: d, t: 0, life: 3.5 };
+    this.specLine = { kin, t: 0, life: SPEC_LINE };
+    this.grand(x * T, y * T, GIANTS.length);
+    sfx.slain?.();
+    this.fitter.fire?.('trophy');
+    if ((S.bosses >> 4 & 15) === 15 && fits('THE DEEP IS STILL')) this.notice = { title: 'THE DEEP IS STILL', colour: '#fff6c8', t: 0, life: 3 };
+    return { grit, kin, spec: BOSS_SPEC };
   }
   // The hull is made whole, for nothing, whenever the drill rides on to the core.
   // Returns whether there was anything to mend.

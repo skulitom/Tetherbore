@@ -5,13 +5,14 @@
 // hauled. A wreck's part and a relic are not kept: they lie where the drill was lost. With the hull on, a trip flown
 // out of the core and earned on by hand, then the drill knocked to pieces:
 //   - at the third level, 75 of every hundred of the trip's grit are kept, and every sample, ground, pocket, rare
-//     hazard and creature met since the docking, and the count of kinds analysed with them; the gems, the
-//     specimens and a wreck's part found on the trip are not;
+//     hazard, creature and lord at the ends met since the docking, and the count of kinds analysed with them; the
+//     gems, the specimens, a wreck's part found on the trip and a lord beaten on it are not;
 //   - at the second level, half the grit, and the lore is lost, as ever;
 //   - a pocket hauled and then the drill lost, four times over at the box's last level: the pocket is whole again
 //     each time and not one specimen is kept, so a pocket pays its specimens once however many trips are lost.
 // Fails on the game before the box kept lore, where at the third level the lore is lost; and on the game that kept
 // a share of a lost trip's gems and specimens too, which paid a pocket's specimens again on every wreck after it.
+// And on the game before it kept the lords at the ends met (js/bosses.js), where a lord met on a trip lost is lost.
 //   node test/regress/hull-blackbox.mjs
 import { makeGame, C, N, K } from '../harness.mjs';
 import { fixRandom } from './lib/lasso.mjs';
@@ -30,6 +31,8 @@ const trip = async box => {
   S.lab['lode-items:oreA'] = 5; S.lab['ember-items:oreA'] = 1; S.lab['frost-items:oreB'] = 1;
   S.met[30] = 1; S.visited['z7,-3'] = 1; S.rare.bell = 1; S.wrecks[0] = 1;
   (S.fauna ??= { pal: null, met: {}, spent: [] }).met.bat = 1; S.fauna.met.moth = 1;
+  // (The north's lord met and beaten, the east's met: js/bosses.js.)
+  S.bosses = 1 << 3 | 1 << 7 | 1 << 0;
   game.analyse('lode-items:oreB', C, C, false);
   // Knocked to pieces. (What the trip earned is what was banked at the docking, 1,000, from what is banked as the
   // game goes back: the station's trickle comes in while the wreck lies dead.)
@@ -51,13 +54,14 @@ const trip = async box => {
   check(S.met[30] === 1 && S.visited['z7,-3'] === 1 && S.rare.bell === 1, `at the third level the grounds, pockets and rare hazards met: ${JSON.stringify({ met: S.met[30], visited: S.visited, rare: S.rare })}`);
   check(S.fauna?.met?.bat === 1 && S.fauna.met.moth === 1, `at the third level the creatures met: ${JSON.stringify(S.fauna)}`);
   check(!S.wrecks[0], 'the wreck\'s part found on the trip was kept');
+  check(S.bosses === (1 << 3 | 1 << 0), `at the third level the lords met and beaten are ${S.bosses}, not the north's and the east's met alone`);
   game.render();
 }
 {
   const { S, earned } = await trip(2);
   check(S.grit === 1000 + Math.round(0.5 * earned), `at the black box's second level ${S.grit - 1000} grit was kept of ${earned}`);
   check(S.gems.join() === '0,100,100,100,100,0,0,0,0' && S.spec.join() === '0,10,10,10,10', `at the second level the gems are ${S.gems} and the specimens ${S.spec}`);
-  check(S.lab['lode-items:oreA'] === 2 && !S.lab['ember-items:oreA'] && !S.met[30] && !S.rare.bell && !S.fauna?.met?.bat, `at the second level the lore was kept: ${JSON.stringify({ lab: S.lab, met: S.met[30], rare: S.rare, fauna: S.fauna })}`);
+  check(S.lab['lode-items:oreA'] === 2 && !S.lab['ember-items:oreA'] && !S.met[30] && !S.rare.bell && !S.fauna?.met?.bat && !S.bosses, `at the second level the lore was kept: ${JSON.stringify({ lab: S.lab, met: S.met[30], rare: S.rare, fauna: S.fauna, bosses: S.bosses })}`);
 }
 {
   // The nearest pocket with mineral in it, hauled and then lost, four times: the pocket comes back with the ground

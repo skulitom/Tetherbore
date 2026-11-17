@@ -45,6 +45,8 @@ import { N, C, K, rowOf, hazOf, cellHash, noGems } from './world.js';
 import { sheets, tinted, text, textWidth } from './atlas.js';
 import { voices } from './audio.js';
 import { income, round2, FOUND, FINDER } from './shop.js';
+import { winds } from './winds.js';
+import { Bosses, PLUGS } from './bosses.js';
 
 const T = 16;                                   // pixels in a cell, as js/drawing.js has it
 export const CALM = 40;                         // within this many cells of the core nothing lives
@@ -70,6 +72,7 @@ export const WREN = { call: 10, find: 24, peck: 1.6 };
 export const PUFF = { speed: 0.8, loop: 4, drill: 12, lump: 6, gems: 3 };
 export const NEWT = { caps: 3, every: 4, find: 8, tongue: 2 };
 export const RAM = 0.6, RAM_SPEED = 3;
+export const SHARD_KEEP = 2.5;                 // how near a drill flying free no lord's shard is laid (js/bosses.js)
 const STEP = 0.3;                               // how near the edge of a step, in cells, a creature on a floor goes up or down it          // how near the drill must come to a foe at rest to drive it off, and how fast
 
 // ---------------------------------------------------------------- who they are
@@ -246,6 +249,10 @@ export class Fauna {
     this.q = { x: 0, y: 0, n: 0, far: 0, best: -1 };
     this.nearLava = (left, c) => { const q = this.q; if (q.n++ > 40) return; const e = (c % N + 0.5 - q.x) ** 2 + (Math.floor(c / N) + 0.5 - q.y) ** 2; if (e < q.far) { q.far = e; q.best = c; } };
     this.nearFuse = (spark, c) => { const q = this.q; if (q.best < 0 && spark.fuse > 0 && Math.hypot(c % N + 0.5 - q.x, Math.floor(c / N) + 0.5 - q.y) < 8) q.best = c; };
+    // How near a creature the band lies (`wound`, js/winds.js); the cells the last plug of ice closed; and the four
+    // lords at the ends, which are the creatures' too and do what they do by the same deeds (js/bosses.js).
+    this.bandNear = new Float64Array(1); this.plugged = [];
+    this.bosses = new Bosses(this);
     this.reset(7, null);
   }
   blank() { return this.clear({}); }
@@ -265,6 +272,7 @@ export class Fauna {
     this.time = 0; this.tick = 0; this.frame = 0; this.work = 0; this.heard = -9; this.drag = 1; this.latched = -1; this.pal = -1;
     this.paid = { grit: 0, gems: noGems(), spec: [0, 0, 0, 0, 0] }; this.deeds = 0; this.searches = 0;
     this.lastSpeed = 0; this.stillFor = 0; this.fastFor = 0; this.hunt = 0; this.lit = 0;
+    this.bosses.reset(seed, game);
     if (!game) return;
     const F = game.S.fauna;
     if (F) for (const [key, at] of F.spent ?? []) this.spentAt.set(key, at);
@@ -381,6 +389,7 @@ export class Fauna {
   idle(game, dt) {
     if (this.off) return;
     this.time += dt;
+    this.bosses.idle(game, dt);
     for (let i = 0; i < FAUNA; i++) if (this.kind[i]) {
       this.age[i] += dt;
       // (The pal sleeps on the core while the shop is open.)
@@ -432,6 +441,9 @@ export class Fauna {
         case NEWTS: this.newt(game, i, dt); break;
       }
     }
+    // The lords, and the drag the west's puts on the drill (the least of hers and a leech's).
+    this.bosses.step(game, dt);
+    if (this.bosses.drag < this.drag) this.drag = this.bosses.drag;
     // Ground that changed under a creature: one whose cell has closed, or whose floor or ceiling is gone, goes.
     if (game.version !== this.v) { this.v = game.version; this.settle(game); }
     this.particles(dt);
@@ -1166,6 +1178,16 @@ export class Fauna {
     this.voice(game, p, 'yip', false);
     this.warnedAt = this.time; this.warnedOf = this.kind[i];
   }
+  // A lord's warning has begun at (x, y): the pal, if near, yips and looks at it.
+  yip(game, x, y) {
+    const p = this.pal;
+    if (p < 0 || Math.hypot(x - game.drill.x, y - game.drill.y) > 12) return;
+    if (this.st[p] !== RIDE) { this.set(p, WAKE); this.face[p] = x > this.x[p] ? 1 : -1; }
+    this.n[p] = 0;
+    this.say(game, '!', p, FOE_EYE);
+    this.voice(game, p, 'yip', false);
+    this.warnedAt = this.time; this.warnedOf = 0;
+  }
   // The pal warns of a foe's den the drill comes within PUP.warn cells of, once in twenty seconds a den.
   warnings(game) {
     const d = game.drill;
@@ -1209,6 +1231,7 @@ export class Fauna {
   // feeding, and three at one meeting make it the pal; a cut within BAT.cut cells of a roost wakes it. It only reads.
   crushed(game, i, k) {
     if (this.off) return;
+    this.bosses.crushed(game, i, k);
     const x = i % N + 0.5, y = Math.floor(i / N) + 0.5, food = k === K.ORE_A || k === K.ORE_B || k === K.STEEL || k === K.PRISM;
     for (let j = 0; j < FAUNA; j++) {
       const kind = this.kind[j];
@@ -1229,6 +1252,8 @@ export class Fauna {
   // band.
   wound(game) {
     if (this.off) return;
+    // (A lord's loop first, on the same band: js/bosses.js.)
+    this.bosses.wound(game);
     // (How many were caught by the loop closed this moment, for what its haul is called: `caughtAt`, `caughtN`.)
     if (this.caughtAt !== game.time) this.caughtN = 0;
     const pts = game.band, d = game.drill;
@@ -1242,17 +1267,8 @@ export class Fauna {
       // (A foe's middle, as it stands: a bat clinging in the air, a leech or a spitter on a floor.)
       const x = this.x[i], y = foe ? this.mid(i) : this.y[i];
       if (Math.hypot(d.x - x, d.y - y) > PUFF.drill) continue;
-      let turns = 0, near = Infinity;
-      for (let n = 0; n < pts.length; n++) {
-        const a = pts[n], b = pts[(n + 1) % pts.length];
-        if (a[1] <= y) { if (b[1] > y && (b[0] - a[0]) * (y - a[1]) - (x - a[0]) * (b[1] - a[1]) > 0) turns++; }
-        else if (b[1] <= y && (b[0] - a[0]) * (y - a[1]) - (x - a[0]) * (b[1] - a[1]) < 0) turns--;
-        if (n + 1 < pts.length) {
-          const ex = b[0] - a[0], ey = b[1] - a[1], len2 = ex * ex + ey * ey || 1, u = Math.max(0, Math.min(1, ((x - a[0]) * ex + (y - a[1]) * ey) / len2));
-          near = Math.min(near, Math.hypot(a[0] + ex * u - x, a[1] + ey * u - y));
-        }
-      }
-      if (turns === 0 || near > PUFF.loop) continue;
+      const turns = winds(pts, x, y, this.bandNear);
+      if (turns === 0 || this.bandNear[0] > PUFF.loop) continue;
       if (foe) { if (this.trophy(game, i)) { this.caughtAt = game.time; this.caughtN++; } continue; }
       if (!this.deed(game, 'catch', i)) continue;
       this.caughtAt = game.time; this.caughtN++;
@@ -1298,8 +1314,9 @@ export class Fauna {
     const S = game.S, d = game.drill, w = game.world;
     this.deeds++;
     switch (what) {
-      // A bat's swoop: a knock, as any hazard's (`Game.hit`): the shield after it, and a pip.
-      case 'hit': return game.hit(this.knock);
+      // A bat's swoop: a knock, as any hazard's (`Game.hit`): the shield after it, and a pip. (A lord's attack says
+      // how long it stuns for.)
+      case 'hit': return game.hit(a ?? this.knock);
       // A spitter's glob on the drill: stunned a moment by the cold, as by a bite, and no pip taken. Within the
       // shield after a knock nothing lands, pip or stun (`Game.hit`), and the glob only splashes.
       case 'chill': if (d.mode !== 'free' || game.shield > 0) return false; game.jolt(SPITTER.chill); this.spot(d.x * T, d.y * T, 14, ICE_INK); return true;
@@ -1318,6 +1335,8 @@ export class Fauna {
           if (Math.hypot(x + 0.5 - d.x, y + 0.5 - d.y) < SPITTER.keep + 0.5 || Math.hypot(C + 0.5 - x - 0.5, C + 0.5 - y - 0.5) < CALM) continue;
           w.setK(j, K.ICE); closed.push(j);
         }
+        // (Which cells it closed, for a lord that keeps its own: js/bosses.js.)
+        this.plugged = closed;
         if (!closed.length) return false;
         game.changed([], closed);
         return true;
@@ -1371,6 +1390,37 @@ export class Fauna {
       }
       case 'quiet': if (a >= 0) { this.quiet.set(a, this.time + QUIET); if (this.quiet.size > 32) for (const [key, at] of this.quiet) if (at <= this.time) this.quiet.delete(key); } return true;
       case 'met': ((S.fauna ??= { pal: null, met: {}, spent: [] }).met ??= {})[CREATURES[a].key] = 1; return true;
+      // The lords (js/bosses.js; `a` is the lord's direction). A blow's jolt: the hitstop and the shake.
+      case 'blow': game.hitstop = Math.max(game.hitstop, 0.12); game.shake = Math.max(game.shake, 6); return true;
+      // A lord woken is met (its bit in S.bosses, kept by the black box), and its name comes up (js/game.js).
+      case 'boss-met': S.bosses = (S.bosses ?? 0) | (1 << a); game.lordMet(a); return true;
+      // A lord beaten: paid and kept (js/game.js: `lordBeaten`), banked at once as the puffling's catch is, and kept
+      // only if the drill gets home.
+      case 'beaten': {
+        const pay = game.lordBeaten(a, this.bosses.x[a], this.bosses.y[a]);
+        this.paid.grit += pay.grit; this.paid.spec[pay.kin] += pay.spec;
+        return true;
+      }
+      // The east's shard: cell `a` made a loose piece of its rich ore, one cell with open ground all round it, never
+      // under the tether, by a drill flying free (SHARD_KEEP), on lava, in a pocket or past the tether's reach.
+      case 'shard': {
+        const x = a % N, y = Math.floor(a / N);
+        if (!game.within(x + 0.5, y + 0.5) || Math.hypot(x + 0.5 - d.x, y + 0.5 - d.y) < SHARD_KEEP) return false;
+        for (let v = -1; v <= 1; v++) for (let u = -1; u <= 1; u++) { const j = (y + v) * N + x + u; if (w.peek(x + u, y + v) !== K.EMPTY || w.lava.has(j)) return false; }
+        if (rowOf(w.b(a)).pocket !== null) return false;
+        game.layUnder();
+        if (game.under.has(a)) return false;
+        w.setK(a, K.ORE_B);
+        game.changed([], [a]);
+        return true;
+      }
+      // A lord's own ice opened, where it is still ice, as its last stage begins.
+      case 'thaw': {
+        const B = this.bosses, opened = [];
+        for (let n = 0; n < B.plugs[a]; n++) { const j = B.laid[a * PLUGS + n]; if (w.k(j) === K.ICE) { w.setK(j, K.EMPTY); opened.push(j); } }
+        if (opened.length) game.changed(opened);
+        return true;
+      }
     }
     return false;
   }
@@ -1440,7 +1490,9 @@ export class Fauna {
   // ---------------------------------------------------------------- drawing
   // The creatures, under the dark: the lamp shows them.
   draw(game, ctx, ox, oy) {
-    if (this.off || !frames()) return;
+    if (this.off) return;
+    this.bosses.draw(game, ctx, ox, oy);
+    if (!frames()) return;
     this.w = game.world;
     const s = sheets.fauna, image = s.image, now = this.time;
     for (let i = 0; i < FAUNA; i++) {
@@ -1515,7 +1567,9 @@ export class Fauna {
   // Over the dark: each foe's warning (a bat's dashed line, a spitter's dotted arc, a leech's drips falling to the
   // drill) and a foe's shape ringed in FOE_EYE while it warns; the words over a creature; its rings.
   signs(game, ctx, ox, oy) {
-    if (this.off || !frames()) return;
+    if (this.off) return;
+    this.bosses.signs(game, ctx, ox, oy);
+    if (!frames()) return;
     const now = this.time, image = sheets.fauna.image;
     for (let i = 0; i < FAUNA; i++) {
       const k = this.kind[i], st = this.st[i];
@@ -1570,7 +1624,9 @@ export class Fauna {
   // Over the dark, adding light: a foe's eyes (seen across the screen), the moths' and jellies' halos, the newt's
   // spots, and the particles that glow.
   glow(game, ctx, ox, oy) {
-    if (this.off || !frames()) return;
+    if (this.off) return;
+    this.bosses.glow(game, ctx, ox, oy);
+    if (!frames()) return;
     const now = this.time, halo = sheets.halo;
     ctx.globalCompositeOperation = 'lighter';
     for (let i = 0; i < FAUNA; i++) {
@@ -1626,6 +1682,7 @@ export class Fauna {
     }
     this.lit = n;
     for (let m = 0; m < n; m++) { const g = this.glowing[m]; game.shine(g[0], g[1], g[2], g[3]); }
+    this.bosses.lights(game);
   }
 
   // ---------------------------------------------------------------- staging (js/shot.js and the tests)
