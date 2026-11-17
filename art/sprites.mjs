@@ -454,6 +454,26 @@ const lit = (cells, map) => cells.map(([x, y, c]) => [x, y, map[c] ?? c]);
 const point = dx => [[14 + dx, 7, 'w'], [14 + dx, 8, 'c'], [13 + dx, 7, 'w'], [13 + dx, 8, 'w']];
 const star = dx => [[13 + dx, 6, 'w'], [12 + dx, 7, 'w'], [13 + dx, 7, 'R'], [14 + dx, 7, 'w'], [13 + dx, 8, 'w'], [14 + dx, 8, 'c']];
 const LAMPS = [[[9, 3, 'y']], [[8, 3, 'y'], [9, 3, 'y']], [[8, 3, 'y'], [9, 3, 'W']], [[7, 3, 'y'], [8, 3, 'W'], [9, 3, 'W']], [[7, 3, 'W'], [8, 3, 'W'], [9, 3, 'R'], [10, 3, 'W']]];
+// The fittings' second levels, each the first with something more: the lava skin's bellows, its keel opened into
+// a grille of hot vents with two more glowing through the belly (lit, they blow heat out under it); the spore
+// drive's graft, a green canister in the tail piped to its vents; the arc coil's capacitor, a violet can on the
+// brow behind the winding (lit while the bit holds a charge, sparking off its cap). And the flywheel: a spoked
+// wheel slung under the body behind the bit, steel and then bronze, whose lit frame is its spokes and rim a step
+// round, so that lit by turns it spins.
+const BELLOWS = [3, 4, 5, 6, 7, 8, 9].flatMap(x => [[x, 11, 'r'], [x, 10, x % 2 ? 'k' : 'o']]).concat([[4, 12, 'o'], [6, 12, 'o'], [4, 9, 'd'], [6, 9, 'd'], [8, 9, 'd']]);
+const BELLOWS_BLAST = [[4, 13, 'y'], [6, 13, 'y'], [4, 14, 'o'], [6, 14, 'o'], [5, 15, 'r'], [3, 14, 'r']];
+const GRAFT = [[1, 5, 'k'], [1, 6, 'g'], [2, 6, 'g'], [1, 7, 'k'], [1, 8, 'k'], [1, 9, 'g'], [2, 9, 'g'], [1, 10, 'k'], [0, 6, 'k'], [0, 9, 'k'],
+  [3, 7, 'p'], [4, 7, 'P'], [3, 8, 'M'], [4, 8, 'g'], [3, 9, 'g'], [4, 9, 'm'], [3, 10, 'm'], [4, 10, 'G'], [3, 11, 'p'], [4, 11, 'p'], [2, 8, 'g'], [2, 9, 'g']];
+const CAPACITOR = [[10, 5, 'y'], [10, 7, 'y'], [10, 8, 'y'], [10, 10, 'y'], [7, 4, 'k'], [8, 4, 'e'], [9, 4, 'e'], [7, 5, 'k'], [8, 5, 'v'], [9, 5, 'V'], [7, 6, 'k'], [8, 6, 'v'], [9, 6, 'V'], [8, 7, 'k'], [9, 7, 'k']];
+const CHARGED = [[10, 6, 'y'], [10, 9, 'y'], [11, 4, 'y'], [11, 11, 'y'], [9, 3, 'e'], [8, 2, 'R']];
+const RIM = [[8, 11], [9, 11], [10, 11], [11, 12], [11, 13], [11, 14], [10, 15], [9, 15], [8, 15], [7, 14], [7, 13], [7, 12]];
+const PLUS = [[9, 12], [10, 13], [9, 14], [8, 13]], CROSS = [[8, 12], [10, 12], [10, 14], [8, 14]];
+const flywheel = (light, dark, spoke, hub) => turn => [
+  ...RIM.map(([x, y], n) => [x, y, (n + turn) % 3 === 0 ? dark : light]),
+  ...(turn ? CROSS : PLUS).map(([x, y]) => [x, y, spoke]), ...(turn ? PLUS : CROSS).map(([x, y]) => [x, y, 'k']),
+  [9, 13, hub], [9, 10, 'k'],
+];
+const WHEELS = [flywheel('P', 'k', 'p', 'o'), flywheel('o', 'd', 'P', 'R')];
 const FITS = {
   ...Object.fromEntries(MENDERS.flatMap((cells, n) => [[`mender-${n + 1}`, fit(cells)], [`mender-${n + 1}-b`, fit(lit(cells, { m: 'M', M: 'R', w: 'R' }))]])),
   lavaskin: fit([3, 4, 5, 6, 7, 8, 9].flatMap(x => [[x, 11, 'r'], [x, 10, x % 2 ? 'r' : 'o']])),
@@ -465,11 +485,15 @@ const FITS = {
   diamond: fit(point(0)), 'diamond-b': fit(star(0)), 'diamond-l': fit(point(1)), 'diamond-l-b': fit(star(1)),
   blackbox: fit([[4, 3, 'r']]), 'blackbox-b': fit([[4, 3, 'L'], [4, 2, 'r']]),
   ...Object.fromEntries(LAMPS.map((cells, n) => [`lamp-${n + 1}`, fit(cells)])),
+  'lavaskin-2': fit(BELLOWS), 'lavaskin-2-b': fit(lit(BELLOWS, { r: 'o', o: 'y', k: 'r', d: 'o' }).concat(BELLOWS_BLAST)),
+  'sporedrive-2': fit(GRAFT), 'sporedrive-2-b': fit(lit(GRAFT, { g: 'M', m: 'g', G: 'm', k: 'k' })),
+  'arccoil-2': fit(CAPACITOR), 'arccoil-2-b': fit(lit(CAPACITOR, { v: 'e', V: 'v', e: 'R', y: 'R' }).concat(CHARGED)),
+  ...Object.fromEntries(WHEELS.flatMap((wheel, n) => [[`flywheel-${n + 1}`, fit(wheel(0))], [`flywheel-${n + 1}-b`, fit(wheel(1))]])),
 };
 export const drill = {
   version: 1, name: 'drill', width: 16, height: 16,
   palette: { k: '#1c1420', b: '#ffd83a', d: '#e08a1c', c: '#3ab8e8', w: '#eafcff', s: '#eef2f8', S: '#8c96a8', r: '#ff5a3a', y: '#ffe14a', p: '#77829a', P: '#aab4c8', R: '#ffffff', m: '#5cc040', M: '#d8ffb0', g: '#8ce060', o: '#ffb060',
-    W: '#fff6c8', B: '#84dcff', C: '#2a7ab8', L: '#ff9a8a' },
+    W: '#fff6c8', B: '#84dcff', C: '#2a7ab8', L: '#ff9a8a', G: '#3a7a2a', v: '#b48cff', V: '#6a4ab8', e: '#e4d4ff' },
   symbols: { drill: DRILL, long: DRILL_LONG, hot: bitOnly(DRILL), 'hot-long': bitOnly(DRILL_LONG), ...Object.fromEntries(RAMS.map((rows, n) => [`ram${n + 1}`, rows])), ...Object.fromEntries(PLATES.map((rows, n) => [`plate${n + 1}`, rows])),
     ...Object.fromEntries(Object.entries(FITS).map(([id, rows]) => [`fit-${id}`, rows])), ...Object.fromEntries([1, 2, 3, 4].flatMap(t => [[`flame${t}`, flame(t, false)], [`flame${t}-b`, flame(t, true)]])) },
   frames: [
@@ -615,6 +639,23 @@ const BOXES = [
 ];
 // Where each level's lamps are, on the sheet, for the light they blink.
 export const BOX_LAMPS = [[], [8, 55], [8, 55, 5, 47], [8, 55], [8, 55, 5, 54, 4, 46]];
+// The live catch is a clamp held out from the core's east socket on an arm, at the middle of the right edge, that
+// grows a jaw a level: a hook, then a pair of jaws, then (the late game's) a third prong between them; the tip of
+// each jaw lights as a rare hazard is hauled in awake. The trophy line is a rack slung under the core between two
+// posts, with barbs hung on it, two, four, then (the late game's) six round a plate of gold; each barb's point
+// lights as a foe is caught.
+const JAW = ['.........', '..kkkkkk.', '..kllllMk', '..klkkkMk', '..klk.kvk', '..klk..k.', '..klk....', '..klk....', 'kkkMk....'];
+const ARM = ['lllMk....', 'MMMMk....'], PRONG = ['lllMlllvk', 'MMMMMMMvk'];
+const CLAMPS = [
+  [...JAW, ...ARM, 'kkkkk....'],
+  [...JAW, ...ARM, ...[...JAW].reverse()],
+  [...JAW.slice(0, 8), 'kkkMkkkkk', ...PRONG, 'kkkMkkkkk', ...JAW.slice(0, 8).reverse()],
+].map(rows => [{ op: 'grid', x: 55, y: 22, rows }]);
+const post = x => [box(x - 1, 48, 3, 10, 'k'), box(x, 49, 1, 8, 'm')];
+const rail = [...post(16), ...post(47), box(14, 56, 36, 4, 'k'), box(15, 57, 34, 1, 'l'), box(15, 58, 34, 1, 'M')];
+const barb = (x, tip) => [{ op: 'grid', x: x - 1, y: 59, rows: ['kMk', 'lMl', 'k' + tip + 'k', '.' + tip + '.'] }];
+const BARBS = [[21, 42], [19, 24, 39, 44], [18, 22, 26, 37, 41, 45]];
+const RACKS = BARBS.map((xs, n) => [...rail, ...xs.flatMap(x => barb(x, n === 2 ? 'o' : 'u')), ...(n === 2 ? [box(29, 59, 6, 5, 'k'), box(30, 60, 4, 3, 'o'), box(31, 60, 1, 1, 'w')] : [])]);
 const well = [{ op: 'ellipse', x: 20, y: 20, w: 24, h: 24, color: 'a', filled: true }, { op: 'ellipse', x: 24, y: 24, w: 16, h: 16, color: 'A', filled: true },
   { op: 'ellipse', x: 27, y: 27, w: 10, h: 10, color: 'Z', filled: true }, { op: 'ellipse', x: 30, y: 30, w: 4, h: 4, color: 'R', filled: true }];
 const flare = [
@@ -634,6 +675,8 @@ export const station = {
     ...BOXES.flatMap((ops, n) => [{ name: `blackbox-${n + 1}`, ops }, { name: `blackbox-${n + 1}-b`, ops, palette: { r: '#ff9a8a' } }]),
     { name: 'well', ops: well },
     { name: 'flare', ops: flare },
+    ...CLAMPS.map((ops, n) => ({ name: `livecatch-${n + 1}`, ops })),
+    ...RACKS.map((ops, n) => ({ name: `trophy-${n + 1}`, ops })),
   ],
   animations: { 'cutter-6': { frames: ['cutter-6-a', 'cutter-6-b', 'cutter-6-c', 'cutter-6-d'] } },
 };

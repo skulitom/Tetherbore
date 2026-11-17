@@ -48,29 +48,42 @@ for (let l = 0; l <= 6; l++) DISH[l] = `dish-${l}`;
 export const FLAME_TIER = [0, 0, 0, 1, 2, 3, 4];
 const TIP = [7, 7, 7, 7, 7, 8, 8, 8];
 // What shows on the drill, by row: its bit in `look.lit` (what is lit this frame) and its frames at each level of
-// the row, plain and lit. The diamond tip has its own on the longer cone; the mender is a picture a level; the
-// black box and the lamp are CORE's, shown on the drill.
+// the row, plain and lit. The diamond tip has its own on the longer cone; the mender is a picture a level, and so
+// is each fitting's second level (the lava skin's bellows, the spore drive's graft, the arc coil's capacitor); the
+// black box and the lamp are CORE's, shown on the drill. The flywheel's wheel has a picture a level, and its lit
+// one is its spokes a step round: lit by turns, as fast as its run of hauls (`wheel`), it spins.
 const levels = (n, plain, lit) => Array.from({ length: n + 1 }, (_, l) => l ? [plain(l), lit(l)] : null);
+const second = id => levels(2, l => l > 1 ? `fit-${id}-${l}` : `fit-${id}`, l => l > 1 ? `fit-${id}-${l}-b` : `fit-${id}-b`);
 export const FITS = [
   { id: 'mender', bit: 1, frames: levels(5, l => `fit-mender-${l}`, l => `fit-mender-${l}-b`) },
-  { id: 'lavaskin', bit: 2, frames: levels(1, () => 'fit-lavaskin', () => 'fit-lavaskin-b') },
-  { id: 'sporedrive', bit: 4, frames: levels(1, () => 'fit-sporedrive', () => 'fit-sporedrive-b') },
-  { id: 'arccoil', bit: 8, frames: levels(1, () => 'fit-arccoil', () => 'fit-arccoil-b') },
+  { id: 'lavaskin', bit: 2, frames: second('lavaskin') },
+  { id: 'sporedrive', bit: 4, frames: second('sporedrive') },
+  { id: 'arccoil', bit: 8, frames: second('arccoil') },
   { id: 'diamond', bit: 16, frames: levels(1, () => 'fit-diamond', () => 'fit-diamond-b'), long: levels(1, () => 'fit-diamond-l', () => 'fit-diamond-l-b') },
   { id: 'blackbox', bit: 32, frames: levels(4, () => 'fit-blackbox', () => 'fit-blackbox-b') },
   { id: 'lamp', bit: 64, frames: levels(5, l => `fit-lamp-${l}`, l => `fit-lamp-${l}`) },
+  { id: 'flywheel', bit: 128, frames: levels(2, l => `fit-flywheel-${l}`, l => `fit-flywheel-${l}-b`) },
 ];
 // (What WORKS and CORE fit lights for so many seconds, in a typed array by these places.)
 export const FIT_BIT = Object.fromEntries(FITS.map(f => [f.id, f.bit]));
-const MENDER = 0, LAVASKIN = 1, SPOREDRIVE = 2, ARCCOIL = 3, DIAMOND = 4, BLACKBOX = 5, LAMP = 6, LIT_BIT = FITS.map(f => f.bit);
+const MENDER = 0, LAVASKIN = 1, SPOREDRIVE = 2, ARCCOIL = 3, DIAMOND = 4, BLACKBOX = 5, LAMP = 6, FLYWHEEL = 7, LIT_BIT = FITS.map(f => f.bit);
 // What CORE builds on the station, a picture a level (js/sprites.mjs: `station`), and where on that sheet each
 // part's middle is, for what flies to it and the light it gives.
 export const REFINERY = levels(7, l => `refinery-${l}`, l => `refinery-${l}`).map(f => f && f[0]);
 export const CUTTER = levels(6, l => l === 6 ? null : `cutter-${l}`, l => l).map(f => f && f[0]);
 export const BOX = levels(4, l => `blackbox-${l}`, l => `blackbox-${l}-b`);
+// The live catch's clamp at the middle of the right edge, a jaw more a level, and the trophy line's rack under the
+// core, more barbs a level (each third level the late game's); and where their lamps are, as the black box's.
+export const LIVECATCH = levels(3, l => `livecatch-${l}`, l => l).map(f => f && f[0]);
+export const TROPHY = levels(3, l => `trophy-${l}`, l => l).map(f => f && f[0]);
 const REFINERY_MOUTHS = [[], [6, 5], [6, 5], [6, 5, 11, 2], [6, 5, 11, 2], [6, 5, 11, 2], [6, 5, 11, 2, 2, 9], [6, 5, 11, 2, 2, 9]];
 const BOX_LAMPS = [[], [8, 55], [8, 55, 5, 47], [8, 55], [8, 55, 5, 54, 4, 46]];
-const PART_AT = { refinery: [9, 10], cutter: [54, 54], blackbox: [7, 55], winch: [32, 32], scanner: [50, 3] };
+const CLAMP_LAMPS = [[], [62, 26], [62, 26, 62, 37], [62, 26, 62, 37, 62, 32]];
+const RACK_LAMPS = [[], [21, 62, 42, 62], [19, 62, 24, 62, 39, 62, 44, 62], [18, 62, 22, 62, 26, 62, 37, 62, 41, 62, 45, 62, 32, 61]];
+const PART_AT = { refinery: [9, 10], cutter: [54, 54], blackbox: [7, 55], winch: [32, 32], scanner: [50, 3], livecatch: [59, 32], trophy: [32, 58] };
+// What the shop shows of a part of the station that is not the refinery, the cutter or the black box (js/drawing.js:
+// `drawPreview`): the 16 x 16 of its sheet's frame from `crop`, at each level.
+export const STATION_PARTS = { livecatch: { crop: [48, 24], frames: LIVECATCH }, trophy: { crop: [14, 48], frames: TROPHY } };
 
 // ---------------------------------------------------------------- figures
 export const CAP = 96, PANEL_CAP = 24, RINGS = 8, QUEUE = 6;
@@ -96,9 +109,17 @@ const PING = [0, 6, 5, 4.5, 4, 3.5, 3], BEAM = 3;
 const LAMP_GLOW = [0, 0.1, 0.12, 0.14, 0.16, 0.18], FLARE = [0, 9, 12, 15, 18, 21], WARM = '#ffe0a0';
 // The black box blinks every so many seconds, by level, on the station and the drill.
 export const BEACON = [0, 1.6, 1.3, 1.0, 0.8];
+// The flywheel: how long the game's run of quick hauls lasts after its last (js/game.js: CHAIN), how many steps of
+// its spokes a second at rest in a run and how many more for each haul in it (up to RUN_MOST), and how fast it
+// winds up or down to that. The capacitor throws a spark off its cap every so often while the bit holds a charge.
+const RUN = 6, TURN = 6, TURN_UP = 3, RUN_MOST = 8, WIND = 4, CRACK = 0.3;
+// The trophy line's barbs on the tether: a short tick across it every BARB_GAP of its pixels, in the colour of its
+// level, laid on as the braid is so that they stay put on the ground (`barbs`). The dash list is made once.
+const BARB_GAP = 9, BARB_DASH = [1.2, BARB_GAP - 1.2], BARB_COLOURS = [null, '#c8ccd8', '#ffb060', '#ffe14a'];
 // The colour of each tab's moment, and of the parts it fits.
 const TAB_COLOUR = { rig: '#8ce060', map: '#5cc4f0', core: '#ffe14a' };
 const SPORE = ['#b8f06a', '#8ce060'], LAVA = ['#ffb060', '#ff5a3a'], GOLD = ['#ffd84a', '#ffe14a'], SMOKE = '#5a6074', GLINT = ['#ffffff', '#5cc4f0'];
+const ARC = ['#e4d4ff', '#ffffff'], LIVE = '#b8f06a', TROPHY_LIGHT = '#ffb060';
 
 // Every colour a particle may be is one of these, by its place: a particle holds a number, never a string.
 const COLOURS = [], COLOUR = new Map();
@@ -107,6 +128,7 @@ const cols = list => list && list.map(col);
 const SPARK_CI = SPARK_COLOURS.map(cols), EXHAUST_CI = EXHAUST_COLOURS.map(cols), SHIMMER_CI = SHIMMER.map(c => c && col(c));
 for (const c of [...Object.values(TAB_COLOUR), ...GEM_COLOR.slice(1)]) col(c);
 const SPORE_CI = cols(SPORE), LAVA_CI = cols(LAVA), GOLD_CI = cols(GOLD), SMOKE_CI = col(SMOKE), GLINT_CI = cols(GLINT), WHITE_CI = col('#ffffff');
+const ARC_CI = cols(ARC);
 // The kinds of particle: a spark (a pixel, laid on as light), a star (a cross of pixels, as the game's own), an
 // ember (a pixel that rises), a puff (two pixels of smoke, laid on as paint).
 const SPARK = 0, STAR = 1, EMBER = 2, PUFF = 3;
@@ -122,7 +144,7 @@ const TINTS = [['drill', '#ffffff'], ['drill', '#ff8a2a'], ['drill', '#aab4c8'],
 const TAB_OF = new Map(), KIND_OF = new Map(), COLOUR_OF = new Map();
 for (const t of TABS) for (const u of t.rows) {
   TAB_OF.set(u, t);
-  KIND_OF.set(u.id, t.id === 'map' ? 2 : ['winch', 'scanner', 'refinery', 'cutter', 'blackbox'].includes(u.id) ? 1 : 0);
+  KIND_OF.set(u.id, t.id === 'map' ? 2 : ['winch', 'scanner', 'refinery', 'cutter', 'blackbox', 'livecatch', 'trophy'].includes(u.id) ? 1 : 0);
   COLOUR_OF.set(u.id, t.id === 'works' ? GEM_COLOR[u.kin] : TAB_COLOUR[t.id]);
 }
 const ROW = Object.fromEntries([...UPGRADES, ...WORKS, ...MAPS, ...CORE].map(u => [u.id, u]));
@@ -171,6 +193,8 @@ export class Fitter {
     this.crackle = 0; this.jagAt = -1; this.diamondIn = 2.5; this.beacon = 0; this.blinks = 0; this.calling = 0;
     this.wisps = 0; this.payAt = 0; this.wellGold = 0; this.wellGems = 0; this.wellGem = 0; this.gemTurn = 0; this.pingIn = 3; this.flareKick = 0; this.orbitIn = 0;
     this.sweep = 0; this.ox = 0; this.oy = 0;
+    this.wheel = 0; this.wheelRate = 0; this.wheelKick = 0; this.runSeen = 0; this.crack = 0; this.clampLit = 0; this.rackLit = 0; this.barbLit = 0; this.haulSeen = null;
+    this.bellows = false; this.graft = false;
     const L = this.look; L.heat = 0; L.flame = 0; L.tintAlpha = 0; L.lit = 0; L.spin = 0;
   }
   // The generator: a number in [0, 1), from the fitter's own seed.
@@ -200,10 +224,17 @@ export class Fitter {
     this.count();
   }
   count() { let n = 0; for (const q of this.queue) if (q.on) n++; this.queued = n; }
-  // A power of something fitted acted at an instant: the mender mended a pip, the arc coil took an arc in.
+  // A power of something fitted acted at an instant: the mender mended a pip, the arc coil took an arc in; the
+  // lava skin's bellows quenched the slag round woken lava, the spore drive's graft healed moss as ore; the live
+  // catch took a rare hazard in awake, the trophy line a foe. (The bellows and the graft may act many times in a
+  // frame, a chain of lava woken or a cloud of moss: what they show is begun once and held, not begun again.)
   fire(id) {
     if (id === 'mender') { this.lit[MENDER] = 0.5; this.menderShow = true; }
     else if (id === 'arccoil') { this.lit[ARCCOIL] = 1.5; this.crackle = 0.4; this.arcRing = true; }
+    else if (id === 'lavaskin') { if (this.lit[LAVASKIN] < 0.3) { this.lit[LAVASKIN] = 0.8; this.bellows = true; } }
+    else if (id === 'sporedrive') { if (this.lit[SPOREDRIVE] < 0.3) { this.lit[SPOREDRIVE] = 0.8; this.graft = true; } }
+    else if (id === 'livecatch') { this.clampLit = 1; this.ring((C - 1) * T - 8 + PART_AT.livecatch[0], (C - 1) * T - 8 + PART_AT.livecatch[1], LIVE, 22, 0, 0.5, false); }
+    else if (id === 'trophy') { this.rackLit = 1; this.barbLit = 1; this.ring((C - 1) * T - 8 + PART_AT.trophy[0], (C - 1) * T - 8 + PART_AT.trophy[1], TROPHY_LIGHT, 22, 0, 0.5, false); }
   }
 
   // ------------------------------------------------------------ a frame
@@ -274,6 +305,33 @@ export class Fitter {
     if (this.arcRing) { this.arcRing = false; this.ring(x, y, '#d8b8ff', 18, 0, 0.4, true); }
     if (lv.diamond > 0 && !metal) { this.diamondIn -= dt; if (this.diamondIn <= 0) { this.diamondIn = 2.5; this.lit[DIAMOND] = 0.12; } }
     if (metal) this.lit[DIAMOND] = Math.max(this.lit[DIAMOND], 0.05);
+    // The second levels of what WORKS fits: the bellows blowing heat out of the belly as they quench, the graft's
+    // spores out of the tail as it heals, and the capacitor lit, a spark off its cap now and then, while the bit
+    // holds the charge (js/game.js: `charge`).
+    if (this.bellows) { this.bellows = false; for (let n = 0; n < 6; n++) { const sx = 3.5 + (n % 3) * 2; this.emit(this.pool, x + ca * (sx - 8) - sa * 5, y + sa * (sx - 8) + ca * 5, -sa * 20 + (this.rnd() - 0.5) * 10, ca * 20 + (this.rnd() - 0.5) * 10, 0.5, 0, LAVA_CI[n & 1], EMBER); } }
+    if (this.graft) { this.graft = false; for (let n = 0; n < 6; n++) { this.side = -this.side; this.puff(x, y, ca, sa, -7, this.side > 0 ? 1.5 : -2, SPORE_CI[n & 1], 20, 0.5, PUFF); } }
+    if (lv.arccoil > 0 && game.charge > 0 && d.mode !== 'dead') {
+      this.lit[ARCCOIL] = Math.max(this.lit[ARCCOIL], 0.05);
+      this.crack -= dt;
+      if (this.crack <= 0) { this.crack = CRACK + this.rnd() * CRACK; const a = this.rnd() * 6.283, v = 15 + this.rnd() * 20; this.emit(this.pool, x + ca * 0.5 + sa * 4, y + sa * 0.5 - ca * 4, Math.cos(a) * v, Math.sin(a) * v, 0.25, 0, ARC_CI[(this.rnd() * 2) | 0], this.rnd() < 0.4 ? STAR : SPARK); }
+    } else this.crack = 0;
+    // The flywheel: its spokes step round as fast as the game's run of quick hauls is long, wound up as each haul
+    // joins it and down once the run is over (or the drill knocked: js/game.js `spin`); and each haul in the run
+    // throws a ring off the wheel.
+    if (lv.flywheel > 0) {
+      const spin = game.spin, run = spin && game.time - spin.t <= RUN ? spin.n : 0, want = run ? TURN + TURN_UP * Math.min(RUN_MOST, run) : 0;
+      if (run > this.runSeen) this.ring(x, y, COLOUR_OF.get('flywheel'), 14 + 2 * Math.min(RUN_MOST, run), 0, 0.35, true);
+      this.runSeen = run;
+      this.wheelKick = Math.max(0, this.wheelKick - dt);
+      const target = Math.max(want, this.wheelKick > 0 ? TURN + TURN_UP * RUN_MOST : 0);
+      this.wheelRate += (target - this.wheelRate) * Math.min(1, WIND * dt);
+      this.wheel = (this.wheel + this.wheelRate * dt) % 2;
+    } else { this.wheel = 0; this.wheelRate = 0; this.runSeen = 0; }
+    // The station's parts that act out in the ground: the live catch's clamp as a rare hazard comes home awake (a
+    // haul the game titles so; js/game.js `haulTitle`), and the trophy line's rack and barbs as a foe is caught.
+    const h = game.hauled;
+    if (h && h !== this.haulSeen) { this.haulSeen = h; if (lv.livecatch > 0 && (h.live || h.title === 'CAUGHT LIVE!')) this.fire('livecatch'); }
+    this.clampLit = Math.max(0, this.clampLit - dt); this.rackLit = Math.max(0, this.rackLit - dt); this.barbLit = Math.max(0, this.barbLit - dt);
     // The black box: a blink every so many seconds, and over a wreck, fast, with a red ring from the drill every
     // 0.6 s: the box calling.
     if (lv.blackbox > 0) {
@@ -321,6 +379,7 @@ export class Fitter {
     L.lit = 0;
     for (let k = 0; k < this.lit.length; k++) if (this.lit[k] > 0) L.lit |= LIT_BIT[k];
     if (this.flareKick > 0) L.lit |= LIT_BIT[LAMP];
+    if (this.wheel >= 1) L.lit |= LIT_BIT[FLYWHEEL];
     L.tint = this.tintColour; L.tintAlpha = this.tint > 0 ? this.tintAlpha * Math.min(1, this.tint / this.tintFade) : 0;
     if (lava && L.tintAlpha < 0.2) { L.tint = '#ff8a2a'; L.tintAlpha = 0.2 + 0.12 * Math.sin(game.time * 12); }
     L.spin = 0;
@@ -388,6 +447,9 @@ export class Fitter {
     else if (id === 'sporedrive') { this.lit[SPOREDRIVE] = 0.8; const ca = Math.cos(d.ang), sa = Math.sin(d.ang); for (let n = 0; n < 10; n++) { this.side = -this.side; this.puff(x, y, ca, sa, -7, this.side > 0 ? 1.5 : -2, SPORE_CI[n & 1], 25, 0.6, PUFF); } }
     else if (id === 'arccoil') { this.lit[ARCCOIL] = 1.5; this.crackle = 0.6; this.ring(x, y, '#d8b8ff', 18, 0, 0.4, true); this.effect('zap', 'impact', x, y, true); }
     else if (id === 'diamond') { this.lit[DIAMOND] = 0.5; this.burst(x, y, 6, WHITE_CI, 50, STAR); }
+    else if (id === 'flywheel') { this.wheelKick = 0.8; this.ring(x, y, f.colour, 18, 0, 0.4, true); }
+    else if (id === 'livecatch') this.clampLit = 0.8;
+    else if (id === 'trophy') { this.rackLit = 0.8; this.barbLit = 0.8; }
     else if (id === 'refinery') { this.wellGold = 0.8; const mouths = REFINERY_MOUTHS[Math.min(7, lv.refinery)], cx = (C - 1) * T - 8, cy = (C - 1) * T - 8; for (let k = 0; k < mouths.length; k += 2) for (let n = 0; n < 5; n++) this.emit(this.pool, cx + mouths[k], cy + mouths[k + 1], (this.rnd() - 0.5) * 40, -30 - this.rnd() * 40, 0.5, 140, GOLD_CI[n & 1], n % 3 ? SPARK : STAR); }
     else if (id === 'cutter') { this.wellGems = 0.8; this.gemCycle = true; }
     else if (id === 'lamp') this.flareKick = 0.5;
@@ -456,6 +518,8 @@ export class Fitter {
     if (lv.refinery > 0) draw(ctx, 'station', REFINERY[Math.min(7, lv.refinery)], x, y);
     if (lv.cutter > 0) draw(ctx, 'station', lv.cutter >= 6 ? frameAt('station', 'cutter-6', now) : CUTTER[lv.cutter], x, y);
     if (lv.blackbox > 0) draw(ctx, 'station', BOX[Math.min(4, lv.blackbox)][this.lit[BLACKBOX] > 0 ? 1 : 0], x, y);
+    if (lv.livecatch > 0) draw(ctx, 'station', LIVECATCH[Math.min(3, lv.livecatch)], x, y);
+    if (lv.trophy > 0) draw(ctx, 'station', TROPHY[Math.min(3, lv.trophy)], x, y);
     for (let k = 0; k < this.playing.length; k++) {
       const f = this.playing[k];
       if (!f.on || f.kind !== 1 || f.t < SEAT || f.t > SEAT + 0.3) continue;
@@ -465,7 +529,8 @@ export class Fitter {
       if (id === 'winch') draw(ctx, 'core', CORE_FLASH[Math.min(8, lv.winch)], coreX, coreY);
       else if (id === 'scanner') { const r = sheets.dish.frames[DISH[Math.min(6, lv.scanner)]]; ctx.drawImage(tinted('dish', '#ffffff'), r[0], r[1], r[2], r[3], coreX + 34, coreY - 6, r[2], r[3]); }
       else {
-        const name = id === 'refinery' ? REFINERY[Math.min(7, lv.refinery)] : id === 'cutter' ? (lv.cutter >= 6 ? 'cutter-6-a' : CUTTER[lv.cutter]) : BOX[Math.min(4, lv.blackbox)][0], r = s.frames[name];
+        const name = id === 'refinery' ? REFINERY[Math.min(7, lv.refinery)] : id === 'cutter' ? (lv.cutter >= 6 ? 'cutter-6-a' : CUTTER[lv.cutter])
+          : id === 'livecatch' ? LIVECATCH[Math.min(3, lv.livecatch)] : id === 'trophy' ? TROPHY[Math.min(3, lv.trophy)] : BOX[Math.min(4, lv.blackbox)][0], r = s.frames[name];
         ctx.drawImage(tinted('station', '#ffffff'), r[0], r[1], r[2], r[3], x, y, r[2], r[3]);
       }
       ctx.globalAlpha = base;
@@ -510,12 +575,11 @@ export class Fitter {
         ctx.globalAlpha = gold ? Math.min(0.75, 0.35 + 0.05 * lv.refinery) : 0.5;
         ctx.drawImage(tinted('station', colour), well[0], well[1], well[2], well[3], sx, sy, well[2], well[3]);
       }
-      // The black box's lamp, lit.
-      if (lv.blackbox > 0 && this.lit[BLACKBOX] > 0) {
-        const lamps = BOX_LAMPS[Math.min(4, lv.blackbox)];
-        ctx.fillStyle = '#ff5a4a'; ctx.globalAlpha = 0.5;
-        for (let k = 0; k < lamps.length; k += 2) ctx.fillRect(sx + lamps[k] - 1, sy + lamps[k + 1] - 1, 3, 3);
-      }
+      // The black box's lamp, lit; the live catch's jaws, lit as a rare hazard comes home awake; the trophy line's
+      // barbs, lit as a foe is caught (and each, a moment, as it is fitted).
+      if (lv.blackbox > 0 && this.lit[BLACKBOX] > 0) this.lamps(ctx, BOX_LAMPS[Math.min(4, lv.blackbox)], sx, sy, '#ff5a4a', 0.5);
+      if (lv.livecatch > 0 && this.clampLit > 0) this.lamps(ctx, CLAMP_LAMPS[Math.min(3, lv.livecatch)], sx, sy, LIVE, Math.min(0.8, this.clampLit));
+      if (lv.trophy > 0 && this.rackLit > 0) this.lamps(ctx, RACK_LAMPS[Math.min(3, lv.trophy)], sx, sy, TROPHY_LIGHT, Math.min(0.8, this.rackLit));
     }
     const dx = d.x * T - ox, dy = d.y * T - oy, ca = Math.cos(d.ang), sa = Math.sin(d.ang);
     if (d.mode !== 'dead' && lv.lamp > 0 && sheets.station) {
@@ -582,6 +646,23 @@ export class Fitter {
       draw(ctx, e.sheet, f, (e.follow ? d.x * T : e.x) - ox - f[2] / 2, (e.follow ? d.y * T : e.y) - oy - f[3] / 2);
     }
     ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = base;
+  }
+  // Lamps on the station, lit: a soft square of light on each [x, y] of `at`, in the station sheet's pixels.
+  lamps(ctx, at, sx, sy, colour, alpha) {
+    ctx.fillStyle = colour; ctx.globalAlpha = alpha;
+    for (let k = 0; k < at.length; k += 2) ctx.fillRect(sx + at[k] - 1, sy + at[k + 1] - 1, 3, 3);
+  }
+  // The trophy line's barbs on the tether, on the screen's own canvas, laid on a rope as js/drawing.js lays its braid
+  // (`drawRopes`: its `trace` of a part of it and the `runs` of it in view, each with how far along the rope it
+  // begins, so the barbs stay put on the ground): short ticks across it, wider than it, in the colour of the level,
+  // and white a moment as a foe is caught. Only the tether out to the drill has them, not a loop round a haul.
+  barbs(game, o, r) {
+    const level = Math.min(3, game.S.lv.trophy);
+    if (!level || r.loop || !r.runs || !r.runs.length) return;
+    o.lineCap = 'butt'; o.setLineDash(BARB_DASH); o.lineWidth = r.wide + 2.4;
+    o.strokeStyle = this.barbLit > 0 && ((this.barbLit * 10) | 0) % 2 === 0 ? '#ffffff' : BARB_COLOURS[level];
+    for (const run of r.runs) { o.lineDashOffset = run[2] % BARB_GAP; r.trace(0, run); o.stroke(); }
+    o.lineDashOffset = 0; o.setLineDash(NO_DASH);
   }
   drawPool(ctx, P, ox, oy, W, H) {
     for (let i = 0; i < P.n; i++) {
@@ -666,5 +747,5 @@ export class Fitter {
     ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = base;
   }
 }
-// (Where a part is, handed back without making anything: the fitter's own pair.)
-const SPOT = new Float64Array(2);
+// (Where a part is, handed back without making anything: the fitter's own pair. And a line with no dashes.)
+const SPOT = new Float64Array(2), NO_DASH = [];

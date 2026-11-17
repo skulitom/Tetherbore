@@ -9,7 +9,8 @@
 // newt (it lights the grotto's caps). Three foes threaten, each in its own way, each with a warning drawn over the
 // dark and a moment after in which a ram drives it off: the cinder bat knocks, the cave leech slows, the rime
 // spitter blocks. Two rules are all a player need learn: eyes that shine in the dark are trouble (only a foe's do,
-// in FOE_EYE, a colour nothing else in the game is drawn in), and anything alive the tether goes round is caught.
+// in FOE_EYE, a colour nothing else in the game is drawn in), and anything alive the tether goes round is caught:
+// with the trophy line bought, a foe too, in the moment it rests after it has struck, for its ground's specimens.
 //
 // Where they live. Dens lie on two grids of sectors counted from the core, by the seed's hash alone (salts 800 to
 // 807 on the seed, which nothing else uses): a named den in a share of the sectors DEN cells across, a den of kin
@@ -28,9 +29,10 @@
 //     cell was (`first`) only of a cell that is a den's home already chosen; it makes no piece of the world. Its own
 //     line of sight counts ground not seen as rock.
 //   - It changes the game only through its deeds (`deed`): a bat's knock, a spitter's chill and its plug of ice, a
-//     leech's drag, the wren's showing of a find, the puffling's pay, the newt's lit cap, and what is kept of them
-//     (`S.fauna`). With `tame` the deeds do nothing, and a game with its creatures tame plays exactly as one with
-//     none (test/regress/s8-fauna.mjs); with `off` no den wakes and nothing is drawn (test/harness.mjs sets it).
+//     leech's drag, the wren's showing of a find, the puffling's pay, a foe's pay as a trophy, the newt's lit cap,
+//     and what is kept of them (`S.fauna`). With `tame` the deeds do nothing, and a game with its creatures tame
+//     plays exactly as one with none (test/regress/s8-fauna.mjs); with `off` no den wakes and nothing is drawn
+//     (test/harness.mjs sets it).
 //   - What it keeps is in arrays made once, a creature a slot (FAUNA of them, NAMED at most of a tier above kin);
 //     nothing it does in a frame makes an object. What it looks at in a frame is counted (`work`) and bounded.
 //   - Everything is begun again with the game (`reset`, from `Game.begin`): a new world, a game loaded, a trip lost.
@@ -183,6 +185,10 @@ const DUST = 1, HEART = 2, RIPPLE = 3, PUFFS_P = 4, DRIP = 5, SPLAT = 6, NOTE = 
 const LIT_P = [false, false, true, false, false, false, false, true, true];
 const INKS = [], INK = new Map();
 const ink = color => { let n = INK.get(color); if (n === undefined) { n = INKS.length; INKS.push(color); INK.set(color, n); } return n; };
+// A direction's specimens as they are shown, by its number (1 north to 4 east): the icon's name after `spec-` and its
+// colour, as js/drawing.js has them (GEM_ICON, GEM_COLOR; not imported, for js/drawing.js imports this file).
+const SPEC_LOOK = [null, ['frost', '#bfe6ff'], ['ember', '#ffb060'], ['mire', '#b8f06a'], ['lode', '#d8b8ff']];
+const NO_GEMS = [0, 0, 0, 0, 0];
 const HEART_INK = ink('#ff8aa0'), DUST_INK = ink('#a89880'), ICE_INK = ink('#eef8ff'), SPORE_INK = ink('#f4dcc4'), DRIP_INK = ink('#cab4ca'), EYE_INK = ink(FOE_EYE), LIGHT_INK = ink('#f0e8a8'), WHITE = ink('#ffffff');
 
 // Creature states, shared by name where they mean the same (each kind reads its own few).
@@ -242,7 +248,7 @@ export class Fauna {
     for (const d of this.dens.values()) { d.key = -1; this.spare.push(d); }
     this.dens.clear(); this.quiet.clear(); this.spentAt.clear(); this.index.length = 0; this.met.clear();
     this.time = 0; this.tick = 0; this.frame = 0; this.work = 0; this.heard = -9; this.drag = 1; this.latched = -1; this.pal = -1;
-    this.paid = { grit: 0, gems: [0, 0, 0, 0, 0] }; this.deeds = 0; this.searches = 0;
+    this.paid = { grit: 0, gems: [0, 0, 0, 0, 0], spec: [0, 0, 0, 0, 0] }; this.deeds = 0; this.searches = 0;
     this.lastSpeed = 0; this.stillFor = 0; this.fastFor = 0; this.hunt = 0; this.lit = 0;
     if (!game) return;
     const F = game.S.fauna;
@@ -1201,14 +1207,21 @@ export class Fauna {
   }
   // The tether goes round a puffling (`Game.update`, beside `reelIfRound`, with the tether as it is before any haul
   // is taken): the band closed home winds round it, it lies within PUFF.loop cells of the band and the drill within
-  // PUFF.drill of it. Caught, it pays. It only reads the band.
+  // PUFF.drill of it. Caught, it pays. With the trophy line bought (js/shop.js: TROPHY LINE), a foe at rest
+  // (`atRest`) is caught in the same loop, by the same measures, and pays its ground's specimens. It only reads the
+  // band.
   wound(game) {
     if (this.off) return;
     const pts = game.band, d = game.drill;
     if (pts.length < 3 || d.mode === 'dead') return;
+    const trophy = game.val('trophy') > 0;
     for (let i = 0; i < FAUNA; i++) {
-      if (this.kind[i] !== PUFFS || this.st[i] === CAUGHT || this.out[i]) continue;
-      const x = this.x[i], y = this.y[i];
+      const k = this.kind[i];
+      if (!k || this.st[i] === CAUGHT || this.out[i]) continue;
+      const foe = k !== PUFFS;
+      if (foe && !(trophy && this.atRest(i))) continue;
+      // (A foe's middle, as it stands: a bat clinging in the air, a leech or a spitter on a floor.)
+      const x = this.x[i], y = foe ? this.mid(i) : this.y[i];
       if (Math.hypot(d.x - x, d.y - y) > PUFF.drill) continue;
       let turns = 0, near = Infinity;
       for (let n = 0; n < pts.length; n++) {
@@ -1221,11 +1234,39 @@ export class Fauna {
         }
       }
       if (turns === 0 || near > PUFF.loop) continue;
+      if (foe) { this.trophy(game, i); continue; }
       if (!this.deed(game, 'catch', i)) continue;
       this.set(i, CAUGHT);
       const den = this.denAt(i);
       if (den) this.deed(game, 'spend', den.key);
     }
+  }
+  // A foe at rest, which the trophy line may catch: a bat clinging where its swoop stopped, a leech come down to the
+  // floor (fallen short of the drill, or off it) and crawling away, a spitter sagging after it has spat. Never one
+  // that swoops, swells, falls or is fast to the hull: it is caught in the moment a ram would drive it off, and for
+  // the same risk, close by a foe that has just shown what it does.
+  atRest(i) {
+    const k = this.kind[i], st = this.st[i];
+    return k === BATS || k === SPITTERS ? st === REST : k === LEECHES && st === AWAY;
+  }
+  // A foe looped at rest: it pays, and it and the rest of its den go, the den spent as a puffling's is. (One trophy a
+  // den in SPENT seconds of play: a roost's bats clinging together are one catch, not four. A leech of the den fast
+  // to the hull stays on it, and comes off as it would have.)
+  trophy(game, i) {
+    if (!this.deed(game, 'trophy', i)) return;
+    const den = this.denAt(i), x = this.x[i], y = this.mid(i);
+    this.puff2(x * T, y * T, SPARK, WHITE, 8);
+    for (let j = 0; j < FAUNA; j++) if (this.kind[j] && j !== this.latched && (j === i || (this.den[i] >= 0 && this.den[j] === this.den[i]))) {
+      if (this.kind[j] === LEECHES && this.where(j) === 1) this.offAt(game, j, this.x[j], this.y[j] + 0.5, false);
+      this.set(j, AWAY); this.leave(j);
+    }
+    if (den) this.deed(game, 'spend', den.key);
+  }
+  // Whose specimens a foe's den pays: the direction of the ground it lies in (a cross's, its host's), or, set down
+  // where no direction's ground is, its own kind's (bats the south's, leeches the west's, spitters the north's).
+  kinOf(den, kind) {
+    const kin = den ? rowOf(den.row).kin : 0;
+    return kin > 0 ? kin : kind === BATS ? 2 : kind === LEECHES ? 3 : 1;
   }
 
   // ---------------------------------------------------------------- the deeds
@@ -1276,6 +1317,23 @@ export class Fauna {
         game.popup(Math.floor(x), Math.floor(y), `+${grit} GRIT`, '#ffe14a');
         this.spot(x * T, y * T, 26, SPORE_INK);
         voices.caught?.();
+        return true;
+      }
+      // A foe looped at rest, with the trophy line: the line's value in specimens of its den's direction (`kinOf`),
+      // banked at once as a puffling's pay is, and said where it was caught and across the screen as a haul's banner
+      // (unless another is still up), with the count under the top bar as a pocket's mineral brings it out.
+      case 'trophy': {
+        const x = this.x[a], y = this.mid(a), kin = this.kinOf(this.denAt(a), this.kind[a]), v = game.val('trophy'), [icon, colour] = SPEC_LOOK[kin];
+        (S.spec ??= [0, 0, 0, 0, 0])[kin] += v;
+        this.paid.spec[kin] += v;
+        game.popup(Math.floor(x), Math.floor(y) - 1, 'TROPHY!', colour);
+        game.popup(Math.floor(x), Math.floor(y), `+${v}`, colour, `spec-${icon}`);
+        const up = game.banner;
+        if (!(up && up.t < up.life)) game.banner = { title: 'TROPHY', n: 1, mult: 1, over: 1, grit: 0, gems: NO_GEMS, light: false, shine: 0, spec: v, specOf: kin, giant: 0, colour, sub: null, trophy: true, t: 0, life: 2.2 };
+        game.specLine = { kin, t: 0, life: 3 };
+        this.spot(x * T, y * T, 26, ink(colour));
+        voices.trophy?.();
+        game.fitter?.fire?.('trophy');
         return true;
       }
       // The newt's lick: a cap lit, as the drill's flying by lights one.
@@ -1571,7 +1629,8 @@ export class Fauna {
   }
   // A staged creature put in a state of its own, for a picture or a test: `pal` (a pup befriended), `ride` (and
   // riding), `fuse` (a roost woken), `puff` (a spitter swelling), `latched` (a leech on the hull), `caught` (a
-  // puffling lassoed), `peck` (a wren off to its find). Whatever it is not, it is left as it is.
+  // puffling lassoed), `peck` (a wren off to its find), `rest` (a foe at rest, as the trophy line catches it: a bat
+  // clinging, a spitter sagging, a leech come down to the floor). Whatever it is not, it is left as it is.
   stageAs(game, i, what) {
     if (i < 0 || !this.kind[i]) return false;
     const k = this.kind[i], den = this.denAt(i);
@@ -1581,6 +1640,8 @@ export class Fauna {
     if (k === LEECHES && what === 'latched') { if (!this.deed(game, 'drag', i) && !this.tame) return false; this.set(i, LATCH); this.latched = i; return true; }
     if (k === PUFFS && what === 'caught') { this.set(i, CAUGHT); return true; }
     if (k === WRENS && what === 'peck') { if (!this.findFor(game, i)) return false; this.set(i, FLIT); return true; }
+    if ((k === BATS || k === SPITTERS) && what === 'rest') { this.set(i, REST); return true; }
+    if (k === LEECHES && what === 'rest') { this.offAt(game, i, this.x[i], this.y[i] + 0.5); return true; }
     return false;
   }
 }

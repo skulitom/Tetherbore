@@ -14,10 +14,19 @@ const game = await makeGame(7), S = game.S;
 for (const [x, y] of [[2, -2], [6, -2], [6, 1], [3, 1], [0, 0]]) if (flyTo(game, x, y, { tol: x === 0 ? 0.05 : 0.2 }) < 0) throw new Error('never arrived');
 game.key('Enter', true);
 const glyphs = [];
-// Only the price on the REACH row (the first): right of x = 120, rows y 64 to 95 on this 180 x 320 screen; the shadow copy is left out.
-game.ctx.drawImage = (image, sx, sy, sw, sh, dx, dy) => { if (image && image.tint && image.tint !== '#0c0a12' && dx > 120 && dy >= 64 && dy < 96) glyphs.push(image.tint); };
+// Only the price on the REACH row: what is drawn in the right half of the button the shop makes for the first row of
+// its first tab, in the price's colours (yellow, enough; red, short), found as the shop is drawn; the shadow copy is
+// left out. (It read a window of the screen fixed at rows 64 to 95, which is BIT's row: the test passed while BIT was
+// too dear to buy, whatever REACH's price was drawn in.)
+let row = null;
+const priced = new Set(['#ffe14a', '#ff7a5a']);
+game.ctx.drawImage = (image, sx, sy, sw, sh, dx, dy) => { if (row && image && priced.has(image.tint) && sh === 10 && dx > row.x + row.w / 2 && dy >= row.y && dy < row.y + row.h) glyphs.push(image.tint); };
 const look = label => {
-  glyphs.length = 0; game.shopRise = 1; game.render();
+  game.shopTab = 'rig'; game.shopRise = 1; row = null; game.render();
+  // (The rows' buttons are as wide as the panel less its edges; the first is the highest.)
+  const pw = Math.min(game.W - 8, 200);
+  row = game.buttons.filter(b => b.w === pw - 8).sort((a, b) => a.y - b.y)[0];
+  glyphs.length = 0; game.render();
   console.log(`${label}: grit ${S.grit}, on its way ${game.pending.grit}, banked ${game.banked()}, REACH costs ${game.cost(UPGRADES[0]).grit}, canBuy ${game.canBuy(UPGRADES[0])}; the price's glyphs are drawn in ${JSON.stringify(glyphs)}`);
   return glyphs.filter(t => t === '#ff7a5a').length;
 };
@@ -28,5 +37,6 @@ game.shopNote = null;
 S.grit = 14; game.pending.grit = 0;
 const redWhenShort = look('by hand: 14 grit, nothing on its way');
 const bad = !(redWhileRefused > 0 && redWhenShort > 0);
+if (!row) console.log('DEFECT: the shop made no button for its first row');
 console.log(bad ? 'DEFECT: the price is drawn as affordable while the purchase is refused' : 'no defect');
-process.exit(bad ? 1 : 0);
+process.exit(bad || !row ? 1 : 0);

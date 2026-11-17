@@ -229,7 +229,7 @@ export const MAPS = [
   { id: 'maplens', icon: 'scanner', name: 'LENS', what: 'MAP TELLS MORE APART', values: [0, 1, 2, 3], gem: B.LODE, ...levels([1.5, 3.5, 5.5], 0.25), show: v => ['ROCK', 'ORE', 'HARD', 'ALL'][v] },
   { id: 'mapfinder', icon: 'scanner', name: 'FINDER', what: 'MARKS FINDS UNSEEN', values: [0, 1, 2, 3], gem: B.MIRE, ...levels([2.5, 4.5, 6.5], 0.25), show: v => ['OFF', 'CACHE', 'GEODE', 'PRISM'][v],
     says: l => `${['CACHES', 'GEODES', 'PRISMS'][l]} ${FINDER[l + 1]} OUT` },
-  { id: 'chart', icon: 'scanner', name: 'CHART', what: 'MAP OF THE WHOLE REACH', values: [0, 1], gem: B.EMBER, ...levels([3], 0.3), show: v => v ? 'ON' : 'OFF' },
+  { id: 'chart', icon: 'scanner', name: 'CHART', what: 'MAPS THE WHOLE REACH', values: [0, 1], gem: B.EMBER, ...levels([3], 0.3), show: v => v ? 'ON' : 'OFF' },
 ];
 // The shop's fourth tab, CORE: what is built into the station late in a game, at many times the price of anything
 // in the other tabs (a level costs from one and a half to six times the step of reach it lies beside, and gems by

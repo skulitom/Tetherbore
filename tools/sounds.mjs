@@ -66,7 +66,7 @@ if (!await access(path.join(root, options.module)).then(() => true, () => false)
 const one = (name, seconds, sound, ...args) => ({ name, seconds, events: [[0, sound, ...args]] });
 // (A creature's voice is asked for as `v:` and its name: the module's `voices`, which js/fauna.js asks.)
 const VOICES = ['tick', 'yip', 'coo', 'tug', 'pop', 'flutter', 'wheeze', 'spit', 'splat', 'purr', 'chitter', 'screech', 'whoosh', 'croak', 'squeak', 'caught', 'poof', 'plip', 'slurp', 'skitter', 'trill',
-  'buzz', 'glass', 'meet', 'befriend'];
+  'buzz', 'glass', 'meet', 'befriend', 'trophy'];
 const every = (gap, count, sound, args = () => [], from = 0) => Array.from({ length: count }, (_, n) => [from + n * gap, sound, ...args(n)]);
 // Three crosses, as rows of the world are (the host's piece with the donor's voice and a structure's change).
 const CROSSES = [{ name: 'hollow thaw', kin: 1, cross: { host: 1, donor: 2, structure: 1 } }, { name: 'banded buzzmire', kin: 3, cross: { host: 3, donor: 4, structure: 4 } },

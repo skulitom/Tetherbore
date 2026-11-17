@@ -7,8 +7,9 @@ import { N, C, K, B, DX, DY, BIOMES, HAZARDS, CRUSH, ZONE, FIND, rowOf, hazOf, c
 import { sheets, draw, drawScaled, frameAt, duration, slice9, text, textWidth, tinted } from './atlas.js';
 import { decorAt, markAt, natural, framesOf, placeOf } from './decor.js';
 import { sfx, isMuted, setMuted, isMusic, setMusic } from './audio.js';
-import { WORKS, MAPS, TABS, LAB, LAB_OF, LAB_KINS, labLevel, labNext, ROWS, FOUND, FINDER } from './shop.js';
-import { TETHERS, BODY, BODY_A, HOT, HOT_A, RAM, PLATE, FLAME, FLAME_TIER, FITS, FIT_BIT, CORE_IDLE, CORE_C, CORE_FLASH, DISH, REFINERY, CUTTER, BOX, ORBIT, BEACON } from './fit.js';
+import { WORKS, MAPS, TABS, LAB, LAB_OF, LAB_KINS, labLevel, labNext, ROWS, FOUND, FINDER, CUT, WINCH_LOAD } from './shop.js';
+import { pickGoal, goalShare } from './goal.js';
+import { TETHERS, BODY, BODY_A, HOT, HOT_A, RAM, PLATE, FLAME, FLAME_TIER, FITS, FIT_BIT, CORE_IDLE, CORE_C, CORE_FLASH, DISH, REFINERY, CUTTER, BOX, ORBIT, BEACON, STATION_PARTS } from './fit.js';
 // (The middle of the core and two figures of the rules are the game's, read from js/game.js, which imports this
 // module in turn. The two may import each other because these names are read only inside the methods, which run
 // once both modules have: js/game.js is the module a page, a test or a tool loads, and this one runs before it,
@@ -52,11 +53,28 @@ export const LAB_LIST = (() => {
   return { lines, line, at, head, content: y };
 })();
 // What is said under the list of a thing analysed n times: its count, and the count its next level comes at.
+// Two values of a shop's row, `a>b`, in no more than `room` pixels: a word the two share said once ('ALL x3>x4',
+// '3>4 SPEC'), and failing that the next alone ('>ALL x2'). (What the row says on its second line says the rest.)
+const fewer = (a, b, room) => {
+  const A = a.split(' '), B = b.split(' ');
+  if (A.length === 2 && B.length === 2) {
+    const one = A[0] === B[0] ? `${A[0]} ${A[1]}>${B[1]}` : A[1] === B[1] ? `${A[0]}>${B[0]} ${A[1]}` : null;
+    if (one && textWidth(one) <= room) return one;
+  }
+  return `>${b}`;
+};
 export const labCount = n => `${compact(n)} ${n === 1 ? 'SAMPLE' : 'SAMPLES'}. +1% AT ${compact(labNext(n))}`;
 // What the lens shows a kind of ground as, and from which level of it: [level, red, green, blue].
 const LENS = [];
 for (const [level, colour, kinds] of [[1, [214, 178, 64], [K.ORE_A]], [1, [255, 232, 96], [K.ORE_B]], [2, [176, 184, 204], [K.SLATE, K.VAULT, K.KEY, K.STEEL, K.SLAG]], [2, [255, 84, 64], [K.HAZARD, K.HAZARD2]],
   [3, [120, 240, 190], [K.MINERAL, K.NODE, K.CACHE, K.PRISM, K.FOSSIL, K.CAP, K.CAP_LIT, K.TWIN]]]) for (const k of kinds) LENS[k] = [level, ...colour];
+// Which of two things the lens tells apart a pixel of the map in the corner shows, where a pixel is many cells: the
+// higher of these (a rare hazard, which is not in LENS, above them all). A find before a hazard, a hazard before
+// hard ground, hard ground before ore: the rarer thing, as a pixel of three cells and more across would otherwise
+// show whichever cell its middle fell on, and a wider range showed less than a narrow one.
+const LENS_RANK = [];
+LENS.forEach((L, k) => { LENS_RANK[k] = L[0] === 3 ? 4 : L[0] === 1 ? 1 : k === K.HAZARD || k === K.HAZARD2 ? 3 : 2; });
+const RARE_RANK = 5;
 // A rare hazard is shown with the hazards, each of the four in a colour of its own: by the kin of its ground, which
 // is which it is (js/world.js: `RARE`).
 const RARE_LENS = [undefined, [2, 170, 236, 255], [2, 255, 150, 40], [2, 190, 255, 90], [2, 176, 128, 255]];
@@ -103,7 +121,10 @@ const RARE_GLINTS = 8, RARE_GLINT = [0.3, 1.5], WORM_GLOW = [0.45, 2.5], JET_LIG
 const PREVIEW = { heat: 0, flame: 0, tint: '#ffffff', tintAlpha: 0, lit: 0, spin: 0 };
 // And the frames of the CORE tab's rows: where on the station's sheet each part lies, a cell's worth of it.
 const PART_CROP = { refinery: [0, 1], cutter: [48, 47], blackbox: [0, 45] };
-const NO_DASH = [];                             // (a line with no dashes: the one list, given each time)
+// The finds the map in the corner marks on its rim, past its edge, at the most: the nearest so many (`drawMap`), in
+// lists made once.
+const RIM = 8, RIM_FAR = new Float64Array(RIM), RIM_OF = new Int32Array(RIM);
+const NO_DASH = [], NO_FINDS = [];              // (a line with no dashes, and no finds: the one list each, given each time)
 const ROUND = 3.5, BRAID = 4;                    // on the fine canvas: how wide a rope rounds a corner, and the length of one turn of its braid, in the game's pixels
 const LIGHT_STEP = [[1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, -1, 1], [1, 1, 1.41], [-1, 1, 1.41], [1, -1, 1.41], [-1, -1, 1.41]];
 // How far light goes to each of those neighbours, in a flat array: the flood of light reads it eight times for
@@ -600,6 +621,8 @@ export class Drawing {
         else for (const run of runs) { o.lineDashOffset = run[2] % BRAID; trace(0, run); o.stroke(); }
         o.lineDashOffset = 0; o.setLineDash(NO_DASH);
       }
+      // (The trophy line's barbs, on the tether out to the drill: js/fit.js.)
+      if (r.pulse) this.fitter.barbs(this, o, r);
       if (r.loop) for (const [x, y] of pts) { bx0 = Math.min(bx0, x); by0 = Math.min(by0, y); bx1 = Math.max(bx1, x); by1 = Math.max(by1, y); }
       else for (const [from, to] of runs) for (let i = from; i <= to; i++) { const [x, y] = pts[i]; bx0 = Math.min(bx0, x); by0 = Math.min(by0, y); bx1 = Math.max(bx1, x); by1 = Math.max(by1, y); }
     }
@@ -1119,8 +1142,9 @@ export class Drawing {
   // What a haul's banner says besides its title and what it paid: how many cells came and what their grit was
   // multiplied by, and that the piece was over the winch's load where it was (a keystone slab is the haul the winch
   // is for); and, where a prism came with it, what the prism multiplied the gems by (null: no prism).
-  // And third, where the haul held a pocket's mineral that raised a count of specimens: by how many.
-  bannerSays(b) { return [`${b.n} x${b.mult.toFixed(1)}${b.over < 1 ? ' WINCH OVER LOAD' : ''}`, b.shine > 1 ? `PRISM x${b.shine}` : null, b.spec > 0 ? `+${b.spec}` : null]; }
+  // And third, where the haul held a pocket's mineral that raised a count of specimens: by how many. (A foe caught
+  // as a trophy, js/fauna.js, is no haul: its banner has the specimens it paid and nothing else.)
+  bannerSays(b) { if (b.trophy) return ['', null, `+${b.spec}`]; return [`${b.n} x${b.mult.toFixed(1)}${b.over < 1 ? ' WINCH OVER LOAD' : ''}`, b.shine > 1 ? `PRISM x${b.shine}` : null, b.spec > 0 ? `+${b.spec}` : null]; }
   // What the next thing to be bought with a direction's specimens asks of them, or 0 where nothing is left to buy.
   specNeed(kin) { const u = WORKS.find(u => u.kin === kin && this.cost(u)); return u ? this.cost(u).spec : 0; }
   drawHud(ox, oy) {
@@ -1140,13 +1164,13 @@ export class Drawing {
       const colour = giant > GIANTS.length ? GEM_COLOR[1 + beat % 4] : giant ? (beat % 2 ? '#ffffff' : '#ffe14a') : b.colour ?? (b.n >= 30 ? '#ffe14a' : '#ffffff');
       text(ctx, b.title, W / 2, y, colour, 0.5, big);
       const [size, prism, spec] = this.bannerSays(b);
-      text(ctx, size, W / 2, y + 11 * big + 2, b.over < 1 ? '#ffb060' : '#bfe6ff', 0.5);
-      let line = `+${compact(b.grit)}`, lw = textWidth(line) + 11;
+      if (size) text(ctx, size, W / 2, y + 11 * big + 2, b.over < 1 ? '#ffb060' : '#bfe6ff', 0.5);
+      let line = `+${compact(b.grit)}`, lw = b.trophy ? -4 : textWidth(line) + 11;
       const gems = [1, 2, 3, 4].filter(g => b.gems[g] > 0);
       for (const g of gems) lw += textWidth(`+${compact(b.gems[g])}`) + 15;
       if (spec) lw += textWidth(spec) + 17;
-      let lx = Math.round(W / 2 - lw / 2), ly = y + 11 * big + 14;
-      draw(ctx, 'icons', 'grit', lx, ly - 1); text(ctx, line, lx + 11, ly, '#ffe14a'); lx += textWidth(line) + 15;
+      let lx = Math.round(W / 2 - lw / 2), ly = y + 11 * big + (size ? 14 : 2);
+      if (!b.trophy) { draw(ctx, 'icons', 'grit', lx, ly - 1); text(ctx, line, lx + 11, ly, '#ffe14a'); lx += textWidth(line) + 15; }
       for (const g of gems) { draw(ctx, 'icons', GEM_ICON[g], lx, ly - 1); text(ctx, `+${compact(b.gems[g])}`, lx + 11, ly, GEM_COLOR[g]); lx += textWidth(`+${compact(b.gems[g])}`) + 15; }
       // The specimens a pocket's mineral added, with the mineral itself beside the figure.
       if (spec) { if (b.mineral) this.drawMineral(ctx, b.mineral, lx - 1, ly - 3); else draw(ctx, 'icons', `spec-${GEM_ICON[b.specOf]}`, lx, ly - 1); text(ctx, spec, lx + 13, ly, GEM_COLOR[b.specOf]); }
@@ -1192,6 +1216,13 @@ export class Drawing {
     // menu), and another shuts it.
     const B = H - 44;
     slice9(ctx, 'ui', 'panel', 2, B + 2, W - 4, 40);
+    // What the player is saving for (js/goal.js): a line along the bar's top edge, as far across as what is banked
+    // has come towards its price (the least of its grit, gems and specimens), in yellow, blinking green once all of
+    // it is there. Its price was kept when it was chosen: nothing of the shop is asked here.
+    if (this.saving().id !== null) {
+      const share = goalShare(this), full = share >= 1;
+      if (!full || ((now / 250) | 0) % 2 === 0) { ctx.fillStyle = full ? '#8ce060' : '#ffe14a'; ctx.fillRect(4, B + 3, Math.round((W - 8) * share), 1); }
+    }
     draw(ctx, 'icons', 'grit', 6, B + 5);
     text(ctx, compact(S.grit - this.pending.grit), 18, B + 6 - (this.counted > 0 ? 1 : 0), this.counted > 0 ? '#ffffff' : '#ffe14a');
     const gw = (W - 30) / 4;
@@ -1215,9 +1246,11 @@ export class Drawing {
       ctx.fillRect(x + 1, B + 7, 2, 5);
     }
     // What the lab has analysed, of all it can: shown once there is a first sample, lit for a moment by a new level.
-    const known = LAB.filter(e => S.lab[e.key]).length;
-    if (known && hx + pips * 5 + 4 < W - 6 - textWidth(`${known}/${LAB.length}`) - 11) {
-      const count = `${known}/${LAB.length}`, lit = this.labFlash > 0 && ((now / 120) | 0) % 2 === 0;
+    // (`known` is the game's count, kept as samples come in: counting the lab's list here made a list every frame.)
+    const known = this.known;
+    if (this.knownFor !== known) { this.knownFor = known; this.knownSaid = `${known}/${LAB.length}`; }
+    if (known && hx + pips * 5 + 4 < W - 6 - textWidth(this.knownSaid) - 11) {
+      const count = this.knownSaid, lit = this.labFlash > 0 && ((now / 120) | 0) % 2 === 0;
       text(ctx, count, W - 6, B + 6, lit ? '#ffffff' : '#8cf2c4', 1);
       draw(ctx, 'icons', 'lab', W - 6 - textWidth(count) - 11, B + 5);
     }
@@ -1318,14 +1351,30 @@ export class Drawing {
     if (M.mapFor !== view || (!big && this.time - M.mapAt > 0.5)) {
       M.mapAt = this.time; M.mapFor = view;
       const px = M.mapData.data;
+      // (In the corner, where a pixel is three cells across and more, the lens looks at four cells spread over it,
+      // a quarter and three quarters of the way across and down, and shows the one it ranks highest (`LENS_RANK`):
+      // a lone cache or hazard is not lost between the cells the pixels' middles fall on. A cell more a pixel is
+      // looked at only where the lens has anything to tell apart.)
+      const spread = !big && per >= 3 && lens > 0;
       for (let v = 0; v < size; v++) for (let u = 0; u < size; u++) {
         const wx = Math.floor(mx0 + (u - size / 2 + 0.5) * per), wy = Math.floor(my0 + (v - size / 2 + 0.5) * per), o = (v * size + u) * 4, k = w.peek(wx, wy), row = rowOf(w.biomeKnown(wx, wy));
         let [r, g, b] = row.map;
         const inside = Math.hypot(wx - C, wy - C) <= R;
         let shade = (k < 0 ? 0.3 : k === K.EMPTY ? 0.12 : 0.85) * (inside ? 1 : 0.45);
         // What the lens tells apart is drawn in its own colour, at full strength.
-        const L = k === K.RARE ? RARE_LENS[row.kin] : k > 0 ? LENS[k] : undefined;
-        if (L !== undefined && L[0] <= lens) { r = L[1]; g = L[2]; b = L[3]; shade = inside ? 1 : 0.6; }
+        let L = k === K.RARE ? RARE_LENS[row.kin] : k > 0 ? LENS[k] : undefined, lit = inside;
+        if (L !== undefined && L[0] > lens) L = undefined;
+        if (spread) {
+          let rank = L === undefined ? 0 : k === K.RARE ? RARE_RANK : LENS_RANK[k];
+          for (let q = 0; q < 4 && rank < RARE_RANK; q++) {
+            const sx = Math.floor(mx0 + (u - size / 2 + 0.25 + (q & 1) * 0.5) * per), sy = Math.floor(my0 + (v - size / 2 + 0.25 + (q >> 1) * 0.5) * per), sk = w.peek(sx, sy);
+            if (sk <= 0) continue;
+            const SL = sk === K.RARE ? RARE_LENS[rowOf(w.biomeKnown(sx, sy)).kin] : LENS[sk], sr = sk === K.RARE ? RARE_RANK : LENS_RANK[sk];
+            if (SL === undefined || SL[0] > lens || sr <= rank) continue;
+            L = SL; rank = sr; lit = Math.hypot(sx - C, sy - C) <= R;
+          }
+        }
+        if (L !== undefined) { r = L[1]; g = L[2]; b = L[3]; shade = lit ? 1 : 0.6; }
         px[o] = r * shade + 8; px[o + 1] = g * shade + 7; px[o + 2] = b * shade + 10; px[o + 3] = 255;
       }
       map.getContext('2d', { willReadFrequently: true }).putImageData(M.mapData, 0, 0);
@@ -1373,11 +1422,33 @@ export class Drawing {
       const [mx, my] = at(wx + 0.5, wy + 0.5);
       ctx.fillStyle = '#ff9a3a'; ctx.fillRect(Math.round(mx) - 1, Math.round(my), 3, 1); ctx.fillRect(Math.round(mx), Math.round(my) - 1, 1, 3);
     });
-    // What the finder knows of and the drill has not seen: a dot each, in the find's own colour, ringed dark.
-    for (const [what, fx, fy] of this.findsNear(mx0, my0, size * per / 2)) {
-      const [mx, my] = at(fx + 0.5, fy + 0.5);
+    // What the finder knows of and the drill has not seen: a dot each, in the find's own colour, ringed dark. In the
+    // corner the finder is asked as far as it reaches (FINDER), which is further than the map shows from RANGE's
+    // first level to its last: a find beyond the map's edge is a pip on its rim, in its colour, on the line from the
+    // drill to it, so the far levels of the finder show what they find. (The chart shows the whole reach.)
+    // (Only the RIM nearest of those past the edge: at RANGE's far levels the map shows a few dozen finds already,
+    // and a rim of pips all round says nothing.)
+    const half = size / 2 - 1, finds = big ? this.findsNear(mx0, my0, size * per / 2, M) : this.findsNear(mx0, my0, FINDER[this.val('mapfinder')], M);
+    let rims = 0;
+    for (let n = 0; n < finds.length; n++) {
+      const [what, fx, fy] = finds[n], [mx, my] = at(fx + 0.5, fy + 0.5), ox = mx - x - size / 2, oy = my - y - size / 2;
+      if (Math.max(Math.abs(ox), Math.abs(oy)) > half) {
+        // (Kept nearest first: the furthest of RIM is put out by a nearer.)
+        const far = ox * ox + oy * oy;
+        let k = rims < RIM ? rims++ : RIM;
+        while (k > 0 && RIM_FAR[k - 1] > far) { if (k < RIM) { RIM_FAR[k] = RIM_FAR[k - 1]; RIM_OF[k] = RIM_OF[k - 1]; } k--; }
+        if (k < RIM) { RIM_FAR[k] = far; RIM_OF[k] = n; }
+        continue;
+      }
       ctx.fillStyle = '#0c0a12'; ctx.fillRect(Math.round(mx) - 2, Math.round(my) - 2, 4, 4);
       ctx.fillStyle = SPOT[what][1]; ctx.fillRect(Math.round(mx) - 1, Math.round(my) - 1, 2, 2);
+    }
+    for (let r = 0; r < rims; r++) {
+      const [what, fx, fy] = finds[RIM_OF[r]], [mx, my] = at(fx + 0.5, fy + 0.5), ox = mx - x - size / 2, oy = my - y - size / 2, off = Math.max(Math.abs(ox), Math.abs(oy));
+      // (Flat along the rim it lies on: two pixels along the top or the foot, two down a side.)
+      const ex = Math.round(x + size / 2 + ox * half / off), ey = Math.round(y + size / 2 + oy * half / off), flat = Math.abs(oy) >= Math.abs(ox);
+      const rx = Math.max(x, Math.min(x + size - (flat ? 2 : 1), flat ? ex - 1 : ex)), ry = Math.max(y, Math.min(y + size - (flat ? 1 : 2), flat ? ey : ey - 1));
+      ctx.fillStyle = SPOT[what][1]; ctx.fillRect(rx, ry, flat ? 2 : 1, flat ? 1 : 2);
     }
     // Pockets within reach that the drill has not been into: a pip each, in the pocket's own colour.
     // (Only those that lie on the map: the map in the corner shows the drill's surroundings and nothing beyond.)
@@ -1402,24 +1473,33 @@ export class Drawing {
   // still lie where the seed laid them (a pocket or a wreck may have taken the place), within the tether's reach,
   // and that the drill has not yet seen (what it has seen is on the map already). Asked of the seed alone: no
   // ground is made to answer. The list is kept while the place, the span and the level stay the same.
-  findsNear(cx, cy, half) {
+  // (`M` keeps the list: the map in the corner and the chart, drawn in one frame, keep one each, so that neither
+  // makes the other's again.)
+  findsNear(cx, cy, half, M = this) {
     const w = this.world, level = this.val('mapfinder'), R = this.val('tether');
-    if (!level) return [];
+    if (!level) return NO_FINDS;
     // (Sectors of finds that are both in the view asked about and within the finder's range of the drill.)
     const d = this.drill, far = FINDER[level], lo = (a, b) => Math.floor((Math.max(a - half, b - far) - C) / FIND), hi = (a, b) => Math.floor((Math.min(a + half, b + far) - C) / FIND);
     const x0 = lo(cx, d.x), x1 = hi(cx, d.x), y0 = lo(cy, d.y), y1 = hi(cy, d.y);
-    const key = `${this.S.seed}:${level}:${R}:${x0},${y0},${x1},${y1}:${Math.floor(d.x / 8)},${Math.floor(d.y / 8)}:${this.version}`;
-    if (this.foundFor !== key) {
-      this.foundFor = key; this.found = [];
-      for (let sy = y0; sy <= y1 && this.found.length < 200; sy++) for (let sx = x0; sx <= x1; sx++) {
-        const [what, fx, fy] = w.findSpot(sx, sy);
-        if (what === null || !(FOUND[what] <= level) || Math.hypot(fx - C, fy - C) > R || Math.hypot(fx + 0.5 - d.x, fy + 0.5 - d.y) > far || w.peek(fx, fy) >= 0) continue;
+    // (What the seed lays there is asked again only when the drill has gone eight cells or the span or the level has
+    // changed; which of it is still unseen, whenever the ground has: in flight, every cell.)
+    const key = `${this.S.seed}:${level}:${R}:${x0},${y0},${x1},${y1}:${Math.floor(d.x / 8)},${Math.floor(d.y / 8)}`;
+    if (M.laidFor !== key) {
+      M.laidFor = key; M.laid = []; M.foundAt = -1;
+      for (let sy = y0; sy <= y1 && M.laid.length < 200; sy++) for (let sx = x0; sx <= x1; sx++) {
+        // (Asked without an array a sector: in the corner the finder's whole range is asked.)
+        const what = w.findName(sx, sy), fx = w.asked.fx, fy = w.asked.fy;
+        if (what === null || !(FOUND[what] <= level) || Math.hypot(fx - C, fy - C) > R || Math.hypot(fx + 0.5 - d.x, fy + 0.5 - d.y) > far) continue;
         const laid = w.kindAt(fx, fy, w.biomeAt(fx, fy));
         if ((what === 'cache' && laid !== K.CACHE) || (what === 'prism' && laid !== K.PRISM) || rowOf(w.biomeAt(fx, fy)).pocket !== null) continue;
-        this.found.push([what, fx, fy]);
+        M.laid.push([what, fx, fy]);
       }
     }
-    return this.found;
+    if (M.foundAt !== this.version) {
+      M.foundAt = this.version; M.found = [];
+      for (const f of M.laid) if (w.peek(f[1], f[2]) < 0) M.found.push(f);
+    }
+    return M.found;
   }
   // The pockets the map marks: those whose middles lie within the tether's reach and that the drill has not been
   // into, the PIPS nearest the drill. One whose ground was made before pockets were laid (an older saved game's:
@@ -1511,37 +1591,52 @@ export class Drawing {
     text(ctx, 'x', px + pw - 12, py + 6, '#ffffff');
     this.buttons.unshift({ x: px + pw - 24, y: py, w: 24, h: HEAD, act: () => { this.lab = false; sfx.tap(); } });
   }
+  // What the player is saving for, chosen for this game where it has not been yet (js/goal.js).
+  saving() { const g = this.goal; return g !== undefined && g.of === this.S ? g : pickGoal(this); }
   // What the drill is now, a line a thing: every figure read from the game itself, so it cannot say otherwise than
   // the game plays. What a hazard does to this drill is in green where something fitted has turned it.
   stats() {
-    const S = this.S, parts = (S.wrecks ?? []).filter(Boolean).length, known = LAB.filter(e => S.lab[e.key]), mender = this.val('mender');
-    const best = known.reduce((most, e) => Math.max(most, labLevel(S.lab[e.key])), 0);
+    const S = this.S, parts = (S.wrecks ?? []).filter(Boolean).length, mender = this.val('mender'), lv = S.lv;
+    // (Counted from the lab's own book, not the game's running count, so a book filled by hand is read as it is.)
+    let known = 0, best = 0;
+    for (const e of LAB) { const n = S.lab[e.key]; if (n) { known++; best = Math.max(best, labLevel(n)); } }
+    // The panel is no more than 23 lines on the narrowest phone, and every line one line: what a later row adds is
+    // said on a line there already, and where two ways of saying a line are given the first that fits is said.
+    const room = Math.min(this.W - 8, 200) - 20, first = (...ways) => ways.find(([name, value]) => textWidth(name) + textWidth(value) <= room) ?? ways[ways.length - 1];
+    const out = Math.floor(S.out ?? 0), load = WINCH_LOAD[lv.winch], live = this.val('livecatch'), spin = this.val('flywheel'), foe = this.val('trophy');
+    const beasts = S.fauna?.met ? Object.keys(S.fauna.met).length : 0, places = Object.keys(S.met).length, chart = this.val('chart') > 0, finder = this.val('mapfinder');
+    const specs = [1, 2, 3, 4].map(k => this.specs(k)), keeps = Math.round(this.val('blackbox') * 100), PLACES = places === 1 ? 'PLACE' : 'PLACES';
+    // (A rare hazard alive in a loop pays more with the live catch, said on its own line.)
+    const rare = (name, does) => live > 1 ? [...first([name, `${does}, x${live} LIVE`], [name, `${does} x${live} LIVE`], [name, `x${live} LIVE`]), true] : [name, does, false];
     return [
-      ['REACH', `${this.val('tether')} CELLS`],
-      ['BIT', `MK${this.val('drill')}`],
+      // (How far out the drill has been, of how far the tether goes.)
+      ['REACH', out > 0 ? `${Math.min(out, this.val('tether'))}/${this.val('tether')} CELLS` : `${this.val('tether')} CELLS`],
+      ['BIT', `MK${this.val('drill')}, CUTS x${CUT[lv.drill]}${lv.drill >= 5 ? ' PLOUGH' : ''}`, lv.drill >= 5 || undefined],
       ['SPEED', `x${this.val('momentum')}`],
-      ['WINCH', `x${this.val('winch')}`],
+      ['WINCH', `x${this.val('winch')}, LOAD ${load < 10000 ? load : compact(load)}`],
       ['SCAN', `${this.val('scanner')} CELLS`],
       ['HULL', `${this.hull}/${this.val('hull')} PIPS`],
       ['MENDS', `1 PIP / ${mender} S`, this.S.lv.mender > 0],
-      ['LAVA', this.swims ? 'SWIMS IN IT' : 'BURNS', this.swims],
-      ['SPORES', this.val('sporedrive') ? `SPEED x${BOOST.by}` : 'KNOCK', this.val('sporedrive') > 0],
-      ['ARCS', this.val('arccoil') ? 'MEND A PIP' : 'KNOCK', this.val('arccoil') > 0],
+      ['LAVA', this.swims ? lv.lavaskin >= 2 ? 'SWIMS, SMELTS' : 'SWIMS IN IT' : 'BURNS', this.swims],
+      ['SPORES', this.val('sporedrive') ? `SPEED x${BOOST.by}${lv.sporedrive >= 2 ? ', GRAFT' : ''}` : 'KNOCK', this.val('sporedrive') > 0],
+      ['ARCS', this.val('arccoil') ? lv.arccoil >= 2 ? 'MEND, CHARGE BIT' : 'MEND A PIP' : 'KNOCK', this.val('arccoil') > 0],
       // (A rare hazard has its line once it has been met: there would be no room on a phone for all of them.)
-      ...[['bell', 'BELLS', 'KNOCK'], ['vent', 'JETS', 'KNOCK'], ['worm', 'WORMS', 'BITE'], ['lodestone', 'LODESTONES', 'KNOCK']].filter(([type]) => S.rare?.[type]).map(([, name, does]) => [name, does, false]),
-      ['HAUL PAY', `+${parts * 10}% (${parts}/8 PARTS)`, parts > 0],
-      ['FURTHEST OUT', `${Math.floor(S.out ?? 0)} CELLS`],
-      ['PLACES MET', `${Object.keys(S.met).length}`],
-      // (The creatures have their line once one has been met: how many kinds, and the pal.)
-      ...(S.fauna && Object.keys(S.fauna.met ?? {}).length ? [['CREATURES', `${Object.keys(S.fauna.met).length}/${KINDS}${S.fauna.pal ? ', A PAL' : ''}`, !!S.fauna.pal]] : []),
+      ...[['bell', 'BELLS', 'KNOCK'], ['vent', 'JETS', 'KNOCK'], ['worm', 'WORMS', 'BITE'], ['lodestone', 'LODESTONES', 'KNOCK']].filter(([type]) => S.rare?.[type]).map(([, name, does]) => rare(name, does)),
+      // (The wrecks' parts, and the flywheel's run.)
+      spin ? [...first(['HAUL PAY', `+${parts * 10}% ${parts}/8, SPIN +${Math.round(spin * 100)}%`], ['HAUL PAY', `+${parts * 10}%, SPIN +${Math.round(spin * 100)}%`]), true]
+        : ['HAUL PAY', `+${parts * 10}% (${parts}/8 PARTS)`, parts > 0],
+      // (The places met; and the creatures, once one has been: how many kinds, lit while the pal is with the drill.)
+      beasts ? [...first(['MET', `${places} ${PLACES}, ${beasts}/${KINDS} BEASTS`], ['MET', `${places} ${PLACES}, ${beasts} ${beasts === 1 ? 'BEAST' : 'BEASTS'}`]), !!S.fauna.pal] : ['MET', `${places} ${PLACES}`],
       ['REFINERY', `GRIT x${this.val('refinery')}, GEMS x${this.val('cutter')}`, S.lv.refinery + S.lv.cutter > 0],
       ['LAMP', `${this.val('lamp')} CELLS`, S.lv.lamp > 0],
-      ['BLACK BOX', this.val('blackbox') ? `KEEPS ${Math.round(this.val('blackbox') * 100)}%` : 'NONE', S.lv.blackbox > 0],
-      ['ANALYSED', known.length ? `${known.length}/${LAB.length}, UP TO +${best}%` : `0/${LAB.length}`, known.length > 0],
-      ['SPECIMENS', [1, 2, 3, 4].map(k => this.specs(k)).join(' / ')],
-      ['MAP', `${Math.round(this.val('maprange') * 46)} CELLS, ${MAPS[1].show(this.val('maplens'))}`, this.S.lv.maprange + this.S.lv.maplens > 0],
-      ['FINDER', this.val('mapfinder') ? `${['', 'CACHES', '+GEODES', 'ALL'][this.val('mapfinder')]}, ${FINDER[this.val('mapfinder')]} CELLS` : 'NONE', this.val('mapfinder') > 0],
-      ['CHART', this.val('chart') ? 'YES' : 'NONE', this.val('chart') > 0],
+      // (From its third level the black box keeps what a lost trip learnt as well: js/game.js, `keepLore`.)
+      lv.blackbox >= 3 ? [...first(['BLACK BOX', `KEEPS ${keeps}% +LORE`], ['BLACK BOX', `${keeps}% +LORE`]), true] : ['BLACK BOX', keeps ? `KEEPS ${keeps}%` : 'NONE', S.lv.blackbox > 0],
+      known ? [...first(['ANALYSED', `${known}/${LAB.length}, UP TO +${best}%`], ['ANALYSED', `${known}/${LAB.length}, +${best}%`]), true] : ['ANALYSED', `0/${LAB.length}`, false],
+      // (The specimens of each direction, north, south, west and east; and what a foe at rest pays in a loop.)
+      foe ? [...first(['SPECIMENS', `${specs.join('/')}, FOE +${foe}`], ['SPEC', `${specs.join('/')}, FOE +${foe}`], ['SPEC', `${specs.join('/')}`]), true]
+        : first(['SPECIMENS', specs.join(' / ')], ['SPECIMENS', specs.join('/')], ['SPEC', specs.join('/')]),
+      ['MAP', chart ? `${Math.round(this.val('maprange') * 46)}, ${MAPS[1].show(this.val('maplens'))}, CHART` : `${Math.round(this.val('maprange') * 46)} CELLS, ${MAPS[1].show(this.val('maplens'))}`, this.S.lv.maprange + this.S.lv.maplens + this.S.lv.chart > 0],
+      ['FINDER', finder ? `${['', 'CACHES', '+GEODES', 'ALL'][finder]}, ${FINDER[finder]} CELLS` : 'NONE', finder > 0],
     ];
   }
   // The menu: the sound, and a new world (two taps, so a slip of the thumb does not cost a world).
@@ -1756,11 +1851,15 @@ export class Drawing {
       const r = name ? sheets.station.frames[name] : frameAt('station', 'cutter-6', now);
       if (r) ctx.drawImage(sheets.station.image, r[0] + cx, r[1] + cy, 16, 16, vx, vy, 16, 16);
       if (u.id === 'refinery' && ((t * 3) | 0) % 3 === 0) { ctx.fillStyle = '#ffd84a'; ctx.fillRect(vx + 6, vy + 2, 1, 1); }
+    } else if (STATION_PARTS[u.id] && sheets.station) {
+      // (The live catch's clamp and the trophy line's rack, as they will stand on the station: js/fit.js.)
+      const part = STATION_PARTS[u.id], r = sheets.station.frames[part.frames[next]];
+      if (r) ctx.drawImage(sheets.station.image, r[0] + part.crop[0], r[1] + part.crop[1], 16, 16, vx, vy, 16, 16);
     } else if (u.pic) draw(ctx, 'icons', u.pic, vx + 3, vy + 3);
     else { draw(ctx, 'upgrades', u.icon, vx + 2, vy + 2); text(ctx, `${u.values[next]}`, vx + 15, vy + 7, '#ffffff', 1); }
   }
   drawShop() {
-    const { ctx, W, H, S } = this;
+    const { ctx, W, H, S } = this, goal = this.saving();
     ctx.globalAlpha = 0.6 * this.shopRise; ctx.fillStyle = '#07060b'; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1;
     // (The panel is as tall as its longest tab, so it does not jump when the tab is changed.)
     const most = Math.max(...TABS.map(t => t.rows.length)), tab = TABS.find(t => t.id === this.shopTab) ?? TABS[0];
@@ -1790,37 +1889,48 @@ export class Drawing {
       // What it is, what it does, and what the next level changes. (Where a level has just been bought, the new
       // value is stamped in its place for a moment: js/fit.js, `panel`.)
       text(ctx, u.name, px + 25, y + 2, '#ffffff');
-      // (A thing fitted once has no levels to show: it is FITTED or it is not.)
-      const once = u.values.length === 2, steps = once ? (c ? '' : 'FITTED') : c ? `${u.show(u.values[l])}>${u.show(u.values[l + 1])}` : `${u.show(u.values[l])} MAX`;
-      if (!this.fitter.stamps(tab.id, u.id)) text(ctx, steps, px + 31 + textWidth(u.name), y + 2, c ? '#bfe6ff' : '#ffe14a');
-      const lack = c ? this.lacks(u) : null;
-      // What must be found first is said on the second line, and no price is shown until it has been.
+      // (The row saved for, `goal`, has a pin after its name.)
+      if (goal.id === u.id) { ctx.fillStyle = '#ffe14a'; ctx.fillRect(px + 27 + textWidth(u.name), y + 5, 2, 2); }
+      // (A thing fitted once has no levels to show: it is FITTED or it is not. Where the two values are too wide
+      // for the line, a word they share is said once, and failing that the next is said alone: `fewer`.)
+      const once = u.values.length === 2, sx = px + 31 + textWidth(u.name), edge = px + pw - 6;
+      let steps = once ? (c ? '' : 'FITTED') : c ? `${u.show(u.values[l])}>${u.show(u.values[l + 1])}` : `${u.show(u.values[l])} MAX`;
+      if (sx + textWidth(steps) > edge) steps = c ? fewer(u.show(u.values[l]), u.show(u.values[l + 1]), edge - sx) : u.show(u.values[l]);
+      if (!this.fitter.stamps(tab.id, u.id)) text(ctx, steps, sx, y + 2, c ? '#bfe6ff' : '#ffe14a');
+      // What must be found first is said on the second line, and no price is shown until it has been. (Without
+      // its NEEDS where the line is too narrow for it: the colour says as much.)
+      let lack = c ? this.lacks(u) : null;
+      if (lack && px + 25 + textWidth(lack) > edge) lack = lack.slice(6);
       // (A row tall enough for three lines keeps what the thing does on its second, whatever is on the third.)
       const tall = rh >= 30;
-      // (The reach's row says so where its price is cut for ground that is spent.)
-      const what = u.id === 'tether' && c && this.groundLeft() < 1 ? 'GROUND SPENT: PRICE CUT' : u.what;
+      // What the next level changes, where the row says (`says`), and what the thing does where it does not or
+      // there is no next level. (The reach's row says so where its price is cut for ground that is spent.)
+      const spent = u.id === 'tether' && c && this.groundLeft() < 1, what = spent ? 'GROUND SPENT: PRICE CUT' : c ? u.says?.(l) ?? u.what : u.what;
       if (lack) { if (tall) text(ctx, what, px + 25, y + 11, '#c8c2d4'); text(ctx, lack, px + 25, y + rh - (tall ? 11 : 12), '#ff9a6a'); }
       else if (c) {
         // The cost sits on the second line when the first is full. It is lit by what has come home (`banked`), as
         // the purchase itself is judged: never shown as enough while the tap would be refused.
-        let cx = px + pw - 18;
-        const have = c.spec ? this.specs(u.kin) : 0, asks = c.spec ? `${have}/${c.spec}` : '';
-        const wide = textWidth(u.name) + textWidth(steps) + textWidth(compact(c.grit)) + (c.gems ? textWidth(compact(c.gems)) + 16 : 0) + (c.spec ? textWidth(asks) + 16 : 0) > pw - 80, cy = wide ? y + rh - (tall ? 11 : 12) : y + 2;
+        const have = c.spec ? this.specs(u.kin) : 0, asks = c.spec ? `${have}/${c.spec}` : '', grit = compact(c.grit), gems = c.gems > 0 ? compact(c.gems) : '';
+        // (Right to left from the panel's edge, each figure after its icon: the first line is full where they
+        // would come within four pixels of the steps.)
+        const costs = textWidth(grit) + (gems ? 16 + textWidth(gems) : 0) + (asks ? 16 + textWidth(asks) : 0);
+        const wide = sx + textWidth(steps) + 4 > px + pw - 20 - costs, cy = wide ? y + rh - (tall ? 11 : 12) : y + 2;
+        let cx = px + pw - 18, last = grit;
         draw(ctx, 'icons', 'grit', cx, cy - 1);
-        text(ctx, compact(c.grit), cx - 2, cy, this.banked() >= c.grit ? '#ffe14a' : '#ff7a5a', 1);
-        if (c.gems > 0) {
-          cx -= textWidth(compact(c.grit)) + 16;
+        text(ctx, grit, cx - 2, cy, this.banked() >= c.grit ? '#ffe14a' : '#ff7a5a', 1);
+        if (gems) {
+          cx -= textWidth(last) + 16; last = gems;
           draw(ctx, 'icons', GEM_ICON[u.gem], cx, cy - 1);
-          text(ctx, compact(c.gems), cx - 2, cy, this.banked(u.gem) >= c.gems ? GEM_COLOR[u.gem] : '#ff7a5a', 1);
+          text(ctx, gems, cx - 2, cy, this.banked(u.gem) >= c.gems ? GEM_COLOR[u.gem] : '#ff7a5a', 1);
         }
         // Specimens: how many are in hand of how many are asked, with the direction's own stone.
-        if (c.spec > 0) {
-          cx -= textWidth(compact(c.grit)) + 16;
+        if (asks) {
+          cx -= textWidth(last) + 16;
           draw(ctx, 'icons', `spec-${GEM_ICON[u.kin]}`, cx, cy - 1);
           text(ctx, asks, cx - 2, cy, have >= c.spec ? GEM_COLOR[u.kin] : '#ff7a5a', 1);
         }
         const short = c.gems > 0 && this.banked(u.gem) < c.gems;
-        if (!wide || tall) text(ctx, short ? `${GEM_WHERE[u.gem]}, PAST ${HOME_R}` : what, px + 25, wide ? y + 11 : y + rh - 12, short ? GEM_COLOR[u.gem] : what === u.what ? '#c8c2d4' : '#8ce060');
+        if (!wide || tall) text(ctx, short ? `${GEM_WHERE[u.gem]}, PAST ${HOME_R}` : what, px + 25, wide ? y + 11 : y + rh - 12, short ? GEM_COLOR[u.gem] : spent ? '#8ce060' : '#c8c2d4');
       } else text(ctx, u.what, px + 25, y + rh - 12, '#e8c070');
       this.buttons.unshift({ x: px + 4, y, w: pw - 8, h: rh - 1, act: () => this.buy(u) });
     });

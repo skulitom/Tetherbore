@@ -105,7 +105,7 @@ for (const name of ['creak', 'shatter', 'drip', 'blub', 'quake', 'gust', 'trickl
 // (The voices of the creatures, js/fauna.js's: each with nothing, beside the drill, at the edge of hearing, and with
 // what is no number.)
 const VOICES = ['tick', 'yip', 'coo', 'tug', 'pop', 'flutter', 'wheeze', 'spit', 'splat', 'purr', 'chitter', 'screech', 'whoosh', 'croak', 'squeak', 'caught', 'poof', 'plip', 'slurp', 'skitter', 'trill',
-  'buzz', 'glass', 'meet', 'befriend'];
+  'buzz', 'glass', 'meet', 'befriend', 'trophy'];
 for (const name of VOICES) { if (typeof audio.voices[name] !== 'function') fails.push(`the creatures ask for voices.${name}, and there is none`); else ASKS.push([`v:${name}`], [`v:${name}`, 1], [`v:${name}`, 0.01], [`v:${name}`, NaN]); }
 for (const name of Object.keys(audio.voices)) if (!VOICES.includes(name)) fails.push(`voices.${name} is not asked for here`);
 for (const name of ['tap', 'gem', 'relic', 'dig', 'tick', 'slide', 'hiss', 'dock', 'clink', 'zap', 'wreck', 'twang', 'thud', 'spot', 'puff', 'place', 'ping', 'mend', 'knock', 'grind', 'freeze', 'deny', 'crack', 'chime', 'buy', 'banked', 'arrive',

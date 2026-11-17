@@ -8,6 +8,7 @@ import { Drawing, T, DIR_BIOME, GEM_ICON, GEM_COLOR, GEM_WHERE, SPOT, bright, co
 import { Feel } from './feel.js';
 import { Fitter } from './fit.js';
 import { Fauna } from './fauna.js';
+import { pickGoal, goalHome } from './goal.js';
 export { richness, haulBonus, overload, income, UPGRADES, LAB, labLevel, labNext, WORKS, MAPS, CORE } from './shop.js';
 
 export { T };
@@ -1338,7 +1339,8 @@ export class Game {
     }
     if (this.world.spotted.length) this.callOut();
     const home = this.atCore;
-    if (home && !d.home) { this.homecoming(); this.save(); }
+    // (And says so where what it was saving for can be paid for now, and chooses that again: js/goal.js.)
+    if (home && !d.home) { this.homecoming(); goalHome(this); this.save(); }
     // Riding on to the core mends the hull.
     if (home && this.dents && d.mode !== 'dead') this.mend();
     // Leaving the core is the docking the game goes back to if the drill is lost: everything up to now is kept.
@@ -1882,7 +1884,7 @@ export class Game {
     // a beat of stillness. A light one says what it paid where it lay, and leaves the banner of a bigger haul up.
     // (A haul named by its place has its title in the place's colour; a giant's stays up longer, and HALF's longest.)
     const mineral = pay.mineral && sheets.minerals?.frames[pay.mineral] ? pay.mineral : null;
-    this.hauled = { title, n, mult, over, grit, gems, light, shine: pay.shine, minerals: pay.minerals, mineral, spec: specUp, specOf, chain: pay.chain, spin: pay.spin, t: 0,
+    this.hauled = { title, n, mult, over, grit, gems, light, shine: pay.shine, minerals: pay.minerals, mineral, spec: specUp, specOf, chain: pay.chain, spin: pay.spin, live: pay.live, t: 0,
       life: half ? 7 : 2.2 + Math.min(1.2, n * 0.01) + giant * 0.4, giant, colour: named ? bright(ground.map) : null, sub: half ? 'HALF THE REACH IN ONE HAUL' : null };
     if (light) {
       this.shake = Math.max(this.shake, Math.min(1.5, 0.7 + n * 0.08));
@@ -2776,6 +2778,8 @@ export class Game {
       if (c) {
         const gems = c.gems > this.banked(u.gem), spec = c.spec > 0 && this.specs(u.kin) < c.spec, lack = this.lacks(u);
         this.shopNote = { t: 2.5, color: lack ? '#ff9a6a' : gems ? GEM_COLOR[u.gem] : spec ? GEM_COLOR[u.kin] : '#ff7a5a', text: lack ?? (gems ? `GEMS: ${GEM_WHERE[u.gem]}, PAST ${HOME_R}` : spec ? `${GEM_WHERE[u.kin]} POCKETS` : 'NOT ENOUGH GRIT') };
+        // (A row that asks only to be paid for is what the player is saving for now: js/goal.js.)
+        if (!lack) pickGoal(this, u);
       }
       sfx.deny(); return;
     }
@@ -2786,6 +2790,7 @@ export class Game {
     if (u.id === 'scanner') { this.world.see(Math.floor(this.drill.x), Math.floor(this.drill.y), this.val('scanner')); this.version++; }
     this.bought = { id: u.id, t: 0.5 };
     this.fitter.bought(this, u, this.S.lv[u.id]);
+    pickGoal(this);
     this.save();
   }
 

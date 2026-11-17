@@ -19,7 +19,13 @@
 //   it never swells; a chill takes no pip, and never lands within the shield after a knock; no plug is laid under
 //   the tether, near the drill, in lava or a pocket;
 //   a name: it comes up only for a creature on the screen, and is kept wholly on it;
-//   pockets: the grotto's creatures never leave it, and nothing from outside goes in, the pal neither.
+//   pockets: the grotto's creatures never leave it, and nothing from outside goes in, the pal neither;
+//   the trophy line: a bat clinging after its swoop in the south's ground, looped, pays the line's value in the
+//   south's specimens, said where it was and across the screen, and its roost goes and is spent; not bought, or a
+//   loop far from it, nothing; a bat in its roost, warning, swooping or flying home is never caught, a leech hung,
+//   stiffening or falling never, nor a spitter swelling or spitting; a leech come down to the floor pays the west's
+//   and a spitter sagging the north's (three at the second level); a foe pays its ground's, wherever it is set down;
+//   and tame, nothing is caught, paid, said or kept.
 //   node test/regress/s8-fauna-play.mjs
 import { makeGame, random, farStart, tetherFaults, C, N, K, world } from '../harness.mjs';
 import { PUP, MOTH, BAT, LEECH, SPITTER, PUFF, NEWT, QUIET, CREATURES, FAUNA } from '../../js/fauna.js';
@@ -451,6 +457,120 @@ for (const kind of ['bat', 'spitter']) {
   run(game, 120, null, look);
   check(outside >= 0, 'no moth could be set down outside the grotto');
   check(!bad.size, [...bad].join('; '));
+}
+
+// ---- the trophy line: a foe at rest looped is caught, and pays its ground's specimens
+// A loop of the tether round (x, y), as the puffling's above, or a triangle off to one side of it; the band as it
+// was put back.
+const loop = (game, x, y, round = true) => {
+  const band = game.band, d = game.drill;
+  game.band = round ? [[x + 1.5, y + 0.5], [x + 1.5, y - 2], [x - 2, y - 2], [x - 2, y + 2], [x + 2.5, y + 2], [C + 0.5, C + 0.5]] : [[d.x, d.y], [x + 9, y - 6], [x + 14, y + 6], [C + 0.5, C + 0.5]];
+  game.fauna.wound(game);
+  game.band = band;
+};
+const ofDen = (f, den) => [...Array(FAUNA).keys()].filter(j => f.kind[j] && !f.out[j] && f.denAt(j) === den);
+// A foe of a kind set down in a ground (its tunnel from the core ending there), and put at rest by `rest` (or in
+// the state given): the game, the creature's slot and its den.
+const foe = async (kind, sx, sy, levels = {}, tame = false) => {
+  const game = await makeGame(7, { tether: 6, drill: 4, ...levels }, { fauna: true, hull: true });
+  Math.random = random(5);
+  farStart(game, sx, sy); game.world.see(C + sx, C + sy, 10); game.changed(); game.update(1 / 60);
+  game.fauna.tame = tame;
+  const i = game.fauna.stage(game, kind, 8);
+  return { game, f: game.fauna, i, den: game.fauna.denAt(i) };
+};
+const DIR = ['', 'north', 'south', 'west', 'east'];
+// The bats in the south's ground (scoria, 300 cells out): woken, one clings where its swoop stopped, and is looped.
+{
+  const { game, f, i, den } = await foe('bat', 0, 300);
+  check(i >= 0 && den?.flock >= 2, 'no roost of bats could be set down in the south');
+  f.stageAs(game, i, 'fuse');
+  let resting = -1;
+  run(game, 300, null, () => { resting = ofDen(f, den).find(j => f.st[j] === 6) ?? -1; return resting < 0; });
+  check(resting >= 0, 'no bat of the roost clung at rest after its swoop');
+  if (resting >= 0) {
+    const S = game.S, spec = [...S.spec], x = f.x[resting], y = f.mid(resting);
+    // (Not bought: a loop round it does nothing.)
+    loop(game, x, y);
+    check(S.spec.join() === spec.join() && f.st[resting] === 6 && !f.out[resting], 'a bat at rest was caught with no trophy line bought');
+    S.lv.trophy = 1;
+    loop(game, x, y, false);
+    check(S.spec.join() === spec.join() && !f.out[resting], 'a loop far from a bat at rest caught it');
+    game.popups.length = 0;
+    loop(game, x, y);
+    const v = game.val('trophy');
+    check(v === 2 && S.spec[2] - spec[2] === v && S.spec.every((n, b) => b === 2 || n === spec[b]), `a clinging bat looped at the trophy line's first level paid ${S.spec.map((n, b) => n - spec[b]).join()} specimens, not ${v} of the south's`);
+    check(f.paid.spec?.[2] === v, 'what the trophy paid is not kept for the books');
+    check(f.out[resting] && ofDen(f, den).length === 0, `the roost did not go with the bat caught (${ofDen(f, den).length} left)`);
+    check(game.S.fauna?.spent?.some(([key]) => key === den.key) && f.resting(game, den), 'the roost of a bat caught is not spent');
+    check(game.popups.some(p => p.label === 'TROPHY!') && game.popups.some(p => p.label === `+${v}` && p.icon === 'spec-ember'), `the trophy was not said where it was caught: ${game.popups.map(p => p.label)}`);
+    check(game.banner?.title === 'TROPHY' && game.banner.spec === v && game.banner.specOf === 2 && game.bannerSays(game.banner)[2] === `+${v}`, `the trophy's banner: ${JSON.stringify(game.banner)}`);
+    check(game.specLine?.kin === 2, 'the south\'s count of specimens did not come out under the top bar');
+    check(!game.pending.grit && game.hauls.length === 0, 'the trophy was put on its way as a haul is');
+    // Caught once: its mates gone, a second loop there pays nothing, and the roost wakes no more while it is spent.
+    const after = [...S.spec];
+    run(game, 60);
+    loop(game, x, y);
+    check(S.spec.join() === after.join(), 'a roost was caught twice');
+    check(den.st === 0, 'the roost of a bat caught is still woken');
+    run(game, 120);
+    check(ofDen(f, den).length === 0, 'the roost of a bat caught came back while it was spent');
+  }
+}
+// A bat never caught but at rest: hanging in its roost, warning, swooping, flying home.
+{
+  const { game, f, i } = await foe('bat', 0, 300, { trophy: 1 });
+  const spec = game.S.spec.join(), x = f.x[i];
+  for (const st of [0, 4, 5, 7]) {
+    f.set(i, st); loop(game, x, f.mid(i));
+    check(game.S.spec.join() === spec && !f.out[i], `a bat in state ${st} (not at rest) was caught`);
+  }
+}
+// A leech in the west's ground (mire), come down to the floor short of the drill and crawling off: looped, it pays
+// the west's specimens; hanging, stiffening or falling it is never caught.
+{
+  const { game, f, i, den } = await foe('leech', -300, 0, { trophy: 1 });
+  check(i >= 0, 'no leech could be set down in the west');
+  const spec = [...game.S.spec];
+  for (const st of [0, 4, 14]) {
+    f.set(i, st); loop(game, f.x[i], f.mid(i));
+    check(game.S.spec.join() === spec.join() && !f.out[i], `a leech in state ${st} (not at rest) was caught`);
+  }
+  f.set(i, 0);
+  f.offAt(game, i, f.x[i], f.y[i] + 0.5);
+  check(f.st[i] === 8 && f.where(i) === 0, `a leech come down is not on the floor (state ${f.st[i]})`);
+  loop(game, f.x[i], f.mid(i));
+  check(game.S.spec[3] - spec[3] === 2 && f.out[i], `a leech on the floor looped paid ${game.S.spec.map((n, b) => n - spec[b]).join()} specimens, not 2 of the west's`);
+  check(ofDen(f, den).length === 0, 'the leeches still hung in the den of one caught stayed');
+}
+// A spitter in the north's ground (firn), sagging after it spat: at the line's second level it pays three of the
+// north's; swelling or spitting it is never caught.
+{
+  const { game, f, i } = await foe('spitter', 0, -300, { trophy: 2 });
+  check(i >= 0, 'no spitter could be set down in the north');
+  const spec = [...game.S.spec];
+  for (const st of [0, 3, 4, 5]) {
+    f.set(i, st); loop(game, f.x[i], f.mid(i));
+    check(game.S.spec.join() === spec.join() && !f.out[i], `a spitter in state ${st} (not at rest) was caught`);
+  }
+  f.set(i, 6);
+  loop(game, f.x[i], f.mid(i));
+  check(game.S.spec[1] - spec[1] === 3 && f.out[i], `a sagging spitter looped at the line's second level paid ${game.S.spec.map((n, b) => n - spec[b]).join()} specimens, not 3 of the north's`);
+  check(game.banner?.specOf === 1, 'the trophy\'s banner is not of the north\'s specimens');
+}
+// A foe of the ground set down where it is not its own: what it pays is the ground's (a bat in the west's tunnel).
+{
+  const { game, f, i } = await foe('bat', -300, 0, { trophy: 1 });
+  const spec = [...game.S.spec];
+  f.set(i, 6); loop(game, f.x[i], f.mid(i));
+  check(game.S.spec[3] - spec[3] === 2, `a bat at rest in the west's ground paid ${game.S.spec.map((n, b) => n - spec[b]).join()}, not the west's`);
+}
+// Tame, a foe at rest looped is not caught and nothing is paid, said or kept.
+for (const kind of ['bat', 'spitter']) {
+  const { game, f, i } = await foe(kind, 0, kind === 'bat' ? 300 : -300, { trophy: 1 }, true);
+  const was = JSON.stringify(game.S), popups = game.popups.length;
+  f.set(i, 6); loop(game, f.x[i], f.mid(i));
+  check(JSON.stringify(game.S) === was && game.popups.length === popups && !game.banner && !f.out[i] && f.st[i] === 6 && f.deeds === 0, `a tame ${kind} at rest was caught`);
 }
 
 for (const f of fails) console.log(`FAIL ${f}`);

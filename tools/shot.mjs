@@ -1,6 +1,6 @@
 // Photographs the game, so that ground and art can be judged by eye with no hand on a browser:
 //   node tools/shot.mjs <out.png> [--seed 7] [--at dx,dy] [--reach level] [--size 360x640] [--zoom n] [--frames n] [--lit] [--met] [--wake [type]]
-//                                 [--key] [--pocket] [--haul n] [--cave] [--feel event] [--lv list] [--shop tab] [--buy id] [--steer x,y]
+//                                 [--key] [--pocket] [--haul n] [--cave] [--feel event] [--lv list] [--grit n] [--shop tab] [--buy id] [--steer x,y]
 //                                 [--fire id] [--ladder] [--lab what] [--labsel name] [--scroll px] [--orebook] [--fauna kind[:state]] [--faunabook]
 //
 //   --at dx,dy    where the drill stands, in cells from the core: east and south are counted up, so 300 cells north
@@ -47,6 +47,7 @@
 //   --lv list     levels set before the picture: `max` (every row at its last), `late` (every row at its last
 //                 before the late game's) or `id.n` (that row at level n), in a list read left to right:
 //                 `--lv max,drill.6`.
+//   --grit n      that much grit banked (the goal's line along the bar shows how near it comes to the next row).
 //   --shop tab    the shop open at its tab: rig, works, map or core (with the drill at the core).
 //   --buy id      that row's next level bought as a purchase is, with nothing asked for it and nothing saved. With
 //                 --shop, the shop's moment (`--frames 8`); without, the shop is opened, bought from and shut at
@@ -55,7 +56,10 @@
 //                 CORE builds are made a show of (a picture with --lv has bought before).
 //   --steer x,y   the thumb held that way for every frame: flight, cutting, the flame and the sparks.
 //   --fire id     a power of what WORKS fits acts at once: mender, arccoil, sporedrive, lavaskin, diamond (steel
-//                 ahead, to cut) or blackbox (the drill wrecked).
+//                 ahead, to cut), blackbox (the drill wrecked) or flywheel (a run of quick hauls); with --lv at a
+//                 fitting's second level, that level's act (the bit charged, moss healed, the bellows). Or of what
+//                 CORE builds: livecatch or trophy, its lamps lit for a second (`--frames 20`); with `--fauna bat:rest` (or spitter or
+//                 leech), the foe set down at rest is caught as a trophy, as a loop round it would catch it.
 //   --ladder      no world: every level of every row drawn in rows, labelled (`--size 960x720`).
 //   --lab what    the lab's notes open at LAB, with `all` analysed (thing i with 2 ** (i mod 10) samples), the
 //                 first n in the list's order, or `none`: `--lab 20 --size 320x568 --frames 4`.
@@ -66,7 +70,8 @@
 //   --fauna k     a creature of that kind set down a few cells from the drill, with the rest of its den, once the
 //                 view is uncovered (beetle, pup, moth, spitter, salamander, bat, frog, puff, leech, skink, wren,
 //                 bee, jelly, newt), and `:state` puts it in one of its own: pup:pal, pup:ride, bat:fuse,
-//                 spitter:puff, leech:latched, puff:caught, wren:peck. With --met no creature's name comes up.
+//                 spitter:puff, leech:latched, puff:caught, wren:peck, and bat:rest, spitter:rest or
+//                 leech:rest (a foe at rest, as the trophy line catches it). With --met no creature's name comes up.
 //                 `--cave --at -316,131 --fauna frog --met --frames 90`.
 //   --faunabook   no world: each creature in each of its poses on its own ground's rock, by name, FRIEND, FOE or
 //                 KIN (`--size 360x660 --zoom 2 --frames 2`).
@@ -91,11 +96,11 @@ import { WORLD_R, HAZARDS } from '../js/world.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
-const usage = 'node tools/shot.mjs <out.png> [--seed 7] [--at dx,dy] [--reach level] [--size 360x640] [--zoom n] [--frames n] [--lit] [--met] [--wake [type]] [--key] [--pocket] [--haul n] [--cave] [--feel event] [--lv list] [--shop tab] [--buy id] [--steer x,y] [--fire id] [--ladder] [--lab what] [--labsel name] [--scroll px] [--orebook] [--browser path] [--fauna kind[:state]] [--faunabook]';
+const usage = 'node tools/shot.mjs <out.png> [--seed 7] [--at dx,dy] [--reach level] [--size 360x640] [--zoom n] [--frames n] [--lit] [--met] [--wake [type]] [--key] [--pocket] [--haul n] [--cave] [--feel event] [--lv list] [--grit n] [--shop tab] [--buy id] [--steer x,y] [--fire id] [--ladder] [--lab what] [--labsel name] [--scroll px] [--orebook] [--browser path] [--fauna kind[:state]] [--faunabook]';
 const wrong = why => { console.error(`${why}\n  ${usage}`); process.exit(2); };
 
 // ---------------------------------------------------------------- what was asked for
-const options = { seed: '7', at: '0,0', reach: '', size: '360x640', zoom: '1', frames: '180', lit: false, met: false, wake: '', key: false, pocket: false, haul: '0', cave: false, feel: '', lv: '', shop: '', buy: '', steer: '', fire: '', ladder: false, lab: '', labsel: '', scroll: '', orebook: false, fauna: '', faunabook: false, browser: '' };
+const options = { seed: '7', at: '0,0', reach: '', size: '360x640', zoom: '1', frames: '180', lit: false, met: false, wake: '', key: false, pocket: false, haul: '0', cave: false, feel: '', lv: '', grit: '', shop: '', buy: '', steer: '', fire: '', ladder: false, lab: '', labsel: '', scroll: '', orebook: false, fauna: '', faunabook: false, browser: '' };
 let out = null;
 for (let args = process.argv.slice(2), i = 0; i < args.length; i++) {
   const arg = args[i];
@@ -131,7 +136,9 @@ if (options.shop && !['rig', 'works', 'map', 'core'].includes(options.shop)) wro
 if (options.lab && !/^(all|none|\d+)$/.test(options.lab)) wrong(`--lab is all, none or how many of the list are known, not ${options.lab}.`);
 if ((options.labsel || options.scroll) && !options.lab) wrong('--labsel and --scroll are of the lab\'s notes: say --lab too.');
 if (options.scroll && !Number.isFinite(Number(options.scroll))) wrong(`--scroll is a number of pixels, not ${options.scroll}.`);
-if (options.fire && !['mender', 'arccoil', 'sporedrive', 'lavaskin', 'diamond', 'blackbox'].includes(options.fire)) wrong(`--fire is one of mender, arccoil, sporedrive, lavaskin, diamond, blackbox, not ${options.fire}.`);
+const FIRES = ['mender', 'arccoil', 'sporedrive', 'lavaskin', 'diamond', 'blackbox', 'flywheel', 'livecatch', 'trophy'];
+if (options.fire && !FIRES.includes(options.fire)) wrong(`--fire is one of ${FIRES.join(', ')}, not ${options.fire}.`);
+if (options.grit && !(Number(options.grit) >= 0)) wrong(`--grit is how much grit is banked, not ${options.grit}.`);
 const KINDS = ['beetle', 'pup', 'moth', 'spitter', 'salamander', 'bat', 'frog', 'puff', 'leech', 'skink', 'wren', 'bee', 'jelly', 'newt'];
 if (options.fauna && !KINDS.includes(options.fauna.split(':')[0])) wrong(`--fauna is one of ${KINDS.join(', ')} (with :state if it has one), not ${options.fauna}.`);
 if (!(zoom >= 1 && zoom <= 64)) wrong(`--zoom is a number from 1 to 64, not ${options.zoom}.`);
@@ -280,7 +287,7 @@ async function take() {
   if (options.cave) query.set('cave', '1');
   if (haul) query.set('haul', String(haul));
   if (options.feel) query.set('feel', options.feel);
-  for (const name of ['lv', 'shop', 'buy', 'steer', 'fire', 'lab', 'labsel', 'scroll']) if (options[name]) query.set(name, options[name]);
+  for (const name of ['lv', 'grit', 'shop', 'buy', 'steer', 'fire', 'lab', 'labsel', 'scroll']) if (options[name]) query.set(name, options[name]);
   if (options.ladder) query.set('ladder', '1');
   if (options.orebook) query.set('orebook', '1');
   if (options.fauna) query.set('fauna', options.fauna);

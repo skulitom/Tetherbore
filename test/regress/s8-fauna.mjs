@@ -3,10 +3,11 @@
 //   1. Two games side by side on one world and one stream of Math.random, flown by the fuzzes' steering in the
 //      north's ground, the south's, the west's, the east's and a cross: one with its creatures left out (`off`),
 //      the other with them tame (no deed is done) and a creature of every kind set down beside the drill in turn,
-//      each foe woken at once, every frame drawn. Frame by frame the two are the same: the drill, the tether, the
-//      version of the ground, the game's particles, rings, effects, popups, shake and flash, the hull, the grit, all
-//      that is saved, the draws from Math.random and the pieces of world made. And js/fauna.js never names
-//      Math.random.
+//      each foe woken at once, every frame drawn, and the trophy line bought in three of the five grounds (a foe at
+//      rest the tether goes round is looped, and not caught). Frame by frame the two are the same: the drill, the
+//      tether, the version of the ground, the game's particles, rings, effects, popups, shake and flash, the hull,
+//      the grit, all that is saved, the draws from Math.random and the pieces of world made. And js/fauna.js never
+//      names Math.random.
 //   2. Its bounds: no more creatures than FAUNA, NAMED of them above kin, its particles and its arrays the same
 //      ones made at first; what it looks at in a frame bounded; and a game begun again keeps nothing but the pal.
 //   3. Its places, on worlds 1 to 4 out to 1,200 cells, from the seed alone: no den within CALM cells of the core;
@@ -39,20 +40,26 @@ Math.random = () => { draws++; return stream(); };
 const PLACES = [['frost', 60, -150], ['ember', 0, 150], ['mire', -150, 0], ['lode', 150, 0], ['buzzmire', -640, -640]];
 const STAGE = [['bat', 'fuse'], ['spitter', 'puff'], ['leech', 'latched'], ['puff', 'caught'], ['wren', 'peck'], ['pup', 'pal'], ['moth', ''], ['beetle', ''], ['salamander', ''], ['frog', ''],
   ['skink', ''], ['bee', ''], ['jelly', ''], ['newt', '']];
-let staged = 0, biggest = 0, worst = 0;
+// (In three of the grounds the trophy line is bought, so that a foe at rest the tether goes round is caught, but
+// for its being tame; in the other two it is not, as in every game before it was in the shop.)
+const TROPHY = new Set(['frost', 'ember', 'buzzmire']);
+let staged = 0, biggest = 0, worst = 0, looped = 0;
 for (const [name, x, y] of PLACES) {
   const games = [];
   for (let g = 0; g < 2; g++) {
     stream = random(41);
-    const game = await makeGame(7, { tether: 9, drill: 3 }, { fauna: true });
+    const game = await makeGame(7, { tether: 9, drill: 3, trophy: TROPHY.has(name) ? 1 : 0 }, { fauna: true });
     farStart(game, x, y);
     game.own = random(4321);
     games.push(game);
   }
   const [a, b] = games;
   a.fauna.tame = true; b.fauna.off = true;
+  // (Each time a foe at rest is looped and the trophy line would catch it, but that it is tame.)
+  const catches = a.fauna.trophy;
+  a.fauna.trophy = (...args) => { looped++; return catches.apply(a.fauna, args); };
   const arrays = ['kind', 'x', 'y', 'st', 'px', 'pk', 'spots', 'words', 'glowing'].map(k => a.fauna[k]);
-  let frame = 0, differ = null;
+  let frame = 0, differ = null, before = looped;
   for (const auto of wander(random(x * 3 + y), 16)) {
     const seen = [];
     for (const game of games) {
@@ -60,6 +67,12 @@ for (const [name, x, y] of PLACES) {
       if (game === a && frame % 50 === 10) { const [kind, state] = STAGE[(frame / 50 | 0) % STAGE.length], i = a.fauna.stage(a, kind, 8); if (i >= 0) { staged++; if (state) a.fauna.stageAs(a, i, state); } }
       game.input.auto = auto;
       game.update(1 / 60);
+      // (A foe at rest beside the drill, where the line is bought, has a loop of the tether put round it, and the
+      // tether put back as it lay: tame, nothing comes of it.)
+      if (game === a && TROPHY.has(name)) for (let j = 0; j < FAUNA; j++) if (a.fauna.kind[j] && !a.fauna.out[j] && a.fauna.atRest(j)) {
+        const band = a.band, u = a.fauna.x[j], v = a.fauna.mid(j);
+        a.band = [[u + 1.5, v + 0.5], [u + 1.5, v - 2], [u - 2, v - 2], [u - 2, v + 2], [u + 2.5, v + 2], [C + 0.5, C + 0.5]]; a.fauna.wound(a); a.band = band;
+      }
       const d = game.drill, w = game.world;
       seen.push([d.x, d.y, d.vx, d.vy, d.mode, d.stun, game.version, JSON.stringify(game.band), game.parts.length, game.rings.length, game.effects.length, game.popups.length, game.shake, game.flash, game.dents, game.knocks, game.S.grit, JSON.stringify(game.S), draws, w.made].join());
       game.render();
@@ -71,6 +84,7 @@ for (const [name, x, y] of PLACES) {
   }
   check(!differ, `in ${name} the game with its creatures tame went another way than the game with none, at frame ${differ}`);
   check(a.fauna.deeds === 0, `in ${name} a tame creature did a deed`);
+  check(!TROPHY.has(name) || looped > before, `in ${name} no foe at rest was ever looped`);
   check(['kind', 'x', 'y', 'st', 'px', 'pk', 'spots', 'words', 'glowing'].every((k, n) => a.fauna[k] === arrays[n]), `in ${name} the creatures' arrays were made again`);
   check(a.fauna.pk.length === POOL && a.fauna.kind.length === FAUNA, 'the creatures\' pools are not the size they say');
   // Begun again: nothing is kept but the pal (which a tame game never makes).
@@ -181,5 +195,5 @@ for (const [ground, list] of Object.entries(ROSTER)) {
 for (const t of tether) check(far(eye, t) >= 72, `the foe's eye is within ${far(eye, t).toFixed(0)} of ${t}, a colour of the tether`);
 
 for (const f of fails) console.log(`FAIL ${f}`);
-console.log(fails.length ? `${fails.length} failures` : `the creatures change nothing but by their deeds (${staged} set down, at most ${biggest} at once, ${worst} cells looked at in a frame at the most), keep to their places (${dens} dens on four worlds) and to their art`);
+console.log(fails.length ? `${fails.length} failures` : `the creatures change nothing but by their deeds (${staged} set down, ${looped} looped at rest, at most ${biggest} at once, ${worst} cells looked at in a frame at the most), keep to their places (${dens} dens on four worlds) and to their art`);
 process.exit(fails.length ? 1 : 0);

@@ -45,9 +45,13 @@
 // core); `buy=<id>` buys that row's next level as a purchase does, with nothing asked for it (and never saved): with
 // `shop` the shop's moment is what is seen, and without it the shop is opened, bought from and shut at once, so the
 // part is fitted at the core; `steer=x,y` holds the thumb that way for every frame; `fire=<id>` makes a power of
-// what WORKS fits act at once: `mender` (a pip mended), `arccoil` (an arc taken in), `sporedrive` (a spore's
-// drive), `lavaskin` (lava under the drill), `diamond` (steel ahead, to cut), `blackbox` (the drill wrecked). And
-// `ladder` shows no world at all: every level of every row, drawn by the game's own drawing in rows, labelled.
+// what WORKS fits act at once: `mender` (a pip mended), `arccoil` (an arc taken in, and at its second level the bit
+// charged), `sporedrive` (a spore's drive, and at its second level moss healed as ore), `lavaskin` (lava under the
+// drill, and at its second level the bellows quenching), `diamond` (steel ahead, to cut), `blackbox` (the drill
+// wrecked), `flywheel` (a run of four quick hauls, the wheel spinning); or of what CORE builds on the station:
+// `livecatch` (a rare hazard come home awake, the clamp's jaws lit) or `trophy` (a foe caught, the rack's barbs and
+// the tether's lit), each lit for a second. A fitting's level is the one `lv` gave, or its first. And `ladder` shows
+// no world at all: every level of every row, drawn by the game's own drawing in rows, labelled.
 //
 // The lab's notes are staged with four more: `lab` opens them, at LAB and risen, with what the lab knows set first
 // (`all`: everything analysed, thing i with 2 ** (i mod 10) samples; a number n: the first n in the list's order;
@@ -72,7 +76,7 @@ import * as world from './world.js';
 import { T, UPGRADES, BOOST } from './game.js';
 import { ROWS, EARLY, LAB } from './shop.js';
 import { draw, frameAt, sheets, text } from './atlas.js';
-import { TETHERS, CORE_IDLE, DISH, REFINERY, CUTTER, BOX, ORBIT } from './fit.js';
+import { TETHERS, CORE_IDLE, DISH, REFINERY, CUTTER, BOX, ORBIT, LIVECATCH, TROPHY } from './fit.js';
 import { CREATURES, ROSTER, KIN_FAUNA, FOE_EYE, frameName } from './fauna.js';
 
 const { N, C, K } = world, HX = C + 0.5, HY = C + 0.5;
@@ -301,6 +305,9 @@ export function stage(game, query) {
     // (A game with levels bought has bought before: the next purchase is not its first.)
     game.S.stats.buys = set; game.S.stats.hauls = Math.max(1, game.S.stats.hauls);
   }
+  // Grit banked, as a game that has hauled that much and not spent it (what the goal's line along the bar shows).
+  const grit = number('grit', -1);
+  if (grit >= 0) game.S.grit = grit;
   const tab = query.get('shop');
   if (tab) { game.shop = true; game.shopTab = tab; game.shopRise = 1; }
   const buying = ROWS.find(u => u.id === query.get('buy'));
@@ -319,9 +326,12 @@ export function stage(game, query) {
   if (fire) {
     const i = game.di, x = i % N, y = Math.floor(i / N);
     if (fire === 'mender') { game.S.lv.mender ||= 1; game.dents = 1; game.mendIn = game.val('mender'); }
-    else if (fire === 'arccoil') { game.S.lv.arccoil = 1; game.dents = 1; game.zap(x + 2, y); }
-    else if (fire === 'sporedrive') { game.S.lv.sporedrive = 1; game.boost = BOOST.time; }
-    else if (fire === 'lavaskin') { game.S.lv.lavaskin = 1; for (const j of [i, i - 1, i + 1]) { w.lava.set(j, 9); game.lavaVol.set(j, 1); } }
+    else if (fire === 'arccoil') { game.S.lv.arccoil ||= 1; game.dents = 1; game.zap(x + 2, y); }
+    else if (fire === 'sporedrive') { game.S.lv.sporedrive ||= 1; game.boost = BOOST.time; if (game.S.lv.sporedrive >= 2) game.fitter.fire('sporedrive'); }
+    else if (fire === 'lavaskin') { game.S.lv.lavaskin ||= 1; for (const j of [i, i - 1, i + 1]) { w.lava.set(j, 9); game.lavaVol.set(j, 1); } if (game.S.lv.lavaskin >= 2) game.fitter.fire('lavaskin'); }
+    else if (fire === 'flywheel') { game.S.lv.flywheel ||= 1; game.spin.n = 4; game.spin.t = game.time; }
+    else if (fire === 'livecatch') { game.S.lv.livecatch ||= 1; game.fitter.fire('livecatch'); }
+    else if (fire === 'trophy') { game.S.lv.trophy ||= 1; game.fitter.fire('trophy'); }
     else if (fire === 'diamond') { game.S.lv.diamond = 1; w.setK(i + 2, K.STEEL); w.setK(i + 1, K.STEEL); game.changed(); game.input.auto = [1, 0, 1]; }
     else if (fire === 'blackbox') { game.S.lv.blackbox ||= 1; game.dents = game.val('hull') - 1; game.shield = 0; game.hit(0.3); }
   }
@@ -359,6 +369,9 @@ export function stage(game, query) {
       game.version++;
       // (A creature is set down once the ground about it is seen: it lives only in ground that has been.)
       if (faunaKind) { creature = game.fauna.stage(game, faunaKind); if (faunaState) game.fauna.stageAs(game, creature, faunaState); }
+      // (A foe at rest with the trophy line's lamps fired is caught as a loop round it would catch it: `--fauna
+      // bat:rest --fire trophy`.)
+      if (fire === 'trophy' && creature >= 0 && game.fauna.atRest(creature)) game.fauna.trophy(game, creature);
       // (The lab's list is laid out for the screen it is seen on, so it is opened once the screen has its size.)
       if (staged) {
         game.labRise = 1; game.openLab(true, 'lab'); game.labRise = 1;
@@ -457,10 +470,10 @@ function ladder(game) {
   drills('RAM', y, 7, (x, yy, l) => { look.heat = 0; look.flame = 1; game.drawDrill(x, yy, 0, 0, l, now, 1, 1, ctx, 0, null, look); }, 34, 64); y += 26;
   drills('HULL', y, 8, (x, yy, l) => game.drawDrill(x, yy, 0, 0, 0, -1, 1, 1, ctx, l, null, null)); y += 26;
   // What WORKS fits, and what CORE puts on the drill: plain, then lit. (The diamond tip on both cones.)
-  const fits = [['mender', 1, 0], ['mender', 2, 0], ['mender', 3, 0], ['mender', 4, 0], ['mender', 5, 0], ['lavaskin', 1, 0], ['sporedrive', 1, 0], ['arccoil', 1, 0],
-    ['diamond', 1, 0], ['diamond', 1, 6], ['blackbox', 1, 0], ['lamp', 1, 0], ['lamp', 3, 0], ['lamp', 5, 0]];
+  const fits = [['mender', 1, 0], ['mender', 2, 0], ['mender', 3, 0], ['mender', 4, 0], ['mender', 5, 0], ['lavaskin', 1, 0], ['lavaskin', 2, 0], ['sporedrive', 1, 0], ['sporedrive', 2, 0],
+    ['arccoil', 1, 0], ['arccoil', 2, 0], ['diamond', 1, 0], ['diamond', 1, 6], ['blackbox', 1, 0], ['lamp', 1, 0], ['lamp', 3, 0], ['lamp', 5, 0], ['flywheel', 1, 0], ['flywheel', 2, 0]];
   look.heat = 0; look.flame = 0;
-  for (const lit of [0, 127]) {
+  for (const lit of [0, 255]) {
     label(lit ? 'LIT' : 'FITS', y);
     fits.forEach(([id, l, bit], k) => { clear(); S.lv[id] = l; look.lit = lit; game.drawDrill(52 + k * 22, y, 0, bit, 0, -1, 1, 1, ctx, 0, null, look); });
     y += 22;
@@ -486,15 +499,18 @@ function ladder(game) {
     for (let n = 0; n < ORBIT[k]; n++) { const a = game.time * 0.8 + n * 6.2832 / ORBIT[k]; ctx.fillRect(Math.round(x + 24 + Math.cos(a) * 25), Math.round(y + 18 + Math.sin(a) * 25), 2, 2); }
   }
   y += 56;
-  // What CORE builds on the station, each level a cell of its corner of the sheet, twice the size.
-  const parts = [['REFINERY', REFINERY, 0, 0], ['CUTTER', CUTTER, 46, 46], ['BLACK BOX', BOX.map(f => f && f[((game.time * 2) | 0) % 2]), 0, 44]];
-  for (const [name, frames, cx, cy] of parts) {
-    label(name, y + 10);
+  // What CORE builds on the station, each level a cell of its corner of the sheet, twice the size: the refinery, the
+  // cutter and the black box a row each, and the trophy line's rack and the live catch's clamp after the cutter's
+  // and the black box's, which are shorter. ([name, frames, where in the sheet, how far along, which row].)
+  const parts = [['REFINERY', REFINERY, 0, 0, 0, 0], ['CUTTER', CUTTER, 46, 46, 0, 1], ['BLACK BOX', BOX.map(f => f && f[((game.time * 2) | 0) % 2]), 0, 44, 0, 2],
+    ['TROPHY', TROPHY, 14, 46, 300, 1], ['LIVE CATCH', LIVECATCH, 46, 23, 220, 2]];
+  parts.forEach(([name, frames, cx, cy, x0, row]) => {
+    const yy = y + row * 40;
+    text(ctx, name, x0 + 4, yy + 6, '#bcb4cc');
     for (let k = 1; k < frames.length; k++) {
       const r = frames[k] ? sheets.station.frames[frames[k]] : frameAt('station', 'cutter-6', now);
-      ctx.drawImage(sheets.station.image, r[0] + cx, r[1] + cy, 18, 18, 52 + (k - 1) * 40, y - 6, 36, 36);
+      ctx.drawImage(sheets.station.image, r[0] + cx, r[1] + cy, 18, 18, x0 + 52 + (k - 1) * 40, yy - 6, 36, 36);
     }
-    y += 40;
-  }
+  });
   Object.assign(S.lv, keep);
 }

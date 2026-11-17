@@ -550,7 +550,7 @@ for (const name of Object.keys(quirks)) sfx[name] = sound(name, quirks[name]);
 // edge of hearing and 1 beside the drill, and whatever a voice is asked with it makes its sound. None but a warning
 // is made when many layers are sounding already.
 const VOICE_GAP = { tick: 0.4, yip: 0.25, coo: 0.15, tug: 0.3, pop: 0.2, flutter: 3, wheeze: 0.6, spit: 0.3, splat: 0.2, purr: 3, chitter: 2, screech: 0.4,
-  whoosh: 0.15, croak: 2, squeak: 0.5, caught: 0.5, poof: 0.3, plip: 0.12, slurp: 1.5, skitter: 1, trill: 0.8, buzz: 3, glass: 4, meet: 1.5, befriend: 1 };
+  whoosh: 0.15, croak: 2, squeak: 0.5, caught: 0.5, poof: 0.3, plip: 0.12, slurp: 1.5, skitter: 1, trill: 0.8, buzz: 3, glass: 4, meet: 1.5, befriend: 1, trophy: 0.5 };
 const calls = {
   // A beetle tucking in: two dry ticks.
   tick(near) { if (crowded()) return; const a = loud(near); grains(2, 0.08, { first: 0.03 * a, gain: 0.025 * a, freq: 3800 }); },
@@ -599,6 +599,14 @@ const calls = {
   // A creature met for the first time: two soft notes. A pal made: the coo and a third note over it.
   meet() { tone(inKey(880), 0.14, { type: 'sine', gain: 0.035, out: space }); tone(inKey(1320), 0.2, { type: 'sine', gain: 0.03, delay: 0.1, out: space }); },
   befriend() { const f = inKey(520); tone(f, 0.16, { type: 'sine', gain: 0.045 }); tone(f * 1.5, 0.24, { type: 'sine', gain: 0.04, delay: 0.14, out: space }); },
+  // A foe looped at rest for a trophy: the barb's dry snap, and two notes falling to the key's own, low and soft, a
+  // thing taken rather than a friend made.
+  trophy() {
+    const f = inKey(440);
+    noise(0.04, { type: 'highpass', freq: 3200, gain: 0.03 });
+    tone(f * 1.5, 0.14, { type: 'triangle', gain: 0.04, delay: 0.03 });
+    tone(f, 0.3, { type: 'sine', gain: 0.045, delay: 0.15, out: space });
+  },
 };
 // (Their least gaps are kept apart from the game's own, under names of their own.)
 for (const [name, gap] of Object.entries(VOICE_GAP)) GAP[`v:${name}`] = gap;

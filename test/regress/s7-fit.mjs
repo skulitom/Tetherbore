@@ -10,11 +10,12 @@
 //   - Bounded, every frame of those flights: the fitter's pool of particles never over CAP and the shop's never
 //     over PANEL_CAP, its rings never over RINGS and its queue never over QUEUE, and its typed arrays the same ones
 //     throughout.
-//   - Every level a step: for every row of RIG, WORKS (the mender at each level, the others off, on and lit) and
-//     CORE, and every level of reach, what is drawn at a level is not what is drawn at the level before, pixel for
-//     pixel (the drill's parts as drawDrill draws them, the station's as the fitter draws them, the core's and the
-//     dish's frames, the tether's style); and the whole game drawn at every level of every row, the shop open at
-//     each tab too, draws nothing that is not in the atlas (a frame that is not there throws).
+//   - Every level a step: for every row of RIG, WORKS (every fitting at each level, plain and with everything lit,
+//     and each off, on and lit) and CORE, and every level of reach, what is drawn at a level is not what is drawn
+//     at the level before, pixel for pixel (the drill's parts as drawDrill draws them, the station's as the fitter
+//     draws them, the live catch's clamp and the trophy line's rack among them, the core's and the dish's frames,
+//     the tether's style); and the whole game drawn at every level of every row, the shop open at each tab too,
+//     draws nothing that is not in the atlas (a frame that is not there throws).
 //   - The moment: at the core with the shop open, a purchase queues one fitting and nothing is fitted while the
 //     shop stays open; the frame after it is shut the fitting begins, and it is over within its time; a row's last
 //     level, a WORKS fitting, a CORE level and the first purchase of a game are made a show of, and a middle level
@@ -67,7 +68,7 @@ for (let g = 0; g < 2; g++) { stream = random(77); const game = await make(7, sh
 const [shown, bare] = games;
 // (The stand-in: a fitter that does nothing at all, and a drill that shows nothing beyond its levels.)
 const nothing = new Fitter();
-for (const name of ['reset', 'bought', 'fire', 'step', 'station', 'glow', 'hud', 'map', 'panel']) nothing[name] = () => {};
+for (const name of ['reset', 'bought', 'fire', 'step', 'station', 'glow', 'hud', 'map', 'panel', 'barbs']) nothing[name] = () => {};
 nothing.stamps = () => false;
 bare.fitter = nothing;
 const arrays = ['x', 'y', 'vx', 'vy', 't', 'life', 'fall', 'col', 'kind'].map(k => shown.fitter.pool[k]);
@@ -174,17 +175,16 @@ const frameOf = (sheet, name) => { const r = sheets[sheet].frames[name]; return 
 const steps = [];
 const ladder = (id, n, at) => { for (let l = 1; l <= n; l++) if (at(l) === at(l - 1)) steps.push(`${id} ${l - 1} and ${l}`); };
 for (const id of ['drill', 'momentum', 'hull']) ladder(id, row(id).values.length - 1, l => drillAt(id, l));
-ladder('mender', row('mender').values.length - 1, l => drillAt('mender', l));
-// (A row the shop sells before its picture is drawn: the flywheel's wheel behind the bit is drawn with its art, and
-// then it leaves this list.)
-const UNDRAWN = new Set(['flywheel']);
+// (Everything lit: the bit of every fitting, the flywheel's spokes a step round among them.)
+const ALL_LIT = 255;
 for (const u of WORKS) {
-  if (UNDRAWN.has(u.id)) continue;
+  ladder(u.id, u.values.length - 1, l => drillAt(u.id, l));
+  ladder(`${u.id} lit`, u.values.length - 1, l => drillAt(u.id, l, ALL_LIT));
   if (drillAt(u.id, 1) === drillAt(u.id, 0)) steps.push(`${u.id} fitted and not`);
-  if (drillAt(u.id, 1, 127) === drillAt(u.id, 1, 0)) steps.push(`${u.id} lit and not`);
+  for (let l = 1; l < u.values.length; l++) if (drillAt(u.id, l, ALL_LIT) === drillAt(u.id, l, 0)) steps.push(`${u.id} ${l} lit and not`);
 }
 ladder('lamp', row('lamp').values.length - 1, l => drillAt('lamp', l));
-for (const id of ['refinery', 'cutter', 'blackbox']) ladder(id, row(id).values.length - 1, l => stationAt(id, l));
+for (const id of ['refinery', 'cutter', 'blackbox', 'livecatch', 'trophy']) ladder(id, row(id).values.length - 1, l => stationAt(id, l));
 ladder('winch', row('winch').values.length - 1, l => frameOf('core', CORE_A[l]));
 ladder('scanner', row('scanner').values.length - 1, l => frameOf('dish', DISH[l]));
 ladder('tether', row('tether').values.length - 1, l => JSON.stringify(TETHERS[l]));
@@ -284,12 +284,14 @@ check(!steps.length, `levels that draw just what the level before draws: ${steps
   let n = 0;
   const own = Math.random;
   Math.random = () => { n++; return 0.5; };
-  f.fire('arccoil'); f.fire('mender');
+  f.fire('arccoil'); f.fire('mender'); f.fire('lavaskin'); f.fire('sporedrive'); f.fire('livecatch'); f.fire('trophy');
+  game.charge = 8; game.spin.n = 5; game.spin.t = game.time;
+  const rope = { loop: false, runs: [[0, 1, 0]], wide: 2, trace: () => {} };
   game.shop = true; f.bought(game, row('hull'), 7); f.bought(game, row('cutter'), 6); game.shop = false;
   for (let k = 0; k < 300; k++) {
     f.step(game, 1 / 60);
     f.station(game, game.ctx, 100, 100, k * 16); f.glow(game, game.ctx, 0, 0, k * 16); f.hud(game, game.ctx, 60); f.map(game, game.ctx, 0, 0, 46, 46);
-    f.panel(game, game.ctx, 4, 20, 172, 236, 32, TABS[0]);
+    f.panel(game, game.ctx, 4, 20, 172, 236, 32, TABS[0]); f.barbs(game, game.ctx, rope);
   }
   Math.random = own;
   check(n === 0, `stepping and drawing the fitter alone drew ${n} times from Math.random`);
