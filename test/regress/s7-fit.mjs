@@ -36,12 +36,15 @@ const ROWS = [...UPGRADES, ...WORKS, ...MAPS, ...CORE];
 const row = id => ROWS.find(u => u.id === id);
 
 // A game as the harness makes one, with the tether's own canvas laid over it, so that the drill and the tether are
-// drawn there as on a page (`drawRopes`), and the hull as it is played.
+// drawn there as on a page (`drawRopes`), and the hull as it is played. Its creatures are left out (js/fauna.js), as
+// the harness leaves them out: what is tried here is the fitter alone, and a wren's find called out or a creature
+// met would only be the same in both games.
 async function make(seed = 7, levels = {}) {
   const game = new Game(document.createElement('canvas'), document.createElement('canvas'));
   game.fresh(seed, true);
   game.resize(360, 640, 1);
   Object.assign(game.S.lv, levels);
+  game.fauna.off = true;
   return game;
 }
 // A purchase as the shop makes one, with nothing asked for it.

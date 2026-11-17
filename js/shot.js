@@ -58,12 +58,22 @@
 // its name, a patch of its rock with its dense rock, its two ores and its hazard as the game draws them, and its
 // two ores three times the size.
 //
+// The creatures (js/fauna.js) are staged with two more: `fauna=<kind>[:<state>]` sets one down (with the rest of
+// its den) in the nearest place that suits it, a few cells from the drill, once the view is uncovered: `beetle`,
+// `pup`, `moth`, `spitter`, `salamander`, `bat`, `frog`, `puff`, `leech`, `skink`, `wren`, `bee`, `jelly`, `newt`;
+// and puts it in a state of its own: `pup:pal` (befriended), `pup:ride` (and riding the drill), `bat:fuse` (the roost
+// woken), `spitter:puff` (swelling to spit), `leech:latched` (on the hull), `puff:caught` (lassoed), `wren:peck` (off to
+// the find it leads to). With `met` every creature is taken as met before, so no name comes up over it. And
+// `faunabook`, as `orebook`, shows no world: each creature in each of its poses on its own ground's rock, by name,
+// with what it is to the player (FRIEND, FOE or only seen, KIN).
+//
 // The view is held still: `tetherbore.advance(ms)` steps it, `tetherbore.resume()` lets it play.
 import * as world from './world.js';
 import { T, UPGRADES, BOOST } from './game.js';
 import { ROWS, EARLY, LAB } from './shop.js';
 import { draw, frameAt, sheets, text } from './atlas.js';
 import { TETHERS, CORE_IDLE, DISH, REFINERY, CUTTER, BOX, ORBIT } from './fit.js';
+import { CREATURES, ROSTER, KIN_FAUNA, FOE_EYE, frameName } from './fauna.js';
 
 const { N, C, K } = world, HX = C + 0.5, HY = C + 0.5;
 const ROOM = 2;                                 // the room is this many cells out from the drill's own, each way
@@ -217,6 +227,8 @@ export function stage(game, query) {
   game.S.lv.tether = level;
   game.daylight = lit;
   if (met) for (const row of world.BIOMES) if (row) game.S.met[row.id] = 1;
+  const [faunaKind, faunaState] = (query.get('fauna') ?? '').split(':');
+  if (met && faunaKind) game.S.fauna = { pal: null, met: Object.fromEntries(CREATURES.slice(1).map(c => [c.key, 1])), spent: [] };
   const d = game.drill, w = game.world;
   if (dx || dy) {
     // (To a slab's last key the tunnel is one cell wide where it comes through the collar, and leaves the slab
@@ -315,6 +327,7 @@ export function stage(game, query) {
   }
   if (query.has('ladder') && query.get('ladder') !== '0') game.render = () => ladder(game);
   if (query.has('orebook') && query.get('orebook') !== '0') game.render = () => orebook(game);
+  if (query.has('faunabook') && query.get('faunabook') !== '0') game.render = () => faunabook(game);
   // The lab's notes (above): what it knows, then the panel opened at the thing chosen, once the view has its size.
   const lab = query.get('lab');
   if (lab !== null && lab !== '0') {
@@ -326,6 +339,7 @@ export function stage(game, query) {
   const staged = lab !== null && lab !== '0';
 
   let shown = 1;                                // the zoom as it came out: no canvas is made wider than MOST
+  let creature = -1;                            // the slot of the creature set down, if one was
   return {
     seed, at: [dx, dy], level, reach: reaches[level], zoom, lit,
     // After the game has sized its canvas: widen it by the zoom, and uncover all the ground in view.
@@ -343,6 +357,8 @@ export function stage(game, query) {
       w.see(cx, cy, radius);
       for (let y = cy - radius; y <= cy + radius; y++) for (let x = cx - radius; x <= cx + radius; x++) game.spot(y * N + x);
       game.version++;
+      // (A creature is set down once the ground about it is seen: it lives only in ground that has been.)
+      if (faunaKind) { creature = game.fauna.stage(game, faunaKind); if (faunaState) game.fauna.stageAs(game, creature, faunaState); }
       // (The lab's list is laid out for the screen it is seen on, so it is opened once the screen has its size.)
       if (staged) {
         game.labRise = 1; game.openLab(true, 'lab'); game.labRise = 1;
@@ -359,6 +375,8 @@ export function stage(game, query) {
         cells: [Math.round(game.W / T), Math.round(game.H / T)], canvas: [game.W, game.H],
         biome: b, ground: world.BIOMES[b]?.name ?? `${b}`,
         loose: game.pieces.length, woke,
+        // The creature set down: where, and in what state; and how many are about.
+        fauna: faunaKind ? { kind: faunaKind, slot: creature, at: creature >= 0 ? [+(game.fauna.x[creature] - C).toFixed(1), +(game.fauna.y[creature] - C).toFixed(1)] : null, state: creature >= 0 ? game.fauna.st[creature] : null, alive: game.fauna.alive } : null,
         // What of the ground's feel is on show, and whether what was made to come has still to (`feel`).
         feel: { particles: game.feel.live, events: game.feel.events, forced: game.feel.forced },
         // Inside a pocket: where its middle lies, its radius and its ground; and how many cells were hauled.
@@ -370,6 +388,31 @@ export function stage(game, query) {
       };
     },
   };
+}
+
+// Each creature, in each of its poses facing east and its first facing west, three times the size, on a patch of the
+// rock of a ground it lives in, with its name and what it is to the player: FRIEND, FOE, or KIN (only seen). A foe's
+// eyes are drawn again over it, as the game lays them over the dark.
+function faunabook(game) {
+  const ctx = game.ctx, rowH = 46, cols = Math.max(1, Math.min(2, Math.floor(game.W / 360))), colW = Math.floor(game.W / cols), per = Math.ceil((CREATURES.length - 1) / cols);
+  ctx.globalAlpha = 1; ctx.fillStyle = '#100e18'; ctx.fillRect(0, 0, game.W, game.H);
+  game.overCtx?.clearRect(0, 0, game.over.width, game.over.height);
+  const s = sheets.fauna, homeOf = key => {
+    const name = Object.keys(ROSTER).find(g => [...(ROSTER[g].kin ?? []), ...(ROSTER[g].named ?? [])].some(([id]) => CREATURES[id].key === key));
+    return world.BIOMES.find(r => r && r.name === name) ?? world.BIOMES[0];
+  };
+  CREATURES.slice(1).forEach((c, n) => {
+    const x0 = 4 + Math.floor(n / per) * colW, y0 = 4 + (n % per) * rowH, row = homeOf(c.key), tiles = sheets[row.sheet].tiles[255];
+    text(ctx, `${c.name}  ${c.tier === 'foe' ? 'FOE' : c.tier === 'friend' ? 'FRIEND' : 'KIN'}  (${row.title ?? row.name.toUpperCase()})`, x0, y0, c.tier === 'foe' ? FOE_EYE : c.tier === 'friend' ? '#8cf2c4' : '#bcb4cc');
+    const poses = Object.keys(s.frames).filter(f => f.startsWith(`${c.key}-`) && !f.endsWith('-l'));
+    [...poses, `${poses[0]}-l`].forEach((f, m) => {
+      const x = x0 + m * 34, y = y0 + 11, r = s.frames[f], t = tiles[m % tiles.length];
+      ctx.drawImage(sheets[row.sheet].image, t[0], t[1], t[2], t[3], x, y, 32, 32);
+      ctx.drawImage(s.image, r[0], r[1], r[2], r[3], x, y, 32, 32);
+      ctx.fillStyle = FOE_EYE;
+      for (const [ex, ey] of s.eyes?.[f] ?? []) ctx.fillRect(x + ex * 2, y + ey * 2, 2, 2);
+    });
+  });
 }
 
 // For each ground with ore of its own, its name, a patch of its rock as the game draws it (two rows of four cells:

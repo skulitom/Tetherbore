@@ -1,6 +1,9 @@
 // A whole game played with no hand on it and no browser, from a new game on, to see how the money goes: what is
 // banked, bought and met over the first forty minutes and more.
-//   node tools/long-play.mjs [--seed 7] [--minutes 40] [--every 120] [--quiet]
+//   node tools/long-play.mjs [--seed 7] [--minutes 40] [--every 120] [--quiet] [--fauna]
+//
+// With `--fauna` the game has its creatures (js/fauna.js), as it is played: what they knocked, slowed, chilled and
+// plugged, what they showed, the pal, and what the pufflings caught paid beside everything earned.
 //
 // The policy is a simple one, and no cleverer than a player in a hurry:
 //   - At the core it buys whatever can be bought, reach first and then the cheapest.
@@ -33,9 +36,9 @@ const WAYS = ['', 'north', 'south', 'west', 'east'];
 const SPOKES = [[0, -1, 1], [0.5, -0.866, 1], [-0.5, -0.866, 1], [0, 1, 2], [0.5, 0.866, 2], [-0.5, 0.866, 2], [-1, 0, 3], [-0.866, 0.5, 3], [-0.866, -0.5, 3], [1, 0, 4], [0.866, 0.5, 4], [0.866, -0.5, 4]];
 const compact = n => n < 1000 ? `${Math.floor(n)}` : n < 1e6 ? `${(n / 1000).toFixed(n < 1e4 ? 1 : 0)}K` : n < 1e9 ? `${(n / 1e6).toFixed(n < 1e7 ? 2 : 1)}M` : `${(n / 1e9).toFixed(2)}B`;
 
-export async function play(seed = 7, minutes = 40, every = 120, each = null) {
+export async function play(seed = 7, minutes = 40, every = 120, each = null, fauna = false) {
   Math.random = random(seed + 5);
-  const game = await makeGame(seed), w = game.world, d = game.drill, S = game.S, rnd = random(seed * 13 + 3);
+  const game = await makeGame(seed, {}, { fauna }), w = game.world, d = game.drill, S = game.S, rnd = random(seed * 13 + 3);
   const clock = { t: 0 }, limit = minutes * 60, samples = [], events = [], bought = [];
   const sum = { earned: 0, hauled: 0, spent: 0, cells: 0, hauls: 0, minerals: 0, keys: 0, loops: 0, failed: 0, pockets: 0, home: 0, stuck: 0, far: 0, idle: 0, flush: 0 };
   const big = [];                               // the hauls that paid most
@@ -245,7 +248,7 @@ export async function play(seed = 7, minutes = 40, every = 120, each = null) {
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const arg = (name, fallback) => { const n = process.argv.indexOf(`--${name}`); return n < 0 ? fallback : process.argv[n + 1]; };
   const seed = Number(arg('seed', 7)), minutes = Number(arg('minutes', 40)), every = Number(arg('every', 120)), began = Date.now();
-  const r = await play(seed, minutes, every), clockOf = t => `${String(Math.floor(t / 60)).padStart(2)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
+  const fauna = process.argv.includes('--fauna'), r = await play(seed, minutes, every, null, fauna), clockOf = t => `${String(Math.floor(t / 60)).padStart(2)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
   console.log(`world ${seed}, ${minutes} minutes of the game's time (played in ${((Date.now() - began) / 1000).toFixed(0)} s)\n`);
   console.log(' time  reach  bit winch scan ram   banked   earned   a second (model)   gems n/s/w/e          specimens   far  hauls  pockets  dearest on offer');
   for (const s of r.samples) {
@@ -264,4 +267,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   for (const [id, h] of Object.entries(r.held)) for (const s of h.spells) console.log(`  ${UPGRADES.find(u => u.id === id).name} ${s.level + 1} waited on ${s.gems} gems of the ${WAYS[s.gem]} from ${clockOf(s.from)} to ${clockOf(s.to)} (${Math.round(s.to - s.from)} s), on reach ${s.reach}`);
   console.log(`at the end: reach ${UPGRADES[0].values[r.S.lv.tether]}, levels ${JSON.stringify(r.S.lv)}, grit ${compact(r.S.grit)}, gems ${r.S.gems.slice(1).join('/')}, specimens ${r.S.spec.slice(1).map(n => n.toFixed(1)).join('/')}`);
   console.log(`grounds met: ${r.met.join(', ')}`);
+  if (fauna) {
+    const f = r.game.fauna, F = r.S.fauna ?? {};
+    console.log(`creatures met: ${Object.keys(F.met ?? {}).join(', ') || 'none'}${F.pal ? ', and the pup is the pal' : ''}; their deeds ${f.deeds}, the hull's knocks in all ${r.game.knocks}; pufflings paid ${compact(f.paid.grit)} grit (${(f.paid.grit / Math.max(1, r.sum.earned) * 100).toFixed(2)}% of what was earned) and ${f.paid.gems[3]} gems`);
+  }
 }

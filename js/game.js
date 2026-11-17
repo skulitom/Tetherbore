@@ -7,6 +7,7 @@ import { richness, haulBonus, overload, income, round2, NEEDS, UPGRADES, LAB, LA
 import { Drawing, T, DIR_BIOME, GEM_ICON, GEM_COLOR, GEM_WHERE, SPOT, bright, compact, DEBRIS, LAB_LIST, LAB_RH, LAB_SEC } from './drawing.js';
 import { Feel } from './feel.js';
 import { Fitter } from './fit.js';
+import { Fauna } from './fauna.js';
 export { richness, haulBonus, overload, income, UPGRADES, LAB, labLevel, labNext, WORKS, MAPS, CORE } from './shop.js';
 
 export { T };
@@ -84,7 +85,7 @@ export const DEATH = 1.2;
 // (Before there was a hull an arc stunned for 0.7 s and lava for 0.5: with a pip gone as well, and SHIELD running
 // from the blow, that left under a second to get clear.)
 // And the rare hazards': a bell's toll, a fumarole's jet, a glowworm's bite, ore a lodestone pulls.
-const JOLT = { lava: 0.4, burn: 0.3, arc: 0.5, spore: 0.4, toll: 0.5, jet: 0.5, bite: 0.3, ore: 0.4 };
+const JOLT = { lava: 0.4, burn: 0.3, arc: 0.5, spore: 0.4, toll: 0.5, jet: 0.5, bite: 0.3, ore: 0.4, bat: 0.3 };
 // What flies off a hull that breaks, and the smoke of one in trouble.
 const WRECKAGE = ['#ffd83a', '#e08a1c', '#8a94a8', '#3a3440'];
 const SMOKE = ['#4a4654', '#6a6474', '#2e2a36'];
@@ -258,6 +259,7 @@ export class Game {
     this.feel = new Feel();                                           // the feel of the ground the drill is in: what only shows and sounds (js/feel.js)
     this.fallen = this.feel.fallen;                                   // the cells whose icicle has fallen: the feel's, which it keeps and gives back
     this.fitter = new Fitter(FLY, BOOST.by);                          // what the upgrades show, and the moment of buying (js/fit.js)
+    this.fauna = new Fauna(FLY, JOLT.bat);                            // the creatures of the ground (js/fauna.js)
     // (The parts of a frame whose time is added up by name, for `frameTook`.)
     for (const name of ['save', 'changed', 'haul', 'revert', 'updateHazards', 'updateHauls', 'homecoming', 'sweepHome', 'look']) {
       const part = this[name];
@@ -307,6 +309,7 @@ export class Game {
     this.labScroll = 0; this.labVel = 0; this.labTouch = null; this.labAim = null; this.labPrev = 0; this.labHeld = null;
     this.feel.reset(this.S.seed);
     this.fitter.reset();
+    this.fauna.reset(this.S.seed, this);
     this.dockMark();
   }
   val(id) { const u = ROWS.find(u => u.id === id); return u.values[this.S.lv[id] ?? 0]; }
@@ -1096,7 +1099,8 @@ export class Game {
       d.run = Math.min(12, d.run + dt);
     } else d.run = 0;
     // Speed builds over a long clear run, so far ground is not a long walk.
-    const top = FLY * this.val('momentum') * (this.boost > 0 ? BOOST.by : 1) * (1 + Math.max(0, d.run - 0.8) * 0.9) * m, ease = Math.min(1, dt * (m > 0 ? 14 : 10));
+    // (A leech on the hull drags: `fauna.drag` is 1 but while one is on, js/fauna.js.)
+    const top = FLY * this.val('momentum') * (this.boost > 0 ? BOOST.by : 1) * (1 + Math.max(0, d.run - 0.8) * 0.9) * m * this.fauna.drag, ease = Math.min(1, dt * (m > 0 ? 14 : 10));
     d.vx += (ix * top - d.vx) * ease; d.vy += (iy * top - d.vy) * ease;
     // Move a little at a time, sliding along whatever stops it. The string follows the small moves (`tend`), so it
     // goes round whatever the drill went round: a move this small never leaves the open ground the drill stands in,
@@ -1422,13 +1426,19 @@ export class Game {
     for (let y = y0 - 2; y <= y0 + 2; y++) for (let x = x0 - 2; x <= x0 + 2; x++) {
       const i = y * N + x;
       if (w.k(i) !== K.CAP || Math.hypot(x + 0.5 - d.x, y + 0.5 - d.y) > 2.1) continue;
-      w.setK(i, K.CAP_LIT); lit = true;
-      if (this.time - this.glowAt > 2) this.glowRun = 0;
-      this.glowAt = this.time;
-      this.sparkle((x + 0.5) * T, (y + 0.5) * T, 5, '#58f0e0'); this.ring((x + 0.5) * T, (y + 0.5) * T, '#58f0e0', 14);
-      sfx.gem(Math.min(9, this.glowRun++));
+      this.lightCap(i); lit = true;
     }
     if (lit) this.version++;
+  }
+  // A cap lit, by the drill flying by or by the grotto's newt (js/fauna.js): a note a step higher for each lit within
+  // two seconds of the last.
+  lightCap(i) {
+    const x = i % N, y = Math.floor(i / N);
+    this.world.setK(i, K.CAP_LIT);
+    if (this.time - this.glowAt > 2) this.glowRun = 0;
+    this.glowAt = this.time;
+    this.sparkle((x + 0.5) * T, (y + 0.5) * T, 5, '#58f0e0'); this.ring((x + 0.5) * T, (y + 0.5) * T, '#58f0e0', 14);
+    sfx.gem(Math.min(9, this.glowRun++));
   }
   // The last cut glows: the ground that would come free if this cell were cut. `also` is whatever else the cut
   // would open besides its own cell (a pane that shatters whole, a crack that runs on, the cells a punch goes
@@ -1469,6 +1479,8 @@ export class Game {
     // off, before it goes off. So is a keystone's iron.)
     const key = this.sampleOf(k, row);
     if (k === K.ORE_A || k === K.ORE_B || k === K.STEEL || k === K.PRISM || k === K.RARE || mineral || key) this.analyse(key, x, y, row.dig >= PLOUGH || this.time - this.crushedAt >= CRUSH_EVERY);
+    // (A pup beside the cut is fed by ore crushed; a roost of bats beside it wakes. The creatures only read it.)
+    this.fauna.crushed(this, i, k);
     this.shake = Math.max(this.shake, 1 + tough * 0.5);
     // The hazard that was cut into wakes, and a hazard beside the cut: each may open cells (its own; the slate an
     // arc shatters), and every cell opened goes to `changed` together.
@@ -2318,6 +2330,33 @@ export class Game {
     this.ring(d.x * T, d.y * T, '#bfe6ff', 18); this.sparkle(d.x * T, d.y * T, 8, '#eaf6ff');
     return true;
   }
+  // The cells the tether lies in (`under`), as the frost and anything else that would close a cell asks them
+  // (`updateHazards`'s `lies`; js/fauna.js before it lays a plug of ice).
+  layUnder() {
+    const d = this.drill;
+    this.under.clear();
+    // Both as it is drawn and as it truly runs, corner to corner (taken a hair short of each corner, which
+    // belongs to four cells at once). The true line is taken a hair to either side of itself as well: a span
+    // that lies along a grid line has a cell on each side of it and one through a grid point has four, and
+    // were any of them to close the string would be left with rock on both sides.
+    const L = this.lay(), P = this.band, under = this.under;
+    const along = (x0, y0, x1, y1) => { for (const c of cellsAlong(x0, y0, x1, y1)) under.add(c); };
+    for (let n = 1; n < L.length; n++) {
+      along(L[n - 1][0], L[n - 1][1], L[n][0], L[n][1]);
+      const sx = P[n][0] - P[n - 1][0], sy = P[n][1] - P[n - 1][1], len = Math.hypot(sx, sy) || 1, ex = sx * 1e-4, ey = sy * 1e-4;
+      for (const side of [0, 1e-3, -1e-3]) {
+        const ox = -sy / len * side, oy = sx / len * side;
+        along(P[n - 1][0] + ex + ox, P[n - 1][1] + ey + oy, P[n][0] - ex + ox, P[n][1] - ey + oy);
+      }
+    }
+    // A drill thrown or being reeled home: nothing closes on the line of its flight, as wide as it is, or where
+    // it will come down.
+    if (d.mode === 'fling' || d.mode === 'home') {
+      const sx = d.tx - d.x, sy = d.ty - d.y, len = Math.hypot(sx, sy) || 1;
+      for (const side of [0, BODY, -BODY]) along(d.x - sy / len * side, d.y + sx / len * side, d.tx - sy / len * side, d.ty + sx / len * side);
+      for (const [u, v] of [[-BODY, -BODY], [BODY, -BODY], [-BODY, BODY], [BODY, BODY]]) under.add(Math.floor(d.ty + v) * N + Math.floor(d.tx + u));
+    }
+  }
   updateHazards(dt) {
     const w = this.world, d = this.drill, here = this.di, dcx = Math.floor(d.x), dcy = Math.floor(d.y);
     // The cells that open and that grow back in this pass, for `changed`.
@@ -2325,30 +2364,7 @@ export class Game {
     // Ground never grows back across the tether: where it lies is worked out afresh, at the moment it is asked.
     let fresh = false;
     const lies = i => {
-      if (!fresh) {
-        fresh = true; this.under.clear();
-        // Both as it is drawn and as it truly runs, corner to corner (taken a hair short of each corner, which
-        // belongs to four cells at once). The true line is taken a hair to either side of itself as well: a span
-        // that lies along a grid line has a cell on each side of it and one through a grid point has four, and
-        // were any of them to close the string would be left with rock on both sides.
-        const L = this.lay(), P = this.band, under = this.under;
-        const along = (x0, y0, x1, y1) => { for (const c of cellsAlong(x0, y0, x1, y1)) under.add(c); };
-        for (let n = 1; n < L.length; n++) {
-          along(L[n - 1][0], L[n - 1][1], L[n][0], L[n][1]);
-          const sx = P[n][0] - P[n - 1][0], sy = P[n][1] - P[n - 1][1], len = Math.hypot(sx, sy) || 1, ex = sx * 1e-4, ey = sy * 1e-4;
-          for (const side of [0, 1e-3, -1e-3]) {
-            const ox = -sy / len * side, oy = sx / len * side;
-            along(P[n - 1][0] + ex + ox, P[n - 1][1] + ey + oy, P[n][0] - ex + ox, P[n][1] - ey + oy);
-          }
-        }
-        // A drill thrown or being reeled home: nothing closes on the line of its flight, as wide as it is, or where
-        // it will come down.
-        if (d.mode === 'fling' || d.mode === 'home') {
-          const sx = d.tx - d.x, sy = d.ty - d.y, len = Math.hypot(sx, sy) || 1;
-          for (const side of [0, BODY, -BODY]) along(d.x - sy / len * side, d.y + sx / len * side, d.tx - sy / len * side, d.ty + sx / len * side);
-          for (const [u, v] of [[-BODY, -BODY], [BODY, -BODY], [-BODY, BODY], [BODY, BODY]]) under.add(Math.floor(d.ty + v) * N + Math.floor(d.tx + u));
-        }
-      }
+      if (!fresh) { fresh = true; this.layUnder(); }
       return this.under.has(i);
     };
     for (const [i, t] of this.quenched) { if (t > dt) this.quenched.set(i, t - dt); else this.quenched.delete(i); }
@@ -2721,8 +2737,11 @@ export class Game {
       this.glow(); this.burnFuses(dt);
       // And ground the line home has passed over: is any of that loose?
       if (d.mode !== 'dead' && this.sweepHome(this.reelTick > 0.1)) met = true;
-      if (met || this.reelTick > 0.1) { this.reelTick = 0; this.reelIfRound(); }
+      // (A puffling the tether goes round is caught, with the tether as it lies before anything it is round is reeled.)
+      if (met || this.reelTick > 0.1) { this.reelTick = 0; this.fauna.wound(this); this.reelIfRound(); }
       this.updateHazards(dt);
+      // The creatures: what they do, by their own clock (js/fauna.js). With a panel up they only breathe (below).
+      { const t0 = performance.now(); this.fauna.step(this, dt); this.timed('fauna', t0); }
       this.listen(dt);
       // The station makes a trickle of grit of its own: however a world has been spent, the next reach is never out
       // of reach for good.
@@ -2730,7 +2749,7 @@ export class Game {
       if (this.trickle >= 2) { this.trickle -= 2; this.S.grit += Math.ceil(richness(this.val('tether') / 2)); }
       this.saveTick = (this.saveTick ?? 0) + dt;
       if (this.saveTick > 20) { this.saveTick = 0; this.save(); }
-    }
+    } else this.fauna.idle(this, dt);
     // Rubble on its way home keeps coming with the shop open: what it pays is banked as it lands.
     this.updateHauls(dt);
     this.ambient(dt);

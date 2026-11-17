@@ -1,6 +1,6 @@
 // The whole game played at random and checked after every frame (the verifiers' fuzz of the hunt's fixes, kept):
 //   node test/regress/i-fuzz-play.mjs <seed> <turns> <reach level> <start x> <start y> <dt: 60|30|mix> [flags]
-// flags (comma list): bombs, shop, home, forceshop, lowdrill, ram, pillars, known, wake
+// flags (comma list): bombs, shop, home, forceshop, lowdrill, ram, pillars, known, wake, fauna
 // Steering only, or with trips home and throws, bombs, the shop. Checked: the tether (tetherFaults); the books of
 // loose ground (every piece really cut off, one piece, no cell twice); the lasso (an island the tether is right
 // round, found by flooding with none of the game's books, is reeled within two seconds); every haul (what is
@@ -12,6 +12,13 @@
 // tools/sites.mjs --where 7` says where they lie) is woken, as a cut beside it would wake it, at the start and every
 // WAKE_EVERY seconds after while it is there and asleep: so the flight meets it tolling, firing, swimming and
 // pulling, as it may never come to cut beside it by chance. How often it was woken is counted (`rareWakes`).
+//
+// With `fauna` the game has its creatures (js/fauna.js), as it is played: their dens wake about the flight, and what
+// they do to it (a knock, a drag, a chill, a plug of ice, a find shown, a puffling's pay) goes through the same
+// checks as everything else. What a caught puffling pays is banked with no haul, and is counted in the books from
+// what the creatures say they paid (`fauna.paid`). And so that the flight meets them doing what they do, wherever it
+// goes, every CROWD_EVERY seconds one more is set down beside the drill, a foe woken at once: bats, a leech, a
+// spitter, a puffling, a wren, moths and a pup, in turn.
 //
 // One thing is counted and not failed: a drill hemmed in by lava (`hemmedByLava`). Lava is shut to it until it
 // drains or sets, and at the very end of the reach the ways out are refused, so there it waits, 14 s in the
@@ -31,7 +38,7 @@ const HX = C + 0.5, HY = C + 0.5, HARD = world.HARD;
 Math.random = random(seed + 5);
 const lv = { tether: reach, drill: flags.has('lowdrill') ? 1 : 4 };
 if (flags.has('ram')) lv.momentum = 4;
-const game = await makeGame(seed, lv);
+const game = await makeGame(seed, lv, { fauna: flags.has('fauna') });
 const d = game.drill, w = game.world, rnd = random(seed * 7 + 1);
 const rel = i => `${(i % N) - C},${Math.floor(i / N) - C}`;
 const at = () => `${(d.x - HX).toFixed(2)},${(d.y - HY).toFixed(2)}`;
@@ -315,14 +322,26 @@ function rouse() {
   game.changed(game.trigger(best, type, false));
 }
 
+// ---------------------------------------------------------------- the creatures, set down
+const CROWD_EVERY = 6, CROWD = [['bat', 'fuse'], ['leech', ''], ['spitter', 'puff'], ['puff', ''], ['wren', 'peck'], ['moth', ''], ['pup', '']];
+let crowdAt = 2, crowded = 0;
+function crowd() {
+  if (clock < crowdAt) return;
+  crowdAt = clock + CROWD_EVERY;
+  const [kind, state] = CROWD[crowded++ % CROWD.length], i = game.fauna.stage(game, kind, 8);
+  if (i >= 0 && state) game.fauna.stageAs(game, i, state);
+  stats.staged = (stats.staged ?? 0) + (i >= 0 ? 1 : 0);
+}
+
 // ---------------------------------------------------------------- one frame, checked
 function step(dt, steering, mayProbe = true) {
   const before = { x: d.x, y: d.y, mode: d.mode, speed: d.speed }, g0 = game.S.grit, shown0 = game.banked(), shop = game.shop;
   haulsThisFrame = 0;
-  const e0 = expectGrit;
+  const e0 = expectGrit, caught = game.fauna.paid.grit, caughtGems = game.fauna.paid.gems.slice();
   try { game.update(dt); } catch (e) { note('threw', e.stack.split('\n').slice(0, 5).join(' | ')); }
   frames++; if (!shop) clock += dt;
   if (flags.has('wake')) rouse();
+  if (flags.has('fauna') && !shop) crowd();
   stats.maxBends = Math.max(stats.maxBends, game.band.length);
   for (const f of tetherFaults(game)) note('tether: ' + f.replace(/[-\d.(),]+/g, '#'), `${f}\n  band: ${JSON.stringify(game.band.slice(0, 8).map(p => [+(p[0] - HX).toFixed(2), +(p[1] - HY).toFixed(2), p[2] ?? 0]))}`);
   books();
@@ -330,6 +349,10 @@ function step(dt, steering, mayProbe = true) {
   drillCheck(dt, steering && d.stun <= 0 && d.mode === 'free' && !d.park, before);
   // Money.
   const S = game.S, trick = Math.ceil(Math.max(1, game.val('tether') / 2 / 12));
+  // (A puffling caught pays at once: so much is the creatures', and is in the books.)
+  expectGrit += game.fauna.paid.grit - caught;
+  for (let g = 1; g < 5; g++) expectGems[g] += game.fauna.paid.gems[g] - caughtGems[g];
+  if (game.fauna.paid.grit > caught) stats.caught = (stats.caught ?? 0) + 1;
   const extra = S.grit - g0 - (expectGrit - e0);
   if (extra !== 0 && extra !== trick) note('money: grit changed by something that is neither a haul nor the trickle', `${extra} (trickle is ${trick}), hauls this frame ${haulsThisFrame}`);
   expectGrit += extra;
@@ -420,5 +443,6 @@ if (game.pending.grit || game.pending.gems.some(Boolean)) note('money: something
 for (let g = 1; g < 5; g++) if (game.S.gems[g] !== expectGems[g]) note('money: gems are not the sum of what the banners said', `gem ${g}: ${game.S.gems[g]} against ${expectGems[g]}`);
 if (flags.has('wake') && !stats.rareWakes) note('wake: no rare hazard was ever woken', `none within 20 cells of ${sx},${sy}, or never near enough`);
 stats.longestHeld = +stats.longestHeld.toFixed(2); stats.maxHaulT = +stats.maxHaulT.toFixed(1);
-console.log(JSON.stringify({ seed, turns, reach, start: [sx, sy], dt: dtMode, flags: [...flags].join(','), frames, seconds: +clock.toFixed(0), at: at(), bends: game.band.length, ...stats, problems: Object.fromEntries(kinds) }));
+console.log(JSON.stringify({ seed, turns, reach, start: [sx, sy], dt: dtMode, flags: [...flags].join(','), frames, seconds: +clock.toFixed(0), at: at(), bends: game.band.length, ...stats,
+  ...(flags.has('fauna') && { creatures: { met: Object.keys(game.S.fauna?.met ?? {}), deeds: game.fauna.deeds, knocks: game.knocks } }), problems: Object.fromEntries(kinds) }));
 process.exit(kinds.size ? 1 : 0);

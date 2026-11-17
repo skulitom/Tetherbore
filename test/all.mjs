@@ -85,7 +85,11 @@ const ARGS = {
     // and lodestone of worlds 7 and 11, and the nearest glowworm of world 7.
     [7, 300, 6, 141, -576, 60, 'wake'], [7, 300, 6, -139, 565, 'mix', 'wake'], [7, 300, 6, -558, -141, 60, 'wake'], [7, 300, 6, 562, 151, 30, 'wake'],
     [11, 300, 6, 143, -575, 'mix', 'wake'], [11, 300, 6, -140, 560, 60, 'wake'], [11, 300, 6, -578, -138, 30, 'wake'], [11, 300, 6, 574, 134, 60, 'wake'],
-    [7, 300, 6, -430, 285, 'mix', 'wake']],
+    [7, 300, 6, -430, 285, 'mix', 'wake'],
+    // With the creatures (js/fauna.js) about the flight and more set down beside the drill every few seconds, foes
+    // woken: in the north's own ground, loess, sporefall, magma, serac and the home ground.
+    [7, 300, 5, 60, -150, 60, 'fauna'], [7, 300, 6, 300, 0, 'mix', 'fauna'], [7, 300, 7, -260, -124, 60, 'fauna'], [7, 300, 7, -332, 800, 60, 'fauna'],
+    [7, 300, 7, 128, -384, 30, 'fauna'], [7, 260, 3, -60, 20, 60, 'fauna']],
 };
 const tests = [];
 for (const file of readdirSync(here + 'regress').filter(name => name.endsWith('.mjs')).sort()) {

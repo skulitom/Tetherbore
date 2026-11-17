@@ -12,12 +12,17 @@
 //   --draw   every row of the shop at its last level, and every frame drawn too (with the tether's canvas there),
 //            the drawing timed apart and by its parts (`Game.timed`): what the upgrades show is `fit`. The canvas
 //            here swallows every call, so this is the work of the drawing and not what the browser does with it.
+//   --fauna  the game with its creatures (js/fauna.js), and as many as there may be (FAUNA) kept about the drill,
+//            one of every kind set down beside it in turn: what they do is timed with the frame, and what is drawn
+//            of them is the part `fauna`.
 import { makeGame, random, rubbleHash, farStart, wander, UPGRADES, WORKS, MAPS, CORE } from './harness.mjs';
 
-const args = process.argv.slice(2), digest = args.includes('--hash') ? rubbleHash() : null, drawn = args.includes('--draw');
+const args = process.argv.slice(2), digest = args.includes('--hash') ? rubbleHash() : null, drawn = args.includes('--draw'), crowd = args.includes('--fauna');
 const [seed = 11, turns = 600, reach = 5, sx = 0, sy = 0] = args.filter(a => !a.startsWith('--')).map(Number);
 Math.random = random(seed + 5);
-const game = await makeGame(seed, { tether: reach, drill: 4 });
+const game = await makeGame(seed, { tether: reach, drill: 4 }, { fauna: crowd });
+const KINDS = ['bat', 'moth', 'bee', 'leech', 'spitter', 'puff', 'skink', 'frog', 'beetle', 'jelly', 'salamander', 'wren', 'newt', 'pup'];
+let most = 0;
 if (drawn) {
   for (const u of [...UPGRADES, ...WORKS, ...MAPS, ...CORE]) if (u.id !== 'tether') game.S.lv[u.id] = u.values.length - 1;
   game.over = document.createElement('canvas'); game.overCtx = game.over.getContext('2d'); game.resize(360, 640, 1);
@@ -29,6 +34,8 @@ const hauls = game.updateHauls.bind(game);
 game.updateHauls = dt => { const t = performance.now(); hauls(dt); rubble += performance.now() - t; };
 for (const auto of wander(random(seed), turns)) {
   game.input.auto = auto;
+  if (crowd && frames % 20 === 0 && game.fauna.alive < 16) game.fauna.stage(game, KINDS[(frames / 20) % KINDS.length], 8);
+  if (crowd) most = Math.max(most, game.fauna.alive);
   rubble = 0;
   const t = performance.now();
   game.update(1 / 60);
@@ -49,4 +56,5 @@ for (const auto of wander(random(seed), turns)) {
 }
 console.log(JSON.stringify({ seed, reach, start: [sx, sy], frames, meanMs: +(total / frames).toFixed(4), worstMs: +worst.toFixed(2), worstAt, over16: over,
   withoutRubble: { meanMs: +(bare / frames).toFixed(4), worstMs: +bareWorst.toFixed(2), worstAt: bareWorstAt, over16: bareOver }, hauls: game.S.stats.hauls, bends: game.band.length, ...digest && { hash: digest.hex },
+  ...crowd && { creatures: most },
   ...drawn && { drawMs: +(draw / frames).toFixed(4), drawParts: Object.fromEntries(Object.entries(parts).map(([name, ms]) => [name, +(ms / frames).toFixed(4)])) } }));

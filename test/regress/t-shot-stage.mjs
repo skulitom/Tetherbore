@@ -15,7 +15,9 @@
 //   `shop` opens the shop, `buy` buys a row's next level (the shop's moment with `shop`, the fitting at the core
 //   without), `steer` holds the thumb, `fire` makes a power of what WORKS fits act, and `ladder` draws every level
 //   of every row and no world; `lab` opens the lab's notes knowing what it is told, `labsel` chooses a thing and
-//   `scroll` scrolls the list, and `orebook` draws every ground's ores and no world; and none of them sets anything
+//   `scroll` scrolls the list, and `orebook` draws every ground's ores and no world; `fauna` sets a creature down
+//   beside the drill in the state it is asked for (a pal, a roost woken) and `faunabook` draws every creature and no
+//   world; and none of them sets anything
 //   unasked; and stepped for three seconds, nothing has moved the drill, nothing is wrong with the tether, and the
 //   saved game is as it was.
 import { makeGame, tetherFaults, sight, world, C, N, K } from '../harness.mjs';
@@ -287,6 +289,25 @@ check(await open('', 'example.org') === undefined, 'away from localhost an ordin
   try { book.advance(100); } catch (error) { threw = error.message; }
   check(!threw && !book.game.lab, `the ore book threw: ${threw}`);
   check(localStorage.getItem(SAVE) === saved, 'a view of the notes of the lab wrote over the saved game');
+}
+
+// The creatures: `fauna` sets one down beside the drill in the state asked for, `met` takes every creature as met,
+// and `faunabook` is a page of them all; none of it writes the saved game.
+{
+  const pal = await open('?shot&seed=7&at=-60,0&fauna=pup:pal&met'), P = pal.game, facts = pal.shot.facts();
+  check(P.fauna.pal >= 0 && P.S.fauna?.pal && facts.fauna?.kind === 'pup', `fauna=pup:pal: no pal (${JSON.stringify(facts.fauna)})`);
+  check(Object.keys(P.S.fauna?.met ?? {}).length === 14, 'with met not every creature is taken as met');
+  const bats = await open('?shot&seed=7&at=-300,0&fauna=bat:fuse'), B = bats.game, i = bats.shot.facts().fauna?.slot ?? -1;
+  check(i >= 0 && B.fauna.denAt(i)?.st === 1, 'fauna=bat:fuse: no roost woken beside the drill');
+  bats.advance(500);
+  check(B.fauna.st[i] === 4 || B.fauna.st[i] === 5, `fauna=bat:fuse: stepped half a second the bat is in state ${B.fauna.st[i]}, not warning`);
+  const none = await open('?shot&seed=7&at=-60,0');
+  check(none.shot.facts().fauna === null, 'a view staged without fauna set one down');
+  const book = await open('?shot&seed=7&faunabook');
+  let threw = null;
+  try { book.advance(100); } catch (error) { threw = error.message; }
+  check(!threw, `the book of creatures threw: ${threw}`);
+  check(localStorage.getItem(SAVE) === saved, 'a view of the creatures wrote over the saved game');
 }
 
 if (fails.length) { console.log(`FAIL: ${fails.join('\n      ')}`); process.exit(1); }

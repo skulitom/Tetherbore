@@ -91,7 +91,8 @@ const ASKS = [['dig', 1], ['dig', 2], ['dig', 3], ['dig', 4], ['dig', 2, 'ore'],
   ['hum'], ['pull'], ['gather'], ['gather', 0], ['gather', 1], ['gather', 6], ['gather', 40], ['gather', NaN],
   ['spot', 'bell'], ['spot', 'vent'], ['spot', 'worm'], ['spot', 'lodestone']];
 const said = ask => `${ask[0]}(${ask.slice(1).map(a => JSON.stringify(a)).join(', ')})`;
-const ask = ([name, ...args]) => { const from = made.length; draws = 0; sfx[name](...args); return made.slice(from); };
+// (A creature's voice is asked by `v:` and its name: js/audio.js's `voices`, which js/fauna.js asks for.)
+const ask = ([name, ...args]) => { const from = made.length; draws = 0; (name.startsWith('v:') ? audio.voices[name.slice(2)] : sfx[name])(...args); return made.slice(from); };
 // (A giant haul's sound, at every size of giant and at HALF.)
 ASKS.push(['vast', 1], ['vast', 3], ['vast', 6], ['vast', 7], ['vast', 0], ['vast', NaN]);
 // (A place's bell and calls, by a score's name, a row of a pocket, a cross, a ground with no score, a number.)
@@ -101,6 +102,12 @@ ASKS.push(['chime', 'hive'], ['chime', { name: 'glaze', kin: 1 }], ['place', 'dr
 ASKS.push(['creak'], ['creak', 0, 1.5], ['creak', NaN, NaN], ['shatter', 1], ['shatter', 0], ['shatter'], ['drip', 1, 0], ['drip', 0, 4], ['drip', 0.5, -2], ['drip', NaN, NaN], ['drip'],
   ['blub', 0.5], ['blub'], ['quake', 1], ['quake', 2], ['quake', NaN], ['quake'], ['gust', 1], ['gust', 0.5], ['gust'], ['trickle', 0.5], ['trickle'], ['crackle', 1], ['crackle']);
 for (const name of ['creak', 'shatter', 'drip', 'blub', 'quake', 'gust', 'trickle', 'crackle']) if (typeof sfx[name] !== 'function') fails.push(`the ground's feel asks for sfx.${name}, and there is none`);
+// (The voices of the creatures, js/fauna.js's: each with nothing, beside the drill, at the edge of hearing, and with
+// what is no number.)
+const VOICES = ['tick', 'yip', 'coo', 'tug', 'pop', 'flutter', 'wheeze', 'spit', 'splat', 'purr', 'chitter', 'screech', 'whoosh', 'croak', 'squeak', 'caught', 'poof', 'plip', 'slurp', 'skitter', 'trill',
+  'buzz', 'glass', 'meet', 'befriend'];
+for (const name of VOICES) { if (typeof audio.voices[name] !== 'function') fails.push(`the creatures ask for voices.${name}, and there is none`); else ASKS.push([`v:${name}`], [`v:${name}`, 1], [`v:${name}`, 0.01], [`v:${name}`, NaN]); }
+for (const name of Object.keys(audio.voices)) if (!VOICES.includes(name)) fails.push(`voices.${name} is not asked for here`);
 for (const name of ['tap', 'gem', 'relic', 'dig', 'tick', 'slide', 'hiss', 'dock', 'clink', 'zap', 'wreck', 'twang', 'thud', 'spot', 'puff', 'place', 'ping', 'mend', 'knock', 'grind', 'freeze', 'deny', 'crack', 'chime', 'buy', 'banked', 'arrive',
   'bellwake', 'toll', 'rumble', 'jet', 'wormwake', 'gnaw', 'bite', 'caught', 'hum', 'pull', 'gather']) {
   if (typeof sfx[name] !== 'function') fails.push(`the game asks for sfx.${name}, and there is none`);

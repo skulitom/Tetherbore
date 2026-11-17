@@ -58,7 +58,9 @@ for (const source of [...ROCKS, ...STRAINS, ...POCKETS, ...CROSSES, ...FLOORS, .
 }
 
 // ---- hand-drawn
-for (const recipe of RECIPES) if (wanted(recipe.name)) await emit(recipe);
+// (A recipe may carry what the game reads of it beside its frames, `extra`, which goes into the atlas and not into
+// the recipe: the creatures' foe eyes.)
+for (const { extra, ...recipe } of RECIPES) if (wanted(recipe.name)) await emit(recipe, recipe.name, extra);
 
 // ---- each ground's own pieces in its caves, their halos and the air's motes (art/decor.mjs), with what the game
 // reads of them beside the frames: which pieces glow and where (`glows`), and which are icicles (`falls`)

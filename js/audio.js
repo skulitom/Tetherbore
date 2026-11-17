@@ -543,6 +543,59 @@ const quirks = {
 Object.assign(GAP, { creak: 1.2, shatter: 0.12, drip: 0.1, blub: 0.15, quake: 1.5, gust: 2, trickle: 0.4, crackle: 0.2 });
 for (const name of Object.keys(quirks)) sfx[name] = sound(name, quirks[name]);
 
+// ---------------------------------------------------------------- the voices of the creatures
+// What the creatures of the ground say (js/fauna.js asks for them): small, soft and short, and a few of them
+// warnings, which the player plays by (a bat's chitter and screech, a spitter's wheeze, a leech's drip, the pal's
+// yip). Each goes into the sounds' own gain, as every sound does, under the music; none ducks it. `near` is 0 at the
+// edge of hearing and 1 beside the drill, and whatever a voice is asked with it makes its sound. None but a warning
+// is made when many layers are sounding already.
+const VOICE_GAP = { tick: 0.4, yip: 0.25, coo: 0.15, tug: 0.3, pop: 0.2, flutter: 3, wheeze: 0.6, spit: 0.3, splat: 0.2, purr: 3, chitter: 2, screech: 0.4,
+  whoosh: 0.15, croak: 2, squeak: 0.5, caught: 0.5, poof: 0.3, plip: 0.12, slurp: 1.5, skitter: 1, trill: 0.8, buzz: 3, glass: 4, meet: 1.5, befriend: 1 };
+const calls = {
+  // A beetle tucking in: two dry ticks.
+  tick(near) { if (crowded()) return; const a = loud(near); grains(2, 0.08, { first: 0.03 * a, gain: 0.025 * a, freq: 3800 }); },
+  // The pal: a yip, high and quick (a warning); a coo, fed; a tug, pulling a leech off; a pop out of the rock.
+  yip(near) { const a = loud(near); tone(1180, 0.07, { type: 'triangle', gain: 0.05 * a, to: 1700 }); tone(1500, 0.06, { type: 'triangle', gain: 0.04 * a, to: 2100, delay: 0.09 }); },
+  coo(near) { if (crowded()) return; const a = loud(near); tone(inKey(520), 0.16, { type: 'sine', gain: 0.045 * a, to: inKey(700), attack: 0.03 }); },
+  tug(near) { const a = loud(near); noise(0.12, { freq: 900, to: 400, q: 2, gain: 0.04 * a }); tone(330, 0.1, { type: 'triangle', gain: 0.04 * a, to: 520, delay: 0.08 }); },
+  pop(near) { if (crowded()) return; const a = loud(near); tone(260, 0.06, { type: 'sine', gain: 0.05 * a, to: 520, attack: 0.002 }); },
+  // Moths: a breath of wings.
+  flutter(near) { if (crowded()) return; const a = loud(near); grains(6, 0.3, { gain: 0.03 * a, freq: 1800, type: 'bandpass', q: 0.8 }); },
+  // The spitter: a wheeze rising as it swells (a warning), the spit, and the splat of ice.
+  wheeze(near) { const a = loud(near); noise(0.85, { freq: 500, to: 1600, q: 2, gain: 0.06 * a, attack: 0.5 }); },
+  spit(near) { const a = loud(near); noise(0.08, { type: 'highpass', freq: 2400, gain: 0.05 * a }); tone(700, 0.06, { type: 'sine', gain: 0.03 * a, to: 300 }); },
+  splat(near) { const a = loud(near); grains(4, 0.12, { first: 0.04 * a, gain: 0.03 * a, freq: 4200, out: room }); },
+  // A salamander's low purr.
+  purr(near) { if (crowded()) return; const a = loud(near); tone(110, 0.5, { type: 'sawtooth', gain: 0.025 * a, to: 100, lp: 300, attack: 0.1 }); },
+  // Bats: a chitter in the roost (a warning, low and dry), the screech as they wake, the whoosh of a swoop.
+  chitter(near) { const a = loud(near); grains(5, 0.25, { gain: 0.06 * a, freq: 3200, type: 'bandpass', q: 1.5 }); },
+  screech(near) { const a = loud(near); tone(2400, 0.22, { type: 'sawtooth', gain: 0.03 * a, to: 1700, lp: 3600 }); tone(2900, 0.16, { type: 'triangle', gain: 0.02 * a, to: 2100, delay: 0.05 }); },
+  whoosh(near) { const a = loud(near); noise(0.3, { freq: 600, to: 1800, q: 1, gain: 0.05 * a, attack: 0.08 }); },
+  // A frog's croak, on a note of the key, rolled.
+  croak(near) { if (crowded()) return; const a = loud(near), f = inKey(240) / 2; tone(f, 0.18, { type: 'square', gain: 0.02 * a, to: f * 0.9, lp: 600 }); tone(f, 0.12, { type: 'square', gain: 0.015 * a, to: f * 0.85, lp: 500, delay: 0.2 }); },
+  // The puffling: a squeak, shy; caught, three soft notes rising; and the poof as it goes.
+  squeak(near) { const a = loud(near); tone(1600, 0.06, { type: 'sine', gain: 0.035 * a, to: 2300 }); },
+  caught() { const f = inKey(660); for (let n = 0; n < 3; n++) tone(f * [1, 1.25, 1.5][n], 0.18, { type: 'sine', gain: 0.05, delay: n * 0.09, out: space }); },
+  poof(near) { const a = loud(near); noise(0.2, { type: 'lowpass', freq: 1400, to: 500, gain: 0.04 * a, attack: 0.01 }); },
+  // A leech: a drip quickening (a warning), a slurp on the hull.
+  plip(near) { const a = loud(near), f = inKey(1300); tone(f, 0.05, { type: 'sine', gain: 0.04 * a, to: f * 1.4 }); },
+  slurp(near) { const a = loud(near); tone(200, 0.18, { type: 'sine', gain: 0.04 * a, to: 140, lp: 500 }); noise(0.1, { type: 'lowpass', freq: 600, gain: 0.02 * a, delay: 0.05 }); },
+  // A skink darting: a skitter of grains.
+  skitter(near) { if (crowded()) return; const a = loud(near); grains(7, 0.22, { gain: 0.03 * a, freq: 3000, type: 'bandpass', q: 1.2 }); },
+  // The wren: a trill in the key.
+  trill(near) { const a = loud(near), f = inKey(1760); for (let n = 0; n < 4; n++) tone(n % 2 ? f * 1.12 : f, 0.05, { type: 'sine', gain: 0.03 * a, delay: n * 0.055 }); },
+  // Bees: a soft buzz. Jellies: a glass chime in the key, now and then.
+  buzz(near) { if (crowded()) return; const a = loud(near); tone(190, 0.5, { type: 'sawtooth', gain: 0.018 * a, to: 200, lp: 700, attack: 0.15 }); },
+  glass(near) { if (crowded()) return; const a = loud(near); tone(inKey(2200), 0.6, { type: 'sine', gain: 0.025 * a, attack: 0.004, out: space }); },
+  // A creature met for the first time: two soft notes. A pal made: the coo and a third note over it.
+  meet() { tone(inKey(880), 0.14, { type: 'sine', gain: 0.035, out: space }); tone(inKey(1320), 0.2, { type: 'sine', gain: 0.03, delay: 0.1, out: space }); },
+  befriend() { const f = inKey(520); tone(f, 0.16, { type: 'sine', gain: 0.045 }); tone(f * 1.5, 0.24, { type: 'sine', gain: 0.04, delay: 0.14, out: space }); },
+};
+// (Their least gaps are kept apart from the game's own, under names of their own.)
+for (const [name, gap] of Object.entries(VOICE_GAP)) GAP[`v:${name}`] = gap;
+export const voices = {};
+for (const name of Object.keys(calls)) voices[name] = sound(`v:${name}`, calls[name]);
+
 // ---------------------------------------------------------------- the sound of the place
 // A bed of filtered noise and a low drone that change with the ground the drill is in, and now and then a single
 // soft bell. Every ground has a piece of music of its own, its score (`scoreOf`, with the music below), and the bed,

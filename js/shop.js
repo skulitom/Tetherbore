@@ -186,6 +186,10 @@ export const WORKS = [
 //            then minerals, caches and whatever else was laid to be found (js/drawing.js: `LENS`)
 //   FINDER   finds not yet seen are marked on the map: caches; then geodes; then prisms (js/drawing.js: `findsNear`)
 //   CHART    a map of the whole of the tether's reach (a tap on the map; the third tab of the top bar's panel)
+// Which finds the finder marks at each level of it (`mapfinder`), and how far from the drill it marks them, in
+// cells (js/drawing.js: `findsNear`; and js/fauna.js, whose wren never leads the drill to one the finder marks).
+export const FOUND = { cache: 1, geode: 2, prism: 3 };
+export const FINDER = [0, 120, 200, 320];
 export const MAPS = [
   { id: 'maprange', icon: 'scanner', name: 'RANGE', what: 'MAP SHOWS FURTHER', values: [1.5, 2.25, 3.5, 5], gem: B.FROST, ...levels([2, 4, 6], 0.25), show: v => `${Math.round(v * 46)}` },
   { id: 'maplens', icon: 'scanner', name: 'LENS', what: 'MAP TELLS MORE APART', values: [0, 1, 2, 3], gem: B.LODE, ...levels([1.5, 3.5, 5.5], 0.25), show: v => ['ROCK', 'ORE', 'HARD', 'ALL'][v] },

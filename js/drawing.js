@@ -7,7 +7,7 @@ import { N, C, K, B, DX, DY, BIOMES, HAZARDS, CRUSH, ZONE, FIND, rowOf, hazOf, c
 import { sheets, draw, drawScaled, frameAt, duration, slice9, text, textWidth, tinted } from './atlas.js';
 import { decorAt, markAt, natural, framesOf, placeOf } from './decor.js';
 import { sfx, isMuted, setMuted, isMusic, setMusic } from './audio.js';
-import { WORKS, MAPS, TABS, LAB, LAB_OF, LAB_KINS, labLevel, labNext, ROWS } from './shop.js';
+import { WORKS, MAPS, TABS, LAB, LAB_OF, LAB_KINS, labLevel, labNext, ROWS, FOUND, FINDER } from './shop.js';
 import { TETHERS, BODY, BODY_A, HOT, HOT_A, RAM, PLATE, FLAME, FLAME_TIER, FITS, FIT_BIT, CORE_IDLE, CORE_C, CORE_FLASH, DISH, REFINERY, CUTTER, BOX, ORBIT, BEACON } from './fit.js';
 // (The middle of the core and two figures of the rules are the game's, read from js/game.js, which imports this
 // module in turn. The two may import each other because these names are read only inside the methods, which run
@@ -15,6 +15,7 @@ import { TETHERS, BODY, BODY_A, HOT, HOT_A, RAM, PLATE, FLAME, FLAME_TIER, FITS,
 // reading nothing of it as it runs. Loaded first on its own, this module would have js/game.js run first, and
 // that copies the methods from here before there are any: so nothing loads it but js/game.js.)
 import { HX, HY, BOOST, DEATH, BELL, VENT, WORM, STONE, GIANTS } from './game.js';
+import { KINDS } from './fauna.js';
 
 export const T = 16;                            // pixels in a cell
 export const DIR_BIOME = [B.LODE, B.EMBER, B.MIRE, B.FROST];
@@ -62,8 +63,7 @@ const RARE_LENS = [undefined, [2, 170, 236, 255], [2, 255, 150, 40], [2, 190, 25
 // Which finds the finder marks at each level of it, and how far from the drill it marks them, in cells. (It marked
 // every find within the tether's reach, and listed no more than two hundred, from the north down: on the chart of
 // a long reach that was a solid band of dots across the north and none anywhere else.)
-const FOUND = { cache: 1, geode: 2, prism: 3 };
-const FINDER = [0, 120, 200, 320];
+// (They are js/shop.js's, beside the row that buys them, where the creatures' wren reads them too.)
 // Where each direction's gems are found, for a price that cannot be met yet.
 export const GEM_WHERE = [null, 'NORTH', 'SOUTH', 'WEST', 'EAST'];
 // What is called out the first time it is seen (`World.see` says what it is): the name that comes up, and the
@@ -394,6 +394,8 @@ export class Drawing {
       if (f) draw(ctx, 'spore', f, (c.x + 0.5) * T - ox - f[2] / 2, (c.y + 0.5) * T - oy - f[3] / 2);
       ctx.globalAlpha = 1;
     }
+    // The creatures of the ground, under the dark: the lamp shows them (js/fauna.js).
+    { const t0 = performance.now(); this.fauna.draw(this, ctx, ox, oy); this.timed('fauna', t0); }
     // The drill: turned to its heading, biting into what it cuts, stretched by speed and squashed by a knock.
     const speed = Math.hypot(d.vx, d.vy), bite = d.dig >= 0 ? 2 + Math.min(1, d.digT / d.digDur) * 4 + Math.sin(d.digT * 70) : 0;
     const dx = d.x * T - ox + Math.cos(d.ang) * bite, dy = d.y * T - oy + Math.sin(d.ang) * bite;
@@ -414,6 +416,8 @@ export class Drawing {
       ctx.globalAlpha = alpha;
       this.drawDrill(...this.drillDrawn, ctx, this.S.lv.hull, null, this.fitter.look);
       ctx.globalAlpha = 1;
+      // (What rides on the drill: the pal on its tail, a leech on its hull.)
+      this.fauna.rider(this, ctx, this.drillDrawn[0], this.drillDrawn[1], d.ang, alpha);
       if (hurt) { ctx.globalAlpha = 0.5; ctx.fillStyle = '#ff5a4a'; ctx.fillRect(Math.round(dx) - 5, Math.round(dy) - 5, 10, 10); ctx.globalAlpha = 1; }
     }
     // What the ground's feel lets fall and drift, under the dark.
@@ -445,6 +449,8 @@ export class Drawing {
     { const t0 = performance.now(); this.feel.glow(this, ctx, ox, oy); this.timed('feel', t0); }
     // What the upgrades show glowing: sparks, flame, light about the station, the lamp's flare (js/fit.js).
     { const t0 = performance.now(); this.fitter.glow(this, ctx, ox, oy, now); this.timed('fit', t0); }
+    // A foe's eyes, seen across the dark, and the light of what glows among the creatures.
+    { const t0 = performance.now(); this.fauna.glow(this, ctx, ox, oy); this.timed('fauna', t0); }
     // Ground lying loose: cut off from the world, waiting for the tether to be drawn round it. It shows through the
     // dark, with a dotted edge that crawls round it.
     if (this.pieceOf.size) {
@@ -468,6 +474,8 @@ export class Drawing {
       ctx.globalAlpha = 1;
     }
     this.drawRareSigns(ctx, ox, oy, now);
+    // A foe's warning, over the dark; and the creatures' words and rings.
+    { const t0 = performance.now(); this.fauna.signs(this, ctx, ox, oy); this.timed('fauna', t0); }
     for (const r of this.rings) {
       // A ring of whole pixels spreading from a point (once its delay is over: `Game.ring`).
       if (r.t < 0) continue;
@@ -635,6 +643,7 @@ export class Drawing {
       o.globalAlpha = fine.alpha;
       this.drawDrill(...this.drillDrawn, o, this.S.lv.hull, null, this.fitter.look);
       o.globalAlpha = 1;
+      this.fauna.rider(this, o, dx, dy, this.drill.ang, fine.alpha);
       if (fine.hurt) { o.globalAlpha = 0.5; o.fillStyle = '#ff5a4a'; o.fillRect(dx - 5, dy - 5, 10, 10); o.globalAlpha = 1; }
     }
     // Never over the interface: the bar at the foot, the map, the buttons, and the small panels that come and go under the
@@ -920,6 +929,7 @@ export class Drawing {
     for (const [i, sp] of this.sparks) if (sp.fuse > 0) this.shine(i % N, Math.floor(i / N), 0.9, 3);
     for (const i of this.quenched.keys()) this.shine(i % N, Math.floor(i / N), 0.8, 2.5);
     this.feel.lights(this);
+    this.fauna.lights(this);
     // Keystones that have been seen glint, so that they read from across the screen: the nearest dozen.
     if (keys.length > KEY_GLINTS) {
       const far = i => ((i % N) + 0.5 - d.x) ** 2 + (Math.floor(i / N) + 0.5 - d.y) ** 2;
@@ -1522,6 +1532,8 @@ export class Drawing {
       ['HAUL PAY', `+${parts * 10}% (${parts}/8 PARTS)`, parts > 0],
       ['FURTHEST OUT', `${Math.floor(S.out ?? 0)} CELLS`],
       ['PLACES MET', `${Object.keys(S.met).length}`],
+      // (The creatures have their line once one has been met: how many kinds, and the pal.)
+      ...(S.fauna && Object.keys(S.fauna.met ?? {}).length ? [['CREATURES', `${Object.keys(S.fauna.met).length}/${KINDS}${S.fauna.pal ? ', A PAL' : ''}`, !!S.fauna.pal]] : []),
       ['REFINERY', `GRIT x${this.val('refinery')}, GEMS x${this.val('cutter')}`, S.lv.refinery + S.lv.cutter > 0],
       ['LAMP', `${this.val('lamp')} CELLS`, S.lv.lamp > 0],
       ['BLACK BOX', this.val('blackbox') ? `KEEPS ${Math.round(this.val('blackbox') * 100)}%` : 'NONE', S.lv.blackbox > 0],

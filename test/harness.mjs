@@ -49,12 +49,18 @@ export { Game, UPGRADES, WORKS, MAPS, CORE, DEATH, SPEED, FLY, income, richness,
 // which nothing lands again), and the pip it took is given back at once, so the drill is never wrecked and wound
 // home. The flights and the pilots written before there was a hull are of a drill that stays out in the ground it
 // was set down in, whatever it flies into; with `{ hull: true }` the game is exactly the one that is played.
-export async function makeGame(seed = 7, levels = {}, { hull = false } = {}) {
+//
+// Nor are there creatures (js/fauna.js) unless `fauna` is asked for: no den wakes and nothing is drawn. The flights
+// and the pilots written before there were creatures are of ground nobody else moves in, and a bat's knock, a
+// leech's drag or a plug of ice would turn every one of them aside from the flight it was written as; with
+// `{ fauna: true }` the game is the one that is played.
+export async function makeGame(seed = 7, levels = {}, { hull = false, fauna = false } = {}) {
   const game = new Game(canvas());
   game.fresh(seed, true);
   game.resize(360, 640, 1);
   Object.assign(game.S.lv, levels);
   if (!hull) { const hit = game.hit.bind(game); game.hit = time => { const landed = hit(time); game.dents = 0; return landed; }; }
+  if (!fauna) game.fauna.off = true;
   return game;
 }
 

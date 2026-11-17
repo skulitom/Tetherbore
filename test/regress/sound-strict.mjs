@@ -108,6 +108,28 @@ for (const [type, kin] of [['bell', 1], ['vent', 2], ['worm', 3], ['lodestone', 
   check(!threw && made > before && !missed.length, threw ? `a woken ${type}: the step threw: ${threw.message}` : `a woken ${type} never asked for ${missed.join(', ') || 'a sound'}`);
 }
 
+// ---- the creatures (js/fauna.js), set down beside the drill and played with their voices: a roost of bats woken,
+// a leech on the hull, a spitter swelling, a puffling lassoed, a pal, moths, a skink and a frog; and every voice asked
+// for with each kind of `near` it might be given.
+{
+  const said = {};
+  for (const name of Object.keys(audio.voices)) { const play = audio.voices[name]; audio.voices[name] = (...args) => { said[name] = (said[name] ?? 0) + 1; return play(...args); }; }
+  const { farStart } = await import('../harness.mjs');
+  const game = await makeGame(7, { tether: 6, drill: 4 }, { hull: true, fauna: true }), f = game.fauna, before = made;
+  farStart(game, -300, 0); game.world.see(C - 300, C, 10); game.changed();
+  let threw = null;
+  try {
+    for (const [kind, state] of [['bat', 'fuse'], ['spitter', 'puff'], ['leech', 'latched'], ['pup', 'pal'], ['moth', ''], ['puff', ''], ['skink', ''], ['frog', '']]) {
+      const i = f.stage(game, kind, 8);
+      if (i >= 0 && state) f.stageAs(game, i, state);
+      for (let n = 0; n < 150; n++) { game.input.auto = n % 50 < 10 ? [1, 0, 0.6] : null; game.update(1 / 60); clock += 1 / 60; if (n % 15 === 0) game.render(); }
+    }
+    for (const name of Object.keys(audio.voices)) for (const near of [undefined, NaN, -1, 0, 0.5, 1, 7]) { audio.voices[name](near); clock += 0.05; }
+  } catch (error) { threw = error; }
+  check(!threw && made > before, threw ? `with creatures about, the step threw: ${threw.message}` : 'the creatures made no sound at all');
+  check(['screech', 'chitter', 'whoosh', 'wheeze', 'spit', 'splat', 'slurp', 'yip'].every(name => said[name]), `the creatures never asked for ${['screech', 'chitter', 'whoosh', 'wheeze', 'spit', 'splat', 'slurp', 'yip'].filter(name => !said[name]).join(', ')}`);
+}
+
 // ---- a frame that threw is written down, for the menu
 {
   localStorage.removeItem('tetherbore-stalls');

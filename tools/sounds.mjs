@@ -64,6 +64,9 @@ if (!await access(path.join(root, options.module)).then(() => true, () => false)
 // core]: the sound of the place is started, as the game starts it), `moves` ([seconds, ground, deep, cells]) and
 // `score` (a ground whose music is played alone, with no bed). A ground is a score's name, a row or a number.
 const one = (name, seconds, sound, ...args) => ({ name, seconds, events: [[0, sound, ...args]] });
+// (A creature's voice is asked for as `v:` and its name: the module's `voices`, which js/fauna.js asks.)
+const VOICES = ['tick', 'yip', 'coo', 'tug', 'pop', 'flutter', 'wheeze', 'spit', 'splat', 'purr', 'chitter', 'screech', 'whoosh', 'croak', 'squeak', 'caught', 'poof', 'plip', 'slurp', 'skitter', 'trill',
+  'buzz', 'glass', 'meet', 'befriend'];
 const every = (gap, count, sound, args = () => [], from = 0) => Array.from({ length: count }, (_, n) => [from + n * gap, sound, ...args(n)]);
 // Three crosses, as rows of the world are (the host's piece with the donor's voice and a structure's change).
 const CROSSES = [{ name: 'hollow thaw', kin: 1, cross: { host: 1, donor: 2, structure: 1 } }, { name: 'banded buzzmire', kin: 3, cross: { host: 3, donor: 4, structure: 4 } },
@@ -94,6 +97,9 @@ const rows = [
   one('bellwake', 2, 'bellwake'), one('toll', 4, 'toll'), one('rumble', 2.5, 'rumble'), one('jet', 1.5, 'jet'),
   one('wormwake', 1.5, 'wormwake'), one('gnaw 0', 1, 'gnaw', 0), one('gnaw 1', 1, 'gnaw', 1), one('bite', 1, 'bite'), one('caught', 2, 'caught'),
   one('hum', 2, 'hum'), one('pull', 1, 'pull'), one('gather 1', 2, 'gather', 1), one('gather 6', 2, 'gather', 6),
+  // The voices of the creatures (js/fauna.js): each near the drill and at the edge of hearing.
+  ...VOICES.flatMap(v => [one(`voice ${v}`, 1.5, `v:${v}`, 1), one(`voice ${v} far`, 1.5, `v:${v}`, 0.02)]),
+  { name: 'burst: a roost of bats woken over a pal', seconds: 3, events: [[0, 'v:chitter', 1], [0.3, 'v:screech', 1], [0.31, 'v:yip', 1], [1, 'v:whoosh', 1], [1.25, 'v:whoosh', 1], [1.5, 'v:whoosh', 1], [1.6, 'knock']] },
   one('spot bell', 2, 'spot', 'bell'), one('spot vent', 2, 'spot', 'vent'), one('spot worm', 2, 'spot', 'worm'), one('spot lodestone', 2, 'spot', 'lodestone'),
   { name: 'burst: 20 digs in a second', seconds: 2, events: every(0.05, 20, 'dig', n => [1 + (n % 3 === 2)]) },
   { name: 'burst: 60 digs asked in a second', seconds: 2, events: every(1 / 60, 60, 'dig', n => [2, n % 4 ? '' : 'ore']) },
@@ -153,8 +159,9 @@ async function measure(row, module, wav) {
     window.AudioContext = function () { return spare; };
     const other = await import(`/${module}?row=${++state.serial}`);
     other.unlock();
-    if (other.sfx[name]) {
-      const ask = () => { const t0 = performance.now(); try { other.sfx[name](...args); } catch { /* the row itself says so */ } took.push((performance.now() - t0) * 1000); };
+    const fn = name.startsWith('v:') ? other.voices?.[name.slice(2)] : other.sfx[name];
+    if (fn) {
+      const ask = () => { const t0 = performance.now(); try { fn(...args); } catch { /* the row itself says so */ } took.push((performance.now() - t0) * 1000); };
       ask();
       for (let n = 1; n < 24; n++) spare.suspend(n * 0.4).then(() => { ask(); spare.resume(); });
       await spare.startRendering();
@@ -182,9 +189,10 @@ async function measure(row, module, wav) {
   let unknown = 0;
   for (const [t, name, ...args] of row.events) at(t, () => {
     if (name === 'music-off') { audio.setMusic?.(false); return; }
-    if (!audio.sfx[name]) { unknown++; return; }
+    const fn = name.startsWith('v:') ? audio.voices?.[name.slice(2)] : audio.sfx[name];
+    if (!fn) { unknown++; return; }
     const before = state.made, t0 = performance.now();
-    try { audio.sfx[name](...args); } catch (error) { thrown.push(`${name}: ${error.message}`); }
+    try { fn(...args); } catch (error) { thrown.push(`${name}: ${error.message}`); }
     costs.push((performance.now() - t0) * 1000);
     calls++; asked += state.made - before; most = Math.max(most, state.made - before);
   });

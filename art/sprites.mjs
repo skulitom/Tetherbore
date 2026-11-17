@@ -1,5 +1,6 @@
 // The hand-drawn recipes: what lies in the rock, the drill, the core, the interface.
 // Ore and hazard drawings are 12 x 12 in the middle of a 16 x 16 frame, so they sit inside a tile's rim.
+import { fauna } from './fauna.mjs';
 
 // A frame that only recolours another is drawn from the symbol again with its own palette: a frame copied with
 // `from` keeps the pixels of the first, colours and all.
@@ -1780,7 +1781,7 @@ export const ores = {
 
 };
 
-export const RECIPES = [finds, cracks, dish, frost, ember, mire, lode, ores, minerals, drill, core, station, icons, upgrades, ui, logo, tough, bell, vent, worm, lodestone];
+export const RECIPES = [finds, cracks, dish, frost, ember, mire, lode, ores, minerals, drill, core, station, icons, upgrades, ui, logo, tough, bell, vent, worm, lodestone, fauna];
 
 // The home-screen icon: the core on dark ground, with the drill out on its tether.
 const shift = (ops, dx, dy) => ops.map(op => ({ ...op, x: op.x + dx, y: op.y + dy }));
