@@ -916,6 +916,14 @@ export class World {
     for (let n = 0; n < FINDS.length; n++) if (S.what < FINDS[n][0]) return [FINDS[n][1], S.fx, S.fy, n ? 1 : S.size];
     return [null, 0, 0, 0];
   }
+  // The same asked without making an array, for what looks every frame (js/fauna.js's wren): the name alone, with
+  // the find's middle left in `asked` (fx, fy) and, of a geode, its size (size).
+  findName(sx, sy) {
+    const S = this.asked;
+    if (S.sx !== sx || S.sy !== sy || S.seed !== this.seed) this.find(sx, sy, S);
+    for (let n = 0; n < FINDS.length; n++) if (S.what < FINDS[n][0]) return FINDS[n][1];
+    return null;
+  }
   // What a sector's find puts in a cell, or -1 where it puts nothing. What the sector holds and where is worked out
   // once and kept while cells of the same sector are asked about.
   findAt(x, y) {

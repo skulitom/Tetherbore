@@ -577,8 +577,17 @@ const calls = {
   squeak(near) { const a = loud(near); tone(1600, 0.06, { type: 'sine', gain: 0.035 * a, to: 2300 }); },
   caught() { const f = inKey(660); for (let n = 0; n < 3; n++) tone(f * [1, 1.25, 1.5][n], 0.18, { type: 'sine', gain: 0.05, delay: n * 0.09, out: space }); },
   poof(near) { const a = loud(near); noise(0.2, { type: 'lowpass', freq: 1400, to: 500, gain: 0.04 * a, attack: 0.01 }); },
-  // A leech: a drip quickening (a warning), a slurp on the hull.
-  plip(near) { const a = loud(near), f = inKey(1300); tone(f, 0.05, { type: 'sine', gain: 0.04 * a, to: f * 1.4 }); },
+  // A leech: drips quickening (a warning), a slurp on the hull. Unlike the cave's own drips (`drip`: one, a note of
+  // the key rising), these are three, closer each time, at a pitch of their own and falling, with a wet tick under
+  // each.
+  plip(near) {
+    const a = loud(near);
+    for (let n = 0; n < 3; n++) {
+      const f = 1240 - n * 90, at = n * 0.17 - n * n * 0.035;
+      tone(f, 0.045, { type: 'triangle', gain: 0.05 * a, to: f * 0.62, delay: at });
+      noise(0.02, { type: 'bandpass', freq: 2600, q: 2, gain: 0.02 * a, delay: at });
+    }
+  },
   slurp(near) { const a = loud(near); tone(200, 0.18, { type: 'sine', gain: 0.04 * a, to: 140, lp: 500 }); noise(0.1, { type: 'lowpass', freq: 600, gain: 0.02 * a, delay: 0.05 }); },
   // A skink darting: a skitter of grains.
   skitter(near) { if (crowded()) return; const a = loud(near); grains(7, 0.22, { gain: 0.03 * a, freq: 3000, type: 'bandpass', q: 1.2 }); },

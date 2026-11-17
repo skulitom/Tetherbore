@@ -6,7 +6,9 @@
 // One rule says who to keep away from: a friend's eye is plain white with a dark pupil (`w`, `p`), seen only where
 // the lamp falls; a foe's eyes are the one colour no ore, hazard, glow or tether is drawn in (`e`, FOE_EYE), and the
 // game lays them again over the dark, so a foe's eyes are seen across the screen (`eyes`, which the build writes
-// into the atlas beside the frames: where each frame's foe eyes are).
+// into the atlas beside the frames: where each frame's foe eyes are). A creature that gives light says which of its
+// colours is lit (`lamps`), and the build writes where those pixels lie in each frame the same way, for the game to
+// lay its light on them and nowhere else.
 // A creature that stands on a floor is drawn with its feet on the frame's last row; one that hangs from a ceiling,
 // with its top on the first; one that flies, about the middle.
 
@@ -109,9 +111,10 @@ export const CREATURES_ART = {
       caught: [['...aaaa...', '.aabbbbaa.', '.abdbbbbba', 'abpbpbpbpb', 'abbpbbbpbb', 'abpbpbpbpc', 'bdbbmmbbdc', '.bbmbbmbc.', '.cbbmmbcc.', '..cccccc..'], 'air'],
     },
   },
-  // The cave leech: hanging and swaying, a drip at its tip; latched to the hull, a fat comma.
+  // The cave leech: hanging and swaying, a drip at its tip; latched to the hull, a fat comma. Its outline is the
+  // colour of the west's dark air, so its body is the paler for it: a mauve the lamp shows as a stalk, not a spark.
   leech: {
-    outline: 'west', palette: { a: '#8a647a', b: '#5e3c50', c: '#3c2434', e: FOE_EYE, d: '#cab4ca' },
+    outline: 'west', palette: { a: '#d0aac0', b: '#a07c92', c: '#6c4c60', e: FOE_EYE, d: '#cab4ca' },
     poses: {
       'hang-a': [['.bbb.', '..bc.', '.abc.', '.bbc.', '..bc.', '.abc.', '.ebe.', '..b..'], 'ceil'],
       'hang-b': [['.bbb.', '.bc..', '.abc.', '..bbc', '..bc.', '.abc.', '.ebe.', '..b..'], 'ceil'],
@@ -141,12 +144,13 @@ export const CREATURES_ART = {
       'fly-b': [['.........', '.....hhh.', '..aaahnwp', '.abbbbbbn', 'cbbcbbll.', 'cc..cc...'], 'air'],
     },
   },
-  // POCKETS. The hive's nurse bees: cream and black, never amber.
+  // POCKETS. The hive's nurse bees: pale lemon banded in black, never amber, a plump body with a dark head and a
+  // bright eye, and wings that stand up and fold back.
   bee: {
-    outline: 'hive', palette: { y: '#f2e4b8', d: '#2e2418', w: '#e8f0ff', p: '#2e2418' },
+    outline: 'hive', palette: { y: '#f4ea9c', l: '#fffbe0', d: '#3a2e1c', w: '#e8f0ff', p: '#ffffff' },
     poses: {
-      'fly-a': [['.ww...', '.ww...', 'ydydyp', 'ydydy.'], 'air'],
-      'fly-b': [['......', '.ww...', 'ydydyp', 'ydwdy.'], 'air'],
+      'fly-a': [['..ww....', '.wwww...', '.lydyydd', 'yyydyydp', '.yydyyd.'], 'air'],
+      'fly-b': [['........', '........', '.wwwwdd.', 'yyydyydp', '.yydyyd.'], 'air'],
     },
   },
   // The drift's star jellies: clear bells trailing tendrils.
@@ -159,7 +163,7 @@ export const CREATURES_ART = {
   },
   // The lantern grotto's newt: teal-dark with spots of pale light; it lights the caps it touches.
   newt: {
-    outline: 'grotto', palette: { a: '#5a9a92', b: '#3a7068', c: '#22484a', s: '#f0e8a8', w: '#ffffff', p: '#06201e', d: '#22484a' },
+    outline: 'grotto', lamps: 's', palette: { a: '#5a9a92', b: '#3a7068', c: '#22484a', s: '#f0e8a8', w: '#ffffff', p: '#06201e', d: '#22484a' },
     poses: {
       'walk-a': [['.bbsbbsbbaw', 'cbbbbbbbbbp', '.d...d..d..'], 'floor'],
       'walk-b': [['.bbsbbsbbaw', 'cbbbbbbbbbp', '..d...d...d'], 'floor'],
@@ -169,7 +173,7 @@ export const CREATURES_ART = {
 };
 
 // The frames of the sheet, and where each frame's foe eyes lie in it.
-const frames = [], eyes = {};
+const frames = [], eyes = {}, lamps = {};
 for (const [kind, art] of Object.entries(CREATURES_ART)) {
   for (const [pose, [given, where, extra = {}]] of Object.entries(art.poses)) {
     // (Rows are filled out to the widest of them.)
@@ -182,9 +186,13 @@ for (const [kind, art] of Object.entries(CREATURES_ART)) {
       frames.push({ name, duration: 200, palette: { ...art.palette, k: OUTLINE[art.outline] },
         ops: [{ op: 'stamp', symbol: `${kind}-${pose}`, x, y, ...(left && { flipX: true }), ...(extra.rotate && { rotate: extra.rotate }) }, { op: 'outline', color: 'k', position: 'outside' }] });
       if (!extra.rotate) {
-        const at = [];
-        rows.forEach((row, v) => [...row].forEach((c, u) => { if (c === 'e') at.push([x + (left ? w - 1 - u : u), y + v]); }));
+        const at = [], lit = [];
+        rows.forEach((row, v) => [...row].forEach((c, u) => {
+          if (c === 'e') at.push([x + (left ? w - 1 - u : u), y + v]);
+          if (art.lamps && art.lamps.includes(c)) lit.push([x + (left ? w - 1 - u : u), y + v]);
+        }));
         if (at.length) eyes[name] = at;
+        if (lit.length) lamps[name] = lit;
       }
     }
   }
@@ -195,5 +203,5 @@ export const fauna = {
   symbols: Object.fromEntries(Object.entries(CREATURES_ART).flatMap(([kind, art]) => Object.entries(art.poses).map(([pose, [rows]]) => [`${kind}-${pose}`, rows.map(row => row.padEnd(Math.max(...rows.map(r => r.length)), '.'))]))),
   frames,
   // (Written into the atlas beside the frames, not into the recipe: `art/build.mjs`.)
-  extra: { eyes },
+  extra: { eyes, lamps },
 };

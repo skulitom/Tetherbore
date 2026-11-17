@@ -5,17 +5,21 @@
 //   warning begins, and pulls a leech off;
 //   moths: a cell ahead of the lamp, further than the lamp lights, is lit with them and not without; a rime bell
 //   seen draws them round it; a drill going fast scatters them;
-//   the wren: it leads to a find nobody has seen, which is then seen and called out, once; never to one the finder
-//   marks already;
+//   the wren: it leads to a find nobody has seen, which is then seen, painted and called out, once; never to one the
+//   finder marks already;
 //   the puffling: a loop round it catches it and pays what it should, and a loop far from it does not; its den is
 //   spent, and saved so;
 //   the newt: no more than three caps a visit, never two within four seconds;
-//   bats: a slow pass never wakes them; the warning lasts at least BAT.fuse before any knock, its line stays where it
-//   was fixed; one pip a waking at the most; rammed at rest, the roost is quiet for QUIET seconds;
+//   bats: a slow pass never wakes them, a throw does; the warning lasts at least BAT.fuse before any knock, its line
+//   stays where it was fixed; one pip a waking at the most, and each bat warns once a waking, on four worlds with
+//   the swoops falling about the shield; rammed at rest, the roost is quiet for QUIET seconds;
 //   the leech: it drops only on a drill under it and slow; latched, the drill flies at LEECH.drag of its speed and
-//   takes no pip; it comes off flown fast, at the core and by itself;
-//   the spitter: a slow pass never wakes it; it swells for SPITTER.puff before it spits; behind rock it never
-//   swells; a chill takes no pip; no plug is laid under the tether, near the drill, in lava or a pocket.
+//   takes no pip; it comes off flown fast, at the core and by itself; flown into as it stiffens, its den is quiet;
+//   the spitter: a slow pass never wakes it, a throw does; it swells for SPITTER.puff before it spits; behind rock
+//   it never swells; a chill takes no pip, and never lands within the shield after a knock; no plug is laid under
+//   the tether, near the drill, in lava or a pocket;
+//   a name: it comes up only for a creature on the screen, and is kept wholly on it;
+//   pockets: the grotto's creatures never leave it, and nothing from outside goes in, the pal neither.
 //   node test/regress/s8-fauna-play.mjs
 import { makeGame, random, farStart, tetherFaults, C, N, K, world } from '../harness.mjs';
 import { PUP, MOTH, BAT, LEECH, SPITTER, PUFF, NEWT, QUIET, CREATURES, FAUNA } from '../../js/fauna.js';
@@ -136,9 +140,11 @@ const where = (game, i) => `${(game.fauna.x[i] - C).toFixed(1)},${(game.fauna.y[
       if (finder) { check(!leads || f.cell[i] !== cell, 'the wren leads to a cache the finder marks already'); continue; }
       check(leads && f.cell[i] === cell, `the wren does not lead to the cache 12 cells off (${leads}, ${f.cell[i] % N - C},${Math.floor(f.cell[i] / N) - C})`);
       f.stageAs(game, i, 'peck');
-      let shown = -1;
-      run(game, 400, null, n => { if (shown < 0 && w.peek(C + find[0], C + find[1]) >= 0) shown = n; });
+      // (Shown, the ground about it is painted again: the game's version moves on in the frame it is seen.)
+      let shown = -1, version = game.version, repainted = false;
+      run(game, 400, null, n => { if (shown < 0 && w.peek(C + find[0], C + find[1]) >= 0) { shown = n; repainted = game.version > version; } version = game.version; });
       check(shown >= 0, 'the wren pecked and the cache was not shown');
+      check(shown < 0 || repainted, 'the cache the wren showed is not painted again: the game\'s version did not move on');
       check(game.S.marks.some(m => m[0] === cell), 'the cache the wren showed was not called out and marked');
       check(game.S.fauna?.spent?.length === 1, `the wren's den is not spent once (${JSON.stringify(game.S.fauna?.spent)})`);
     }
@@ -320,6 +326,131 @@ const homeward = game => { const d = game.drill, len = Math.hypot(C + 0.5 - d.x,
   });
   check(told >= 0 && warned >= 0 && warned <= told + 1 / 60, `the pal did not warn as the leech began to drop (warned ${warned.toFixed(2)}, the leech's warning ${told.toFixed(2)})`);
   check(on >= 0 && off >= 0 && off - on >= PUP.pull - 0.05 && off - on < LEECH.most - 1, `the pal did not pull the leech off (on ${on.toFixed(2)}, off ${off.toFixed(2)})`);
+}
+
+// ---- bats: a roost woken once beside a still drill, its bats each warning once, and one pip at the most, however
+// the swoops fall about the shield (a bat back on the roost while its mates still wait out the shield neither ends
+// the waking nor goes out again); and the waking over once they are all home.
+for (const [seed, off] of [[7, 5], [11, 1], [23, 5], [31, 1]]) {
+  const game = await makeGame(seed, { tether: 6, drill: 4 }, { fauna: true, hull: true });
+  Math.random = random(18 + off);
+  farStart(game, -300, 0); game.world.see(C - 300, C, 10); game.changed(); game.update(1 / 60);
+  const f = game.fauna, d = game.drill, w = game.world, x = Math.floor(d.x) + off, y = Math.floor(d.y);
+  let roof = -1;
+  for (let v = 0; v < 6 && roof < 0; v++) if (w.peek(x, y - v) === K.EMPTY && w.peek(x, y - v - 1) > 0) roof = (y - v) * N + x;
+  const i = roof >= 0 ? f.stage(game, 'bat', 8, roof) : -1, den = f.denAt(i);
+  check(i >= 0, `no roost could be set down ${off} cells along the tunnel on world ${seed}`);
+  if (i < 0) continue;
+  f.stageAs(game, i, 'fuse');
+  const knocks = game.knocks, was = new Map();
+  let tells = 0;
+  run(game, 60 * 20, null, () => {
+    for (let j = 0; j < FAUNA; j++) if (f.kind[j] && f.denAt(j) === den) { if (f.st[j] === 4 && was.get(j) !== 4) tells++; was.set(j, f.st[j]); }
+  });
+  check(game.knocks - knocks <= 1 && tells <= den.flock, `world ${seed}: a roost of ${den.flock} woken once beside a still drill warned ${tells} times and took ${game.knocks - knocks} pips`);
+  check(den.st === 0, `world ${seed}: the roost's waking never ended`);
+}
+
+// ---- a throw past a roost or a spitter wakes it, as a long run does
+for (const kind of ['bat', 'spitter']) {
+  const game = await at(-300, 0, 6), f = game.fauna, d = game.drill;
+  const i = f.stage(game, kind, 8, tunnelCell(game, 4, kind === 'bat' ? -1 : 1)), den = f.denAt(i);
+  run(game, 20);
+  // (Thrown from ten cells down the tunnel back out to its end, under the roost or over the spitter.)
+  const ex = d.x, ey = d.y;
+  d.x = ex + 10; d.mode = 'fling'; d.tx = ex; d.ty = ey; d.speed = 34;
+  let woke = false;
+  run(game, 40, null, () => { woke ||= kind === 'bat' ? den.st === 1 : f.st[i] !== 0; });
+  check(i >= 0 && woke, `a throw past a ${kind === 'bat' ? 'roost' : 'spitter'} did not wake it`);
+}
+
+// ---- a spitter's chill never lands within the shield after a knock
+{
+  const game = await makeGame(7, { tether: 6, drill: 4 }, { fauna: true, hull: true });
+  Math.random = random(5);
+  farStart(game, 0, -300); game.world.see(C, C - 300, 10); game.changed(); game.update(1 / 60);
+  const f = game.fauna, d = game.drill, i = f.stage(game, 'spitter', 6);
+  check(i >= 0, 'no spitter could be set down in the north');
+  f.stageAs(game, i, 'puff');
+  // (Knocked by something else while it swells: the glob lands with the shield still up.)
+  let stun = 0, shield = 0, within = null;
+  run(game, 120, null, n => {
+    if (shield > 0 && d.stun > stun + 0.01) within ??= shield;
+    if (n === 10) game.hit(0.3);
+    stun = d.stun; shield = game.shield;
+  });
+  check(i < 0 || f.n[i] > 0, 'the spitter\'s glob never landed');
+  check(within === null, `a spitter's chill stunned the drill with ${within?.toFixed(2)} s of the shield left`);
+}
+
+// ---- the leech: flown into while it stiffens, it is knocked off and its den is quiet
+{
+  const game = await at(-300, 0, 6), f = game.fauna, d = game.drill;
+  const i = f.stage(game, 'leech', 8, tunnelCell(game, 0, -1)), den = f.denAt(i);
+  check(i >= 0, 'no leech could be set down');
+  run(game, 200, null, () => f.st[i] !== 4);
+  check(f.st[i] === 4, `a leech over a still drill did not stiffen (state ${f.st[i]})`);
+  run(game, 30, [0, -1, 1], () => f.kind[i] && !f.out[i]);
+  check(f.latched < 0 && den && f.resting(game, den) && f.quiet.get(den.key) - f.time > QUIET - 2, `a leech flown into as it stiffened was not driven off (state ${f.st[i]}, latched ${f.latched})`);
+  check(!game.S.fauna?.spent?.length, 'a leech driven off had its den spent');
+}
+
+// ---- a name comes up only for a creature on the screen, and is kept wholly on it
+{
+  const game = await at(-300, 0, 6), f = game.fauna, d = game.drill;
+  game.input.auto = null; run(game, 30);
+  const i = f.stage(game, 'moth');
+  check(i >= 0, 'no moth could be set down');
+  // (Held off the side of the screen, within the lamp's reach and in sight down the tunnel.)
+  const hold = (u) => { for (let j = 0; j < FAUNA; j++) if (f.kind[j]) { f.x[j] = d.x + u; f.y[j] = d.y; f.vx[j] = f.vy[j] = 0; f.fade[j] = 1; } };
+  const off = (game.W / 2 + 10) / 16;
+  hold(off); f.meet(game);
+  check(!f.met.size && !game.S.fauna?.met, `a moth ${off.toFixed(1)} cells to the side, off the screen, was met`);
+  const near = (game.W / 2 - 12) / 16;
+  hold(near); f.meet(game);
+  check(f.met.size === 1, `a moth ${near.toFixed(1)} cells to the side, on the screen, was not met`);
+  const drawn = [];
+  const ctx = { globalAlpha: 1, fillStyle: '', fillRect() {}, drawImage(image, sx, sy, sw, sh, dx, dy, dw, dh) { drawn.push([dx, dx + (dw ?? sw)]); } };
+  const ox = Math.round(game.cam.x - game.W / 2), oy = Math.round(game.cam.y - (game.H - 44) / 2);
+  f.signs(game, ctx, ox, oy);
+  check(drawn.length && drawn.every(([a, b]) => a >= 0 && b <= game.W), `the moth's name runs off the screen (${drawn.map(([a, b]) => `${a}..${b}`).join(' ')} of ${game.W})`);
+}
+
+// ---- pockets: a pocket's creatures never leave it, and nothing else goes into one, the pal neither (the lantern
+// grotto at -551,302 on world 7, the drill flown out of it down its tunnel and back)
+{
+  const game = await makeGame(7, { tether: 7, drill: 4 }, { fauna: true, hull: true }), w = game.world;
+  const Z = w.zoneOf(Math.floor(-551 / 128), Math.floor(302 / 128));
+  let st = null;
+  for (let r = 0; r < 10 && !st; r++) for (let v = -r; v <= r && !st; v++) for (let u = -r; u <= r; u++) { const x = Z.cx + u, y = Z.cy + v; if (w.k(y * N + x) === K.EMPTY && w.b(y * N + x) === Z.row) { st = [x - C, y - C]; break; } }
+  farStart(game, st[0], st[1]); w.see(C + st[0], C + st[1], 16); game.changed(); game.update(1 / 60);
+  const f = game.fauna, d = game.drill;
+  game.S.fauna = { pal: { kind: 'pup', at: 0 }, met: {}, spent: [] };
+  f.befriend(game, -1);
+  const inside = f.stage(game, 'moth'), home = f.denAt(inside);
+  check(inside >= 0 && home && w.row(home.anchor).pocket, 'no moth could be set down in the grotto');
+  const pocket = (x, y) => w.row(Math.floor(y) * N + Math.floor(x)).pocket !== null;
+  const [hx, hy] = homeward(game), bad = new Set();
+  let outside = -1;
+  const look = () => {
+    for (let j = 0; j < FAUNA; j++) {
+      if (!f.kind[j] || f.out[j]) continue;
+      const den = f.denAt(j), at = f.where(j) === 0 ? [f.x[j], f.y[j] - 0.5] : [f.x[j], f.mid(j)];
+      if (j === f.pal) { if (f.st[j] !== 9 && pocket(...at)) bad.add('the pal went into the grotto'); }
+      else if (den && w.row(den.anchor).pocket && !pocket(...at)) bad.add(`a ${CREATURES[f.kind[j]].key} of the grotto left it`);
+      else if (den && !w.row(den.anchor).pocket && pocket(...at)) bad.add(`a ${CREATURES[f.kind[j]].key} from outside went into the grotto`);
+    }
+  };
+  // Out down the tunnel (the grotto's moths left behind), moths of the ground outside set down there in their place
+  // (a kind staged has one den), and back in again.
+  run(game, 200, [hx, hy, 0.5], look);
+  check(!pocket(d.x, d.y), 'the drill did not get out of the grotto');
+  for (let j = 0; j < FAUNA; j++) if (f.kind[j] === KIND.moth) f.drop(j);
+  if (!pocket(d.x, d.y)) outside = f.stage(game, 'moth', 4);
+  run(game, 300, [-hx, -hy, 0.5], look);
+  run(game, 120, null, look);
+  check(outside >= 0, 'no moth could be set down outside the grotto');
+  check(!bad.size, [...bad].join('; '));
 }
 
 for (const f of fails) console.log(`FAIL ${f}`);

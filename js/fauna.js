@@ -40,7 +40,7 @@
 //     a warning (a bat's chitter and screech, a spitter's wheeze, a leech's drips, the pal's yip) is kept apart only
 //     by its own least gap, for it is what the player plays by.
 import { N, C, K, rowOf, hazOf, cellHash } from './world.js';
-import { sheets, tinted, text } from './atlas.js';
+import { sheets, tinted, text, textWidth } from './atlas.js';
 import { voices } from './audio.js';
 import { income, round2, FOUND, FINDER } from './shop.js';
 
@@ -67,7 +67,8 @@ export const LEECH = { under: 0.6, below: [1, 4], slow: 6, tell: 0.5, fall: 0.4,
 export const WREN = { call: 10, find: 24, peck: 1.6 };
 export const PUFF = { speed: 0.8, loop: 4, drill: 12, lump: 6, gems: 3 };
 export const NEWT = { caps: 3, every: 4, find: 8, tongue: 2 };
-export const RAM = 0.6, RAM_SPEED = 3;          // how near the drill must come to a foe at rest to drive it off, and how fast
+export const RAM = 0.6, RAM_SPEED = 3;
+const STEP = 0.3;                               // how near the edge of a step, in cells, a creature on a floor goes up or down it          // how near the drill must come to a foe at rest to drive it off, and how fast
 
 // ---------------------------------------------------------------- who they are
 // tier: 'kin' (only seen), 'friend', 'foe'; place: where it lives (`floor`: on a floor; `ceil`: hung from a
@@ -128,7 +129,8 @@ const pick = (list, h) => { let s = 0; for (const [id, share] of list) { s += sh
 
 // ---------------------------------------------------------------- the frames
 // What a creature is drawn with: by kind and pose, the frame facing east and facing west, and where in each its
-// foe eyes are (js/atlas.js has them from the build: art/fauna.mjs). Looked up once, when the sheet is there.
+// foe eyes are and the pixels it lights (js/atlas.js has them from the build: art/fauna.mjs). Looked up once, when
+// the sheet is there.
 let FR = null;
 const POSES = {
   beetle: ['walk-a', 'walk-b', 'ball-a', 'ball-b', 'ball-c', 'ball-d'], pup: ['idle-a', 'idle-b', 'walk-a', 'walk-b', 'blink', 'yip', 'sniff', 'sleep', 'ride'],
@@ -140,12 +142,18 @@ const POSES = {
 // The pose numbers, by name, for each kind (`P.pup.ride` is 8).
 export const P = Object.fromEntries(Object.entries(POSES).map(([kind, list]) => [kind, Object.fromEntries(list.map((p, n) => [p.replace('-', '_'), n]))]));
 const NO_EYES = [];
+// A pixel of a frame (from its top left) where it is drawn turned a quarter `turn` times about its middle, as a
+// creature that creeps is on a wall or a ceiling (`footing`).
+const turnX = (u, v, turn) => turn === 1 ? 15 - v : turn === 2 ? 15 - u : turn === 3 ? v : u;
+const turnY = (u, v, turn) => turn === 1 ? u : turn === 2 ? 15 - v : turn === 3 ? 15 - u : v;
+// A moth's wings, down and up again.
+const MOTH_FLAP = [P.moth.flap_a, P.moth.flap_b, P.moth.flap_c, P.moth.flap_b];
 function frames() {
   if (FR || !sheets.fauna) return FR;
   const s = sheets.fauna;
   FR = CREATURES.map(c => c && POSES[c.key].map(pose => [0, 1].map(left => {
     const name = `${c.key}-${pose}${left ? '-l' : ''}`;
-    return { r: s.frames[name], eyes: s.eyes?.[name] ?? NO_EYES };
+    return { r: s.frames[name], eyes: s.eyes?.[name] ?? NO_EYES, lamps: s.lamps?.[name] ?? NO_EYES };
   })));
   return FR;
 }
@@ -178,7 +186,7 @@ const ink = color => { let n = INK.get(color); if (n === undefined) { n = INKS.l
 const HEART_INK = ink('#ff8aa0'), DUST_INK = ink('#a89880'), ICE_INK = ink('#eef8ff'), SPORE_INK = ink('#f4dcc4'), DRIP_INK = ink('#cab4ca'), EYE_INK = ink(FOE_EYE), LIGHT_INK = ink('#f0e8a8'), WHITE = ink('#ffffff');
 
 // Creature states, shared by name where they mean the same (each kind reads its own few).
-const SIDES = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+const SIDES = [[1, 0], [-1, 0], [0, 1], [0, -1]], BESIDE = [[0, -1], [1, 0], [-1, 0], [0, 1]];
 const IDLE = 0, MOVE = 1, BALL = 2, WAKE = 3, TELL = 4, ACT = 5, REST = 6, BACK = 7, AWAY = 8, RIDE = 9, SLEEP = 10, HIDE = 11, SWIM = 12, LATCH = 13, FALL = 14, FLIT = 15, PECK = 16, CAUGHT = 17;
 
 export class Fauna {
@@ -190,12 +198,14 @@ export class Fauna {
     // The creatures, a slot each: what each is (0: none), its den, its state and how long it has been in it, how long
     // it has lived, how far it has faded in (0 to 1) and whether it is fading out; where it is (cells: for one on a
     // floor its feet, for one that hangs its top, for one that flies its middle), how fast it goes, where it is going
-    // or aims, which way it faces (1 east, -1 west), its own phase, a cell it keeps to, and a count of its own.
+    // or aims, which way it faces (1 east, -1 west), its own phase, a cell it keeps to, and a count of its own; and
+    // for one on a floor, the floor it is stepping from (`crawl`).
     const F = FAUNA;
     this.kind = new Uint8Array(F); this.den = new Int16Array(F); this.st = new Uint8Array(F); this.t = new Float32Array(F); this.age = new Float32Array(F);
     this.fade = new Float32Array(F); this.out = new Uint8Array(F); this.x = new Float32Array(F); this.y = new Float32Array(F); this.vx = new Float32Array(F); this.vy = new Float32Array(F);
     this.ax = new Float32Array(F); this.ay = new Float32Array(F); this.bx = new Float32Array(F); this.by = new Float32Array(F); this.face = new Int8Array(F); this.ph = new Float32Array(F);
     this.cell = new Int32Array(F); this.n = new Int32Array(F); this.unseen = new Float32Array(F); this.slot = new Uint8Array(F); this.dim = new Float32Array(F);
+    this.from = new Float32Array(F);
     // Its particles: where, how fast, how long they have been and are to be, what they are and their colour.
     this.px = new Float32Array(POOL); this.py = new Float32Array(POOL); this.pvx = new Float32Array(POOL); this.pvy = new Float32Array(POOL);
     this.pt = new Float32Array(POOL); this.plife = new Float32Array(POOL); this.pk = new Uint8Array(POOL); this.pink = new Uint16Array(POOL);
@@ -210,13 +220,18 @@ export class Fauna {
     this.glowing = Array.from({ length: 6 }, () => new Float64Array(4)); this.lit = 0;
     this.words = Array.from({ length: 4 }, () => ({ text: '', x: 0, y: 0, t: 9, life: 1, color: '#ffffff', of: -1 }));
     this.index = []; this.met = new Set(); this.w = null;
+    // A search over a Map of the game's (lava woken, crystals charged), asked of each entry by a function made once:
+    // who asks, how many it has looked at, and the best found.
+    this.q = { x: 0, y: 0, n: 0, far: 0, best: -1 };
+    this.nearLava = (left, c) => { const q = this.q; if (q.n++ > 40) return; const e = (c % N + 0.5 - q.x) ** 2 + (Math.floor(c / N) + 0.5 - q.y) ** 2; if (e < q.far) { q.far = e; q.best = c; } };
+    this.nearFuse = (spark, c) => { const q = this.q; if (q.best < 0 && spark.fuse > 0 && Math.hypot(c % N + 0.5 - q.x, Math.floor(c / N) + 0.5 - q.y) < 8) q.best = c; };
     this.reset(7, null);
   }
   blank() { return this.clear({}); }
   // A den's record as it is before anything is known of it (made once, and cleared to be used again).
   clear(d) {
     d.key = -1; d.grid = 0; d.sx = 0; d.sy = 0; d.kind = 0; d.row = 0; d.mx = 0; d.my = 0; d.flock = 1; d.anchor = -1; d.tried = -1; d.triedAt = -9; d.live = 0; d.used = 0;
-    d.st = 0; d.t = 0; d.hits = 0; d.warned = -99; d.lit = 0; d.litAt = -99; d.cool = 0; d.bell = -1; d.bellX = 0; d.bellY = 0; d.staged = false;
+    d.st = 0; d.t = 0; d.hits = 0; d.woke = 0; d.warned = -99; d.lit = 0; d.litAt = -99; d.cool = 0; d.bell = -1; d.bellX = 0; d.bellY = 0; d.staged = false;
     return d;
   }
   // Begun again with the game: everything goes but the pal, which is set down again beside the drill.
@@ -450,7 +465,7 @@ export class Fauna {
         const way = n % 2 ? 1 : -1, steps = Math.ceil(n / 2) * (c.place === 'air' ? 1 : 2);
         for (let s = 0; s < steps; s++) {
           const nx = x + way;
-          if (!openAt(w, nx, y) || (c.place === 'floor' && !rockAt(w, nx, y + 1)) || (c.place === 'ceil' && !rockAt(w, nx, y - 1))) break;
+          if (!openAt(w, nx, y) || !this.ours(w, den, nx, y) || (c.place === 'floor' && !rockAt(w, nx, y + 1)) || (c.place === 'ceil' && !rockAt(w, nx, y - 1))) break;
           x = nx;
         }
       }
@@ -468,7 +483,7 @@ export class Fauna {
     this.kind[i] = kind; this.den[i] = den ? this.denIndex(den) : -1; this.st[i] = IDLE; this.t[i] = this.rnd() * 2; this.age[i] = 0;
     this.fade[i] = 0; this.out[i] = 0; this.x[i] = x + 0.5; this.y[i] = place === 'floor' ? y + 1 : place === 'ceil' ? y : y + 0.5;
     this.vx[i] = 0; this.vy[i] = 0; this.ax[i] = this.x[i]; this.ay[i] = this.y[i]; this.bx[i] = this.x[i]; this.by[i] = this.y[i];
-    this.face[i] = this.rnd() < 0.5 ? 1 : -1; this.ph[i] = this.rnd() * 6.283; this.cell[i] = y * N + x; this.n[i] = 0; this.unseen[i] = 0; this.slot[i] = 0; this.dim[i] = 0;
+    this.face[i] = this.rnd() < 0.5 ? 1 : -1; this.ph[i] = this.rnd() * 6.283; this.cell[i] = y * N + x; this.n[i] = 0; this.unseen[i] = 0; this.slot[i] = 0; this.dim[i] = 0; this.from[i] = this.y[i];
     return i;
   }
   // Dens are kept by key in a Map; a creature holds its den as a small number, the den's place in `index`.
@@ -485,6 +500,8 @@ export class Fauna {
     if (i === this.pal) this.pal = -1;
     if (i === this.latched) this.latched = -1;
     this.kind[i] = 0; this.den[i] = -1;
+    // (A bat gone from a roost still woken: the rest may be home already.)
+    if (den && den.kind === BATS) this.settled(den);
   }
   leave(i) { this.out[i] = 1; }
   // Ground that changed: a creature whose cell is rock now (frost or moss closed over it, ice was laid on it, lava
@@ -503,17 +520,21 @@ export class Fauna {
 
   // ---------------------------------------------------------------- moving
   // On a floor: along it, a cell at a time, up or down a step where the floor steps. Returns false where it can go
-  // no further that way (it has turned round).
+  // no further that way (it has turned round). A step is taken at the edge between the two cells, so that it never
+  // cuts through the corner of the rock: down, it walks off the ledge and drops within STEP of a cell past the edge;
+  // up, it climbs within STEP of a cell before it.
   crawl(game, i, speed, dt, any = false) {
     const w = game.world, x = Math.floor(this.x[i]), y = Math.floor(this.y[i] - 0.5), f = this.face[i];
     const goal = this.ax[i];
     if (Math.abs(goal - this.x[i]) > 0.02) {
       const s = Math.sign(goal - this.x[i]);
       this.x[i] += s * Math.min(Math.abs(goal - this.x[i]), speed * dt);
-      this.y[i] += (this.ay[i] - this.y[i]) * Math.min(1, dt * speed * 2);
+      const rise = this.ay[i] - this.from[i], past = (this.x[i] - (Math.floor(goal) + (s > 0 ? 0 : 1))) * s;
+      const u = rise > 0 ? past / STEP : rise < 0 ? 1 + past / STEP : 1;
+      this.y[i] = this.from[i] + rise * Math.max(0, Math.min(1, u));
       return true;
     }
-    this.y[i] = this.ay[i];
+    this.y[i] = this.from[i] = this.ay[i];
     const floor = (u, v) => openAt(w, u, v) && (rockAt(w, u, v + 1) || (any && (rockAt(w, u, v - 1) || rockAt(w, u + 1, v) || rockAt(w, u - 1, v))));
     this.work += 4;
     let nx = x + f, ny = y;
@@ -522,19 +543,19 @@ export class Fauna {
     else if (openAt(w, nx, y) && floor(nx, y + 1)) ny = y + 1;
     else { this.face[i] = -f; return false; }
     // (A creature of the ground never steps into a pocket, nor one of a pocket out of it.)
-    const den = this.denAt(i), b = rowSeen(w, nx, ny);
-    if (den && (rowOf(den.row).pocket !== null ? b !== den.row : b < 0 || rowOf(b).pocket !== null)) { this.face[i] = -f; return false; }
+    if (!this.mine(i, nx, ny)) { this.face[i] = -f; return false; }
     this.ax[i] = nx + 0.5; this.ay[i] = ny + 1; this.cell[i] = ny * N + nx;
     return true;
   }
-  // In the air: easing toward (tx, ty) at up to `speed` cells a second, turned back by rock (seen ground only).
+  // In the air: easing toward (tx, ty) at up to `speed` cells a second, turned back by rock (seen ground only) and
+  // by the edge of a pocket, either way.
   steer(game, i, tx, ty, speed, dt, ease = 2) {
     const w = game.world, dx = tx - this.x[i], dy = ty - this.y[i], len = Math.hypot(dx, dy) || 1, want = Math.min(speed, len * 2.5);
     this.vx[i] += (dx / len * want - this.vx[i]) * Math.min(1, dt * ease); this.vy[i] += (dy / len * want - this.vy[i]) * Math.min(1, dt * ease);
     const nx = this.x[i] + this.vx[i] * dt, ny = this.y[i] + this.vy[i] * dt;
     this.work += 2;
-    if (openAt(w, Math.floor(nx), Math.floor(this.y[i]))) this.x[i] = nx; else this.vx[i] *= -0.4;
-    if (openAt(w, Math.floor(this.x[i]), Math.floor(ny))) this.y[i] = ny; else this.vy[i] *= -0.4;
+    if (this.free(i, Math.floor(nx), Math.floor(this.y[i]))) this.x[i] = nx; else this.vx[i] *= -0.4;
+    if (this.free(i, Math.floor(this.x[i]), Math.floor(ny))) this.y[i] = ny; else this.vy[i] *= -0.4;
     if (Math.abs(this.vx[i]) > 0.3) this.face[i] = this.vx[i] > 0 ? 1 : -1;
   }
   // How a creature stands now: 0 on a floor (its feet at y), 1 hung from a ceiling (its top at y), 2 in the air (its
@@ -677,7 +698,8 @@ export class Fauna {
     const d = game.drill, st = this.st[i], hx = this.x[i], hy = this.y[i] - 0.6, near = Math.hypot(d.x - hx, d.y - hy), sight = near < SPITTER.range && clear(game.world, hx, hy - 0.3, d.x, d.y);
     const free = d.mode === 'free' && game.shield <= 0;
     this.dim[i] = st === REST ? 0.45 : 0;
-    if (st === IDLE) { if (sight && this.rush && free) { this.set(i, WAKE); this.n[i] = 0; } return; }
+    // (A throw past it wakes it as a long run does; it swells only at a drill flying free.)
+    if (st === IDLE) { if (sight && this.rush && (free || d.mode === 'fling')) { this.set(i, WAKE); this.n[i] = 0; } return; }
     if (st === WAKE) {
       if (near > SPITTER.sleep) { this.set(i, IDLE); return; }
       if (this.t[i] > (this.n[i] ? SPITTER.cool - SPITTER.sag : 0.2) && sight && free) { this.set(i, TELL); this.tell(game, i); this.voice(game, i, 'wheeze', false); }
@@ -723,8 +745,10 @@ export class Fauna {
     }
     if (this.t[i] > 0.5 && (this.age[i] % 0.5) < dt && w.lava.size) {
       // (Lava that has woken near: the nearest cell of it, of the first forty looked at.)
-      let best = -1, far = 36, n = 0;
-      for (const c of w.lava.keys()) { if (n++ > 40) break; const e = (c % N + 0.5 - this.x[i]) ** 2 + (Math.floor(c / N) + 0.5 - this.y[i]) ** 2; if (e < far) { far = e; best = c; } }
+      const q = this.q;
+      q.x = this.x[i]; q.y = this.y[i]; q.n = 0; q.far = 36; q.best = -1;
+      w.lava.forEach(this.nearLava);
+      const best = q.best;
       if (best >= 0) { this.bx[i] = this.x[i]; this.by[i] = this.y[i]; this.cell[i] = best; this.set(i, SWIM); return; }
     }
     if (this.dist(game, i) < 4) { this.face[i] = d.x > this.x[i] ? -1 : 1; if (st !== MOVE) this.set(i, MOVE); this.crawl(game, i, 1, dt); return; }
@@ -744,7 +768,8 @@ export class Fauna {
     if (st === IDLE) {
       this.x[i] += (sx - this.x[i]) * Math.min(1, dt * 4); this.y[i] = sy;
       if (this.rush && Math.hypot(d.x - sx, d.y - sy - 0.5) < BAT.near) this.stir(game, den);
-      if (den.st === 1) { this.set(i, TELL); this.y[i] += 0.5; this.voice(game, i, 'screech', false); this.tell(game, i); }
+      // (Each bat answers a waking once: one back on its roost while its mates are still out waits for the next.)
+      if (den.st === 1 && this.n[i] !== den.woke) { this.n[i] = den.woke; this.set(i, TELL); this.y[i] += 0.5; this.voice(game, i, 'screech', false); this.tell(game, i); }
       else if (this.slot[i] === 0 && Math.hypot(d.x - sx, d.y - sy) < BAT.hear) this.voice(game, i, 'chitter', false);
       return;
     }
@@ -764,7 +789,7 @@ export class Fauna {
     }
     if (st === ACT) {
       const nx = this.x[i] + this.vx[i] * dt, ny = this.y[i] + this.vy[i] * dt;
-      if (!openAt(w, Math.floor(nx), Math.floor(ny)) || this.t[i] * BAT.speed >= BAT.run) { this.set(i, REST); return; }
+      if (!this.free(i, Math.floor(nx), Math.floor(ny)) || this.t[i] * BAT.speed >= BAT.run) { this.set(i, REST); return; }
       this.x[i] = nx; this.y[i] = ny;
       if (!den.hits && Math.hypot(d.x - nx, d.y - ny) < BAT.hit && d.mode === 'free') {
         if (this.deed(game, 'hit')) den.hits++;
@@ -781,8 +806,7 @@ export class Fauna {
     }
     if (st === BACK) {
       this.steer(game, i, sx, sy + 0.4, 4, dt);
-      if (Math.hypot(sx - this.x[i], sy + 0.4 - this.y[i]) < 0.3 || this.t[i] > 6) { this.set(i, IDLE); this.y[i] = sy; }
-      if (den.st === 1 && this.t[i] > 1) { den.st = 0; den.cool = this.time + BAT.again; den.hits = 0; }
+      if (Math.hypot(sx - this.x[i], sy + 0.4 - this.y[i]) < 0.3 || this.t[i] > 6) { this.set(i, IDLE); this.y[i] = sy; this.settled(den); }
       return;
     }
     if (st === AWAY) this.steer(game, i, this.x[i] + this.face[i] * 4, this.y[i] - 3, 5, dt);
@@ -790,8 +814,16 @@ export class Fauna {
   // A roost woken: by a drill rushing past (`wake` sees it, each half second, and a frame's own look besides) or a
   // cut beside it (`crushed`).
   stir(game, den) {
-    if (den.st || this.time < den.cool || game.drill.mode !== 'free') return;
-    den.st = 1; den.hits = 0;
+    const mode = game.drill.mode;
+    if (den.st || this.time < den.cool || (mode !== 'free' && mode !== 'fling')) return;
+    den.st = 1; den.hits = 0; den.woke++;
+  }
+  // A waking is over only when every bat of the roost is back on it: till then its one knock stays taken, and a bat
+  // home early does not go out again.
+  settled(den) {
+    if (den.st !== 1) return;
+    for (let j = 0; j < FAUNA; j++) if (this.kind[j] === BATS && this.denAt(j) === den && this.st[j] !== IDLE && !this.out[j]) return;
+    den.st = 0; den.cool = this.time + BAT.again; den.hits = 0;
   }
   // The mire frog croaks in a slow rhythm, its throat swelling, and hops away from a drill near it. Within four
   // cells of a pod that has been seen it is silent (where the frogs go quiet, pods hang).
@@ -807,10 +839,14 @@ export class Fauna {
     if (this.dist(game, i) < 4) {
       this.face[i] = d.x > this.x[i] ? -1 : 1;
       const w = game.world, x = Math.floor(this.x[i]), y = Math.floor(this.y[i] - 0.5);
-      for (const far of [3, 2]) {
+      // (Three cells off, else two; level, else a step up, else a step down.)
+      for (let far = 3; far >= 2; far--) {
         const nx = x + this.face[i] * far;
-        for (const ny of [y, y - 1, y + 1]) if (openAt(w, nx, ny) && rockAt(w, nx, ny + 1) && openAt(w, x + this.face[i], y - 1) && this.mine(i, nx, ny)) {
-          this.bx[i] = this.x[i]; this.by[i] = this.y[i]; this.ax[i] = nx + 0.5; this.ay[i] = ny + 1; this.cell[i] = ny * N + nx; this.set(i, ACT); return;
+        for (let m = 0; m < 3; m++) {
+          const ny = y - m + (m === 2 ? 3 : 0);
+          if (openAt(w, nx, ny) && rockAt(w, nx, ny + 1) && openAt(w, x + this.face[i], y - 1) && this.mine(i, nx, ny)) {
+            this.bx[i] = this.x[i]; this.by[i] = this.y[i]; this.ax[i] = nx + 0.5; this.ay[i] = ny + 1; this.cell[i] = ny * N + nx; this.set(i, ACT); return;
+          }
         }
       }
       return;
@@ -821,13 +857,15 @@ export class Fauna {
       else this.set(i, IDLE);
     } else if (st === TELL && this.t[i] > 0.5) this.set(i, IDLE);
   }
-  // A cell a creature of a den may stand in: in a pocket, its pocket's; elsewhere, no pocket's.
-  mine(i, x, y) {
-    const den = this.denAt(i);
-    if (!den) return true;
-    const b = rowSeen(this.w, x, y);
-    return rowOf(den.row).pocket !== null ? b === den.row : b >= 0 && rowOf(b).pocket === null;
+  // A cell a creature of a den may stand in: in a pocket, its pocket's; elsewhere, no pocket's (and the pal, which
+  // has no den, never a pocket's).
+  mine(i, x, y) { return this.ours(this.w, this.denAt(i), x, y); }
+  ours(w, den, x, y) {
+    const b = rowSeen(w, x, y);
+    return den && rowOf(den.row).pocket !== null ? b === den.row : b >= 0 && rowOf(b).pocket === null;
   }
+  // Open, and its own to go into.
+  free(i, x, y) { return openAt(this.w, x, y) && this.mine(i, x, y); }
   // The puffling drifts about its den and bobs, and edges away from a drill in a hurry. Lassoed (`wound`), it is
   // caught.
   puff(game, i, dt) {
@@ -845,7 +883,8 @@ export class Fauna {
   }
   // A cave leech hangs from a ceiling, swaying. With the drill under it, slow, it stiffens (its drips come quicker:
   // the warning), drops, and latches on: the drill flies at three quarters of its speed while it is on. It never
-  // knocks. It comes off flown fast, at the core, by itself, or pulled off by the pal; and crawls away.
+  // knocks. It comes off flown fast, at the core, by itself, or pulled off by the pal; and crawls away. Its moment is
+  // while it stiffens: flown into then, it is knocked from its roof and its den is quiet (`ram`).
   leech(game, i, dt) {
     const d = game.drill, st = this.st[i], w = game.world;
     if (st === IDLE) {
@@ -857,6 +896,7 @@ export class Fauna {
       return;
     }
     if (st === TELL) {
+      if (this.ram(game, i)) return;
       if ((this.t[i] * 10 | 0) !== ((this.t[i] - dt) * 10 | 0)) this.puff2(this.x[i] * T, (this.y[i] + 0.55) * T, DRIP, DRIP_INK, 1);
       if (this.t[i] >= LEECH.tell) { this.set(i, FALL); this.vy[i] = 0; this.y[i] += 0.5; this.bx[i] = this.x[i]; this.by[i] = this.y[i]; }
       return;
@@ -886,8 +926,9 @@ export class Fauna {
       if (this.t[i] > 1.2) this.leave(i);
     }
   }
-  // A leech that missed or came off: it drops to the floor below, crawls off, and its den is spent.
-  offAt(game, i, x, y) {
+  // A leech that missed or came off: it drops to the floor below, crawls off, and its den is spent (but for one
+  // rammed off its roof, whose den is quiet instead).
+  offAt(game, i, x, y, spend = true) {
     const w = game.world, cx = Math.floor(x);
     let fy = Math.floor(y);
     for (let n = 0; n < 6 && openAt(w, cx, fy + 1); n++) fy++;
@@ -895,7 +936,7 @@ export class Fauna {
     this.voice(game, i, 'pop', false);
     this.set(i, AWAY);
     const den = this.denAt(i);
-    if (den) this.deed(game, 'spend', den.key);
+    if (den && spend) this.deed(game, 'spend', den.key);
   }
   // The sand skink suns itself, and darts into a crevice from a drill within five cells, or from a crystal's fuse
   // lit within eight (skinks bolt a beat before an arc); it comes out again a while after.
@@ -905,7 +946,7 @@ export class Fauna {
     if (st === ACT) { this.crawl(game, i, 4, dt); if (this.t[i] > 0.45) { this.set(i, HIDE); this.fade[i] = 0; } return; }
     let fuse = false;
     // (Charged crystals are few, and only in the east: the list is looked at only when there are any.)
-    if (game.sparks.size) for (const c of game.sparks.keys()) if (game.sparks.get(c).fuse > 0 && Math.hypot(c % N + 0.5 - this.x[i], Math.floor(c / N) + 0.5 - this.y[i]) < 8) { fuse = true; break; }
+    if (game.sparks.size) { const q = this.q; q.x = this.x[i]; q.y = this.y[i]; q.best = -1; game.sparks.forEach(this.nearFuse); fuse = q.best >= 0; }
     if (this.dist(game, i) < 5 || fuse) {
       this.face[i] = fuse ? this.face[i] : d.x > this.x[i] ? -1 : 1; this.bx[i] = this.x[i]; this.by[i] = this.y[i];
       this.set(i, ACT); this.voice(game, i, 'skitter', true); return;
@@ -949,9 +990,10 @@ export class Fauna {
   // find's middle in bx, by): whether there is one.
   findFor(game, i) {
     const w = game.world, d = game.drill, x0 = this.x[i], y0 = this.y[i], level = game.val('mapfinder'), reach = FINDER[level] ?? 0;
-    let best = null, far = WREN.find;
+    let best = -1, bestSize = 0, far = WREN.find;
     for (let sy = Math.floor((y0 - WREN.find - C) / 48); sy <= Math.floor((y0 + WREN.find - C) / 48); sy++) for (let sx = Math.floor((x0 - WREN.find - C) / 48); sx <= Math.floor((x0 + WREN.find - C) / 48); sx++) {
-      const [what, fx, fy, size] = w.findSpot(sx, sy);
+      // (What the sector holds, its middle and size left in the world's record of it: no array made.)
+      const what = w.findName(sx, sy), fx = w.asked.fx, fy = w.asked.fy, size = w.asked.size;
       if (what !== 'cache' && what !== 'geode' && what !== 'prism') continue;
       const e = Math.hypot(fx + 0.5 - x0, fy + 0.5 - y0);
       if (e >= far || w.peek(fx, fy) >= 0) continue;
@@ -960,15 +1002,15 @@ export class Fauna {
       const laid = w.laid(fy * N + fx), want = what === 'cache' ? K.CACHE : what === 'prism' ? K.PRISM : -2;
       if (laid >= 0 && want >= 0 && laid !== want) continue;
       if (rowOf(w.biomeKnown(fx, fy)).pocket !== null) continue;
-      far = e; best = [fx, fy, what === 'geode' ? size : 0];
+      far = e; best = fy * N + fx; bestSize = what === 'geode' ? size : 0;
     }
-    if (!best) return false;
+    if (best < 0) return false;
     // Where it perches: the last open cell on the straight way from it toward the find, before rock.
-    const [fx, fy, size] = best, ux = fx + 0.5 - x0, uy = fy + 0.5 - y0, len = Math.hypot(ux, uy) || 1;
+    const fx = best % N, fy = Math.floor(best / N), size = bestSize, ux = fx + 0.5 - x0, uy = fy + 0.5 - y0, len = Math.hypot(ux, uy) || 1;
     let px = Math.floor(x0), py = Math.floor(y0 - 0.5);
     for (let s = 0.5; s < len; s += 0.5) {
       const x = Math.floor(x0 + ux / len * s), y = Math.floor(y0 - 0.5 + uy / len * s);
-      if (!openAt(w, x, y)) break;
+      if (!this.free(i, x, y)) break;
       px = x; py = y;
     }
     this.work += Math.ceil(len * 2);
@@ -985,7 +1027,7 @@ export class Fauna {
       let tx = -1, ty = -1;
       if (this.rnd() < 0.6) for (let tries = 0; tries < 6 && tx < 0; tries++) {
         const x = ax + Math.floor(this.rnd() * 13) - 6, y = ay + Math.floor(this.rnd() * 13) - 6;
-        if (w.peek(x, y) === K.MINERAL) for (const [u, v] of [[0, -1], [1, 0], [-1, 0], [0, 1]]) if (openAt(w, x + u, y + v)) { tx = x + u + 0.5; ty = y + v + 0.5; break; }
+        if (w.peek(x, y) === K.MINERAL) for (let n = 0; n < 4; n++) { const u = BESIDE[n][0], v = BESIDE[n][1]; if (openAt(w, x + u, y + v)) { tx = x + u + 0.5; ty = y + v + 0.5; break; } }
       }
       if (tx < 0) { tx = ax + 0.5 + (this.rnd() - 0.5) * 8; ty = ay + 0.5 + (this.rnd() - 0.5) * 6; }
       this.ax[i] = tx; this.ay[i] = ty;
@@ -1050,8 +1092,8 @@ export class Fauna {
     }
     const x = Math.floor(this.x[i]), y = Math.floor(this.y[i] - 0.5), from = this.cell[i];
     let best = -1, far = Infinity;
-    for (const [u, v] of SIDES) {
-      const nx = x + u, ny = y + v, j = ny * N + nx;
+    for (let n = 0; n < 4; n++) {
+      const u = SIDES[n][0], v = SIDES[n][1], nx = x + u, ny = y + v, j = ny * N + nx;
       if (j === from || !openAt(w, nx, ny) || !this.mine(i, nx, ny)) continue;
       if (!rockAt(w, nx, ny + 1) && !rockAt(w, nx, ny - 1) && !rockAt(w, nx + 1, ny) && !rockAt(w, nx - 1, ny)) continue;
       const e = Math.hypot(nx + 0.5 - tx, ny + 0.5 - ty) + this.rnd() * 0.3;
@@ -1080,8 +1122,11 @@ export class Fauna {
     this.deed(game, 'quiet', den ? den.key : -1);
     this.voice(game, i, 'squeak', false);
     this.spot(this.x[i] * T, this.y[i] * T, 18, ink('#ffffff'));
-    // (Every one of its den goes.)
-    for (let j = 0; j < FAUNA; j++) if (this.kind[j] && this.den[j] === this.den[i]) { this.set(j, AWAY); this.leave(j); }
+    // (Every one of its den goes; a leech still hung is knocked down to the floor first.)
+    for (let j = 0; j < FAUNA; j++) if (this.kind[j] && (j === i || (this.den[i] >= 0 && this.den[j] === this.den[i]))) {
+      if (this.kind[j] === LEECHES && this.where(j) === 1) this.offAt(game, j, this.x[j], this.y[j] + 0.5, false);
+      this.set(j, AWAY); this.leave(j);
+    }
     return true;
   }
   // A foe's warning has begun: the pal, if near, yips and looks at it.
@@ -1117,12 +1162,17 @@ export class Fauna {
       const k = this.kind[i];
       if (!k || this.out[i] || this.fade[i] < 0.5 || (met && met[CREATURES[k].key]) || (this.met ??= new Set()).has(k)) continue;
       const y = this.y[i] - (CREATURES[k].place === 'floor' ? 0.5 : 0);
-      if (Math.hypot(d.x - this.x[i], d.y - y) > lamp || !clear(game.world, d.x, d.y, this.x[i], y)) continue;
+      if (!this.inView(game, this.x[i], y, 8) || Math.hypot(d.x - this.x[i], d.y - y) > lamp || !clear(game.world, d.x, d.y, this.x[i], y)) continue;
       this.met.add(k);
       this.deed(game, 'met', k);
       this.say(game, CREATURES[k].name, i, CREATURES[k].color);
       this.voice(game, i, 'meet', false);
     }
+  }
+  // Whether a point (cells) is on the screen as the game draws it (js/drawing.js), `margin` pixels inside its edges.
+  inView(game, x, y, margin) {
+    const px = x * T - game.cam.x + game.W / 2, py = y * T - game.cam.y + (game.H - 44) / 2;
+    return px >= margin && py >= margin && px <= game.W - margin && py <= game.H - margin;
   }
   // Words over a creature: a name, a warning.
   say(game, what, i, color) {
@@ -1188,8 +1238,9 @@ export class Fauna {
     switch (what) {
       // A bat's swoop: a knock, as any hazard's (`Game.hit`): the shield after it, and a pip.
       case 'hit': return game.hit(this.knock);
-      // A spitter's glob on the drill: stunned a moment by the cold, as by a bite, and no pip taken.
-      case 'chill': if (d.mode !== 'free') return false; game.jolt(SPITTER.chill); this.spot(d.x * T, d.y * T, 14, ICE_INK); return true;
+      // A spitter's glob on the drill: stunned a moment by the cold, as by a bite, and no pip taken. Within the
+      // shield after a knock nothing lands, pip or stun (`Game.hit`), and the glob only splashes.
+      case 'chill': if (d.mode !== 'free' || game.shield > 0) return false; game.jolt(SPITTER.chill); this.spot(d.x * T, d.y * T, 14, ICE_INK); return true;
       // A spitter's glob that lands in open ground: that cell and up to two open cells beside it are ice, as the
       // frost closes a cut, and with the frost's own guards: only open ground, no lava, no pocket, never under the
       // tether as it is drawn or as it truly runs (`Game.layUnder`), and never within SPITTER.keep cells of a drill
@@ -1212,7 +1263,8 @@ export class Fauna {
       // A leech on the hull (its drag is the frame's own: `drag`).
       case 'drag': return d.mode === 'free';
       // The wren's find shown: the ground about it is seen, as the scanner would see it, and the game calls it out.
-      case 'reveal': { w.see(a % N, Math.floor(a / N), b ? b + 1 : 1); return true; }
+      // (Ground seen afresh is painted again, as the drill's own look has it: `Game.look`.)
+      case 'reveal': { if (w.see(a % N, Math.floor(a / N), b ? b + 1 : 1)) game.version++; return true; }
       // A puffling caught: half a cache's lump of grit, with the refinery's share, and three of the west's gems with
       // the cutter's; banked at once (there is no haul for it to come home with).
       case 'catch': {
@@ -1349,7 +1401,7 @@ export class Fauna {
     switch (k) {
       case BEETLE: return st === BALL ? P.beetle.ball_a + (((now * 12) | 0) & 3) : st === REST ? P.beetle.ball_a : st === MOVE ? (((now * 8) | 0) & 1 ? P.beetle.walk_b : P.beetle.walk_a) : P.beetle.walk_a;
       case PUPS: return st === SLEEP ? P.pup.sleep : st === WAKE ? (i === this.pal ? P.pup.yip : P.pup.sniff) : st === MOVE ? (((now * 6) | 0) & 1 ? P.pup.walk_b : P.pup.walk_a) : ((now + this.ph[i]) % 4 < 0.15 ? P.pup.blink : ((now * 1.5) | 0) & 1 ? P.pup.idle_b : P.pup.idle_a);
-      case MOTHS: return [P.moth.flap_a, P.moth.flap_b, P.moth.flap_c, P.moth.flap_b][((now * 14 + this.ph[i]) | 0) & 3];
+      case MOTHS: return MOTH_FLAP[((now * 14 + this.ph[i]) | 0) & 3];
       case SPITTERS: return st === TELL ? (t > SPITTER.puff * 0.5 ? P.spitter.puff_b : P.spitter.puff_a) : st === ACT && t < 0.15 ? P.spitter.spit : st === REST ? P.spitter.sag : P.spitter.sit;
       case SALAMANDER: return st === SWIM ? P.salamander.swim : st === MOVE ? (((now * 6) | 0) & 1 ? P.salamander.walk_b : P.salamander.walk_a) : P.salamander.bask;
       case BATS: return st === IDLE ? (((now * 1.2 + this.ph[i]) | 0) & 1 ? P.bat.hang_b : P.bat.hang_a) : st === REST ? P.bat.rest : (((now * (st === ACT ? 16 : 9)) | 0) & 1 ? P.bat.fly_b : P.bat.fly_a);
@@ -1430,7 +1482,9 @@ export class Fauna {
       const i = w.of;
       if (i >= 0 && this.kind[i]) { w.x = this.x[i]; w.y = this.y[i] - (CREATURES[this.kind[i]].place === 'floor' ? 1 : 0.5); }
       ctx.globalAlpha = Math.min(1, (w.life - w.t) * 3);
-      text(ctx, w.text, Math.round(w.x * T - ox), Math.round(w.y * T - oy - 12 - w.t * 6), w.color, 0.5);
+      // (Kept wholly on the screen, however near its edge the creature is.)
+      const half = textWidth(w.text) / 2, x = Math.max(half + 2, Math.min(game.W - half - 2, w.x * T - ox));
+      text(ctx, w.text, Math.round(x), Math.max(2, Math.round(w.y * T - oy - 12 - w.t * 6)), w.color, 0.5);
     }
     ctx.globalAlpha = 1;
   }
@@ -1454,11 +1508,16 @@ export class Fauna {
         const r = halo.frames['halo-ice'];
         if (r) { ctx.globalAlpha = a * (k === MOTHS ? 0.4 : 0.35) * (0.85 + 0.15 * Math.sin(now * 3 + this.ph[i])); ctx.drawImage(halo.image, r[0], r[1], r[2], r[3], Math.round(px + 8 - r[2] / 2), Math.round(py + 8 - r[3] / 2), r[2], r[3]); }
       } else if (k === NEWTS) {
-        ctx.fillStyle = INKS[LIGHT_INK]; ctx.globalAlpha = a * (0.5 + 0.3 * Math.sin(now * 2 + this.ph[i]));
-        ctx.fillRect(px + 7, py + 8, 3, 3);
+        // Its spots alight, turned with it on a wall or a ceiling.
+        const turn = this.footing(i), lamps = FR[k][this.pose(i, now)][this.face[i] < 0 ? 1 : 0].lamps, glow = a * (0.5 + 0.3 * Math.sin(now * 2 + this.ph[i]));
+        ctx.fillStyle = INKS[LIGHT_INK];
+        for (let n = 0; n < lamps.length; n++) {
+          const lx = px + turnX(lamps[n][0], lamps[n][1], turn), ly = py + turnY(lamps[n][0], lamps[n][1], turn);
+          ctx.globalAlpha = glow; ctx.fillRect(lx, ly, 1, 1); ctx.globalAlpha = glow * 0.35; ctx.fillRect(lx - 1, ly, 3, 1); ctx.fillRect(lx, ly - 1, 1, 3);
+        }
         if (this.st[i] === ACT) {
-          // Its tongue of light, out to the cap.
-          const c = this.cell[i], sx = px + 8 + this.face[i] * 5, sy = py + 8, ey = (Math.floor(c / N) + 0.5) * T - oy, ux = (c % N + 0.5) * T - ox;
+          // Its tongue of light, from its mouth out to the cap.
+          const mu = this.face[i] < 0 ? 2 : 13, c = this.cell[i], sx = px + turnX(mu, 13, turn), sy = py + turnY(mu, 13, turn), ey = (Math.floor(c / N) + 0.5) * T - oy, ux = (c % N + 0.5) * T - ox;
           const u = Math.min(1, this.t[i] / 0.25) * (this.t[i] < 0.35 ? 1 : Math.max(0, 1 - (this.t[i] - 0.35) / 0.15));
           ctx.globalAlpha = a * 0.9;
           for (let s = 0; s <= 1; s += 0.08) if (s <= u) ctx.fillRect(Math.round(sx + (ux - sx) * s), Math.round(sy + (ey - sy) * s), 1, 1);
@@ -1517,7 +1576,7 @@ export class Fauna {
     if (i < 0 || !this.kind[i]) return false;
     const k = this.kind[i], den = this.denAt(i);
     if (k === PUPS && (what === 'pal' || what === 'ride')) { this.befriend(game, i); if (what === 'ride') { this.set(i, RIDE); this.x[i] = game.drill.x; this.y[i] = game.drill.y; } return this.pal === i; }
-    if (k === BATS && what === 'fuse' && den) { den.st = 1; return true; }
+    if (k === BATS && what === 'fuse' && den) { den.st = 1; den.hits = 0; den.woke++; return true; }
     if (k === SPITTERS && what === 'puff') { this.set(i, TELL); this.tell(game, i); return true; }
     if (k === LEECHES && what === 'latched') { if (!this.deed(game, 'drag', i) && !this.tame) return false; this.set(i, LATCH); this.latched = i; return true; }
     if (k === PUFFS && what === 'caught') { this.set(i, CAUGHT); return true; }
