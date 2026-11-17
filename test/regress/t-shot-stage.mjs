@@ -14,8 +14,9 @@
 //   that many nuggets home from there, which banks their specimens; `lv` sets levels (`max`, `late`, `id.n`),
 //   `shop` opens the shop, `buy` buys a row's next level (the shop's moment with `shop`, the fitting at the core
 //   without), `steer` holds the thumb, `fire` makes a power of what WORKS fits act, and `ladder` draws every level
-//   of every row and no world; `lab` opens the lab's notes knowing what it is told, `labsel` chooses a thing and
-//   `scroll` scrolls the list, and `orebook` draws every ground's ores and no world; `fauna` sets a creature down
+//   of every row and no world; `lab` opens the lab's notes knowing what it is told, the bar's count with them,
+//   `labsel` chooses a thing and `scroll` scrolls the list, and `orebook` draws every ground's ores and no world;
+//   `fauna` sets a creature down
 //   beside the drill in the state it is asked for (a pal, a roost woken) and `faunabook` draws every creature and no
 //   world; and none of them sets anything
 //   unasked; and stepped for three seconds, nothing has moved the drill, nothing is wrong with the tether, and the
@@ -279,7 +280,10 @@ check(await open('', 'example.org') === undefined, 'away from localhost an ordin
   check(!bare.game.lab && Object.keys(bare.game.S.lab).length === 0, 'a view staged without lab opened the notes or knew something');
   const all = await open('?shot&seed=7&lab=all'), A = all.game;
   check(A.lab && A.labTab === 'lab' && A.labRise === 1 && Object.keys(A.S.lab).length === 48 && A.S.lab[Object.keys(A.S.lab)[11]] === 2, `lab=all: the notes ${A.lab ? 'open' : 'shut'} at ${A.labTab}, ${Object.keys(A.S.lab).length} known`);
+  // (And the bar's count of them, which it keeps rather than counting the book each frame.)
+  check(A.known === 48, `lab=all: the bar counts ${A.known} kinds analysed, not 48`);
   const some = await open('?shot&seed=7&lab=20&labsel=seracB'), S = some.game, g = S.labGeom();
+  check(S.known === 20, `lab=20: the bar counts ${S.known} kinds analysed, not 20`);
   check(Object.keys(S.S.lab).length === 20 && S.labSel === 'ores:seracB' && S.labScroll > 0 && S.labScroll <= g.most, `lab=20&labsel=seracB: ${Object.keys(S.S.lab).length} known, ${S.labSel} chosen, scrolled ${S.labScroll}`);
   const named = await open('?shot&seed=7&lab=none&labsel=FLUORITE&scroll=40'), N2 = named.game;
   check(Object.keys(N2.S.lab).length === 0 && N2.labSel === 'ores:seracB', `lab=none&labsel=FLUORITE: ${Object.keys(N2.S.lab).length} known, ${N2.labSel} chosen`);

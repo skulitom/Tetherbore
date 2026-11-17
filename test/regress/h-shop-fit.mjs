@@ -96,6 +96,33 @@ for (const [cssW, cssH] of [[320, 568], [360, 640]]) {
   console.log(`${W}x${H}: STATS at its fullest is ${rows.length} lines of ${pitch} pixels: ${rows.map(([name, value]) => `${name} ${value}`).join(' | ')}`);
 }
 
+// The moment a level is bought, its new value stamped twice the size for the first frames: within the line, or
+// at its own size where twice would run past it (TROPHY LINE's 2 SPEC on the narrowest phone ran off the screen).
+// And STATS's REFINERY line at every level of the refinery and the gem cutter, not only their last, whose
+// multiples are the only ones short enough to say in full on the narrowest phone.
+for (const [cssW, cssH] of [[320, 568], [360, 640]]) {
+  game.resize(cssW, cssH, 1);
+  const { W, H } = game, pw = Math.min(W - 8, 200), px = Math.round((W - pw) / 2);
+  found(true); hold(true);
+  for (const tab of TABS) for (const u of tab.rows) for (let l = 1; l < u.values.length; l++) {
+    for (const v of tab.rows) S.lv[v.id] = 0;
+    S.lv[u.id] = l;
+    game.goal = undefined; game.bought = null; game.shopNote = null;
+    game.shop = true; game.shopRise = 1; game.shopTab = tab.id; game.lab = false;
+    game.fitter.bought(game, u, l);
+    glyphs.length = 0; icons.length = 0;
+    game.render(); renders++;
+    for (const r of runs()) check(r.x >= px + 4 && r.x + r.w <= px + pw - 6, `${W}x${H}: ${u.name} bought to level ${l}, a line of ${r.n} letters at y ${r.y} runs from x ${r.x} to ${r.x + r.w}, past the panel (${px + 4} to ${px + pw - 6})`);
+  }
+  game.fitter.moment.t = 0; game.shop = false;
+  const sw = Math.min(W - 8, 200);
+  for (let a = 0; a < CORE[0].values.length; a++) for (let b = 0; b < CORE[1].values.length; b++) {
+    S.lv.refinery = a; S.lv.cutter = b;
+    const [name, value] = game.stats().find(([name]) => name === 'REFINERY');
+    check(textWidth(name) + 4 + textWidth(value) <= sw - 16, `${W}x${H}: STATS's ${name} and '${value}' come within four pixels of each other`);
+  }
+}
+
 // What the bit and the winch are, said on their lines: the bit's cut, and from its sixth level its plough; the
 // winch's load.
 {

@@ -185,6 +185,11 @@ for (const coil of [0, 1]) {
   game.S.lv.mapfinder = 3;
   const all = game.findsNear(C + 0.5, C + 0.5, 115);
   check(all.length > caches.length && all.some(f => f[0] === 'geode'), `the best finder marks ${all.length} finds: ${[...new Set(all.map(f => f[0]))]}`);
+  // (The ground changes at every cut, and the list is asked again: into one of two lists made once, in turn.)
+  const n = all.length;
+  game.version++; const again = game.findsNear(C + 0.5, C + 0.5, 115);
+  game.version++; const third = game.findsNear(C + 0.5, C + 0.5, 115);
+  check(again !== all && again.length === n && all.length === n && third === all, 'the finds are made into a new list each time the ground changes, or the list held before is emptied');
   // It marks what lies near the drill (within 320 cells at its best), however much of the ground is asked about:
   // on the chart of a long reach there is no more than that, and never a band of dots across the north.
   game.S.lv.tether = 8;
@@ -336,7 +341,8 @@ for (const coil of [0, 1]) {
   // The fourth tab draws, on the narrowest phone, and the stats name what is built.
   game.S.lv.refinery = 2; game.resize(320, 568, 1); game.shop = true; game.shopRise = 1; game.shopTab = 'core'; game.render(); game.shop = false;
   const said = Object.fromEntries(game.stats().map(([name, value]) => [name, value]));
-  check(said.REFINERY === 'GRIT x1.3, GEMS x1' && said.LAMP === '10 CELLS' && said['BLACK BOX'] === 'NONE', `the stats say ${said.REFINERY} / ${said.LAMP} / ${said['BLACK BOX']}`);
+  // (On the narrowest phone the refinery's own multiple is said without its GRIT, or it runs into the name.)
+  check(said.REFINERY === 'x1.3, GEMS x1' && said.LAMP === '10 CELLS' && said['BLACK BOX'] === 'NONE', `the stats say ${said.REFINERY} / ${said.LAMP} / ${said['BLACK BOX']}`);
 }
 
 // ---- a frame that takes long is written down, with where the time went, and shown in the menu

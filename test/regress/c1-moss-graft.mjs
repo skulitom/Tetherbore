@@ -7,8 +7,11 @@
 //     soft rock, and the fitting is told (`fitter.fire('sporedrive')`);
 //   - at its first level and with none, all eight are soft rock;
 //   - beside ore laid by hand (ore that healed in play, as the world did not lay it), all eight are soft rock;
-//   - the world laid there is as it was.
-// Fails on the game before there was a graft: the moss beside the ore is soft rock.
+//   - the world laid there is as it was;
+//   - with the tether at its first reach (40 cells), so that the hollow lies far past it, all eight are soft rock
+//     and the fitting is not told: the graft is held to the reach, as the bellows and the capacitor are.
+// Fails on the game before there was a graft: the moss beside the ore is soft rock; and on the graft that laid ore
+// past the tether's reach, where a bunch of pods spreads with nothing to stop it.
 //   node test/regress/c1-moss-graft.mjs
 import { makeGame, world, C, N } from '../harness.mjs';
 import { idle, fixRandom } from './lib/lasso.mjs';
@@ -35,8 +38,8 @@ const findOre = w => {
   }
   return -1;
 };
-const stage = async (drive, byHand = false) => {
-  const game = await makeGame(7, { tether: 5, sporedrive: drive }), w = game.world;
+const stage = async (drive, byHand = false, tether = 5) => {
+  const game = await makeGame(7, { tether, sporedrive: drive }), w = game.world;
   const ore = findOre(w);
   if (ore < 0) throw new Error('no ore of the west found to stage beside');
   // Round the ore, soft rock (no other ore beside the hollow); east of it the hollow, its middle a pod.
@@ -71,5 +74,11 @@ for (const drive of [0, 1]) {
   const s = await stage(2, true), all = [...s.hollow, s.pod];
   check(all.every(j => s.w.k(j) === K.SOFT), `beside ore that healed in play the moss is ${kinds(s.w, all)}`);
 }
-console.log(fails.length ? `DEFECT: ${fails.join('\n        ')}` : 'ok: with the graft moss beside the world\'s ore heals as ore and the rest as soft rock; beside ore that healed in play, and without the graft, it is all soft rock');
+{
+  const s = await stage(2, false, 0), all = [...s.hollow, s.pod];
+  check(!s.game.within(s.ore % N + 1.5, Math.floor(s.ore / N) + 0.5), 'the staging is wrong: the moss beside the ore lies within the first reach');
+  check(all.every(j => s.w.k(j) === K.SOFT), `past the tether's reach the moss with the graft is ${kinds(s.w, all)}`);
+  check(!s.fired.includes('sporedrive'), `past the tether's reach the fitting was told of a graft`);
+}
+console.log(fails.length ? `DEFECT: ${fails.join('\n        ')}` : 'ok: with the graft moss beside the world\'s ore heals as ore and the rest as soft rock; beside ore that healed in play, past the reach and without the graft, it is all soft rock');
 process.exit(fails.length ? 1 : 0);

@@ -1495,9 +1495,15 @@ export class Drawing {
         M.laid.push([what, fx, fy]);
       }
     }
+    // (Into one of two lists `M` keeps, made once, in turn: the ground changes at every cut, and a list made at
+    // each would be garbage at each. Two, so a list asked for before the ground changed is not emptied under
+    // whoever still holds it.)
     if (M.foundAt !== this.version) {
-      M.foundAt = this.version; M.found = [];
-      for (const f of M.laid) if (w.peek(f[1], f[2]) < 0) M.found.push(f);
+      M.foundAt = this.version;
+      const into = M.found === M.foundA ? (M.foundB ??= []) : (M.foundA ??= []);
+      into.length = 0;
+      for (const f of M.laid) if (w.peek(f[1], f[2]) < 0) into.push(f);
+      M.found = into;
     }
     return M.found;
   }
@@ -1605,7 +1611,7 @@ export class Drawing {
     const room = Math.min(this.W - 8, 200) - 20, first = (...ways) => ways.find(([name, value]) => textWidth(name) + textWidth(value) <= room) ?? ways[ways.length - 1];
     const out = Math.floor(S.out ?? 0), load = WINCH_LOAD[lv.winch], live = this.val('livecatch'), spin = this.val('flywheel'), foe = this.val('trophy');
     const beasts = S.fauna?.met ? Object.keys(S.fauna.met).length : 0, places = Object.keys(S.met).length, chart = this.val('chart') > 0, finder = this.val('mapfinder');
-    const specs = [1, 2, 3, 4].map(k => this.specs(k)), keeps = Math.round(this.val('blackbox') * 100), PLACES = places === 1 ? 'PLACE' : 'PLACES';
+    const refine = this.val('refinery'), cut = this.val('cutter'), specs = [1, 2, 3, 4].map(k => this.specs(k)), keeps = Math.round(this.val('blackbox') * 100), PLACES = places === 1 ? 'PLACE' : 'PLACES';
     // (A rare hazard alive in a loop pays more with the live catch, said on its own line.)
     const rare = (name, does) => live > 1 ? [...first([name, `${does}, x${live} LIVE`], [name, `${does} x${live} LIVE`], [name, `x${live} LIVE`]), true] : [name, does, false];
     return [
@@ -1627,7 +1633,8 @@ export class Drawing {
         : ['HAUL PAY', `+${parts * 10}% (${parts}/8 PARTS)`, parts > 0],
       // (The places met; and the creatures, once one has been: how many kinds, lit while the pal is with the drill.)
       beasts ? [...first(['MET', `${places} ${PLACES}, ${beasts}/${KINDS} BEASTS`], ['MET', `${places} ${PLACES}, ${beasts} ${beasts === 1 ? 'BEAST' : 'BEASTS'}`]), !!S.fauna.pal] : ['MET', `${places} ${PLACES}`],
-      ['REFINERY', `GRIT x${this.val('refinery')}, GEMS x${this.val('cutter')}`, S.lv.refinery + S.lv.cutter > 0],
+      // (What the refinery and the gem cutter multiply: on the narrowest phone the refinery's own is plainly grit.)
+      [...first(['REFINERY', `GRIT x${refine}, GEMS x${cut}`], ['REFINERY', `GRIT x${refine} GEMS x${cut}`], ['REFINERY', `x${refine}, GEMS x${cut}`]), S.lv.refinery + S.lv.cutter > 0],
       ['LAMP', `${this.val('lamp')} CELLS`, S.lv.lamp > 0],
       // (From its third level the black box keeps what a lost trip learnt as well: js/game.js, `keepLore`.)
       lv.blackbox >= 3 ? [...first(['BLACK BOX', `KEEPS ${keeps}% +LORE`], ['BLACK BOX', `${keeps}% +LORE`]), true] : ['BLACK BOX', keeps ? `KEEPS ${keeps}%` : 'NONE', S.lv.blackbox > 0],

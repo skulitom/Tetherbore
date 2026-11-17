@@ -343,6 +343,9 @@ export function stage(game, query) {
   if (lab !== null && lab !== '0') {
     game.S.lab = {};
     LAB.forEach((e, i) => { if (lab === 'all' || i < Math.floor(number('lab', 0))) game.S.lab[e.key] = 2 ** (i % 10); });
+    // (The bar keeps its count of kinds analysed and does not count the book each frame: told, as any hand that
+    // fills the book must tell it.)
+    game.recount();
     const want = (query.get('labsel') ?? '').trim(), chosen = want && LAB.find(e => e.key === want || e.key.split(':')[1] === want || e.name === want.toUpperCase());
     if (chosen) game.labSel = chosen.key;
   }

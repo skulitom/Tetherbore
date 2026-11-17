@@ -21,6 +21,11 @@ const SAVE_KEY = 'tetherbore-save-v3';
 // A haul of fewer cells than LIGHT, with nothing in it to make a show of, is a light one: it stops nothing and
 // says what it paid where it lay. A haul made within CHAIN seconds of the one before is a link in a chain.
 const LIGHT = 12, CHAIN = 6;
+// How much more the flywheel pays a haul's cells for each haul of its run before it, by the flywheel's level, up to
+// the row's value. (The second level once only raised the most, from four tenths to six, which a run reaches only at
+// its seventh haul: it paid two in ten thousand of what was earned while it was owned. A run pays its most at the
+// sixth haul at both levels now.)
+const SPIN_STEP = [0, 0.08, 0.12];
 // How many bits of rubble may be on their way home at once, over every haul there is.
 export const RUBBLE = 400;
 // What a haul is called (`haulTitle`). Up to a COLOSSAL one, by its size; a haul of BIG or more that lies mostly in
@@ -88,8 +93,7 @@ export const METAL = 3, METALS = [K.STEEL, K.KEY];
 // How far from a crystal its arc knocks the drill, in cells either way (it was 3.5: most of the screen's width).
 const ARC = 2.5;
 export const DEATH = 1.2;
-// The black box's level from which it keeps what a lost trip learnt, and a share of its gems and specimens
-// (`keepLore`): its third, 75%.
+// The black box's level from which it keeps what a lost trip learnt (`keepLore`): its third, 75%.
 const LORE = 3;
 // How long each blow that knocks the hull stuns, in seconds: lava cut into, lava touched, an arc, a spore burst.
 // (Before there was a hull an arc stunned for 0.7 s and lava for 0.5: with a pip gone as well, and SHIELD running
@@ -164,9 +168,12 @@ const PLOUGH = 0.3, CRUSH_EVERY = 1;
 // MK7, and in dense rock MK5 to MK8 went a third faster where the bit's table says more than twice.)
 const PLOUGH_BIT = [0, 0, 0, 0, 0, 0.05, 0.06, 0.1];
 // The bellows (the lava skin's second level): woken lava quenches the slag within two cells of it, not only on its
-// four sides. The twenty-four cells round a cell out to two either way, as steps of its number, made once.
-const RING2 = [];
-for (let v = -2; v <= 2; v++) for (let u = -2; u <= 2; u++) if (u || v) RING2.push(v * N + u);
+// four sides. The twenty-four cells round a cell out to two either way, as steps of its number, made once; and
+// which of them are not its four sides (`RING2_FAR`), the twenty the first level never reaches, which alone are held
+// to the tether's reach and kept out of a pocket: the four sides turn as they do at the first level, wherever they
+// lie, or the second level would quench less than the first where lava runs out past the reach.
+const RING2 = [], RING2_FAR = [];
+for (let v = -2; v <= 2; v++) for (let u = -2; u <= 2; u++) if (u || v) { RING2.push(v * N + u); RING2_FAR.push(Math.abs(u) + Math.abs(v) > 1); }
 // The capacitor (the arc coil's second level): an arc taken in charges the bit for so many seconds, and the next
 // cut while it holds shatters the dense rock and slate round the cell cut (`shatters`).
 const CHARGE = 8;
@@ -1787,8 +1794,9 @@ export class Game {
     const parts = wrecks.length, over = grit > 0 ? overload(n, S.lv.winch) : 1, mult = haulBonus(n, this.val('winch')) * (1 + 0.1 * (held.filter(Boolean).length + parts)) * over;
     const shine = 1 + 0.5 * Math.min(prisms, 3);
     // (The flywheel: a haul of LIGHT cells or more made within CHAIN seconds of the last of its run pays its cells'
-    // grit eight in a hundred more for each haul of the run before it, up to the row's value.)
-    const fly = this.val('flywheel'), spin = fly > 0 && n >= LIGHT && this.time - this.spin.t <= CHAIN ? this.spin.n : 0, spun = spin ? 1 + Math.min(fly, 0.08 * spin) : 1;
+    // grit eight in a hundred more for each haul of the run before it, twelve at its second level, up to the row's
+    // value, SPIN_STEP.)
+    const fly = this.val('flywheel'), spin = fly > 0 && n >= LIGHT && this.time - this.spin.t <= CHAIN ? this.spin.n : 0, spun = spin ? 1 + Math.min(fly, SPIN_STEP[Math.min(2, S.lv.flywheel)] * spin) : 1;
     // (The station's refinery multiplies a haul's grit, lumps and all; its gem cutter the gems.)
     const refined = this.val('refinery'), cut = this.val('cutter');
     for (let b = 1; b < 5; b++) gems[b] = Math.round(gems[b] * shine * over * cut);
@@ -2288,8 +2296,9 @@ export class Game {
   // rind is dull slag, worth little; woken, the lava makes steel of all the slag it touches, where it lay and
   // wherever it pours. Nothing opens or closes, so the books of loose ground are as they were, and the ground is
   // drawn again. With the bellows (the lava skin's second level) the lava quenches every cell of slag within two of
-  // it (RING2), in no pocket and within the tether's reach, as everything the ground does in play is, and the fitting
-  // is told when three or more turn at once. Returns how many cells turned.
+  // it (RING2): the four sides as ever, and the cells further out only in no pocket and within the tether's reach,
+  // as everything the ground does in play is. The fitting is told when three or more turn at once. Returns how many
+  // cells turned.
   quench(i) {
     const w = this.world, bellows = this.val('lavaskin') >= 2, ring = bellows ? RING2 : SIDE;
     let turned = 0;
@@ -2297,7 +2306,7 @@ export class Game {
       const j = i + ring[n];
       if (w.k(j) !== K.SLAG) continue;
       const x = j % N, y = Math.floor(j / N);
-      if (bellows && (w.row(j).pocket !== null || !this.within(x + 0.5, y + 0.5))) continue;
+      if (bellows && RING2_FAR[n] && (w.row(j).pocket !== null || !this.within(x + 0.5, y + 0.5))) continue;
       w.setK(j, K.STEEL); this.quenched.set(j, QUENCH); turned++;
       if (this.onScreen(x, y)) this.sparkle((x + 0.5) * T, (y + 0.5) * T, 4, '#d8e8ff');
     }
@@ -2465,16 +2474,18 @@ export class Game {
   // and found since is gone, and so is every cut made and every haul taken since: the ground is as it was. The
   // drill stands whole in the middle of the core, and the screen says what the trip cost.
   //
-  // The black box keeps a share of the grit the trip had earned; and from its third level (LORE) the same share of
-  // the trip's gems and specimens, and everything learnt on it besides: the lab's samples, the grounds and pockets
-  // met, the rare hazards met and the kinds of creature. (Not a wreck's part or a relic: those lie where the drill
-  // was lost, and are fetched again.)
+  // The black box keeps a share of the grit the trip had earned; and from its third level (LORE) everything learnt
+  // on it besides: the lab's samples, the grounds and pockets met, the rare hazards met and the kinds of creature.
+  // (Not a wreck's part or a relic: those lie where the drill was lost, and are fetched again. Nor the trip's gems
+  // or specimens: the ground comes back with the docking, a pocket's mineral and a spent den with it, so a share of
+  // them kept made every pocket pay three quarters of its specimens again on each trip lost, without end. Grit is
+  // paid by any cell, and was never what a level waits on.)
   revert() {
     const lost = this.S, was = JSON.parse(this.docked), earned = Math.max(0, Math.round(lost.grit - was.grit));
     this.S = was;
     const share = this.val('blackbox'), kept = Math.round(earned * share), gone = earned - kept;
     this.S.grit += kept;
-    if (lost.lv.blackbox >= LORE) this.keepLore(lost, share);
+    if (lost.lv.blackbox >= LORE) this.keepLore(lost);
     this.world.back();
     this.version++;
     this.begin();
@@ -2484,14 +2495,10 @@ export class Game {
     this.save();
   }
   // What the black box keeps from the game that was lost (`lost`, its state at the wreck) in the one gone back to
-  // (`this.S`): `share` of the gems and the specimens of each direction earned since the docking, whole; and every
-  // sample, ground, pocket, rare hazard and kind of creature met since, as many samples of a thing as either has.
-  keepLore(lost, share) {
+  // (`this.S`): every sample, ground, pocket, rare hazard and kind of creature met since the docking, as many
+  // samples of a thing as either has.
+  keepLore(lost) {
     const S = this.S;
-    for (let b = 1; b < 5; b++) {
-      S.gems[b] += Math.floor(share * Math.max(0, (lost.gems[b] ?? 0) - (S.gems[b] ?? 0)));
-      S.spec[b] = (S.spec[b] ?? 0) + Math.floor(share * Math.max(0, (lost.spec?.[b] ?? 0) - (S.spec[b] ?? 0)));
-    }
     S.lab ??= {}; S.met ??= {}; S.visited ??= {}; S.rare ??= {};
     for (const key in lost.lab ?? {}) S.lab[key] = Math.max(S.lab[key] ?? 0, lost.lab[key]);
     for (const key in lost.met ?? {}) S.met[key] = 1;
@@ -2594,13 +2601,15 @@ export class Game {
       }
       if (c.t < c.life) continue;
       // (With the graft, the spore drive's second level, moss that closes beside ore the world laid heals as that
-      // ore does under the frost, `veined`: never beside ore that healed, so a graft cannot run on cell by cell.)
+      // ore does under the frost, `veined`: never beside ore that healed, so a graft cannot run on cell by cell; and
+      // only within the tether's reach, as the bellows and the capacitor are held. A bunch of pods spreads past the
+      // reach as it always has, and its moss closes there plain.)
       const graft = this.val('sporedrive') >= 2;
       let grafted = 0;
       for (let v = -1; v <= 1; v++) for (let u = -1; u <= 1; u++) {
         const j = (c.y + v) * N + c.x + u;
         if (w.k(j) === K.EMPTY && !lies(j) && !w.lava.has(j) && Math.max(Math.abs(dcx - c.x - u), Math.abs(dcy - c.y - v)) > 1 && w.row(j).pocket === null) {
-          const ore = graft && this.veined(j);
+          const ore = graft && this.veined(j) && this.within(c.x + u + 0.5, c.y + v + 0.5);
           w.setK(j, ore ? K.ORE_A : K.SOFT); closed.push(j);
           if (ore) { grafted++; if (this.onScreen(c.x + u, c.y + v)) this.sparkle((c.x + u + 0.5) * T, (c.y + v + 0.5) * T, 6, '#b8f06a'); }
         }

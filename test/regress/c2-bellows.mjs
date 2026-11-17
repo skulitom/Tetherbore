@@ -7,8 +7,12 @@
 //   - with the second, all the rind within reach turns, and the slag past the reach and the pocket's stands;
 //   - each turned cell shows white (`quenched`), the ground is drawn again, nothing opens or closes, and the
 //     fitting is told when three or more turn at once (`fitter.fire('lavaskin')`);
-//   - the slag turns in play, not as the world lays it: the world laid there is as it was.
-// Fails on the game before there were bellows: the rind beyond the four sides stays slag.
+//   - the slag turns in play, not as the world lays it: the world laid there is as it was;
+//   - lava one cell past the reach, woken by a cut at its edge, with slag on its four sides, one of them past the
+//     reach and one of a pocket's ground: all four turn at the second level as at the first, for the reach and the
+//     pocket hold only the cells the first level never reached.
+// Fails on the game before there were bellows: the rind beyond the four sides stays slag; and on the bellows that
+// held the four sides to the reach too, which left a side past it slag where the first level made steel.
 //   node test/regress/c2-bellows.mjs
 import { makeGame, world, C, N } from '../harness.mjs';
 import { arena, at, fixRandom } from './lib/lasso.mjs';
@@ -55,5 +59,21 @@ for (const skin of [0, 1]) {
   check(s.fired.includes('lavaskin'), `the fitting was not told: ${s.fired}`);
   check(inside.every(i => w.first(i) !== K.STEEL), 'the world lays steel where the bellows made it');
 }
-console.log(fails.length ? `DEFECT: ${fails.join('\n        ')}` : 'ok: with the bellows woken lava quenches the slag two cells round it, none past the reach or in a pocket, and the first level the four sides as ever');
+for (const skin of [1, 2]) {
+  // (The fourth side, the lava's west, is the cut. The corner north-east of it lies past the reach as well, and is
+  // never the first level's.)
+  const game = await makeGame(7, { tether: 0, lavaskin: skin }), w = game.world;
+  arena(game, 46, K.SOFT, B.EMBER);
+  const lava = at(40, 0), sides = [at(41, 0), at(40, 1), at(40, -1)], corner = at(41, 1);
+  for (const i of [...sides, corner]) w.setK(i, K.SLAG);
+  w.setB(at(40, -1), pocketRow);
+  w.setK(lava, K.HAZARD);
+  game.changed();
+  game.finishDig(at(39, 0));
+  const out = !game.within(41.5, Math.floor(at(41, 0) / N) + 0.5);
+  check(w.lava.has(lava) && out, `the staging is wrong: the lava woke ${w.lava.has(lava)}, the slag east of it past the reach ${out}`);
+  check(sides.every(i => w.k(i) === K.STEEL), `with the lava skin at ${skin} the sides of lava at the reach are ${kinds(w, sides)}`);
+  check(w.k(corner) === K.SLAG, `with the lava skin at ${skin} the corner past the reach is ${kinds(w, [corner])}`);
+}
+console.log(fails.length ? `DEFECT: ${fails.join('\n        ')}` : 'ok: with the bellows woken lava quenches the slag two cells round it, none past the reach or in a pocket but its four sides, which turn as at the first level');
 process.exit(fails.length ? 1 : 0);

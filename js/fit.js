@@ -740,7 +740,10 @@ export class Fitter {
       }
       ctx.globalCompositeOperation = 'source-over';
       ctx.globalAlpha = base;
-      text(ctx, m.stamp, px + 31 + textWidth(ROW[m.id].name), y + 2 - (age < STAMP ? 5 : 0), '#ffe14a', 0, age < STAMP ? 2 : 1);
+      // (Twice the size, shadow and all, only where that ends within the line: on the narrowest phone a long name
+      // and a long value, TROPHY LINE's 2 SPEC, would run past the panel and the screen, and are stamped as drawn.)
+      const sx = px + 31 + textWidth(ROW[m.id].name), big = age < STAMP && sx + 2 * textWidth(m.stamp) + 2 <= px + pw - 6;
+      text(ctx, m.stamp, sx, y + 2 - (big ? 5 : 0), '#ffe14a', 0, big ? 2 : 1);
     }
     ctx.globalCompositeOperation = 'lighter';
     this.drawPool(ctx, this.panelPool, 0, 0, game.W, game.H);

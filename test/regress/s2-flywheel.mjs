@@ -1,16 +1,20 @@
 // The flywheel (js/game.js: `spin`, `payOf`, `haul`, `hit`, `haulTitle`; WORKS, js/shop.js). With it, a haul of a
 // dozen cells or more made within six seconds of the last of its run is the next of the run, and pays its cells'
-// grit (not its lumps) eight in a hundred more for each haul of the run before it, up to the row's value. Staged
+// grit (not its lumps) eight in a hundred more for each haul of the run before it (twelve at the second level), up
+// to the row's value. Staged
 // by hand, blocks of dense rock two hundred cells out hauled one after another, the clock moved on between them:
 //   - at the first level (+40%) hauls of twenty cells three seconds apart pay x1, x1.08, x1.16 ... and x1.4 from the
 //     sixth on, against what the same cells pay with no flywheel; the third and on are called SPIN x2 ...;
 //   - a haul of eleven cells is paid as ever and adds no link;
 //   - a haul more than six seconds after the last begins the run again, and so does a knock;
 //   - a game begun, or gone back to its docking, has no run;
-//   - at the second level (+60%) a haul of twelve cells at the most the run gives still pays less a cell than one
+//   - at the second level (+60%) the same hauls pay x1, x1.12, x1.24 ... and x1.6 from the sixth on, so the level
+//     pays more from the second haul of a run and not only past the first level's most at the seventh;
+//   - at the second level a haul of twelve cells at the most the run gives still pays less a cell than one
 //     loop of 2,304 at the winch's fifth level, where the load is 5,000;
 //   - with no flywheel nothing changes: the run is never counted.
-// Fails on the game before there was a flywheel: every haul pays x1.
+// Fails on the game before there was a flywheel: every haul pays x1; and on the flywheel whose second level only
+// raised its most, where the run's second to sixth hauls paid as at the first.
 //   node test/regress/s2-flywheel.mjs
 import { makeGame, world, C, N } from '../harness.mjs';
 import { at, fixRandom } from './lib/lasso.mjs';
@@ -72,6 +76,16 @@ const plain = (game, cells) => { const was = game.S.lv.flywheel; game.S.lv.flywh
   check(game.spin === spin && game.spin.n === 0, `gone back to its docking the game has a run of ${game.spin.n}${game.spin === spin ? '' : ', and a new one made'}`);
 }
 {
+  const game = await makeGame(7, { tether: 9, flywheel: 2 }), ratios = [];
+  for (let h = 0; h < 8; h++) {
+    const cells = block(game, 20), base = plain(game, cells);
+    game.haul(cells);
+    ratios.push(+(game.hauled.grit / base).toFixed(2));
+    game.time += 3;
+  }
+  check(ratios.join() === '1,1.12,1.24,1.36,1.48,1.6,1.6,1.6', `at the second level twenty-cell hauls three seconds apart paid x${ratios.join(', x')}`);
+}
+{
   // The most the run gives on a dozen cells, against one great loop: a cell's grit each, all at one place.
   const game = await makeGame(7, { tether: 9, flywheel: 2, winch: 4 });
   const cell = n => Array.from({ length: n }, () => ({ k: K.DENSE, b: B.LODE, x: C + 300, y: C }));
@@ -85,5 +99,5 @@ const plain = (game, cells) => { const was = game.S.lv.flywheel; game.S.lv.flywh
   check(ratios.every(r => r === 1) && game.spin.n === 0, `with no flywheel hauls paid x${ratios.join(', x')} and the run is ${game.spin.n}`);
 }
 check(haulTitle(20, {})[0] === 'NICE CUT!' && haulTitle(20, { spin: 2 })[0] === 'SPIN x2' && haulTitle(20, { spin: 2, caches: 1 })[0] === 'CACHE!', 'the titles of a haul in a run are not as they should be');
-console.log(fails.length ? `DEFECT: ${fails.join('\n        ')}` : 'ok: with the flywheel a run of quick hauls pays eight in a hundred more a haul up to the row\'s value; a small haul adds nothing, a wait or a knock begins it again, and a dozen cells never beat one great loop');
+console.log(fails.length ? `DEFECT: ${fails.join('\n        ')}` : 'ok: with the flywheel a run of quick hauls pays eight in a hundred more a haul, twelve at the second level, up to the row\'s value; a small haul adds nothing, a wait or a knock begins it again, and a dozen cells never beat one great loop');
 process.exit(fails.length ? 1 : 0);

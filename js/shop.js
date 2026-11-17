@@ -103,8 +103,11 @@ export const UPGRADES = [
   // each a plate more on the drill. Its first level is priced beside a reach that has only just met hazards and
   // asks no gems; from there on it takes the south's, whose lava is the worst of what it is for. (Its third and
   // fourth levels asked 600 and 1,000 cells out, all of a reach of 620 and more than one of 950: they were bought
-  // in the same minute as the reach after, on every world. And its second asked 300, as the winch's fourth does,
-  // and the two were bought in the same minute.)
+  // in the same minute as the reach after, on every world. And its second asked 300, as the winch's fourth does.)
+  // A distance of its own does not keep a level from being bought on the same trip home as another a few dozen
+  // cells off, for one trip out crosses both: the hull's 440 is often bought with the bit's 400, its 660 with the
+  // winch's 700, the ram's 500 with the eighth reach's 570, and the hull's 280 still with the winch's 300. What it
+  // keeps is a level from waiting on the reach after the one it is priced beside.
   { id: 'hull', icon: 'hull', name: 'HULL', what: 'TAKES MORE KNOCKS', values: [5, 6, 7, 8, 9], gem: B.EMBER, needs: ['out', [150, 280, 440, 660]], ...levels([3.5, 4.5, 5.5, 6.5], 0.5), show: v => `${v}` },
 ];
 // What the lab can know: each thing the bit can crush, by the sheet and frame it is drawn from (`Game.sampleOf`),
@@ -211,7 +214,7 @@ export const WORKS = [
   { id: 'sporedrive', name: 'SPORE DRIVE', what: 'SPORES SPEED IT UP', values: [0, 1], kin: B.MIRE, gem: B.MIRE, ...works([5.5], 0.4, [12]), show: v => ['OFF', 'DRIVE', 'GRAFT'][v], says: l => l ? 'MOSS HEALS AS ORE' : null },
   { id: 'arccoil', name: 'ARC COIL', what: 'ARCS MEND THE HULL', values: [0, 1], kin: B.LODE, gem: B.LODE, ...works([5.5], 0.4, [12]), show: v => ['OFF', 'MEND', 'CHARGE'][v], says: l => l ? 'ARCS CHARGE THE BIT' : null },
   { id: 'diamond', name: 'DIAMOND TIP', what: 'CUTS METAL FAST', values: [0, 1], kin: B.FROST, gem: B.FROST, ...works([4.5], 0.4, [10]), show: v => v ? 'ON' : 'OFF' },
-  { id: 'flywheel', name: 'FLYWHEEL', what: 'QUICK HAULS PAY MORE', values: [0, 0.4, 0.6], kin: B.EMBER, gem: B.EMBER, ...works([4.5, 6.5], 0.4, [10, 30]), show: v => v ? `+${Math.round(v * 100)}%` : 'OFF', says: () => '+8% A HAUL IN A ROW' },
+  { id: 'flywheel', name: 'FLYWHEEL', what: 'QUICK HAULS PAY MORE', values: [0, 0.4, 0.6], kin: B.EMBER, gem: B.EMBER, ...works([4.5, 6.5], 0.4, [10, 30]), show: v => v ? `+${Math.round(v * 100)}%` : 'OFF', says: l => l ? '+12% A HAUL IN A ROW' : '+8% A HAUL IN A ROW' },
 ];
 // The shop's third tab, MAP: what the map in the corner shows.
 //   RANGE    how many cells of ground a pixel of the map is, so how far it shows: 69 cells across at first
@@ -263,7 +266,9 @@ export const CORE = [
   { id: 'refinery', pic: 'grit', name: 'REFINERY', what: 'HAULS PAY MORE GRIT', values: [1, 1.15, 1.3, 1.5, 1.75, 2], gem: B.FROST, needs: ['places', [6, 9, 12, 16, 20]], ...deep([[5, 1.5], [6, 2], [7, 2.5], [8, 3], [8, 6]], [600, 1500, 4000, 10000, 25000]), show: v => `x${v}` },
   { id: 'cutter', pic: 'lode', name: 'GEM CUTTER', what: 'HAULS PAY MORE GEMS', values: [1, 1.2, 1.4, 1.7, 2], gem: B.LODE, needs: ['kinds', [8, 18, 28, 36]], ...deep([[5.5, 1.5], [6.5, 2], [7.5, 3], [8, 5]], [800, 2500, 8000, 20000]), show: v => `x${v}` },
   { id: 'lamp', pic: 'bolt', name: 'LAMP', what: 'LIGHT SEES CAVERNS', values: [8.5, 10, 12, 14], gem: B.EMBER, needs: ['parts', [1, 3, 5]], ...deep([[4, 0.5], [6, 0.8], [8, 1.1]], [0, 600, 3000]), show: v => `${v}` },
-  { id: 'blackbox', pic: 'lock', name: 'BLACK BOX', what: 'KEEPS GRIT WHEN LOST', values: [0, 0.25, 0.5, 0.75], gem: B.MIRE, needs: ['places', [5, 10, 15]], ...deep([[5, 1], [6.5, 2], [8, 3]], [400, 2000, 9000]), show: v => `${Math.round(v * 100)}%` },
+  { id: 'blackbox', pic: 'lock', name: 'BLACK BOX', what: 'KEEPS GRIT WHEN LOST', values: [0, 0.25, 0.5, 0.75], gem: B.MIRE, needs: ['places', [5, 10, 15]], ...deep([[5, 1], [6.5, 2], [8, 3]], [400, 2000, 9000]), show: v => `${Math.round(v * 100)}%`,
+    // (From its third level it keeps what a lost trip learnt, as well as its grit: js/game.js, `keepLore`.)
+    says: l => l === 2 ? 'KEEPS WHAT IT LEARNT' : null },
   // (The live catch's value is what a woken rare's lump is multiplied by: 1, by nothing, before it is bought.)
   { id: 'livecatch', pic: 'mire', name: 'LIVE CATCH', what: 'WOKEN RARES PAY MORE', values: [1, 2, 3], gem: B.MIRE, needs: ['kinds', [30, 40]], ...deep([[6.5, 1.5], [7.5, 2]], [1500, 4000]), show: v => v > 1 ? `ALL x${v}` : 'WORM x2',
     says: l => l ? `WOKEN RARES PAY x${CORE[4].values[l + 1]}` : 'BELLS, VENTS, STONES' },
