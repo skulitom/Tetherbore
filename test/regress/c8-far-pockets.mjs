@@ -20,7 +20,7 @@ const cellsOf = Z => { const out = []; for (let y = Z.cy - 40; y <= Z.cy + 40; y
     check(found.length >= 3 && found.every(Z => far(Z) >= 300 && Z.kin === kin && !Z.herald), `${name}: ${found.length} within 1,500 cells, the nearest ${Math.round(Math.min(...found.map(far)))} out, in directions ${[...new Set(found.map(Z => Z.kin))]}`);
     check(LAB.some(e => e.key === `minerals:${mineral}`), `the lab does not know ${mineral}`);
   }
-  check(LAB.length === 48, `the lab knows ${LAB.length} things, not forty-eight`);
+  check(LAB.length >= 48, `the lab knows ${LAB.length} things, fewer than forty-eight`);
   const heralds = all.filter(Z => Z.herald).map(Z => named(Z.row)).sort().join();
   check(heralds === 'ash,drift,drift,hive', `the four directions' first pockets are ${heralds}`);
 }

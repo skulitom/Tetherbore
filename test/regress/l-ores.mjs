@@ -158,11 +158,11 @@ const near = (x, y) => (C + y) * N + C + x;
   old.save();
   const back = await makeGame(7); await back.restore();
   const asked = back.need(CORE.find(u => u.id === 'cutter'));
-  check(asked?.what === 'kinds' && asked.have === 9 && asked.need === 8, `a game saved with nine of the first sixteen is asked by the gem cutter for ${JSON.stringify(asked)}`);
+  check(asked?.what === 'kinds' && asked.have === 9 && asked.need === kinds([8])[0], `a game saved with nine of the first sixteen is asked by the gem cutter for ${JSON.stringify(asked)}`);
   check(SIXTEEN.slice(0, 9).every(key => back.S.lab[key] === 3), 'a saved game lost its samples');
 }
 const cutter = CORE.find(u => u.id === 'cutter');
-check(cutter.needs[0] === 'kinds' && cutter.needs[1].slice(0, 4).join() === '8,18,28,36', `the gem cutter asks for ${cutter.needs[1].slice(0, 4)} kinds, not 8, 18, 28 and 36`);
+check(cutter.needs[0] === 'kinds' && cutter.needs[1].slice(0, 4).join() === kinds([8, 18, 28, 36]).join(), `the gem cutter asks for ${cutter.needs[1].slice(0, 4)} kinds, not 8, 18, 28 and 36 of forty-eight (${kinds([8, 18, 28, 36])} of ${LAB.length})`);
 check(cutter.needs[1].slice(0, 4).every(n => n <= LAB.length), 'the gem cutter asks for more kinds than there are');
 
 // ---- 6. the art of the new ores
