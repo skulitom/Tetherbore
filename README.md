@@ -121,6 +121,14 @@ It is a static site: serve the folder with any web server and open `index.html`.
 python -m http.server 4791
 ```
 
+The site deployed is built from it, into a folder of its own: `tools/build-dist.mjs <outdir>` copies what a browser loads (`index.html`, `manifest.webmanifest`, `css/`, `js/`, `assets/`, `media/`; nothing a page links to lies anywhere else), runs each module of `js/` through esbuild's transform on its own, whitespace and comments out and nothing else (1.19 MB of source, 384 KB gzipped, becomes 566 KB, 192 gzipped; with `charset: 'utf8'`, so `js/words.js` keeps its Cyrillic and Chinese as they are), and not bundled, so that each module is a file `index.html` can ask for; writes `assets/atlas.json` compact (each sheet's frames as a list of names, the sheet's own name off the front of each, and one flat list of rectangles; an animation of every frame in order as `all`: 107 KB gzipped becomes 24), which `js/atlas.js` (`expandAtlas`) makes again into the very object the art build wrote, which is the one the repository keeps, for the art build, the tools and the tests; and writes into `index.html` a preload of every sheet's image the atlas names, made from it, since the game asks for them only once the modules have run and the atlas has been read. `--check` plays the built modules with the compact atlas (`test/smoke.mjs`, `s6-feel`, `s7-fit` in a folder of its own beside the repository's `test/`). esbuild is not in the repository: `--esbuild` (or `TB_ESBUILD`) names its package's folder, and the workflows install esbuild@0.20.2 with `--no-save --no-package-lock` into a folder of the runner's own; `.github/workflows/static.yml` plays `test/smoke.mjs`, builds `dist/` with `--check` and gives Pages that, and `itch.yml` pushes the same build.
+
+```bash
+node tools/build-dist.mjs dist --esbuild ../NeonVoyage/node_modules/esbuild --check
+```
+
+`index.html` asks at once for every module `js/main.js` imports, directly or through another (`test/regress/t-page-preload.mjs` holds its list to the import graph, so a module added, renamed or no longer imported fails it until the list says so), and its one inline script asks for `js/words.js` where the language chosen is Russian or Mandarin, by `js/lang.js`'s own rule, which the test holds it to. A player coming back has a game in local storage: `js/main.js` then makes the game `blank` (`hasSave`), which draws its seed as a new game does but lays no world of its own for `restore` to throw away, and `restore` begins that new world after all wherever it finds no game to go on with (`test/regress/h-blank-boot.mjs`).
+
 ## Testing it
 
 ```bash

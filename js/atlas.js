@@ -4,8 +4,26 @@ import { tr, words } from './lang.js';
 export const sheets = {};
 const tints = new Map();
 
+// The atlas as the site is built (tools/build-dist.mjs) is written compact: a sheet's frames as a list of their names,
+// the sheet's own name and a hyphen taken off the front of each where every one has them (`p`), and their rectangles
+// in one flat list, five numbers a frame (`r`); and an animation of every frame in order, as most sheets' 'default'
+// is, as `all`. Made again here into the very object the art build wrote (assets/atlas.json, which the repository
+// keeps as it is: the art build, the tools and the tests read it): the same keys, in the same order. A sheet written
+// out in full is left as it is.
+export function expandAtlas(data) {
+  for (const [name, sheet] of Object.entries(data)) {
+    const f = sheet.frames;
+    if (!Array.isArray(f.n) || !f.n.every(n => typeof n === 'string')) continue;
+    const frames = {}, pre = f.p ? `${name}-` : '';
+    for (let i = 0; i < f.n.length; i++) frames[pre + f.n[i]] = f.r.slice(i * 5, i * 5 + 5);
+    sheet.frames = frames;
+    for (const key in sheet.animations) if (sheet.animations[key].all) sheet.animations[key] = { frames: Object.keys(frames), loop: sheet.animations[key].loop };
+  }
+  return data;
+}
+
 export async function loadAtlas(base = 'assets/') {
-  const data = await (await fetch(`${base}atlas.json`)).json();
+  const data = expandAtlas(await (await fetch(`${base}atlas.json`)).json());
   await Promise.all(Object.entries(data).map(async ([name, sheet]) => {
     const image = new Image();
     // Waits on the load event, not decode(): a page opened in a background tab never finishes a decode.

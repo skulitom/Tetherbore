@@ -59,12 +59,13 @@ jobs:
         if: steps.key.outputs.present == 'true'
         run: node test/smoke.mjs
 
+      # The files a browser loads, built as for GitHub Pages (tools/build-dist.mjs, static.yml): each module minified
+      # on its own, the atlas compact, the sheets' images preloaded; --check plays the built modules first.
       - name: The files a browser loads
         if: steps.key.outputs.present == 'true'
         run: |
-          mkdir dist
-          cp index.html manifest.webmanifest dist/
-          cp -r css js assets media dist/
+          npm install --no-save --no-package-lock --prefix "$RUNNER_TEMP/esbuild" esbuild@0.20.2
+          node tools/build-dist.mjs dist --check --esbuild "$RUNNER_TEMP/esbuild/node_modules/esbuild"
           test -f dist/index.html
           echo "$(find dist -type f | wc -l) files"
 

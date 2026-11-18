@@ -1,14 +1,16 @@
 // Boots the game: loads the art, sizes the canvas in whole device pixels, and feeds it touches, keys and time.
 import { loadAtlas } from './atlas.js';
-import { Game } from './game.js';
+import { Game, hasSave } from './game.js';
 import { setAside } from './audio.js';
 
 const canvas = document.getElementById('game');
 await loadAtlas();
-const game = new Game(canvas, document.getElementById('rope'));
 // `?shot` in the address stages a view of a far place for tools/shot.mjs to photograph, in place of the saved game,
 // which is then neither read nor written (js/shot.js, fetched only then). Without it none of this runs.
 const query = new URLSearchParams(location.search);
+// (A game saved to go on with is laid from its own seed by restore: the game is made blank, with no world of its
+// own laid first to be thrown away, and nothing asks it anything before restore has begun it.)
+const game = new Game(canvas, document.getElementById('rope'), { blank: !query.has('shot') && hasSave() });
 const shot = query.has('shot') ? (await import('./shot.js')).stage(game, query) : null;
 // (With no saved game to go on with, the game begun is a new one, and the saved ground is made its own.)
 if (!shot && !(await game.restore())) game.claim();

@@ -12,19 +12,45 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" href="media/icon-192.png">
 <link rel="apple-touch-icon" href="media/icon-192.png">
-<link rel="stylesheet" href="css/style.css">
-<!-- The modules js/main.js imports, and the atlas it loads first, are asked for at once, so they download together
-     where the browser would find each only when the one before had come (main, then game, then world and audio, and
-     the atlas last of all). The atlas is fetched by fetch(), so its preload must be crossorigin to be the same request,
-     or it downloads twice. A module renamed or added is renamed or added here too; js/shot.js stays out, as it is
-     fetched only for ?shot. -->
+<!-- Every module js/main.js imports, directly or through another, and the atlas it loads first, are asked for at
+     once, so they download together where the browser would find each only when the one that imports it had come
+     (main, then game, then world, shop, drawing and the rest, then decor, and the atlas last of all). The list is
+     the import graph's, and test/regress/t-page-preload.mjs fails where it is not: a module renamed, added or no
+     longer imported is renamed, added or taken out here too. js/shot.js stays out, as it is fetched only for ?shot,
+     and js/words.js, which js/lang.js fetches only for a language not English, is asked for by the script below
+     where the language chosen is one, by lang.js's own rule (`chosen`): the link's ?lang= where it names a language
+     the game has, else the one kept on this device. (It only reads: lang.js keeps what the link chose. It
+     stands before the stylesheet, as a script after one waits until it has come.) The atlas is fetched by fetch(),
+     so its preload must be crossorigin to be the same request, or it downloads twice. -->
 <link rel="modulepreload" href="js/game.js">
 <link rel="modulepreload" href="js/world.js">
 <link rel="modulepreload" href="js/audio.js">
 <link rel="modulepreload" href="js/atlas.js">
 <link rel="modulepreload" href="js/shop.js">
 <link rel="modulepreload" href="js/drawing.js">
+<link rel="modulepreload" href="js/fauna.js">
+<link rel="modulepreload" href="js/feel.js">
+<link rel="modulepreload" href="js/bosses.js">
+<link rel="modulepreload" href="js/fit.js">
+<link rel="modulepreload" href="js/lang.js">
+<link rel="modulepreload" href="js/decor.js">
+<link rel="modulepreload" href="js/worth.js">
+<link rel="modulepreload" href="js/goal.js">
+<link rel="modulepreload" href="js/winds.js">
 <link rel="preload" href="assets/atlas.json" as="fetch" crossorigin>
+<script>
+(() => {
+  const known = id => ['en', 'ru', 'zh'].includes(id) ? id : null;
+  let id = null;
+  try { id = known(new URLSearchParams(location.search).get('lang')); } catch { }
+  if (!id) try { id = known(localStorage.getItem('tetherbore-lang')); } catch { }
+  if (id !== 'ru' && id !== 'zh') return;
+  const link = document.createElement('link');
+  link.rel = 'modulepreload'; link.href = 'js/words.js';
+  document.head.appendChild(link);
+})();
+</script>
+<link rel="stylesheet" href="css/style.css">
 </head>
 <body>
 <canvas id="game" aria-label="Tetherbore"></canvas>

@@ -58,9 +58,17 @@ export const worthSaid = ({ x, gems, spec, lump, home }) => {
 // two fifths of their walls in grounds paying 1.8 to 2, a fifth in ground paying 1, a quarter in 1.2 to 1.25, and
 // one in twenty or so in the strains under 1, loess, firn and scoria, where a wall pays x8.5 to 9.5 and not the x10
 // said; the line does not say).
-const ORDINARY = () => BIOMES.filter(r => r && !r.cross && !r.pocket && r.lay !== undefined);
+// (The ordinary grounds are found once, and where a key lies is found once for it: it does not hang on the winch,
+// and WORTH_AT asks it of every key at every level.)
+const ORDINARY = BIOMES.filter(r => r && !r.cross && !r.pocket && r.lay !== undefined);
+const placed = new Map();
 const placeOf = key => {
-  const rows = ORDINARY(), found = rows.filter(r => r.oreKeys?.includes(key));
+  let at = placed.get(key);
+  if (at === undefined) placed.set(key, at = findPlace(key));
+  return at;
+};
+const findPlace = key => {
+  const rows = ORDINARY, found = rows.filter(r => r.oreKeys?.includes(key));
   if (found.length) {
     const at = r => ({ k: r.oreKeys.indexOf(key) ? K.ORE_B : K.ORE_A, row: r });
     const home = found.find(r => r.id === B.CRUST), own = found.find(r => r.id !== B.CRUST);

@@ -326,6 +326,9 @@ let opened = null;
 // Where a save is written a second time, with its number (`Game.save`), and the number last saved there.
 const LATEST = `${SAVE_KEY}-latest`;
 const latestRev = () => { try { return JSON.parse(localStorage.getItem(LATEST))?.rev ?? 0; } catch { return 0; } };
+// Whether local storage holds a game to go on with, under either key (`restore` takes the one it can begin): the page
+// then makes the game `blank` and lays no world of its own for restore to throw away (js/main.js).
+export const hasSave = () => [SAVE_KEY, LATEST].some(key => { try { return JSON.parse(localStorage.getItem(key))?.v === 3; } catch { return false; } });
 const store = () => opened ??= new Promise((resolve, reject) => {
   const open = indexedDB.open('tetherbore', 1);
   open.onupgradeneeded = () => open.result.createObjectStore('pieces');
@@ -370,8 +373,11 @@ function jostle(bits, n, size, rad) {
 
 export class Game {
   // `over` is a second canvas laid on the first at the screen's full resolution, for the tether: without one (in
-  // tests) the tether is drawn in the game's own pixels.
-  constructor(canvas, over = null) {
+  // tests) the tether is drawn in the game's own pixels. A `blank` game is one about to be restored: it draws the
+  // seed of its new world as any game does, but keeps it and lays nothing, since a saved game's ground is laid in its
+  // place. Nothing may ask it anything (it has no S, no drill) before `restore`, which begins that new world after
+  // all wherever it finds no game to go on with, so that it is then the very game a game not blank would have been.
+  constructor(canvas, over = null, { blank = false } = {}) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d', { alpha: false });
     this.over = over; this.overCtx = over ? over.getContext('2d') : null; this.ropes = []; this.scale = 1;
@@ -440,7 +446,8 @@ export class Game {
       const part = this[name];
       if (typeof part === 'function') this[name] = (...args) => { const t0 = performance.now(); try { return part.apply(this, args); } finally { this.timed(name, t0); } };
     }
-    this.fresh((Math.random() * 1e9) | 0, true);
+    const seed = (Math.random() * 1e9) | 0;
+    if (blank) this.blankSeed = seed; else this.fresh(seed, true);
   }
 
   // ------------------------------------------------------------ state
@@ -549,6 +556,13 @@ export class Game {
     this.loading = true;
     this.restore().then(ok => { this.loading = false; if (ok) this.notice = { title: 'GAME LOADED', sub: 'IT WAS PLAYED ON IN ANOTHER TAB', colour: '#8ce060', t: 0, life: 5 }; });
   }
+  // (A blank game, once it is known to have no game to go on with, begins the world it drew the seed of: `blankSeed`.)
+  unblank() {
+    if (this.blankSeed === undefined) return;
+    const seed = this.blankSeed;
+    this.blankSeed = undefined;
+    this.fresh(seed, true);
+  }
   async restore() {
     let raw = null;
     try {
@@ -561,7 +575,7 @@ export class Game {
       try { latest = JSON.parse(localStorage.getItem(LATEST)); } catch { latest = null; }
       const sound = d => !!d && d.v === 3;
       if (sound(latest) && (!sound(data) || (data.rev !== undefined ? (latest.rev ?? 0) > data.rev : data.seed === latest.seed && (data.stats?.time ?? 0) < (latest.stats?.time ?? 0)))) data = latest;
-      if (!data || data.v !== 3) { this.rev = 0; return false; }
+      if (!data || data.v !== 3) { this.unblank(); this.rev = 0; return false; }
       const { v, rev, ...S } = data;
       // (A copy with no number, taken for the later one, is saved next as later than the numbered copy it passed.)
       this.rev = rev ?? latest?.rev ?? 0;
@@ -576,7 +590,7 @@ export class Game {
           walk.onerror = () => reject(walk.error);
         });
       } catch { rows = []; }
-      this.S = S;
+      this.S = S; this.blankSeed = undefined;
       // What a game saved before these were kept does not have: the wrecks' parts, the grounds met, the dots of
       // things seen on the map, the pockets visited, the specimens of each direction, the lab's samples, the rare
       // hazards met.
@@ -639,6 +653,7 @@ export class Game {
       // A save that is there and cannot be begun is kept aside before a new game is written over it, and the
       // game says what went wrong (MENU); the new game begins clean.
       try { if (raw) localStorage.setItem(`${SAVE_KEY}-kept`, raw); } catch { /* not kept */ }
+      this.unblank();
       this.fresh((Math.random() * 1e9) | 0, true);
       this.failed(error);
       return false;

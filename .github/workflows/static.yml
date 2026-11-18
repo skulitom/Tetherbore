@@ -31,13 +31,27 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      # The quick gate (about 20 seconds): the unattended play in every direction.
+      - name: Play every direction unattended
+        run: node test/smoke.mjs
+      # The site as it is deployed (tools/build-dist.mjs): each module minified on its own, the atlas compact, the
+      # sheets' images preloaded. esbuild is not in the repository: the pinned version is installed into a folder of
+      # the runner's own, with no package.json or lock written. --check plays the built modules (smoke, s6-feel,
+      # s7-fit) before anything is uploaded.
+      - name: esbuild, pinned
+        run: npm install --no-save --no-package-lock --prefix "$RUNNER_TEMP/esbuild" esbuild@0.20.2
+      - name: Build the site
+        run: node tools/build-dist.mjs dist --check --esbuild "$RUNNER_TEMP/esbuild/node_modules/esbuild"
       - name: Setup Pages
         uses: actions/configure-pages@v5
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          # Upload entire repository
-          path: '.'
+          # Upload the built site, not the repository
+          path: 'dist'
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
