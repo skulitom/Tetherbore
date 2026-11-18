@@ -12,6 +12,10 @@
 export const N = 16384, C = 8192, CH = 64, CW = N / CH;      // a cell is y * N + x; the core's middle cell is (C, C)
 // How many pieces' worth of what the seed says of cells in no piece made are kept (World.biomeKnown): 2 MB.
 const SEEDED_MOST = 256;
+// Pieces laid ahead of need (World.ahead): those whose box lies within AHEAD_REACH cells of the drill each way, and
+// at the most AHEAD_MOST of them held at once, each in bytes kept for it: 192 KB. js/main.js lays AHEAD_ROWS rows a
+// frame (about 0.13 ms on a desktop, 1 on a phone) after a frame whose step and drawing took under AHEAD_UNDER ms.
+export const AHEAD_REACH = 96, AHEAD_MOST = 24, AHEAD_ROWS = 8, AHEAD_UNDER = 8;
 
 // ---------------------------------------------------------------- what a cell can be
 // One table of kinds. A kind's number is what a piece of the world stores for a cell (and what a saved game holds),
@@ -1073,6 +1077,11 @@ export class World {
     // may have changed (`forget`).
     this.ruling = 0; this.seeded = new Map(); this.seedSpare = []; this.seedLast = null; this.seedTick = 0; this.seedRuling = -1; this.seedOf = null;
     this.kept = null;                      // since `mark`: each piece changed or made, as it was then (`back` puts them back)
+    // Pieces laid ahead of need and not yet made (`ahead`): a place for each of AHEAD_MOST, its bytes made the first
+    // time it is used and kept; `id` -1 where it holds none. `heldN` of them hold one, and `aheadRows` rows have been
+    // laid ahead in all (for tests and tools).
+    this.holding = Array.from({ length: AHEAD_MOST }, () => ({ id: -1, rows: 0, here: undefined, kind: null, biome: null }));
+    this.heldN = 0; this.aheadRows = 0;
     this.lava = new Map();                 // seconds of lava left in an open cell
     this.dug = new Map();                  // when the drill opened a cell of the north (for the ice to close it)
     this.seed = 1;
@@ -1817,8 +1826,10 @@ export class World {
     this.slabsFor = NaN; this.firstFor = NaN; this.slabLast.seed = NaN; this.zonesFor = NaN; this.zoneLast.seed = NaN;
     this.sitesFor = NaN; this.siteLast.seed = NaN; this.sector.seed = NaN; this.asked.seed = NaN; this.setsFor = NaN;
     this.hallsFor = NaN; this.hallLast.seed = NaN;
-    // (And what the seed was found to say of cells in no piece made, `biomeKnown`, is asked again.)
+    // (And what the seed was found to say of cells in no piece made, `biomeKnown`, is asked again, and every piece
+    // laid ahead is let go: it was laid by what the seed said then.)
     this.ruling++;
+    this.unhold();
   }
 
   // Whose ground a cell is, from the seed alone. The rules, in the order they are asked (docs/CONTENT-PLAN.md S3):
@@ -2156,17 +2167,100 @@ export class World {
     if (this.kept !== null) this.kept.set(id, { kind: p.kind.slice(), biome: p.biome.slice(), seen: p.seen.slice() });
     return p;
   }
-  // What the seed lays in piece `id`, by the rules of the generation it is at, written into `kind` and `biome`.
+  // What the seed lays in piece `id`, by the rules of the generation it is at, written into `kind` and `biome`. A
+  // piece laid ahead (`ahead`) is finished and given up: its bytes are these, laid by the same rules row by row.
   lay(id, kind, biome) {
     const x0 = (id % CW) * CH, y0 = ((id / CW) | 0) * CH, was = this.slabHere;
+    if (was === undefined && this.heldN > 0) {
+      const h = this.heldOf(id);
+      if (h !== null) {
+        if (h.rows < CH) this.layHeld(h, CH);
+        kind.set(h.kind); biome.set(h.biome);
+        h.id = -1; this.heldN--;
+        return;
+      }
+    }
     // Most pieces have no slab in them, and nearly all the rest have one: which, is asked once for the piece, so
     // that no cell of it has to ask.
     if (was === undefined) this.slabHere = this.slabOver(x0, y0, x0 + CH - 1, y0 + CH - 1);
-    for (let v = 0; v < CH; v++) for (let u = 0; u < CH; u++) {
+    this.layRows(id, kind, biome, 0, CH);
+    this.slabHere = was;
+  }
+  // Rows v0 to v1 (not v1) of what the seed lays in piece `id`, with the slab asked about as `slabHere` says.
+  layRows(id, kind, biome, v0, v1) {
+    const x0 = (id % CW) * CH, y0 = ((id / CW) | 0) * CH;
+    for (let v = v0; v < v1; v++) for (let u = 0; u < CH; u++) {
       const b = this.biomeAt(x0 + u, y0 + v);
       biome[v * CH + u] = b; kind[v * CH + u] = this.kindAt(x0 + u, y0 + v, b);
     }
+  }
+
+  // ---------------------------------------------------------------- laying ahead
+  // Laying a piece costs a phone 6 to 10 ms, 27 cold, and the first thing to read a cell of it lays it then, in the
+  // middle of a step: a cut's outline walked or followed, what a cut would free, a cell seen. So js/main.js, after a
+  // frame with time to spare, lays a few rows of the nearest piece not yet made (`ahead`), and holds them aside;
+  // `lay` gives up a held piece's bytes when the piece is made, finishing what rows are left. A held piece is not
+  // the world's: nothing in `chunks`, nothing counted in `made`, nothing seen or saved, no more than a guess at
+  // what the seed lays there. Every cell of it is laid by the rules `lay` lays by, with the slab it would ask
+  // about (`here`, asked as `lay` asks it as the piece is begun), from the seed and the generations alone, so a
+  // piece laid in slices of rows at any time and in any order among others holds the bytes of one `lay` (what the
+  // seed's records keep of sectors is worked out the same whoever asks first); and every piece held is let go
+  // whenever the seed or a generation may change (`forget`, which `reset`, a game loaded and `migrate` pass through).
+  // (The counts kept for tests of slabs, halls and sites not laid, `refused`, `unhalled`, `unsited` and `tried`, may
+  // go up sooner while a game is played with it on: nothing in the game reads them, and no test of them lays ahead.)
+  heldOf(id) {
+    for (let n = 0; n < AHEAD_MOST; n++) if (this.holding[n].id === id) return this.holding[n];
+    return null;
+  }
+  unhold() {
+    for (let n = 0; n < AHEAD_MOST; n++) this.holding[n].id = -1;
+    this.heldN = 0;
+  }
+  // Up to `rows` rows more of the nearest piece to cell (x, y), by its box, that lies within AHEAD_REACH of it each
+  // way and is neither made nor held whole. Returns how many rows were laid (0: nothing near is left to lay).
+  ahead(x, y, rows) {
+    const cx = Math.floor(x), cy = Math.floor(y), D = AHEAD_REACH;
+    if (!(cx >= 0 && cy >= 0 && cx < N && cy < N)) return 0;
+    let best = -1, bestD = D + 1;
+    for (let py = Math.max(0, (cy - D) >> 6), py1 = Math.min(CW - 1, (cy + D) >> 6); py <= py1; py++) {
+      const ey = Math.max(py * CH - cy, 0, cy - (py * CH + CH - 1));
+      for (let px = Math.max(0, (cx - D) >> 6), px1 = Math.min(CW - 1, (cx + D) >> 6); px <= px1; px++) {
+        const id = (py << 8) | px, d = Math.max(px * CH - cx, 0, cx - (px * CH + CH - 1), ey);
+        if (d >= bestD || this.chunks[id]) continue;
+        const h = this.heldOf(id);
+        if (h !== null && h.rows === CH) continue;
+        best = id; bestD = d;
+      }
+    }
+    if (best < 0) return 0;
+    const h = this.heldOf(best) ?? this.hold(best, cx, cy), to = Math.min(CH, h.rows + rows), n = to - h.rows;
+    this.layHeld(h, to);
+    this.aheadRows += n;
+    return n;
+  }
+  // A place to lay piece `id` ahead in: a free one, else the one holding the piece furthest from (cx, cy).
+  hold(id, cx, cy) {
+    let h = null, far = -Infinity;
+    for (let n = 0; n < AHEAD_MOST; n++) {
+      const g = this.holding[n];
+      if (g.id < 0) { h = g; far = Infinity; break; }
+      const px = (g.id % CW) * CH, py = ((g.id / CW) | 0) * CH, d = Math.max(px - cx, cx - (px + CH - 1), py - cy, cy - (py + CH - 1));
+      if (d > far) { h = g; far = d; }
+    }
+    if (far === Infinity) this.heldN++;
+    if (h.kind === null) { h.kind = new Uint8Array(CH * CH); h.biome = new Uint8Array(CH * CH); }
+    // (The slab its cells ask about, as `lay` asks it of a piece it begins.)
+    const x0 = (id % CW) * CH, y0 = ((id / CW) | 0) * CH;
+    h.id = id; h.rows = 0; h.here = this.slabOver(x0, y0, x0 + CH - 1, y0 + CH - 1);
+    return h;
+  }
+  // The rows of a held piece laid up to row `to`.
+  layHeld(h, to) {
+    const was = this.slabHere;
+    this.slabHere = h.here;
+    this.layRows(h.id, h.kind, h.biome, h.rows, to);
     this.slabHere = was;
+    h.rows = to;
   }
   // Whether the rules of GEN could lay any cell of piece `id` otherwise than those of generation 1: a bound, made
   // generous, on where every newer rule reaches (MIGRATE_NEAR, MIGRATE_SEAM, MIGRATE_FAR). A piece outside it is laid

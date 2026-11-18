@@ -2,6 +2,7 @@
 import { loadAtlas } from './atlas.js';
 import { Game, hasSave } from './game.js';
 import { setAside } from './audio.js';
+import { AHEAD_ROWS, AHEAD_UNDER } from './world.js';
 
 const canvas = document.getElementById('game');
 await loadAtlas();
@@ -63,8 +64,12 @@ function frame(now) {
     game.update(dt);
     const t1 = performance.now();
     game.render();
+    const t2 = performance.now();
     // (A frame that took long is written down, with where the time went: `Game.frameTook`.)
-    game.frameTook(gap, t1 - t0, performance.now() - t1);
+    game.frameTook(gap, t1 - t0, t2 - t1);
+    // A frame with time to spare lays a few rows of the world near the drill ahead of need (`World.ahead`), so that
+    // a step seldom has a piece to lay whole: none while a game is being loaded, whose generations are not yet known.
+    if (t2 - t0 < AHEAD_UNDER && !game.loading) game.world.ahead(game.drill.x, game.drill.y, AHEAD_ROWS);
   } catch (error) { game.failed(error); }
 }
 requestAnimationFrame(frame);

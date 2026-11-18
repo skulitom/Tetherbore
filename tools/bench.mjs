@@ -53,7 +53,10 @@
 //          many again with V8's sampling heap profiler (every 1 KB, objects since collected kept) for the bytes a
 //          frame allocates, told apart by whether `render` is on the stack. `fly` flies north at full speed from 800
 //          cells out through ground never made, a corridor five cells wide laid open in each piece as it is made, and
-//          counts the pieces of world made each frame (game.world.made), printed as a histogram.
+//          counts the pieces of world made each frame (game.world.made), printed as a histogram. Where the root's
+//          world lays pieces ahead (`World.ahead`), each frame does as js/main.js does after it (AHEAD_ROWS rows when
+//          update and render took under AHEAD_UNDER ms), timed apart and counted in the frame's time; and the rows of
+//          world laid in the step (64 a piece made whole, the rest of a piece held in part) are counted in every scene.
 //   step   test/frame-time.mjs's flight (seed 11, 600 turns, the tether at 5 and the bit at 4) flown in the page by
 //          a game of its own, cross-origin isolated (fine-grained performance.now()), with real audio, storage and
 //          database; --fauna sets every kind of creature down beside the drill in turn. update alone is timed: mean,
@@ -341,18 +344,28 @@ const SCENES = {
     w.lay = (id, kind, biome) => { lay(id, kind, biome); const px = (id % 256) * 64, py = ((id / 256) | 0) * 64; if (py > game.drill.y || x0 + 5 <= px || x0 >= px + 64) return;
       for (let v = 0; v < 64; v++) for (let x = Math.max(x0, px); x < Math.min(x0 + 5, px + 64); x++) kind[v * 64 + x - px] = K.EMPTY; };` },
 };
-const LOOP = `(() => {
-  const g = tetherbore.game;
+// (Each frame's figures: update ms, render ms, pieces made, ms laying ahead, rows laid ahead, rows laid in the step.)
+const PER = 6;
+const LOOP = `(async () => {
+  const g = tetherbore.game, w = g.world, W = await import('/js/world.js');
   const KINDS = ['bat', 'moth', 'bee', 'leech', 'spitter', 'puff', 'skink', 'frog', 'beetle', 'jelly', 'salamander', 'wren', 'newt', 'pup'];
+  // (The rows a piece made now is laid in the step: all 64, or those a piece laid ahead had left.)
+  let step = 0;
+  const lay = w.lay;
+  w.lay = function (id, kind, biome) { const h = this.heldN > 0 ? this.heldOf(id) : null; step += h ? 64 - h.rows : 64; return lay.call(this, id, kind, biome); };
+  const ahead = typeof w.ahead === 'function' && W.AHEAD_ROWS > 0;
   window.__bench = (n, steer, crowd) => new Promise(res => {
-    const out = new Float64Array(n * 3); let f = 0;
+    const out = new Float64Array(n * ${PER}); let f = 0;
     const loop = () => {
       if (steer === 'circle') g.input.auto = [Math.cos(f / 45), Math.sin(f / 61), 1];
       else if (steer === 'slow') g.input.auto = [Math.cos(f / 90), Math.sin(f / 120), 0.6];
       else if (steer === 'north') g.input.auto = [0, -1, 1];
       if (crowd && f % 20 === 0 && g.fauna.alive < 16) g.fauna.stage(g, KINDS[(f / 20) % KINDS.length], 8);
-      const m = g.world.made, t0 = performance.now(); g.update(1 / 60); const t1 = performance.now(); g.render(); const t2 = performance.now();
-      out[f * 3] = t1 - t0; out[f * 3 + 1] = t2 - t1; out[f * 3 + 2] = g.world.made - m;
+      step = 0;
+      const m = w.made, t0 = performance.now(); g.update(1 / 60); const t1 = performance.now(); g.render(); const t2 = performance.now();
+      const rows = ahead && t2 - t0 < W.AHEAD_UNDER ? w.ahead(g.drill.x, g.drill.y, W.AHEAD_ROWS) : 0, t3 = performance.now();
+      const o = f * ${PER};
+      out[o] = t1 - t0; out[o + 1] = t2 - t1; out[o + 2] = w.made - m; out[o + 3] = t3 - t2; out[o + 4] = rows; out[o + 5] = step;
       if (++f < n) requestAnimationFrame(loop); else res(Array.from(out));
     };
     requestAnimationFrame(loop);
@@ -403,13 +416,17 @@ async function frameRun(root, o, scene) {
     const { profile } = await page.send('HeapProfiler.stopSampling');
     await page.send('Emulation.setCPUThrottlingRate', { rate: 1 });
     if (page.problems.length) throw new Error(`the page threw: ${page.problems.join('; ')}`);
-    const up = [], rn = [], made = [];
-    for (let i = 0; i < t.length; i += 3) { up.push(t[i]); rn.push(t[i + 1]); made.push(t[i + 2]); }
-    const u = stats(up), r = stats(rn), gc = gcOf(events), heap = heapOf(profile), k = `${scene} `;
+    const up = [], rn = [], made = [], ah = [], rows = [], step = [];
+    for (let i = 0; i < t.length; i += PER) { up.push(t[i]); rn.push(t[i + 1]); made.push(t[i + 2]); ah.push(t[i + 3]); rows.push(t[i + 4]); step.push(t[i + 5]); }
+    const u = stats(up), r = stats(rn), gc = gcOf(events), heap = heapOf(profile), k = `${scene} `, all = up.map((x, i) => x + rn[i] + ah[i]), sum = a => a.reduce((x, y) => x + y, 0);
     const m = {
       [`${k}update mean ms`]: u.mean, [`${k}update p95 ms`]: u.p95, [`${k}update max ms`]: u.max,
       [`${k}render mean ms`]: r.mean, [`${k}render p95 ms`]: r.p95, [`${k}render max ms`]: r.max,
-      [`${k}frames over 16.7 ms`]: up.filter((x, i) => x + rn[i] > 16.7).length,
+      [`${k}frame max ms`]: Math.max(...all),
+      [`${k}frames over 16.7 ms`]: all.filter(x => x > 16.7).length,
+      [`${k}frames laying in the step`]: step.filter(x => x > 0).length, [`${k}rows laid in the step`]: sum(step),
+      [`${k}frames laying ahead`]: rows.filter(x => x > 0).length, [`${k}rows laid ahead`]: sum(rows), [`${k}ahead mean ms (frames laying)`]: rows.some(x => x > 0) ? sum(ah) / rows.filter(x => x > 0).length : NaN,
+      [`${k}ahead max ms`]: Math.max(...ah),
       [`${k}heap KB/frame`]: heap.all / n / 1024, [`${k}heap render KB/frame`]: heap.render / n / 1024, [`${k}heap update KB/frame`]: heap.update / n / 1024,
       [`${k}minor GC /1000 frames`]: gc.minor * 1000 / n, [`${k}major GC /1000 frames`]: gc.major * 1000 / n, [`${k}GC ms/frame`]: (gc.minorMs + gc.majorMs) / n,
     };
