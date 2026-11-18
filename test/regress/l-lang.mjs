@@ -231,8 +231,8 @@ check(!missing.length, `${missing.length} lines have no turn in ${lang}: ${missi
   // the word once all four are beaten not drawn over the last one's banner, but once that has gone. (The title went
   // over the drill, a name on two lines and BEATEN! too, the figure was popped up raw, and the word was drawn on the
   // banner's name.)
-  const rects = [], real = lords.ctx;
-  const record = new Proxy({}, { get: (t, k) => k === 'drawImage' ? (...a) => { if (a.length >= 9) rects.push([a[5], a[6], a[7], a[8]]); } : k in t ? t[k] : () => {}, set: (t, k, v) => { t[k] = v; return true; } });
+  const rects = [], real = lords.ctx, { asGlyphs } = await import('./lib/glyphs.mjs');
+  const record = new Proxy({}, { get: (t, k) => k === 'drawImage' ? asGlyphs((...a) => { if (a.length >= 9) rects.push([a[5], a[6], a[7], a[8]]); }) : k in t ? t[k] : () => {}, set: (t, k, v) => { t[k] = v; return true; } });
   const hud = () => { rects.length = 0; lords.ctx = record; try { lords.drawHud(0, 0); } finally { lords.ctx = real; } return rects.length; };
   const onDrill = () => { const x0 = lords.W / 2 - 8, y0 = (lords.H - 44) / 2 - 8; return rects.filter(([x, y, w, h]) => x < x0 + 16 && x + w > x0 && y < y0 + 16 && y + h > y0).length; };
   for (const [cw, ch] of [[320, 568], [360, 640]]) {

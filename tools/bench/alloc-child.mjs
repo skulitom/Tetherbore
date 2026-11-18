@@ -12,7 +12,8 @@
 // count: every call to every context per frame, by context (game, over, and `off`: a canvas the game made), by
 //        method and by the part of the drawing it came from (the innermost of the drawing's methods named in PARTS);
 //        drawImage by its source (`font`: a tinted copy of the pixel font, `tint`: of another sheet, `sheet`: a sheet,
-//        `canvas`: any other canvas); and each state set, with how many set the value already there (`same`).
+//        `lines`: a page of js/atlas.js's pictures of lines of text, `canvas`: any other canvas); and each state set,
+//        with how many set the value already there (`same`).
 // Prints one line of JSON.
 import v8 from 'node:v8';
 import { pathToFileURL } from 'node:url';
@@ -49,7 +50,7 @@ function makeCtx(label, canvas) {
     ctx[m] = !counting ? blank : function (a0) {
       bump(key);
       if (m === 'drawImage') {
-        const from = sheetOf.has(a0) ? 'sheet' : a0?.tintOf === 'font' ? 'font' : a0?.tintOf ? 'tint' : a0?.getContext ? 'canvas' : 'other';
+        const from = sheetOf.has(a0) ? 'sheet' : a0?.tintOf === 'font' ? 'font' : a0?.tintOf ? 'tint' : a0?.lines ? 'lines' : a0?.getContext ? 'canvas' : 'other';
         bump(`${key}.${from}`);
         // (A canvas's first picture, a whole sheet at 0, 0, is a tint being made: js/atlas.js, `tinted`.)
         if (canvas && !canvas.drawn && sheetOf.has(a0) && arguments.length === 3) canvas.tintOf = sheetOf.get(a0);

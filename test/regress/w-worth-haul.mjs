@@ -116,10 +116,11 @@ check(two.breaks.length === 2 && !two.below && two.topAt === 14 && two.y + two.f
   // (Each glyph's shadow, a row and a column down from it, left out: a line's foot is its cell's, LINE_MIN under it.)
   const { sheets, tinted } = await import('../../js/atlas.js'), SHADOW = tinted('font', '#0c0a12');
   const items = [], record = { on: false };
-  game.ctx.drawImage = (image, sx, sy, sw, sh, dx, dy, dw, dh) => {
+  const { asGlyphs } = await import('./lib/glyphs.mjs');
+  game.ctx.drawImage = asGlyphs((image, sx, sy, sw, sh, dx, dy, dw, dh) => {
     if (!record.on || dw === undefined || image === SHADOW) return;
     items.push({ x: dx, y: dy, w: dw, h: dh });
-  };
+  });
   const hud = game.fitter.hud;
   game.fitter.hud = function (...args) { record.on = false; return hud.apply(this, args); };
   const worst = { title: 'BIG HAUL!', n: 900, mult: 2.4, over: 1, grit: 9.9e9, gems: [0, 9e5, 9e5, 9e5, 9e5, 9e5, 9e5, 9e5, 9e5], light: false, shine: 1, spec: 30, specOf: 2, giant: 0, colour: null, sub: null, top: null, t: 1, life: 60 };

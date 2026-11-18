@@ -20,7 +20,8 @@ const glyphs = [];
 // too dear to buy, whatever REACH's price was drawn in.)
 let row = null;
 const priced = new Set(['#ffe14a', '#ff7a5a']);
-game.ctx.drawImage = (image, sx, sy, sw, sh, dx, dy) => { if (row && image && priced.has(image.tint) && sh === 10 && dx > row.x + row.w / 2 && dy >= row.y && dy < row.y + row.h) glyphs.push(image.tint); };
+const { asGlyphs } = await import('./lib/glyphs.mjs');
+game.ctx.drawImage = asGlyphs((image, sx, sy, sw, sh, dx, dy) => { if (row && image && priced.has(image.tint) && sh === 10 && dx > row.x + row.w / 2 && dy >= row.y && dy < row.y + row.h) glyphs.push(image.tint); });
 const look = label => {
   game.shopTab = 'rig'; game.shopRise = 1; row = null; game.render();
   // (The rows' buttons are as wide as the panel less its edges; the first is the highest.)

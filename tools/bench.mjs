@@ -62,11 +62,11 @@
 //          test/harness.mjs with every other row at its last (--rows plain: as bought, the step's), at 360 by 640
 //          (180 by 320 game pixels), and gives the exact bytes update() and render() allocate a frame (the used
 //          heap before and after, young generation 512 MB), and the canvas calls a frame by context, method, source
-//          of a drawImage (tinted font, other tint, sheet, canvas) and part of the drawing, with the state sets that
-//          set what was already set. The calls are deterministic: the same code gives the same counts. The bytes are
-//          too but for the frames a scavenge falls in, which are left out, so a maximum may move. The canvases the
-//          game makes for itself are the harness's stand-in, whose every method asked for is a closure made, so a
-//          call to one counts some bytes; the game's own two do nothing and keep their state.
+//          of a drawImage (tinted font, other tint, sheet, page of lines, canvas) and part of the drawing, with the
+//          state sets that set what was already set. The calls are deterministic: the same code gives the same
+//          counts. The bytes are too but for the frames a scavenge falls in, which are left out, so a maximum may
+//          move. The canvases the game makes for itself are the harness's stand-in, whose every method asked for is
+//          a closure made, so a call to one counts some bytes; the game's own two do nothing and keep their state.
 //   shots  Pictures of named sets (SHOTS below), each a list of tools/shot.mjs's arguments, A twice and B once, at
 //          each of the set's sizes or --size. Each is taken as tools/shot.mjs takes it (the same query to the root's
 //          own js/shot.js, the page that size at DPR 1, the frames stepped by hand, the page's screenshot), by the

@@ -113,6 +113,28 @@ const RARE_LINES = [['bell', 'BELLS', 'KNOCK'], ['vent', 'JETS', 'KNOCK'], ['wor
 // Its left half is columns 0 to 4 (the middle with it) and its right 5 to 8. HEART_PITCH: from one heart to the next.
 const HEART = ['.##...##.', '####.####', '#########', '#########', '.#######.', '..#####..', '...###...', '....#....']
   .flatMap((row, r) => [...row.matchAll(/#+/g)].map(m => [m.index, m.index + m[0].length - 1, r])), HEART_PITCH = 10, HEART_MID = 4;
+// The colours a half heart is lit in (Game.heartInk), the one a glint is on, and the picture of a heart as the bar
+// draws it, made once for each look and kept (Game.heartPics): its dark rim, a pixel round it and two under, first,
+// a whole heart's as one, then its left half, the glint, and its right half (`b` HEART_INK.length: the half heart
+// last, which has none). Drawn a pixel left of where the heart is, so its rim's first column falls where it did; its
+// rim's last falls on the next heart's first, which is rim there too. (Every colour opaque, and drawn at full alpha:
+// the picture lays what the rectangles did.)
+const HEART_INK = ['#ffffff', '#ff4d6d', '#3a3450', '#8a2038'], HEART_LIT = 1;
+function heartPic(a, b, glint) {
+  const canvas = document.createElement('canvas'), last = b === HEART_INK.length;
+  canvas.width = 11; canvas.height = HEART.length + 2;
+  const c = canvas.getContext('2d');
+  c.fillStyle = '#16121c';
+  for (const [l, h, r] of HEART) { const to = last ? Math.min(h, HEART_MID) : h; if (l <= to) c.fillRect(l, r, to - l + 3, 3); }
+  c.fillStyle = HEART_INK[a];
+  for (const [l, h, r] of HEART) { const to = Math.min(h, HEART_MID); if (l <= to) c.fillRect(l + 1, r + 1, to - l + 1, 1); }
+  if (glint) { c.fillStyle = '#ffc2cf'; c.fillRect(2, 2, 1, 1); }
+  if (!last) {
+    c.fillStyle = HEART_INK[b];
+    for (const [l, h, r] of HEART) { const from = Math.max(l, HEART_MID + 1); if (from <= h) c.fillRect(from + 1, r + 1, h - from + 1, 1); }
+  }
+  return canvas;
+}
 export const DIR_BIOME = [B.LODE, B.EMBER, B.MIRE, B.FROST];
 // Each gem's icon and colour, by its number: the four directions' (whose icons are their grounds' names, and whose
 // specimens' are those with `spec-` before them) and the four corners' (js/world.js: `G`), which have no specimens.
@@ -1705,21 +1727,13 @@ export class Drawing {
     // odd number has a half heart last), on the grit's line, their rims on its figure's ink and shadow. Half a heart
     // just lost blinks white for a moment, the last half left blinks red, and a hull just mended shows white.
     const pips = this.val('hull'), sound = this.hull, hx = left + UI.ICON + textWidth(compact(S.grit - this.pending.grit)) + UI.GROUP + 1, hearts = Math.ceil(pips / 2);
-    const blink = ((now / 150) | 0) % 2 === 0, half = (n, l, h) => n & 1 ? [Math.max(l, HEART_MID + 1), h] : [l, Math.min(h, HEART_MID)];
-    // (The dark rim of every heart first, a whole heart's as one, and its colour over it: a heart whole is not
-    // parted down the middle.)
-    ctx.fillStyle = '#16121c';
+    // (Each heart is a picture, `heartPic`, of the colours of its two halves, whether it is the half heart last and
+    // whether its left lobe has its glint, drawn where its rim's corner is.)
+    const blink = ((now / 150) | 0) % 2 === 0, pics = this.heartPics ??= [];
     for (let n = 0; n < pips; n += 2) {
-      const x = hx + (n >> 1) * HEART_PITCH, last = n + 1 >= pips;
-      for (const [a, b, r] of HEART) { const [l, h] = last ? half(n, a, b) : [a, b]; if (l <= h) ctx.fillRect(x + l - 1, row1 + r, h - l + 3, 3); }
-    }
-    for (let n = 0; n < pips; n++) {
-      const x = hx + (n >> 1) * HEART_PITCH, full = n < sound, lost = n === sound && this.knocked > 0;
-      const colour = lost ? (blink ? '#ffffff' : '#ff4d6d') : !full ? '#3a3450' : this.mended > 0 ? '#ffffff' : sound === 1 ? (blink ? '#ff4d6d' : '#8a2038') : '#ff4d6d';
-      ctx.fillStyle = colour;
-      for (const [a, b, r] of HEART) { const [l, h] = half(n, a, b); if (l <= h) ctx.fillRect(x + l, row1 + 1 + r, h - l + 1, 1); }
-      // (A glint on the left lobe of a heart lit as ever.)
-      if (!(n & 1) && colour === '#ff4d6d' && !lost && sound > 1) { ctx.fillStyle = '#ffc2cf'; ctx.fillRect(x + 1, row1 + 2, 1, 1); }
+      const last = n + 1 >= pips, a = this.heartInk(n, sound, blink), b = last ? HEART_INK.length : this.heartInk(n + 1, sound, blink);
+      const glint = a === HEART_LIT && !(n === sound && this.knocked > 0) && sound > 1, key = (a * (HEART_INK.length + 1) + b) * 2 + (glint ? 1 : 0);
+      ctx.drawImage(pics[key] ??= heartPic(a, b, glint), hx + (n >> 1) * HEART_PITCH - 1, row1);
     }
     // What the lab has analysed, of all it can: shown once there is a first sample, lit for a moment by a new level.
     // (`known` is the game's count, kept as samples come in: counting the lab's list here made a list every frame.)
@@ -1826,9 +1840,12 @@ export class Drawing {
     // count of its changes (`World.stirred`), and stands as it is while nothing moves, however long it is open. The
     // map in the corner does not ask that count, which in flight moves nearly every frame, more often than is worth
     // drawing again: it is drawn again every half second as well, which catches what the version does not.
-    const view = `${this.version}${big ? `+${w.stirred}` : ''}:${R}:${per}:${lens}:${mx0},${my0}`;
-    if (M.mapFor !== view || (!big && this.time - M.mapAt > 0.5)) {
-      M.mapAt = this.time; M.mapFor = view;
+    // (What it was drawn for is kept as the figures themselves, compared one by one, so that a frame builds nothing
+    // to ask; and said as a line, `mapFor`, only as it is drawn: one put out of date by hand, null, draws it again.)
+    const stirred = big ? w.stirred : -1;
+    if (M.mapFor !== M.mapSaid || M.mapV !== this.version || M.mapS !== stirred || M.mapR !== R || M.mapPer !== per || M.mapLens !== lens || M.mapX !== mx0 || M.mapY !== my0 || (!big && this.time - M.mapAt > 0.5)) {
+      M.mapAt = this.time; M.mapV = this.version; M.mapS = stirred; M.mapR = R; M.mapPer = per; M.mapLens = lens; M.mapX = mx0; M.mapY = my0;
+      M.mapFor = M.mapSaid = `${this.version}${big ? `+${w.stirred}` : ''}:${R}:${per}:${lens}:${mx0},${my0}`;
       const px = M.mapData.data;
       // (In the corner, where a pixel is three cells across and more, the lens looks at four cells spread over it,
       // a quarter and three quarters of the way across and down, and shows the one it ranks highest (`LENS_RANK`):
@@ -1838,9 +1855,17 @@ export class Drawing {
       // (The chart's borders: the grounds of the line of pixels above, made once for its size, and of the pixel to
       // the left, so no ground is asked of the world twice.)
       const line = big ? (M.mapLine?.length === size ? M.mapLine : (M.mapLine = new Int32Array(size))) : null;
+      // (The cell each column and each line of pixels looks at, worked out once a picture and not once a pixel, by
+      // the same sums: its middle, and a quarter and three quarters of the way across, kept made once for its size.)
+      const XS = M.mapXs?.length === size * 3 ? M.mapXs : (M.mapXs = new Int32Array(size * 3)), YS = M.mapYs?.length === size * 3 ? M.mapYs : (M.mapYs = new Int32Array(size * 3));
+      for (let u = 0; u < size; u++) {
+        XS[u] = Math.floor(mx0 + (u - size / 2 + 0.5) * per); YS[u] = Math.floor(my0 + (u - size / 2 + 0.5) * per);
+        XS[size + u] = Math.floor(mx0 + (u - size / 2 + 0.25 + 0 * 0.5) * per); XS[2 * size + u] = Math.floor(mx0 + (u - size / 2 + 0.25 + 1 * 0.5) * per);
+        YS[size + u] = Math.floor(my0 + (u - size / 2 + 0.25 + 0 * 0.5) * per); YS[2 * size + u] = Math.floor(my0 + (u - size / 2 + 0.25 + 1 * 0.5) * per);
+      }
       for (let v = 0, left = -1; v < size; v++) for (let u = 0; u < size; u++) {
-        const wx = Math.floor(mx0 + (u - size / 2 + 0.5) * per), wy = Math.floor(my0 + (v - size / 2 + 0.5) * per), o = (v * size + u) * 4, k = w.peek(wx, wy), row = rowOf(w.biomeKnown(wx, wy)), id = row.id;
-        let [r, g, b] = row.map;
+        const wx = XS[u], wy = YS[v], o = (v * size + u) * 4, k = w.peek(wx, wy), row = rowOf(w.biomeKnown(wx, wy)), id = row.id, rgb = row.map;
+        let r = rgb[0], g = rgb[1], b = rgb[2];
         const inside = Math.hypot(wx - C, wy - C) <= R;
         let shade = (k < 0 ? unseenShade(row) : k === K.EMPTY ? 0.12 : 0.85);
         if (k < 0 && cellHash(wx >> 3, wy >> 3, id) < UNSEEN_GRAIN) { r = GRAIN_RGB[id * 3]; g = GRAIN_RGB[id * 3 + 1]; b = GRAIN_RGB[id * 3 + 2]; shade = GRAIN_SHADE[id]; }
@@ -1852,7 +1877,7 @@ export class Drawing {
         if (spread) {
           let rank = L === undefined ? 0 : k === K.RARE ? RARE_RANK : LENS_RANK[k];
           for (let q = 0; q < 4 && rank < RARE_RANK; q++) {
-            const sx = Math.floor(mx0 + (u - size / 2 + 0.25 + (q & 1) * 0.5) * per), sy = Math.floor(my0 + (v - size / 2 + 0.25 + (q >> 1) * 0.5) * per), sk = w.peek(sx, sy);
+            const sx = XS[(1 + (q & 1)) * size + u], sy = YS[(1 + (q >> 1)) * size + v], sk = w.peek(sx, sy);
             if (sk <= 0) continue;
             const SL = sk === K.RARE ? RARE_LENS[rowOf(w.biomeKnown(sx, sy)).kin] : LENS[sk], sr = sk === K.RARE ? RARE_RANK : LENS_RANK[sk];
             if (SL === undefined || SL[0] > lens || sr <= rank) continue;
@@ -1865,14 +1890,16 @@ export class Drawing {
       map.getContext('2d', { willReadFrequently: true }).putImageData(M.mapData, 0, 0);
     }
     ctx.drawImage(map, x, y);
-    const at = (wx, wy) => [x + size / 2 + (wx - mx0) / per, y + size / 2 + (wy - my0) / per];
+    // (Where a place falls on the map, `cx + (wx - mx0) / per` across and `cy + (wy - my0) / per` down, is worked
+    // out where it is wanted, and nothing is made for it: no list a point, no closure a frame.)
+    const cx = x + size / 2, cy = y + size / 2;
     // The tether, the reach, what each direction hides, the core and the drill.
     ctx.save(); ctx.beginPath(); ctx.rect(x, y, size, size); ctx.clip();
     ctx.fillStyle = '#f4ecd8'; ctx.globalAlpha = 0.5;
-    for (let a = 0; a < 6.283; a += 0.09) { const [mx, my] = at(HX + Math.cos(a) * R, HY + Math.sin(a) * R); ctx.fillRect(Math.round(mx), Math.round(my), 1, 1); }
+    for (let a = 0; a < 6.283; a += 0.09) ctx.fillRect(Math.round(cx + (HX + Math.cos(a) * R - mx0) / per), Math.round(cy + (HY + Math.sin(a) * R - my0) / per), 1, 1);
     ctx.globalAlpha = 1; ctx.fillStyle = TETHERS[this.S.lv.tether].a;
     for (let n = 1; n < this.band.length; n++) {
-      const [ax, ay] = at(...this.band[n - 1]), [bx, by] = at(...this.band[n]);
+      const p = this.band[n - 1], q = this.band[n], ax = cx + (p[0] - mx0) / per, ay = cy + (p[1] - my0) / per, bx = cx + (q[0] - mx0) / per, by = cy + (q[1] - my0) / per;
       // (A span that lies off the map is not walked: far out, that is nearly all of them.)
       if (Math.max(ax, bx) < x - 1 || Math.min(ax, bx) > x + size + 1 || Math.max(ay, by) < y - 1 || Math.min(ay, by) > y + size + 1) continue;
       const steps = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay)));
@@ -1880,7 +1907,7 @@ export class Drawing {
     }
     for (let dir = 0; dir < 4; dir++) {
       if (this.S.relics[dir]) continue;
-      const [mx, my] = at(HX + DX[dir] * RELIC_R, HY + DY[dir] * RELIC_R);
+      const mx = cx + (HX + DX[dir] * RELIC_R - mx0) / per, my = cy + (HY + DY[dir] * RELIC_R - my0) / per;
       ctx.fillStyle = GEM_COLOR[DIR_BIOME[dir]]; ctx.fillRect(Math.round(mx) - 1, Math.round(my) - 1, 3, 3);
     }
     // The lords at the ends (js/bosses.js), each once it has been met: a diamond in the foe's eye at its lair, until
@@ -1888,7 +1915,7 @@ export class Drawing {
     const lords = this.S.bosses ?? 0;
     for (let dir = 0; dir < 4; dir++) {
       if (!(lords >> dir & 1) || lords >> (4 + dir) & 1) continue;
-      const [mx, my] = at(HX + DX[dir] * LAIR, HY + DY[dir] * LAIR), ax = Math.round(mx), ay = Math.round(my);
+      const ax = Math.round(cx + (HX + DX[dir] * LAIR - mx0) / per), ay = Math.round(cy + (HY + DY[dir] * LAIR - my0) / per);
       ctx.fillStyle = FOE_EYE; ctx.fillRect(ax - 1, ay, 3, 1); ctx.fillRect(ax, ay - 1, 1, 3);
       ctx.fillRect(ax - 2, ay, 1, 1); ctx.fillRect(ax + 2, ay, 1, 1); ctx.fillRect(ax, ay - 2, 1, 1); ctx.fillRect(ax, ay + 2, 1, 1);
     }
@@ -1896,24 +1923,28 @@ export class Drawing {
     // a cross in its two parents' colours, until it is hauled.
     for (let c = 0; c < 4; c++) {
       if (this.S.shrines?.[c] || !w.shrine(c)) continue;
-      const [mx, my] = at(HX + SHRINES[c][0], HY + SHRINES[c][1]), row = rowOf(SEAMS[c][0]), ax = Math.round(mx), ay = Math.round(my);
+      const row = rowOf(SEAMS[c][0]), ax = Math.round(cx + (HX + SHRINES[c][0] - mx0) / per), ay = Math.round(cy + (HY + SHRINES[c][1] - my0) / per);
       ctx.fillStyle = GEM_COLOR[row.gemA]; ctx.fillRect(ax - 1, ay, 3, 1); ctx.fillRect(ax, ay - 1, 1, 3);
       ctx.fillStyle = GEM_COLOR[row.gemB]; ctx.fillRect(ax, ay, 1, 1);
     }
     // A corner's herald (js/world.js: CORNER_HERALDS) is rung in its rare hazard's colour once the finder reaches it,
     // within the tether's reach, until its heart has been seen.
     const level = this.val('mapfinder');
-    if (level > 0) for (const [hx, hy, type] of this.cornerSites()) {
-      if (w.peek(hx, hy) >= 0 || Math.hypot(hx + 0.5 - HX, hy + 0.5 - HY) > R || Math.hypot(hx + 0.5 - d.x, hy + 0.5 - d.y) > FINDER[level]) continue;
-      const [mx, my] = at(hx + 0.5, hy + 0.5);
-      ctx.fillStyle = SPOT[type][1];
-      for (let a = 0; a < 6.283; a += 0.8) ctx.fillRect(Math.round(mx + Math.cos(a) * 3 - 0.5), Math.round(my + Math.sin(a) * 3 - 0.5), 1, 1);
+    if (level > 0) {
+      const sites = this.cornerSites();
+      for (let n = 0; n < sites.length; n++) {
+        const hx = sites[n][0], hy = sites[n][1], type = sites[n][2];
+        if (w.peek(hx, hy) >= 0 || Math.hypot(hx + 0.5 - HX, hy + 0.5 - HY) > R || Math.hypot(hx + 0.5 - d.x, hy + 0.5 - d.y) > FINDER[level]) continue;
+        const mx = cx + (hx + 0.5 - mx0) / per, my = cy + (hy + 0.5 - my0) / per;
+        ctx.fillStyle = SPOT[type][1];
+        for (let a = 0; a < 6.283; a += 0.8) ctx.fillRect(Math.round(mx + Math.cos(a) * 3 - 0.5), Math.round(my + Math.sin(a) * 3 - 0.5), 1, 1);
+      }
     }
     // The first keystone slab, a ring of its own size, until it hangs by no key: somewhere to go, once it is near
     // enough to lie on the map (or on the chart, which shows the whole reach).
     const slab = this.firstRing();
     if (slab) {
-      const [mx, my] = at(slab.cx + 0.5, slab.cy + 0.5), r = Math.max(1.5, slab.p / per);
+      const mx = cx + (slab.cx + 0.5 - mx0) / per, my = cy + (slab.cy + 0.5 - my0) / per, r = Math.max(1.5, slab.p / per);
       // (Where its middle lies on the map: nothing beyond the map is marked at its edge.)
       if (Math.max(Math.abs(mx - x - size / 2), Math.abs(my - y - size / 2)) <= size / 2 - 2) {
         ctx.fillStyle = SPOT.key[1];
@@ -1921,18 +1952,23 @@ export class Drawing {
       }
     }
     // Things seen and not yet taken, each a dot in its own colour.
-    for (const [cell, , colour] of this.S.marks) {
-      const wx = cell % N, wy = Math.floor(cell / N);
+    const marks = this.S.marks;
+    for (let n = 0; n < marks.length; n++) {
+      const cell = marks[n][0], colour = marks[n][2], wx = cell % N, wy = Math.floor(cell / N);
       if (Math.hypot(wx + 0.5 - HX, wy + 0.5 - HY) > R) continue;
-      const [mx, my] = at(wx + 0.5, wy + 0.5);
+      const mx = cx + (wx + 0.5 - mx0) / per, my = cy + (wy + 0.5 - my0) / per;
       ctx.fillStyle = '#0c0a12'; ctx.fillRect(Math.round(mx) - 1, Math.round(my) - 1, 3, 3);
       ctx.fillStyle = colour; ctx.fillRect(Math.round(mx) - 1, Math.round(my) - 1, 2, 2);
     }
-    if (((this.time * 2) | 0) % 2) this.world.wrecks.forEach(([wx, wy], n) => {
-      if (this.S.wrecks?.[n] || Math.hypot(wx + 0.5 - HX, wy + 0.5 - HY) > R) return;
-      const [mx, my] = at(wx + 0.5, wy + 0.5);
-      ctx.fillStyle = '#ff9a3a'; ctx.fillRect(Math.round(mx) - 1, Math.round(my), 3, 1); ctx.fillRect(Math.round(mx), Math.round(my) - 1, 1, 3);
-    });
+    if (((this.time * 2) | 0) % 2) {
+      const wrecks = this.world.wrecks;
+      for (let n = 0; n < wrecks.length; n++) {
+        const wx = wrecks[n][0], wy = wrecks[n][1];
+        if (this.S.wrecks?.[n] || Math.hypot(wx + 0.5 - HX, wy + 0.5 - HY) > R) continue;
+        const mx = cx + (wx + 0.5 - mx0) / per, my = cy + (wy + 0.5 - my0) / per;
+        ctx.fillStyle = '#ff9a3a'; ctx.fillRect(Math.round(mx) - 1, Math.round(my), 3, 1); ctx.fillRect(Math.round(mx), Math.round(my) - 1, 1, 3);
+      }
+    }
     // What the finder knows of and the drill has not seen: a dot each, in the find's own colour, ringed dark. In the
     // corner the finder is asked as far as it reaches (FINDER), which is further than the map shows from RANGE's
     // first level to its last: a find beyond the map's edge is a pip on its rim, in its colour, on the line from the
@@ -1942,7 +1978,7 @@ export class Drawing {
     const half = size / 2 - 1, finds = big ? this.findsNear(mx0, my0, size * per / 2, M) : this.findsNear(mx0, my0, FINDER[this.val('mapfinder')], M);
     let rims = 0;
     for (let n = 0; n < finds.length; n++) {
-      const [what, fx, fy] = finds[n], [mx, my] = at(fx + 0.5, fy + 0.5), ox = mx - x - size / 2, oy = my - y - size / 2;
+      const f = finds[n], mx = cx + (f[1] + 0.5 - mx0) / per, my = cy + (f[2] + 0.5 - my0) / per, ox = mx - x - size / 2, oy = my - y - size / 2;
       if (Math.max(Math.abs(ox), Math.abs(oy)) > half) {
         // (Kept nearest first: the furthest of RIM is put out by a nearer.)
         const far = ox * ox + oy * oy;
@@ -1952,29 +1988,30 @@ export class Drawing {
         continue;
       }
       ctx.fillStyle = '#0c0a12'; ctx.fillRect(Math.round(mx) - 2, Math.round(my) - 2, 4, 4);
-      ctx.fillStyle = SPOT[what][1]; ctx.fillRect(Math.round(mx) - 1, Math.round(my) - 1, 2, 2);
+      ctx.fillStyle = SPOT[f[0]][1]; ctx.fillRect(Math.round(mx) - 1, Math.round(my) - 1, 2, 2);
     }
     for (let r = 0; r < rims; r++) {
-      const [what, fx, fy] = finds[RIM_OF[r]], [mx, my] = at(fx + 0.5, fy + 0.5), ox = mx - x - size / 2, oy = my - y - size / 2, off = Math.max(Math.abs(ox), Math.abs(oy));
+      const f = finds[RIM_OF[r]], mx = cx + (f[1] + 0.5 - mx0) / per, my = cy + (f[2] + 0.5 - my0) / per, ox = mx - x - size / 2, oy = my - y - size / 2, off = Math.max(Math.abs(ox), Math.abs(oy));
       // (Flat along the rim it lies on: two pixels along the top or the foot, two down a side.)
       const ex = Math.round(x + size / 2 + ox * half / off), ey = Math.round(y + size / 2 + oy * half / off), flat = Math.abs(oy) >= Math.abs(ox);
       const rx = Math.max(x, Math.min(x + size - (flat ? 2 : 1), flat ? ex - 1 : ex)), ry = Math.max(y, Math.min(y + size - (flat ? 1 : 2), flat ? ey : ey - 1));
-      ctx.fillStyle = SPOT[what][1]; ctx.fillRect(rx, ry, flat ? 2 : 1, flat ? 1 : 2);
+      ctx.fillStyle = SPOT[f[0]][1]; ctx.fillRect(rx, ry, flat ? 2 : 1, flat ? 1 : 2);
     }
     // Pockets within reach that the drill has not been into: a pip each, in the pocket's own colour.
     // (Only those that lie on the map: the map in the corner shows the drill's surroundings and nothing beyond.)
-    for (const Z of this.pocketPips()) {
-      const [mx, my] = at(Z.cx + 0.5, Z.cy + 0.5);
+    const pips = this.pocketPips();
+    for (let n = 0; n < pips.length; n++) {
+      const Z = pips[n], mx = cx + (Z.cx + 0.5 - mx0) / per, my = cy + (Z.cy + 0.5 - my0) / per;
       if (Math.max(Math.abs(mx - x - size / 2), Math.abs(my - y - size / 2)) > size / 2 - 2) continue;
       ctx.fillStyle = '#0c0a12'; ctx.fillRect(Math.round(mx) - 2, Math.round(my) - 2, 4, 4);
       ctx.fillStyle = rowOf(Z.row).pocket.pip ?? bright(rowOf(Z.row).map); ctx.fillRect(Math.round(mx) - 1, Math.round(my) - 1, 2, 2);
     }
     // The core; where it is off the map, a mark at the map's edge on the way home.
-    let [hx, hy] = at(HX, HY);
+    let hx = cx + (HX - mx0) / per, hy = cy + (HY - my0) / per;
     const hox = hx - x - size / 2, hoy = hy - y - size / 2, hoff = Math.max(Math.abs(hox), Math.abs(hoy)), hedge = size / 2 - 2;
     if (hoff > hedge) { hx = x + size / 2 + hox * hedge / hoff; hy = y + size / 2 + hoy * hedge / hoff; }
     ctx.fillStyle = '#84dcff'; ctx.fillRect(Math.round(hx) - 1, Math.round(hy) - 1, 3, 3);
-    const [dx, dy] = at(d.x, d.y);
+    const dx = cx + (d.x - mx0) / per, dy = cy + (d.y - my0) / per;
     ctx.fillStyle = ((this.time * 3) | 0) % 2 ? '#ffffff' : '#ffd83a'; ctx.fillRect(Math.round(dx) - 1, Math.round(dy) - 1, 3, 3);
     ctx.restore();
     // (A row of the MAP tab being fitted sweeps the map in the corner.)
@@ -1990,13 +2027,17 @@ export class Drawing {
     const w = this.world, level = this.val('mapfinder'), R = this.val('tether');
     if (!level) return NO_FINDS;
     // (Sectors of finds that are both in the view asked about and within the finder's range of the drill.)
-    const d = this.drill, far = FINDER[level], lo = (a, b) => Math.floor((Math.max(a - half, b - far) - C) / FIND), hi = (a, b) => Math.floor((Math.min(a + half, b + far) - C) / FIND);
-    const x0 = lo(cx, d.x), x1 = hi(cx, d.x), y0 = lo(cy, d.y), y1 = hi(cy, d.y);
+    const d = this.drill, far = FINDER[level];
+    const x0 = Math.floor((Math.max(cx - half, d.x - far) - C) / FIND), x1 = Math.floor((Math.min(cx + half, d.x + far) - C) / FIND);
+    const y0 = Math.floor((Math.max(cy - half, d.y - far) - C) / FIND), y1 = Math.floor((Math.min(cy + half, d.y + far) - C) / FIND);
     // (What the seed lays there is asked again only when the drill has gone eight cells or the span or the level has
-    // changed; which of it is still unseen, whenever the ground has: in flight, every cell.)
-    const key = `${this.S.seed}:${level}:${R}:${x0},${y0},${x1},${y1}:${Math.floor(d.x / 8)},${Math.floor(d.y / 8)}`;
-    if (M.laidFor !== key) {
-      M.laidFor = key; M.laid = []; M.foundAt = -1;
+    // changed; which of it is still unseen, whenever the ground has: in flight, every cell. What it was asked for is
+    // kept as the figures, compared one by one, and said as a line, `laidFor`, only as it is asked: one put out of
+    // date by hand asks again.)
+    const seed = this.S.seed, ex = Math.floor(d.x / 8), ey = Math.floor(d.y / 8);
+    if (M.laidFor !== M.laidSaid || M.laidSeed !== seed || M.laidLevel !== level || M.laidR !== R || M.laidX0 !== x0 || M.laidY0 !== y0 || M.laidX1 !== x1 || M.laidY1 !== y1 || M.laidEx !== ex || M.laidEy !== ey) {
+      M.laidSeed = seed; M.laidLevel = level; M.laidR = R; M.laidX0 = x0; M.laidY0 = y0; M.laidX1 = x1; M.laidY1 = y1; M.laidEx = ex; M.laidEy = ey;
+      M.laidFor = M.laidSaid = `${seed}:${level}:${R}:${x0},${y0},${x1},${y1}:${ex},${ey}`; M.laid = []; M.foundAt = -1;
       for (let sy = y0; sy <= y1 && M.laid.length < 200; sy++) for (let sx = x0; sx <= x1; sx++) {
         // (Asked without an array a sector: in the corner the finder's whole range is asked.)
         const what = w.findName(sx, sy), fx = w.asked.fx, fy = w.asked.fy;
@@ -2040,9 +2081,14 @@ export class Drawing {
   // the drill comes into another sector of pockets, the reach changes or a pocket is visited: not every frame.
   pocketPips() {
     const w = this.world, d = this.drill, S = this.S, R = this.val('tether');
-    const key = `${S.seed}:${Math.floor((d.x - C) / ZONE)},${Math.floor((d.y - C) / ZONE)}:${R}:${Object.keys(S.visited).length}`;
-    if (key !== this.pipsFor) {
-      this.pipsFor = key;
+    // (What it was made for is kept as the figures, compared one by one, and said as a line, `pipsFor`, only as it is
+    // made: one put out of date by hand makes it again. The pockets visited are counted as they are put down,
+    // Game.visit, and afresh only for a list of them not counted yet.)
+    if (this.visitedOf !== S.visited) { this.visitedOf = S.visited; this.visitedN = Object.keys(S.visited).length; }
+    const zx = Math.floor((d.x - C) / ZONE), zy = Math.floor((d.y - C) / ZONE), seen = this.visitedN;
+    if (this.pipsFor !== this.pipsSaid || this.pipsSeed !== S.seed || this.pipsZx !== zx || this.pipsZy !== zy || this.pipsR !== R || this.pipsSeen !== seen) {
+      this.pipsSeed = S.seed; this.pipsZx = zx; this.pipsZy = zy; this.pipsR = R; this.pipsSeen = seen;
+      this.pipsFor = this.pipsSaid = `${S.seed}:${zx},${zy}:${R}:${seen}`;
       const far = Z => (Z.cx + 0.5 - d.x) ** 2 + (Z.cy + 0.5 - d.y) ** 2;
       this.pips = w.pocketsWithin(R).filter(Z => !S.visited[Z.key] && w.biomeKnown(Z.cx, Z.cy) === Z.row).sort((a, b) => far(a) - far(b)).slice(0, PIPS);
     }
@@ -2053,7 +2099,15 @@ export class Drawing {
   // game: what is there is the cells' to say). Where the ground is not made yet, it will be.
   firstRing() {
     const w = this.world, slab = w.firstSlab;
-    return slab && slab.keys.some(i => { const k = w.laid(i); return k < 0 || k === K.KEY; }) ? slab : null;
+    if (!slab) return null;
+    for (let n = 0; n < slab.keys.length; n++) { const k = w.laid(slab.keys[n]); if (k < 0 || k === K.KEY) return slab; }
+    return null;
+  }
+  // The colour half heart `n` of the hull is lit in (HEART_INK): a half just lost white and its own red in turn, one
+  // lost long ago dark, the hull just mended white, the last half left its red and a deep red in turn, else red.
+  heartInk(n, sound, blink) {
+    if (n === sound && this.knocked > 0) return blink ? 0 : 1;
+    return n >= sound ? 2 : this.mended > 0 ? 0 : sound === 1 ? (blink ? 1 : 3) : 1;
   }
   bar(x, y, w, icon, fill, color, flash) {
     const { ctx } = this;

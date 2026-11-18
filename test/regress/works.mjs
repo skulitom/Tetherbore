@@ -48,8 +48,10 @@ check(WORKS.every(u => u.grit.length === u.values.length - 1 && u.spec.length ==
     game.buy(row('sporedrive'));
     const note = game.shopNote?.text, top = Math.min(...tabs.map(b => b.y));
     check(note === 'WEST POCKETS' && game.shopNote.t > 0, `a tap refused for want of specimens says '${note}'`);
-    // (Text is drawn a glyph at a time: where glyphs are drawn this frame and not the last, the note is.)
-    const drawn = () => { const ys = []; game.ctx.drawImage = (...a) => { if (a.length === 9 && a[4] === 10) ys.push(a[6]); }; game.render(); delete game.ctx.drawImage; return ys; };
+    // (Text read a glyph at a time, test/regress/lib/glyphs.mjs: where glyphs are drawn this frame and not the last,
+    // the note is.)
+    const { asGlyphs } = await import('./lib/glyphs.mjs');
+    const drawn = () => { const ys = []; game.ctx.drawImage = asGlyphs((...a) => { if (a.length === 9 && a[4] === 10) ys.push(a[6]); }); game.render(); delete game.ctx.drawImage; return ys; };
     const withNote = drawn(); game.shopNote.t = 0; const without = drawn();
     const header = y => y >= top && y < top + 20;
     check(withNote.filter(header).length === without.filter(header).length && withNote.length !== without.length, `with a note up ${withNote.filter(header).length} glyphs are drawn in the header, and ${without.filter(header).length} without`);

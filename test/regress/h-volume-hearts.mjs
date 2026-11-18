@@ -48,23 +48,50 @@ check(audio.musicVolume() === 7 && audio.isMusic(), `a tap on MUSIC brought it b
 check(audio.soundVolume() === 4, 'the music moved the sounds');
 game.openLab(false);
 
-// The hearts: every pixel of them drawn while the bar is, by colour.
-// (And no heart's dark rim is drawn after any heart's colour: a rim laid over a lit half parted a whole heart.)
-const drawn = new Map();
-let lit0 = false, rimOver = false;
-game.ctx.fillRect = (x, y, w, h) => {
-  const c = game.ctx.fillStyle;
-  if (h === 1 && (c === '#ff4d6d' || c === '#3a3450')) { drawn.set(c, (drawn.get(c) ?? 0) + w); lit0 = true; }
-  if (h === 3 && c === '#16121c' && lit0) rimOver = true;
+// The hearts: every pixel of them drawn while the bar is, by colour. Each heart is a picture made once for its look
+// (js/drawing.js, `heartPic`, kept in game.heartPics): the rectangles it is made of are taken down as it is made, and
+// laid, pixel by pixel, where it is drawn.
+// (And no heart's dark rim is laid on any heart's colour: a rim laid over a lit half parted a whole heart.)
+const made = document.createElement;
+let pictures = 0;
+document.createElement = (...a) => {
+  const c = made(...a), own = c.getContext('2d'), rects = c.rects = [];
+  c.getContext = () => new Proxy(own, { get: (t, k) => k === 'fillRect' ? (x, y, w, h) => { rects.push([t.fillStyle, x, y, w, h]); } : t[k], set: (t, k, v) => { t[k] = v; return true; } });
+  pictures++;
+  return c;
 };
-const hearts = (lv, hull) => { game.S.lv.hull = lv; game.dents = game.val("hull") - hull; game.knocked = 0; game.mended = 0; drawn.clear(); lit0 = false; game.render(); return [drawn.get('#ff4d6d') ?? 0, drawn.get('#3a3450') ?? 0]; };
+const drawn = new Map(), laid = new Map();
+let rimOver = false, drawnHearts = 0;
+game.ctx.drawImage = (image, dx, dy) => {
+  if (!image?.rects?.length) return;
+  drawnHearts++;
+  for (const [c, x, y, w, h] of image.rects) {
+    if (h === 1 && (c === '#ff4d6d' || c === '#3a3450')) drawn.set(c, (drawn.get(c) ?? 0) + w);
+    for (let v = y; v < y + h; v++) for (let u = x; u < x + w; u++) {
+      const at = `${dx + u},${dy + v}`;
+      if (c === '#16121c' && laid.has(at) && laid.get(at) !== '#16121c') rimOver = true;
+      laid.set(at, c);
+    }
+  }
+};
+const hearts = (lv, hull) => {
+  game.S.lv.hull = lv; game.dents = game.val("hull") - hull; game.knocked = 0; game.mended = 0; game.heartPics = [];
+  drawn.clear(); laid.clear(); drawnHearts = 0; game.render();
+  return [drawn.get('#ff4d6d') ?? 0, drawn.get('#3a3450') ?? 0];
+};
 // (A left half is twenty-six pixels, the middle column with it; a right half twenty.)
 const [lit, dark] = hearts(2, 5);
 check(game.val('hull') === 7 && lit === 26 * 3 + 20 * 2 && dark === 20 + 26, `a hull of ${game.val('hull')} with five left drew ${lit} lit and ${dark} dark`);
+check(drawnHearts === 4, `a hull of seven drew ${drawnHearts} pictures of hearts, not four`);
 const [allLit, none] = hearts(1, 6);
 check(game.val('hull') === 6 && allLit === 46 * 3 && none === 0, `a whole hull of six drew ${allLit} lit and ${none} dark`);
-
 check(!rimOver, 'the rim of a heart was drawn over a heart already lit');
+// (A heart is made once for its look: drawn again, nothing is made, and the bar fills no rectangle of a heart.)
+{
+  const kept = game.heartPics.filter(Boolean).length, before = pictures;
+  drawnHearts = 0; game.render(); game.render();
+  check(pictures === before && drawnHearts === 6 && game.heartPics.filter(Boolean).length === kept, `the hearts drawn twice again made ${pictures - before} pictures and drew ${drawnHearts}, not 6`);
+}
 
 for (const f of fails) console.log(f);
 console.log(fails.length ? `${fails.length} FAILED` : 'the sounds and the music are set apart, kept, and the hull is drawn in hearts');

@@ -56,7 +56,8 @@ check(asked === 0, `thirty frames with nothing changed asked the world for its p
 
 // ---- visited: gone from the map
 const west = heralds.find(Z => Z.kin === B.MIRE);
-S.visited[west.key] = 1;
+// (Put down as the game puts down a pocket the drill comes into, Game.visit, which counts them for the map.)
+game.visit(west.key);
 pips = game.pocketPips();
 check(asked === 1 && !pips.includes(west) && pips.length === within(230).length - 1, `a pocket visited is ${pips.includes(west) ? 'still' : 'not'} marked; the list was made again ${asked} times`);
 

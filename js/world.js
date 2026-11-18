@@ -10,6 +10,8 @@
 // numbers never move: saved games hold them.
 
 export const N = 16384, C = 8192, CH = 64, CW = N / CH;      // a cell is y * N + x; the core's middle cell is (C, C)
+// How many pieces' worth of what the seed says of cells in no piece made are kept (World.biomeKnown): 2 MB.
+const SEEDED_MOST = 256;
 
 // ---------------------------------------------------------------- what a cell can be
 // One table of kinds. A kind's number is what a piece of the world stores for a cell (and what a saved game holds),
@@ -1067,6 +1069,9 @@ export class World {
     // is drawn again only when this or the game's own version moves) goes on showing the ground as it was. (A piece
     // made is no change: it holds what the seed lays, as was answered before it was made, and none of it is seen.)
     this.stirred = 0;
+    // What the seed says of cells in no piece made, kept once asked (`biomeKnown`), and how many times what it says
+    // may have changed (`forget`).
+    this.ruling = 0; this.seeded = new Map(); this.seedSpare = []; this.seedLast = null; this.seedTick = 0; this.seedRuling = -1; this.seedOf = null;
     this.kept = null;                      // since `mark`: each piece changed or made, as it was then (`back` puts them back)
     this.lava = new Map();                 // seconds of lava left in an open cell
     this.dug = new Map();                  // when the drill opened a cell of the north (for the ice to close it)
@@ -1812,6 +1817,8 @@ export class World {
     this.slabsFor = NaN; this.firstFor = NaN; this.slabLast.seed = NaN; this.zonesFor = NaN; this.zoneLast.seed = NaN;
     this.sitesFor = NaN; this.siteLast.seed = NaN; this.sector.seed = NaN; this.asked.seed = NaN; this.setsFor = NaN;
     this.hallsFor = NaN; this.hallLast.seed = NaN;
+    // (And what the seed was found to say of cells in no piece made, `biomeKnown`, is asked again.)
+    this.ruling++;
   }
 
   // Whose ground a cell is, from the seed alone. The rules, in the order they are asked (docs/CONTENT-PLAN.md S3):
@@ -1983,9 +1990,46 @@ export class World {
   // Whose ground a cell is, as far as is known: what a piece of the world holds where it has been made (a saved
   // game's older pieces may hold ground that is laid otherwise now), and from the seed alone where it has not.
   // Asking never makes a piece.
+  // What the seed says of a cell in no piece made is kept once asked, the cells of a piece in one list (`seededIn`):
+  // the map in the corner asks it of two thousand cells and more each time it is drawn, the chart of tens of
+  // thousands, and a cell no piece holds yet is asked again and again as the drill flies. It is the seed's answer,
+  // which changes only where the rules a cell is laid by do: the generation of its piece (`genOf`, which a list
+  // keeps and is emptied for where it has changed) and what the world keeps of the seed's records that a generation
+  // changes, asked again whenever `forget` is (`ruling`, which a new world, `reset`, a game loaded and `migrate` all
+  // pass through), so every list is let go then, as it is when the pieces are let go whole. SEEDED_MOST lists are
+  // kept, the one asked of least lately given up for the next, and the lists are made again of those given up.
+  // (A place not a whole cell, or off the world, is asked of the seed every time, as it was.)
   biomeKnown(x, y) {
-    const p = this.chunks[((y >> 6) << 8) | (x >> 6)];
-    return p ? p.biome[((y & 63) << 6) | (x & 63)] : this.biomeAt(x, y);
+    const id = ((y >> 6) << 8) | (x >> 6), p = this.chunks[id];
+    if (p) return p.biome[((y & 63) << 6) | (x & 63)];
+    if (x !== (x | 0) || y !== (y | 0) || x < 0 || y < 0 || x >= N || y >= N) return this.biomeAt(x, y);
+    if (this.seedRuling !== this.ruling || this.seedOf !== this.chunks) this.unseed();
+    let m = this.seedLast;
+    if (m === null || m.id !== id) m = this.seededIn(id);
+    if (m.gen !== this.genOf[id]) { m.b.fill(-1); m.gen = this.genOf[id]; }
+    const at = ((y & 63) << 6) | (x & 63);
+    let b = m.b[at];
+    if (b < 0) m.b[at] = b = this.biomeAt(x, y);
+    return b;
+  }
+  seededIn(id) {
+    let m = this.seeded.get(id);
+    if (m === undefined) {
+      if (this.seedSpare.length) m = this.seedSpare.pop();
+      else if (this.seeded.size < SEEDED_MOST) m = { id: -1, gen: -1, used: 0, b: new Int16Array(CH * CH) };
+      else {
+        for (const old of this.seeded.values()) if (m === undefined || old.used < m.used) m = old;
+        this.seeded.delete(m.id);
+      }
+      m.id = id; m.gen = this.genOf[id]; m.b.fill(-1);
+      this.seeded.set(id, m);
+    }
+    m.used = ++this.seedTick;
+    return this.seedLast = m;
+  }
+  unseed() {
+    for (const m of this.seeded.values()) this.seedSpare.push(m);
+    this.seeded.clear(); this.seedLast = null; this.seedRuling = this.ruling; this.seedOf = this.chunks;
   }
   // What a cell is before anything has touched it, from the seed alone.
   kindAt(x, y, b) {

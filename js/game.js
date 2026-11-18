@@ -1592,7 +1592,7 @@ export class Game {
     this.placeKey = here.key;
     const S = this.S, row = here.row, card = !S.met[row.id];
     S.met[row.id] = 1;
-    if (here.zone) S.visited[here.key] = 1;
+    if (here.zone) this.visit(here.key);
     // (In a drift everything lies loose already, and is in the books from the moment the drill comes in.)
     if (here.zone && row.pocket.twist === 'drift') this.driftIn(here.zone);
     // (A pocket's plate has its mineral on it, where the mineral has a picture; any other place its direction's gem.)
@@ -2216,7 +2216,7 @@ export class Game {
       const b = w.b(cells[at]);
       if (b === was) continue;
       was = b;
-      if (rowOf(b).pocket) { const here = this.placeAt(cells[at]); if (here.zone) S.visited[here.key] = 1; }
+      if (rowOf(b).pocket) { const here = this.placeAt(cells[at]); if (here.zone) this.visit(here.key); }
     }
     // A haul made soon after another is a link in a chain: `n` is how many came before it.
     const linked = this.chain && this.time - this.chain.t <= CHAIN ? this.chain.n : 0;
@@ -2963,6 +2963,15 @@ export class Game {
     this.flash = 0.25; sfx.dock();
     this.save();
   }
+  // A pocket visited (`S.visited`, by its key), through which every visit is put down, so that how many there are is
+  // counted as they come (`visitedN`, for the map's pips: js/drawing.js, `pocketPips`) and never counted afresh a
+  // frame. The count is of the very list it was taken of (`visitedOf`): a game begun or loaded has another, which
+  // is counted once.
+  visit(key) {
+    const visited = this.S.visited;
+    if (this.visitedOf === visited && !Object.hasOwn(visited, key)) this.visitedN++;
+    visited[key] = 1;
+  }
   // What the black box keeps from the game that was lost (`lost`, its state at the wreck) in the one gone back to
   // (`this.S`): every sample, ground, pocket, rare hazard and kind of creature met since the docking, as many
   // samples of a thing as either has.
@@ -2971,7 +2980,7 @@ export class Game {
     S.lab ??= {}; S.met ??= {}; S.visited ??= {}; S.rare ??= {};
     for (const key in lost.lab ?? {}) S.lab[key] = Math.max(S.lab[key] ?? 0, lost.lab[key]);
     for (const key in lost.met ?? {}) S.met[key] = 1;
-    for (const key in lost.visited ?? {}) S.visited[key] = 1;
+    for (const key in lost.visited ?? {}) this.visit(key);
     for (const key in lost.rare ?? {}) S.rare[key] = 1;
     const met = lost.fauna?.met;
     if (met && Object.keys(met).length) { S.fauna ??= { pal: null, met: {}, spent: [] }; S.fauna.met ??= {}; for (const key in met) S.fauna.met[key] = 1; }

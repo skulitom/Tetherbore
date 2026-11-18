@@ -187,7 +187,8 @@ for (const id of [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21,
 // ANALYSED +4%. (What is drawn is read back from the glyphs the font draws, a line of text by its row.)
 {
   const font = sheets.font.glyphs, glyphAt = new Map(Object.entries(font).map(([ch, [gx, gw, gy = 0]]) => [`${gx},${gy},${gw}`, ch]));
-  const drawn = [], ctx = new Proxy({ drawImage(image, sx, sy, sw, sh, dx, dy) { const ch = sh === 10 && glyphAt.get(`${sx},${sy},${sw}`); if (ch) drawn.push([dx, dy, sw, ch]); } }, { get: (t, k) => t[k] ?? (() => ({ data: new Uint8ClampedArray(4), width: 0 })), set: () => true });
+  const { asGlyphs } = await import('./lib/glyphs.mjs');
+  const drawn = [], ctx = new Proxy({ drawImage: asGlyphs((image, sx, sy, sw, sh, dx, dy) => { const ch = sh === 10 && glyphAt.get(`${sx},${sy},${sw}`); if (ch) drawn.push([dx, dy, sw, ch]); }) },{ get: (t, k) => t[k] ?? (() => ({ data: new Uint8ClampedArray(4), width: 0 })), set: () => true });
   const lines = () => {
     const rows = new Map();
     for (const [x, y, wd, ch] of drawn) { const row = rows.get(y) ?? []; row.push([x, wd, ch]); rows.set(y, row); }

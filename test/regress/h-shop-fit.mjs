@@ -36,12 +36,13 @@ const game = await makeGame(7), S = game.S;
 // (And, apart, what the rest of the HUD draws, the bar among it, with each icon's place on its sheet.)
 let drawing = false, hud = false;
 const glyphs = [], icons = [], hudGlyphs = [], hudIcons = [];
-game.ctx.drawImage = (image, sx, sy, sw, sh, dx, dy, dw, dh) => {
+const { asGlyphs } = await import('./lib/glyphs.mjs');
+game.ctx.drawImage = asGlyphs((image, sx, sy, sw, sh, dx, dy, dw, dh) => {
   if (!(drawing || hud) || dw === undefined) return;
   const [g, c] = drawing ? [glyphs, icons] : [hudGlyphs, hudIcons];
   if (image?.tint && sh === 10 && sy % 10 === 0) { if (image.tint !== '#0c0a12') g.push({ x: dx, y: dy, w: dw }); }
   else if (image === sheets.icons.image) c.push({ x: dx, y: dy, w: dw, h: dh, sx, sy });
-};
+});
 for (const name of ['drawShop', 'drawStats']) {
   const own = game[name];
   game[name] = function (...args) { drawing = true; try { return own.apply(this, args); } finally { drawing = false; } };

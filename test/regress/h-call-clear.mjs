@@ -22,16 +22,17 @@ const { BOSS } = await import('../../js/bosses.js');
 const { BIOMES } = await import('../../js/world.js');
 const { sheets, tinted, textWidth } = await import('../../js/atlas.js');
 const { lang, tr } = await import('../../js/lang.js');
+const { asGlyphs } = await import('./lib/glyphs.mjs');
 
 const fails = [], check = (ok, what) => { if (!ok && fails.length < 40) fails.push(what); };
 const game = await makeGame(7), S = game.S, SHADOW = tinted('font', '#0c0a12');
 // What drawHud draws: each glyph's cell (its shadow left out) and each picture, with where it is.
 const drawn = [];
 let on = false;
-game.ctx.drawImage = (image, sx, sy, sw, sh, dx, dy, dw, dh) => {
+game.ctx.drawImage = asGlyphs((image, sx, sy, sw, sh, dx, dy, dw, dh) => {
   if (!on || dw === undefined || image === SHADOW) return;
   drawn.push({ x: dx, y: dy, w: dw, h: dh, glyph: image !== sheets.icons.image && image !== sheets.minerals?.image && sh === 10 && sw <= 10 });
-};
+});
 // (As on a phone, with the tether on its own canvas over the game: what is called out keeps its boxes for it.)
 const hud = () => { drawn.length = 0; on = true; game.over = true; try { game.drawHud(0, 0); } finally { on = false; game.over = null; } };
 const gems = list => { const a = new Array(9).fill(0); for (const [i, v] of list) a[i] = v; return a; };
