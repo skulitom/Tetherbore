@@ -2275,55 +2275,100 @@ export class World {
   }
   // An older game's ground brought up to the rules of GEN where nobody has seen it, once, as a game is loaded and
   // before it begins (js/game.js: `restore`): the new ground runs up to the edge of what was seen, and what was seen
-  // is as it was. Each piece of an older generation that a newer rule could lay otherwise (`newer`) is laid twice,
-  // first by the rules of its own generation and then, with every such piece taken up together, by GEN's; a cell
-  // takes the second only where it is unseen and still holds what the first laid (a cell cut, grown back or poured
-  // into keeps what it holds), and a shrine whose heart is kept so is not laid at all (`unshrined`). Each piece
-  // taken up is GEN's from then on, and is saved so (`touched`): a second load takes up nothing. (Both layings go
-  // into arrays kept for the next game loaded. The first is laid with every piece of the world at generation 1, as
-  // the older game laid it, whatever has been made round it since: a slab or a site is laid where it is by asking
-  // about the ground round it, and that ground may be in a piece of GEN.)
-  // Returns [pieces taken up, cells laid anew]. (It costs two layings a piece taken up: on a
-  // desktop 89 ms for the 24 of test/fixtures/save-93ecb92-ne.json.gz, the first time, and 219 ms for 122 along the
-  // four diagonals, about what a save of three hours holds, with the seams and the deep strains to lay; a phone four
-  // times slower takes under 0.9 s, once. A save that went out to all four relics holds 160 to 320 pieces past
-  // MIGRATE_FAR, where the twin stones, the fossils, the deep strains and the halls lay much anew: 0.3 to 0.6 s, and
-  // over two seconds on such a phone, once.)
+  // is as it was. Each piece of an older generation that a newer rule could lay otherwise (`newer`) is taken up, and
+  // a cell of it takes what GEN's rules lay only where it is unseen and still holds what the rules of generation 1
+  // laid (a cell cut, grown back or poured into keeps what it holds); a shrine whose heart is kept so is not laid at
+  // all (`unshrined`). Each piece taken up is GEN's from then on, and is saved so (`touched`): a second load takes up
+  // nothing. A cell changes, then, only where it is unseen, holds what generation 1 laid and not what GEN lays, so
+  // each rule is asked only where it can matter (`layWhere`, which lays a cell as `lay` does): first generation 1 of
+  // the four shrines' hearts alone; then GEN, of every unseen cell of the pieces taken up together; then generation
+  // 1 again, only of the unseen cells that hold other than GEN lays there, which are taken up where they hold what
+  // it lays. Generation 1 is asked with every piece of the world at generation 1, as the older game laid it,
+  // whatever has been made round it since (a slab or a site is laid where it is by asking about the ground round
+  // it, and that ground may be in a piece of GEN), and GEN with every piece taken up at GEN; what is kept of the
+  // seed's records is asked again each time the generations change (`forget`).
+  // Returns [pieces taken up, cells laid anew]. (Laying every piece taken up whole by both rules, as it was done at
+  // first, laid 8,192 cells a piece; this lays a third to a half as many: for a save that went out along the four
+  // diagonals to the shrines, 412 pieces, 1.79 million cells for 3.38, on a desktop 0.35 s for 0.62, and on a phone
+  // six times slower 3.5 s for 5.6; for one played five hours, 549 pieces of which 57 cells in a hundred were seen,
+  // 1.21 million for 4.50, 0.24 s for 0.79, and 2.4 s for 6.6. Once, as the game is loaded.)
   migrate() {
     // (What was kept of the seed's records was worked out as the pieces' generations were being set.)
     this.forget();
     const ids = [];
     for (let id = 0; id < CW * CW; id++) if (this.chunks[id] && this.genOf[id] < GEN && this.newer(id)) ids.push(id);
-    if (!ids.length) return [0, 0];
+    return ids.length ? this.bringUp(ids) : [0, 0];
+  }
+  // (The pieces `ids` brought up, apart from `migrate`: a save of today's generation, which has none, loads without
+  // the browser making this ready to run.)
+  bringUp(ids) {
     const kind = this.layKind ??= new Uint8Array(CH * CH), biome = this.layBiome ??= new Uint8Array(CH * CH);
-    if (!this.layAlike || this.layAlike.length < ids.length * CH * CH) this.layAlike = new Uint8Array(ids.length * CH * CH);
-    const alike = this.layAlike, gens = this.genOf.slice();
-    this.genOf.fill(1);
-    ids.forEach((id, n) => {
-      const p = this.chunks[id], o = n * CH * CH;
-      this.lay(id, kind, biome);
-      for (let at = 0; at < CH * CH; at++) alike[o + at] = !p.seen[at] && p.kind[at] === kind[at] && p.biome[at] === biome[at] ? 1 : 0;
-    });
+    const skip = this.laySkip ??= new Uint8Array(CH * CH), gens = this.genOf.slice();
+    // A shrine whose heart the older game saw, or changed, is not laid: its heart would keep the old ground, so there
+    // would be no relic to haul, only a sealed ring of stone round old rock, and a mark on the chart that never went.
+    this.genOf.fill(1); this.forget();
+    for (let d = 0; d < 4; d++) {
+      const hx = C + SHRINES[d][0], hy = C + SHRINES[d][1], id = ((hy >> 6) << 8) | (hx >> 6), at = ((hy & 63) << 6) | (hx & 63);
+      if (!ids.includes(id)) continue;
+      const p = this.chunks[id];
+      skip.fill(1); skip[at] = 0;
+      this.layWhere(id, kind, biome, skip);
+      if (p.seen[at] || p.kind[at] !== kind[at] || p.biome[at] !== biome[at]) this.unshrined |= 1 << d;
+    }
     this.genOf.set(gens);
     for (const id of ids) this.genOf[id] = GEN;
-    // A shrine whose heart the older game saw is not laid: its heart would keep the old ground, so there would be no
-    // relic to haul, only a sealed ring of stone round old rock, and a mark on the chart that never went.
-    for (let d = 0; d < 4; d++) {
-      const hx = C + SHRINES[d][0], hy = C + SHRINES[d][1], n = ids.indexOf(((hy >> 6) << 8) | (hx >> 6));
-      if (n >= 0 && !alike[n * CH * CH + (((hy & 63) << 6) | (hx & 63))]) this.unshrined |= 1 << d;
-    }
+    const now = this.genOf.slice();
     this.forget();
-    let cells = 0;
-    ids.forEach((id, n) => {
-      const p = this.chunks[id], o = n * CH * CH;
-      this.lay(id, kind, biome);
-      let moved = 0;
-      for (let at = 0; at < CH * CH; at++) if (alike[o + at] && (p.kind[at] !== kind[at] || p.biome[at] !== biome[at])) { p.kind[at] = kind[at]; p.biome[at] = biome[at]; moved++; }
-      if (moved) { p.dull = undefined; cells += moved; }
-      this.touched.add(id);
-    });
+    // What GEN lays in every unseen cell, kept where the cell holds other: n * CH * CH + the cell, for the nth piece.
+    // (Made for this load alone, and let go after it.)
+    let asked = 0, at = new Int32Array(1 << 16), toKind = new Uint8Array(1 << 16), toBiome = new Uint8Array(1 << 16);
+    for (let n = 0; n < ids.length; n++) {
+      const p = this.chunks[ids[n]], seen = p.seen;
+      this.layWhere(ids[n], kind, biome, seen);
+      for (let c = 0; c < CH * CH; c++) {
+        if (seen[c] || (p.kind[c] === kind[c] && p.biome[c] === biome[c])) continue;
+        if (asked === at.length) {
+          const a = new Int32Array(asked * 2), k = new Uint8Array(asked * 2), b = new Uint8Array(asked * 2);
+          a.set(at); k.set(toKind); b.set(toBiome);
+          at = a; toKind = k; toBiome = b;
+        }
+        at[asked] = n * CH * CH + c; toKind[asked] = kind[c]; toBiome[asked] = biome[c]; asked++;
+      }
+    }
+    // Of those, the cells that hold what generation 1 lays, a piece at a time: the rest are struck off (-1).
+    this.genOf.fill(1); this.forget();
+    for (let q0 = 0; q0 < asked;) {
+      const n = (at[q0] / (CH * CH)) | 0, o = n * CH * CH, p = this.chunks[ids[n]];
+      let q1 = q0;
+      skip.fill(1);
+      while (q1 < asked && at[q1] < o + CH * CH) skip[at[q1++] - o] = 0;
+      this.layWhere(ids[n], kind, biome, skip);
+      for (let q = q0; q < q1; q++) { const c = at[q] - o; if (p.kind[c] !== kind[c] || p.biome[c] !== biome[c]) at[q] = -1; }
+      q0 = q1;
+    }
+    this.genOf.set(now); this.forget();
+    let cells = 0, last = -1;
+    for (let q = 0; q < asked; q++) {
+      if (at[q] < 0) continue;
+      const n = (at[q] / (CH * CH)) | 0, p = this.chunks[ids[n]], c = at[q] - n * CH * CH;
+      p.kind[c] = toKind[q]; p.biome[c] = toBiome[q]; cells++;
+      if (n !== last) { p.dull = undefined; last = n; }
+    }
+    for (const id of ids) this.touched.add(id);
     this.stirred++;
     return [ids.length, cells];
+  }
+  // What the seed lays in the cells of piece `id` where `skip` holds 0, each as `lay` lays it (with the slab `lay`
+  // would ask about), written into `kind` and `biome`; the cells skipped are left as they are.
+  layWhere(id, kind, biome, skip) {
+    const x0 = (id % CW) * CH, y0 = ((id / CW) | 0) * CH, was = this.slabHere;
+    if (was === undefined) this.slabHere = this.slabOver(x0, y0, x0 + CH - 1, y0 + CH - 1);
+    for (let v = 0, c = 0; v < CH; v++) for (let u = 0; u < CH; u++, c++) {
+      if (skip[c]) continue;
+      const b = this.biomeAt(x0 + u, y0 + v);
+      biome[c] = b; kind[c] = this.kindAt(x0 + u, y0 + v, b);
+    }
+    this.slabHere = was;
   }
   // Whether a saved piece of ground (`p`: { kind, biome, seen }, its number `id`) is some other world's: 1 where it
   // plainly is, 0 where it is this one's, and a half where there is too little left in it to say. Looked at on a
