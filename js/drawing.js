@@ -882,6 +882,9 @@ export class Drawing {
     if (this.mapRect) o.clearRect(...this.mapRect);
     for (const b of this.buttons) o.clearRect(b.x, b.y, b.w, b.h);
     for (const p of this.panels) o.clearRect(...p);
+    // Nor over a line called out across the screen: a line under the drill, where the tether runs down from it toward
+    // the core, is read across a gap in the rope and not struck through by it (`callText`).
+    for (let i = 0, c = this.callBoxes, n = 4 * this.callN; i < n; i += 4) o.clearRect(c[i], c[i + 1], c[i + 2], c[i + 3]);
   }
   // The parts of a rope that cross the view, each [its first point, its last, how far along the whole rope it
   // begins]. A part is the spans that come within a few pixels of the screen, and one span more at each end so that
@@ -1365,6 +1368,21 @@ export class Drawing {
     o.said = o.lines; o.size = o.big; o.at = 0;
     return o;
   }
+  // A line called out across the screen, drawn as text() draws it, with its box kept for the tether's canvas to be
+  // cut away under (`cutBox`, `drawRopes`).
+  callText(ctx, said, x, y, colour, align = 0, size = 1) {
+    text(ctx, said, x, y, colour, align, size);
+    const w = textWidth(said, size);
+    this.cutBox(ctx, x - w * align, y, w, size);
+  }
+  // The box of a line of text `w` wide at size `size` (its ink and its shadow, and a pixel round them) whose top is
+  // at `y` (`over` rows higher where a picture on it stands higher than its text), kept in `callBoxes`, made once, so
+  // that nothing is made a frame; only while the line is more there than not.
+  cutBox(ctx, x, y, w, size = 1, over = 0) {
+    if (!this.over || ctx.globalAlpha < 0.5 || this.callN * 4 >= this.callBoxes.length) return;
+    const c = this.callBoxes, i = 4 * this.callN++;
+    c[i] = Math.round(x) - 1; c[i + 1] = Math.round(y) - over - 1; c[i + 2] = w + 2 + size; c[i + 3] = 11 * size + 1 + over;
+  }
   // Where a title said large (`fitLarge`), with `subs` small lines under it, stands (`standAt`), its top as near
   // `pref` as it may be: at its size, else at the font's own where only that fits, so that it stands clear of the
   // drill and what is called out before it. `said` and `size`: the lines it is drawn on and their size; `at`: where.
@@ -1551,7 +1569,7 @@ export class Drawing {
   }
   drawHud(ox, oy) {
     const { ctx, W, H, S } = this, now = this.time * 1000, d = this.drill;
-    this.buttons.length = 0; this.panels.length = 0;
+    this.buttons.length = 0; this.panels.length = 0; this.callN = 0;
     // The place the drill has come into, laid out before anything that stands clear of it.
     const place = this.place, lay = place ? (place.lay?.W === W ? place.lay : this.plateFit(place)) : null, low = place && !place.card && lay.ty > UI.EDGE;
     this.plateLow = !!low;
@@ -1575,16 +1593,17 @@ export class Drawing {
       const up = b.pop && (b.t < 0.07 || (b.giant > 3 && b.t < 0.3)) ? 1 : 0, big = b.big;
       const giant = b.giant ?? 0, beat = (now / Math.max(60, 260 - giant * 30)) | 0;
       const colour = giant > GIANTS.length ? GEM_COLOR[1 + beat % 4] : giant ? (beat % 2 ? '#ffffff' : '#ffe14a') : b.colour ?? (b.n >= 30 ? '#ffe14a' : '#ffffff');
-      for (let n = 0; n < b.lines.length; n++) text(ctx, b.lines[n], W / 2, y + n * UI.TITLE * big - up * POP_UP, colour, 0.5, big + up);
+      for (let n = 0; n < b.lines.length; n++) this.callText(ctx, b.lines[n], W / 2, y + n * UI.TITLE * big - up * POP_UP, colour, 0.5, big + up);
       const size = b.says[0], prism = b.says[1];
-      if (size) text(ctx, size, W / 2, y + b.tall + under(big), b.over < 1 ? '#ffb060' : '#bfe6ff', 0.5);
+      if (size) this.callText(ctx, size, W / 2, y + b.tall + under(big), b.over < 1 ? '#ffb060' : '#bfe6ff', 0.5);
       // (What it paid, in its order, line by line from where each of `breaks` begins, each line centred. Each
       // figure has its icon before it, at its own height; a pocket's mineral, 12 rows, is set 2 higher.)
       const ly = y + b.ly, down = b.down, items = b.items, breaks = b.breaks;
       let line = 0, lx = Math.round(W / 2 - b.lws[0] / 2), at = ly;
+      if (items.length) this.cutBox(ctx, lx, at, b.lws[0], 1, -UI.PIC_DY);
       for (let k = 0; k < items.length; k++) {
         const it = items[k];
-        if (k === breaks[line + 1]) { line++; lx = Math.round(W / 2 - b.lws[line] / 2); at = ly + line * UI.LINE; }
+        if (k === breaks[line + 1]) { line++; lx = Math.round(W / 2 - b.lws[line] / 2); at = ly + line * UI.LINE; this.cutBox(ctx, lx, at, b.lws[line], 1, -UI.PIC_DY); }
         if (it.mineral) { this.drawMineral(ctx, it.mineral, lx - 1, at + UI.PIC_DY); text(ctx, it.said, lx + UI.ICON + 1, at, it.colour); }
         else { draw(ctx, 'icons', it.icon, lx, at); text(ctx, it.said, lx + UI.ICON, at, it.colour); }
         lx += it.w + UI.GROUP;
@@ -1596,12 +1615,13 @@ export class Drawing {
         ctx.drawImage(sheets[t.sheet].image, f[0] + 2, f[1] + 2, 12, 12, tx, ty + UI.PIC_DY, 12, 12);
         ring(ctx, tx, ty + UI.PIC_DY, t.colour);
         text(ctx, t.said, tx + UI.CHIP, ty, t.colour);
+        this.cutBox(ctx, tx, ty, b.topW, 1, -UI.PIC_DY);
       }
       // A prism among the cells: what it multiplied the gems by, in the gems' colours by turns.
       const more = down + b.topAt;
-      if (prism) text(ctx, prism, W / 2, ly + more + UI.LINE, GEM_COLOR[1 + ((now / 240) | 0) % 4], 0.5);
+      if (prism) this.callText(ctx, prism, W / 2, ly + more + UI.LINE, GEM_COLOR[1 + ((now / 240) | 0) % 4], 0.5);
       // A word more under the rest, where the haul has one (HALF's; a lord's BEATEN!), where there is room for it.
-      if (b.subOn) text(ctx, b.sub, W / 2, ly + more + (prism ? 2 : 1) * UI.LINE, '#fff6c8', 0.5);
+      if (b.subOn) this.callText(ctx, b.sub, W / 2, ly + more + (prism ? 2 : 1) * UI.LINE, '#fff6c8', 0.5);
       ctx.globalAlpha = 1;
     }
     // Over a dead drill the screen goes dark.
@@ -1613,15 +1633,15 @@ export class Drawing {
       ctx.globalAlpha = Math.min(1, (note.life - note.t) * 3);
       const ny = this.standLarge(note, head, nl.subs ? nl.subs.length : 0), big = note.size, said = note.said, up = note.t < 0.07 && big === note.big ? note.pop : 0, last = UI.TITLE * big * (said.length - 1);
       const y = Math.round(ny + (this.hudWent === 1 ? 1 : -1) * (1 - pop) * 8);
-      for (let n = 0; n < said.length; n++) text(ctx, said[n], W / 2, y + n * UI.TITLE * big - up * POP_UP, note.colour, 0.5, big + up);
-      if (nl.subs) for (let n = 0; n < nl.subs.length; n++) text(ctx, nl.subs[n], W / 2, ny + last + under(big) + n * UI.LINE, '#ffe14a', 0.5);
+      for (let n = 0; n < said.length; n++) this.callText(ctx, said[n], W / 2, y + n * UI.TITLE * big - up * POP_UP, note.colour, 0.5, big + up);
+      if (nl.subs) for (let n = 0; n < nl.subs.length; n++) this.callText(ctx, nl.subs[n], W / 2, ny + last + under(big) + n * UI.LINE, '#ffe14a', 0.5);
       ctx.globalAlpha = 1;
     }
     // The names of parts as they are fitted, a milestone's banner (under the core, clear of all of the above).
     this.fitter.hud(this, ctx, head, UI);
     if (S.won && this.wonAt !== undefined && this.time - this.wonAt < 6) {
       const won = this.fitLarge(this.wonCard ??= { title: 'CORE RESTORED' }, W), wy = this.standLarge(won, Math.round(H * 0.36), 0);
-      for (let n = 0; n < won.said.length; n++) text(ctx, won.said[n], W / 2, wy + n * UI.TITLE * won.size, '#ffe14a', 0.5, won.size);
+      for (let n = 0; n < won.said.length; n++) this.callText(ctx, won.said[n], W / 2, wy + n * UI.TITLE * won.size, '#ffe14a', 0.5, won.size);
     }
     // A ground met for the first time: its name alone, large, a little under where a haul's banner goes (and under
     // the banner itself, if one is up), and clear of the drill (`standLarge`). A name too long for the screen is set on
@@ -1636,8 +1656,8 @@ export class Drawing {
       const big = place.size, lines = place.said, last = UI.TITLE * big * (lines.length - 1), ty = Math.round(y + from * (1 - pop) * 8);
       ctx.globalAlpha = Math.min(1, (place.life - place.t) * 3);
       const up = place.t < 0.07 && big === place.big ? place.pop : 0;
-      for (let n = 0; n < lines.length; n++) text(ctx, lines[n], cx, ty + n * UI.TITLE * big - up * POP_UP, place.colour, 0.5, big + up);
-      if (place.sub) text(ctx, place.sub, cx, ty + last + under(big), '#fff6c8', 0.5);
+      for (let n = 0; n < lines.length; n++) this.callText(ctx, lines[n], cx, ty + n * UI.TITLE * big - up * POP_UP, place.colour, 0.5, big + up);
+      if (place.sub) this.callText(ctx, place.sub, cx, ty + last + under(big), '#fff6c8', 0.5);
       ctx.globalAlpha = 1;
     }
     // (The worth of a thing first seen waits, neither shown nor going, while what is called out under the drill

@@ -9,7 +9,8 @@
 // DRILL_CLEAR of the drill, over it or under it, as the view keeps it in the middle of the screen over the bar; no
 // line of one drawn on a line of another; and the banner's foot over the worth's panel where it stands under the
 // drill. A large title too wide for the screen at size 2 is set on two lines at size 2 where they fit (HUGE HAUL! and
-// TWIN STONES! in Russian, WRECK PART! PAY +10% everywhere on the narrowest phone), not a size smaller. (A banner
+// TWIN STONES! in Russian, WRECK PART! PAY +10% everywhere on the narrowest phone), not a size smaller. And every
+// glyph of it in a box the tether is cut away under (`callText`), so a line under the drill is not struck through. (A banner
 // whose gems took a second line ran onto the drill at 160 x 284, as did CORE RESTORED under the relic's banner, a
 // banner pushed down by a plate gone under the map, and a word under a banner; and those titles were small.)
 // Run in the language TETHERBORE_LANG names (test/all.mjs runs it in all three).
@@ -31,7 +32,8 @@ game.ctx.drawImage = (image, sx, sy, sw, sh, dx, dy, dw, dh) => {
   if (!on || dw === undefined || image === SHADOW) return;
   drawn.push({ x: dx, y: dy, w: dw, h: dh, glyph: image !== sheets.icons.image && image !== sheets.minerals?.image && sh === 10 && sw <= 10 });
 };
-const hud = () => { drawn.length = 0; on = true; try { game.drawHud(0, 0); } finally { on = false; } };
+// (As on a phone, with the tether on its own canvas over the game: what is called out keeps its boxes for it.)
+const hud = () => { drawn.length = 0; on = true; game.over = true; try { game.drawHud(0, 0); } finally { on = false; game.over = null; } };
 const gems = list => { const a = new Array(9).fill(0); for (const [i, v] of list) a[i] = v; return a; };
 const ALL8 = gems([[1, 9e5], [2, 9e5], [3, 9e5], [4, 9e5], [5, 9e5], [6, 9e5], [7, 9e5], [8, 9e5]]);
 const banner = o => Object.assign({ title: 'HAUL', n: 40, mult: 1.6, over: 1, grit: 0, gems: gems([]), light: false, shine: 0, minerals: null, mineral: null, spec: 0, specOf: 1, chain: 0, spin: 0, live: false, t: 1, life: 60, giant: 0, colour: null, sub: null, top: null }, o);
@@ -76,6 +78,12 @@ const scene = (what, set) => {
     if (a.y !== b.y && a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h) { on++; first ??= [a.y, b.y]; }
   }
   check(!on, `${at}: ${on} glyphs of one line drawn on another's (lines at y ${first})`);
+  // (Every glyph called out lies in a box the tether is cut away under, or on a panel it is cut away under: a line
+  // under the drill is not struck through by the tether running down from it.)
+  const c = game.callBoxes, n = 4 * (game.callN ?? 0), within = (r, x, y, w, h) => r.x >= x && r.y >= y && r.x + r.w <= x + w && r.y + r.h <= y + h;
+  const boxed = r => { for (let i = 0; i < n; i += 4) if (within(r, c[i], c[i + 1], c[i + 2], c[i + 3])) return true; return game.panels.some(p => within(r, ...p)); };
+  const bare = g.filter(r => !boxed(r));
+  check(!bare.length, `${at}: ${bare.length} glyphs called out with the tether not cut away under them, the first at ${bare[0]?.x},${bare[0]?.y}`);
   const e = game.eye, b = game.banner;
   if (e && b && b.below && !game.eyeHeld) check(b.y + b.foot <= e.rect[1] - UI.EDGE, `${at}: the banner under the drill ends at ${b.y + b.foot}, on the worth's panel at ${e.rect[1]}`);
 };
@@ -118,5 +126,5 @@ for (const [cw, ch] of [[320, 568], [360, 640], [412, 916], [1280, 720], [912, 5
   }
 }
 
-console.log(fails.length ? `DEFECT: ${fails.join('\n        ')}` : `ok (${lang}): every banner, word, CORE RESTORED and card stands clear of the drill and of one another on every screen, large titles large`);
+console.log(fails.length ? `DEFECT: ${fails.join('\n        ')}` : `ok (${lang}): every banner, word, CORE RESTORED and card stands clear of the drill and of one another on every screen, large titles large, the tether cut away under them`);
 process.exit(fails.length ? 1 : 0);

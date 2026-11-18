@@ -391,6 +391,7 @@ export class Game {
     // and the key the list took when it went down, the one key whose repeats walk it (`key`).
     this.labScroll = 0; this.labVel = 0; this.labTouch = null; this.labAim = null; this.labPrev = 0; this.labHeld = null;
     this.buttons = []; this.panels = [];    // what can be tapped this frame; and the small panels up this frame, each [x, y, w, h]
+    this.callBoxes = new Int16Array(4 * 48); this.callN = 0;   // the boxes of the lines called out this frame, each x, y, w, h (`callText`)
     this.chunks = new Map(); this.version = 0;
     this.daylight = false;                  // no dark is laid over the ground: only a staged view asks for it (js/shot.js)
     this.place = null; this.placeNext = null; this.placeKey = null; this.motifAt = -9;      // the name on show, the place the drill is in, when a place last sounded
