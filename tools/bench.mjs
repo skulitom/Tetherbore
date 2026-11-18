@@ -33,7 +33,13 @@
 //          before any script of the page), with the bytes the server sent (bodies, gzipped where text), the
 //          requests it answered, and when the last module and the last PNG arrived. The measured visit waits two
 //          seconds after the browser has started (Edge, measured at once, made no request for a second and a half
-//          after the page's HTML in two runs of three). --cache warm and reval visit
+//          after the page's HTML in two runs of three). Even so the browser at times waits after the HTML has come
+//          before it asks for anything more (199 to 1,958 ms from navigationStart to the first request in one run
+//          of 4g at 4x, the HTML in by 198), which moves the first frame by as much and B-A by hundreds of ms either
+//          way: so `stall ms` is that wait (the first request's start less the HTML's responseEnd), `first frame
+//          from first request ms` the first frame less the first request's start, and a run whose stall is over
+//          STALL_MOST ms (100) is thrown away and run again on a fresh profile, up to STALL_TRIES times in all (4),
+//          `runs repeated` saying how many were. --cache warm and reval visit
 //          twice first on the same profile, the browser started again each time (V8 keeps a script's code cache from
 //          its second load), and measure the third: warm with everything fresh for 600 s; reval with every response
 //          saying max-age=0, so the third asks again for each and is answered 304.
@@ -47,9 +53,11 @@
 //          the four axes past the lords and, for -all, the four diagonals past the shrines; syn1 of generation 1);
 //          long480 (the long pilot's 480 minutes on world 7, 1,530 pieces) and long300g1 (300 minutes, generation 1)
 //          were played and cannot be made here.
-//   frame  Staged scenes (index.html?shot&...) at --dpr 3 in a --size page: 180 frames stepped by hand, the scene's
+//   frame  Staged scenes (index.html?shot&...) at --dpr 3 in a --size page, cross-origin isolated (performance.now()
+//          to the microsecond, not the tenth of a millisecond): 180 frames stepped by hand, the scene's
 //          own staging, 120 frames in the page's own rAF loop unthrottled to warm the JIT, then under --cpu --frames
-//          more, each update(1/60) then render() timed, steered as the scene says, with a trace of the GCs; then as
+//          more, each update(1/60) then render() timed (then, untimed, frameTook as js/main.js calls it, which begins
+//          the probe of the frame's parts again), steered as the scene says, with a trace of the GCs; then as
 //          many again with V8's sampling heap profiler (every 1 KB, objects since collected kept) for the bytes a
 //          frame allocates, told apart by whether `render` is on the stack. `fly` flies north at full speed from 800
 //          cells out through ground never made, a corridor five cells wide laid open in each piece as it is made, and
@@ -59,7 +67,8 @@
 //          world laid in the step (64 a piece made whole, the rest of a piece held in part) are counted in every scene.
 //   step   test/frame-time.mjs's flight (seed 11, 600 turns, the tether at 5 and the bit at 4) flown in the page by
 //          a game of its own, cross-origin isolated (fine-grained performance.now()), with real audio, storage and
-//          database; --fauna sets every kind of creature down beside the drill in turn. update alone is timed: mean,
+//          database; --fauna sets every kind of creature down beside the drill in turn (frameTook after each update, as
+//          js/main.js calls it, not timed). update alone is timed: mean,
 //          p99, p999, max, the rubble's share (updateHauls), frames over 8 and 16 ms, and the GCs from a trace.
 //   alloc  No browser and no rounds, A then B: tools/bench/alloc-child.mjs runs the same flight in each root's own
 //          test/harness.mjs with every other row at its last (--rows plain: as bought, the step's), at 360 by 640
@@ -229,7 +238,14 @@ let TLS = null;
 const tls = () => TLS ??= certificate(path.join(DIR, 'tls'));
 const tlsFlag = () => `--ignore-certificate-errors-spki-list=${tls().spki}`;
 
+const STALL_MOST = 100, STALL_TRIES = 4;
 async function loadRun(root, o) {
+  for (let tries = 1; ; tries++) {
+    const run = await loadOnce(root, o);
+    if (run.metrics['stall ms'] <= STALL_MOST || tries === STALL_TRIES) { run.metrics['runs repeated'] = tries - 1; return run; }
+  }
+}
+async function loadOnce(root, o) {
   const net = NETS[o.net], frames = 10;
   return withSite(root.dir, { tls: tls(), routes: { '/__blank': async () => ({ type: 'text/html', body: Buffer.from('<!doctype html><title>blank</title>') }) } }, async site => {
     const profile = await newProfile();
@@ -263,8 +279,12 @@ async function loadRun(root, o) {
       if (o.cache !== 'cold') { site.maxAge = o.cache === 'reval' ? 0 : 600; await visit(false); await visit(false); }
       const { r, log } = await visit(true);
       const last = re => Math.max(0, ...r.res.filter(e => re.test(e.name)).map(e => e.end));
+      const asked = Math.min(...r.res.map(e => e.start));
       return { resources: r.res, nav: r.nav, metrics: {
         'first frame ms': r.raf[0][1],
+        'first request ms': asked,
+        'stall ms': Math.round(asked - r.nav.end),
+        'first frame from first request ms': r.raf[0][1] - asked,
         'first frame callback ms': r.raf[0][1] - r.raf[0][0],
         'last module in ms': last(/\.m?js(\?|$)/),
         'last PNG in ms': last(/\.png(\?|$)/),
@@ -363,9 +383,11 @@ const LOOP = `(async () => {
       if (crowd && f % 20 === 0 && g.fauna.alive < 16) g.fauna.stage(g, KINDS[(f / 20) % KINDS.length], 8);
       step = 0;
       const m = w.made, t0 = performance.now(); g.update(1 / 60); const t1 = performance.now(); g.render(); const t2 = performance.now();
-      const rows = ahead && t2 - t0 < W.AHEAD_UNDER ? w.ahead(g.drill.x, g.drill.y, W.AHEAD_ROWS) : 0, t3 = performance.now();
+      // (As js/main.js does after each frame: the probe begun again, by the root's own frameTook, untimed.)
+      g.frameTook(1000 / 60, t1 - t0, t2 - t1);
+      const t2b = performance.now(), rows = ahead && t2 - t0 < W.AHEAD_UNDER ? w.ahead(g.drill.x, g.drill.y, W.AHEAD_ROWS) : 0, t3 = performance.now();
       const o = f * ${PER};
-      out[o] = t1 - t0; out[o + 1] = t2 - t1; out[o + 2] = w.made - m; out[o + 3] = t3 - t2; out[o + 4] = rows; out[o + 5] = step;
+      out[o] = t1 - t0; out[o + 1] = t2 - t1; out[o + 2] = w.made - m; out[o + 3] = t3 - t2b; out[o + 4] = rows; out[o + 5] = step;
       if (++f < n) requestAnimationFrame(loop); else res(Array.from(out));
     };
     requestAnimationFrame(loop);
@@ -395,12 +417,15 @@ function heapOf(profile) {
 }
 async function frameRun(root, o, scene) {
   const sc = SCENES[scene], n = sc.frames ?? o.frames;
-  return withSite(root.dir, {}, site => withBrowser({ program: o.program, size: o.size }, async browser => {
+  // (Served cross-origin isolated, as the step is: elsewhere performance.now() is coarsened to 0.1 ms, which is the
+  // whole of a step in the panels, so that a mean of 300 of them moved by a tenth between runs of the same code.)
+  return withSite(root.dir, { coi: true }, site => withBrowser({ program: o.program, size: o.size }, async browser => {
     const page = await browser.page();
     await page.send('Emulation.setDeviceMetricsOverride', { width: o.size[0], height: o.size[1], deviceScaleFactor: o.dpr, mobile: true });
     await page.send('Page.bringToFront');
     await page.send('Page.navigate', { url: `${site.origin}/index.html?shot=1&seed=7&${sc.q}` });
     await page.until('!!(window.tetherbore && window.tetherbore.shot)', 'the staging');
+    if (!await page.evaluate('self.crossOriginIsolated')) throw new Error('the page is not cross-origin isolated');
     await page.evaluate(`tetherbore.advance(${((sc.pre ?? 180) - 0.5) * 1000 / 60})`);
     if (sc.js) await page.evaluate(`(async () => { const game = tetherbore.game; ${sc.js} })()`);
     await page.evaluate(LOOP);
@@ -471,8 +496,10 @@ async function stepRun(root, o) {
       for (const auto of wander(random(seed), turns)) {
         game.input.auto = auto;
         if (crowd && frames % 20 === 0 && game.fauna.alive < 16) game.fauna.stage(game, KINDS[(frames / 20) % KINDS.length], 8);
-        rubble = 0; game.probe = {};
-        const t = performance.now(); game.update(1 / 60); times.push(performance.now() - t); rub.push(rubble); frames++;
+        rubble = 0;
+        const t = performance.now(); game.update(1 / 60); const ms = performance.now() - t; times.push(ms); rub.push(rubble); frames++;
+        // (The probe is begun again as js/main.js begins it after each frame, by the root's own frameTook.)
+        game.frameTook(1000 / 60, ms, 0);
       }
       return { times, rub, made: game.world.made };
     })()`));

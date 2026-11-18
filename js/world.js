@@ -10,11 +10,14 @@
 // numbers never move: saved games hold them.
 
 export const N = 16384, C = 8192, CH = 64, CW = N / CH;      // a cell is y * N + x; the core's middle cell is (C, C)
-// How many pieces' worth of what the seed says of cells in no piece made are kept (World.biomeKnown): 2 MB.
-const SEEDED_MOST = 256;
+// How many pieces' worth of what the seed says of cells in no piece made are kept (World.biomeKnown): 1 MB, a byte a
+// cell as a piece holds its ground, UNSEEDED where the seed has not been asked yet (no ground is 255: there are 188).
+const SEEDED_MOST = 256, UNSEEDED = 255;
 // Pieces laid ahead of need (World.ahead): those whose box lies within AHEAD_REACH cells of the drill each way, and
 // at the most AHEAD_MOST of them held at once, each in bytes kept for it: 192 KB. js/main.js lays AHEAD_ROWS rows a
-// frame (about 0.13 ms on a desktop, 1 on a phone) after a frame whose step and drawing took under AHEAD_UNDER ms.
+// frame after a frame whose step and drawing took under AHEAD_UNDER ms: about 0.13 ms on a desktop, and on a phone
+// six times slower 1.2 ms on the average and 5 to 8 at the most (tools/bench.mjs frame --cpu 6), where a frame
+// seldom has the time to spare, its drawing alone some 10 ms: there it lays in the step a third fewer times, not most.
 export const AHEAD_REACH = 96, AHEAD_MOST = 24, AHEAD_ROWS = 8, AHEAD_UNDER = 8;
 
 // ---------------------------------------------------------------- what a cell can be
@@ -2017,22 +2020,22 @@ export class World {
     if (this.seedRuling !== this.ruling || this.seedOf !== this.chunks) this.unseed();
     let m = this.seedLast;
     if (m === null || m.id !== id) m = this.seededIn(id);
-    if (m.gen !== this.genOf[id]) { m.b.fill(-1); m.gen = this.genOf[id]; }
+    if (m.gen !== this.genOf[id]) { m.b.fill(UNSEEDED); m.gen = this.genOf[id]; }
     const at = ((y & 63) << 6) | (x & 63);
     let b = m.b[at];
-    if (b < 0) m.b[at] = b = this.biomeAt(x, y);
+    if (b === UNSEEDED) m.b[at] = b = this.biomeAt(x, y);
     return b;
   }
   seededIn(id) {
     let m = this.seeded.get(id);
     if (m === undefined) {
       if (this.seedSpare.length) m = this.seedSpare.pop();
-      else if (this.seeded.size < SEEDED_MOST) m = { id: -1, gen: -1, used: 0, b: new Int16Array(CH * CH) };
+      else if (this.seeded.size < SEEDED_MOST) m = { id: -1, gen: -1, used: 0, b: new Uint8Array(CH * CH) };
       else {
         for (const old of this.seeded.values()) if (m === undefined || old.used < m.used) m = old;
         this.seeded.delete(m.id);
       }
-      m.id = id; m.gen = this.genOf[id]; m.b.fill(-1);
+      m.id = id; m.gen = this.genOf[id]; m.b.fill(UNSEEDED);
       this.seeded.set(id, m);
     }
     m.used = ++this.seedTick;

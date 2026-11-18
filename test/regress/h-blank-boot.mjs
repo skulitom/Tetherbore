@@ -13,6 +13,11 @@
 //   - with a save (one the game makes now, the game at 4293f7c's and the game at 93ecb92's, each with its ground in
 //     the database), a blank game restored is the game restored, S, every piece's bytes, the generations, the drill,
 //     what it says and what it threw out, and the same after two seconds flown; and it made four pieces fewer.
+// The counts of changes, the world's `stirred` and the game's `version`, are not compared as they stand: the world
+// begun and thrown away bumped them before restore, so a blank game restored from a save has them lower by as much
+// for good (stirred 291 against 65 restoring 4293f7c's save). Everything that reads them (the corner map, the
+// chart, the pieces drawn, the feel, the creatures, the lords, `groundLeft`) asks only whether they are what it
+// kept after restore, never what they are. What is compared is how far each moves from restore on: the same.
 import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import { createHash } from 'node:crypto';
@@ -66,9 +71,10 @@ async function boot(blank, local, db, seed = 5) {
   game.failed = () => {};
   const ok = await game.restore();
   await settle();
-  const after = snap(game), made = laid;
+  const after = snap(game), made = laid, at = [game.world.stirred, game.version];
   fly(game);
-  return { game, ok, before, after, made, flown: snap(game), kept: localStorage.getItem(`${KEY}-kept`) };
+  const moved = { stirred: game.world.stirred - at[0], version: game.version - at[1] };
+  return { game, ok, before, after, made, flown: snap(game), moved, kept: localStorage.getItem(`${KEY}-kept`) };
 }
 async function same(what, local, db, { saved = false } = {}) {
   const a = await boot(false, local, db), b = await boot(true, local, db);
@@ -77,6 +83,8 @@ async function same(what, local, db, { saved = false } = {}) {
   if (a.kept !== b.kept) note(`${what}: the save kept aside differs`);
   compare(`${what}, restored`, a.after, b.after);
   compare(`${what}, flown`, a.flown, b.flown);
+  compare(`${what}, the changes counted from restore on`, a.moved, b.moved);
+  if (!(a.moved.stirred > 0 && a.moved.version > 0)) note(`${what}: the flight changed nothing that is counted (stirred ${a.moved.stirred}, version ${a.moved.version})`);
   // (Nothing saved: the same pieces made, the blank game's late. Saved: four fewer, the throwaway world's.)
   if (!saved && a.made !== b.made) note(`${what}: ${a.made} pieces made, ${b.made} blank`);
   if (saved && a.made - b.made !== 4) note(`${what}: the blank game made ${b.made} pieces where the game made ${a.made}, not four fewer`);

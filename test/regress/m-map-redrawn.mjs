@@ -5,7 +5,7 @@
 //     as it asks with nothing kept (World.biomeAt for a cell in no piece made). The chart likewise.
 //   - What the seed says of a cell in no piece made is asked once (World.biomeKnown keeps it): the map drawn twice
 //     over the same ground asks it nothing the second time, and asks again after `forget` (a game loaded) and for a
-//     piece whose generation has changed. The world keeps no more than 256 pieces' worth of it.
+//     piece whose generation has changed. The world keeps no more than 256 pieces' worth of it, a byte a cell.
 //   - The map asks for no list of the pockets visited a frame (they are counted as they are put down, Game.visit).
 //   node test/regress/m-map-redrawn.mjs
 import { makeGame, random, wander, farStart, UPGRADES, WORKS, MAPS, CORE, C } from '../harness.mjs';
@@ -89,6 +89,9 @@ check(keys <= 2, `the map asked for the list of pockets visited ${keys} times in
     check(!n, `the chart drawn with what the world keeps differs from the chart drawn from nothing in ${n} bytes`);
   }
   check(w.seeded.size <= 256, `the world keeps ${w.seeded.size} pieces' worth of what the seed says`);
+  // (It keeps a byte a cell, 255 where the seed has not been asked: so there must be fewer grounds than that.)
+  const { BIOMES } = await import('../../js/world.js');
+  check(BIOMES.length < 255 && [...w.seeded.values()].every(m => m.b.BYTES_PER_ELEMENT === 1), `${BIOMES.length} grounds, kept in lists of ${[...w.seeded.values()][0]?.b.BYTES_PER_ELEMENT} bytes a cell`);
 }
 
 for (const f of fails) console.log(f);

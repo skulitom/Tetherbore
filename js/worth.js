@@ -67,7 +67,11 @@ const placeOf = key => {
   if (at === undefined) placed.set(key, at = findPlace(key));
   return at;
 };
+// (How many times a key's place has been found, and for how many keys: test/regress/r-work-kept.mjs.)
+let finding = 0;
+export const placesFound = () => ({ found: finding, keys: placed.size });
 const findPlace = key => {
+  finding++;
   const rows = ORDINARY, found = rows.filter(r => r.oreKeys?.includes(key));
   if (found.length) {
     const at = r => ({ k: r.oreKeys.indexOf(key) ? K.ORE_B : K.ORE_A, row: r });

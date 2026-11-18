@@ -110,10 +110,11 @@ for (const auto of wander(random(seed), turns)) {
   const h1 = hs();
   frames++;
   part = 'scene';
-  game.probe = {};
   const h2 = hs();
   game.render();
   const h3 = hs();
+  // (The probe begun again as js/main.js begins it after each frame, by the root's own frameTook, unmeasured.)
+  game.frameTook(1000 / 60, 0, 0);
   if (h1 >= h0) up.push(h1 - h0 - base);
   if (h3 >= h2) rn.push(h3 - h2 - base);
 }

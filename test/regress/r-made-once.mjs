@@ -6,6 +6,8 @@
 //     (`drillDrawn`), the box the ropes were drawn in (`ropeDirty`), where the dark is laid (`darkAt`) and the
 //     tether's rope and its points are the same each frame; and a haul's loop and line home are a rope each, kept
 //     on the haul with their points, for as long as the haul is drawn.
+//     The rubble is jostled by the grid of its box (`JOSTLED`), never by the table of hashed chains, which is for
+//     heaps wider than any this flight brings home and took a fifth as long again.
 //   - Each part of a frame that is timed by name is wrapped by a function of as many arguments as the part takes,
 //     so a call makes no list of them.
 //   - A loose piece cut in two, and cut again, two cells at a time, splits into pieces that are each one piece of
@@ -13,6 +15,7 @@
 //     one split to the next, and every mark is clear again when a split is done.
 //   node test/regress/r-made-once.mjs
 import { makeGame, random, wander, UPGRADES, WORKS, MAPS, CORE, N, C, K, Game } from '../harness.mjs';
+const { JOSTLED } = await import('../../js/game.js');
 
 const fails = [], check = (ok, what) => { if (!ok && fails.length < 20) fails.push(what); };
 
@@ -57,6 +60,7 @@ const fails = [], check = (ok, what) => { if (!ok && fails.length < 20) fails.pu
   check(same.drill && same.dark && same.dirty && tethers > 100, `the flight drew the drill ${!!same.drill}, the dark ${!!same.dark}, ropes ${!!same.dirty} and the tether ${tethers} times`);
   check(drawnHauls >= 5 && moved === 0, `of ${drawnHauls} hauls drawn with their ropes, ${moved} had a rope or its points made again`);
   check(game.ropes.every(r => !('trace' in r)), 'a rope was given a closure to trace it by');
+  check(JOSTLED.grid > 1000 && JOSTLED.table === 0, `the rubble was jostled ${JOSTLED.grid} times by the grid and ${JOSTLED.table} by the table of chains`);
 }
 
 // ---- the parts timed by name

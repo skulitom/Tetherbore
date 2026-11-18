@@ -66,11 +66,12 @@ for (const auto of wander(random(seed), turns)) {
   if (ms > 16) over++;
   digest?.add(game);
   if (drawn) {
-    game.probe = {};
+    // (The probe begun again as js/main.js begins it after each frame, so that it holds the drawing's parts alone.)
+    game.frameTook(1000 / 60, 0, 0);
     const t0 = performance.now();
     game.render();
     draw += performance.now() - t0;
-    for (const [name, ms] of Object.entries(game.probe)) parts[name] = (parts[name] ?? 0) + ms;
+    for (const [name, ms] of Object.entries(game.probe)) if (ms) parts[name] = (parts[name] ?? 0) + ms;
   }
 }
 console.log(JSON.stringify({ seed, reach, start: [sx, sy], frames, meanMs: +(total / frames).toFixed(4), worstMs: +worst.toFixed(2), worstAt, over16: over,

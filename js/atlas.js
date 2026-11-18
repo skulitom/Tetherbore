@@ -64,12 +64,17 @@ export function frameAt(sheet, animation, time) {
 }
 export const duration = (sheet, animation) => sheets[sheet].animations[animation].duration;
 
-// A 9-slice of a 16 x 16 frame with `m` pixel margins.
+// A 9-slice of a 16 x 16 frame with `m` pixel margins: its rows top to bottom, each row's three left to right, with
+// no list made of them (the lists were 12 KB of what the shop left a frame for the collector).
 export function slice9(ctx, sheet, frame, x, y, w, h, m = 5) {
-  const s = sheets[sheet], [fx, fy, fw, fh] = s.frames[frame], c = fw - 2 * m;
-  const xs = [[fx, m, x, m], [fx + m, c, x + m, w - 2 * m], [fx + fw - m, m, x + w - m, m]];
-  const ys = [[fy, m, y, m], [fy + m, fh - 2 * m, y + m, h - 2 * m], [fy + fh - m, m, y + h - m, m]];
-  for (const [sy, sh, dy, dh] of ys) for (const [sx, sw, dx, dw] of xs) if (dw > 0 && dh > 0) ctx.drawImage(s.image, sx, sy, sw, sh, dx, dy, dw, dh);
+  const s = sheets[sheet], f = s.frames[frame], fx = f[0], fy = f[1], fw = f[2], fh = f[3], c = fw - 2 * m;
+  for (let r = 0; r < 3; r++) {
+    const sy = r === 0 ? fy : r === 1 ? fy + m : fy + fh - m, sh = r === 1 ? fh - 2 * m : m, dy = r === 0 ? y : r === 1 ? y + m : y + h - m, dh = r === 1 ? h - 2 * m : m;
+    for (let q = 0; q < 3; q++) {
+      const sx = q === 0 ? fx : q === 1 ? fx + m : fx + fw - m, sw = q === 1 ? c : m, dx = q === 0 ? x : q === 1 ? x + m : x + w - m, dw = q === 1 ? w - 2 * m : m;
+      if (dw > 0 && dh > 0) ctx.drawImage(s.image, sx, sy, sw, sh, dx, dy, dw, dh);
+    }
+  }
 }
 
 // A sheet in one colour, every pixel of it that has any (its alpha kept): made once for each sheet and colour, and

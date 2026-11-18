@@ -128,6 +128,8 @@ export function haulTitle(n, { relic = -1, parts = 0, caches = 0, rare = null, l
 const crowd = { head: new Int32Array(64), next: new Int32Array(32), cellX: new Int32Array(32), cellY: new Int32Array(32), xs: new Float64Array(32), ys: new Float64Array(32) };
 const GRID_MOST = 1 << 16;
 let grid = new Int32Array(1024);
+// (How many passes of `jostle` went by the grid and how many by the table, counted for test/regress/r-made-once.mjs.)
+export const JOSTLED = { grid: 0, table: 0 };
 const chainOf = (x, y) => Math.imul(x, 73856093) ^ Math.imul(y, 19349663);
 // How long a spore pod's burst drives a drill fitted with the spore drive, and how much faster.
 export const BOOST = { time: 3, by: 1.5 };
@@ -418,8 +420,10 @@ function jostle(bits, n, size, rad) {
           }
         }
       }
+      JOSTLED.grid++;
       continue;
     }
+    JOSTLED.table++;
     const head = crowd.head;
     head.fill(-1, 0, span);
     for (let i = n - 1; i >= 0; i--) { const at = chainOf(cellX[i], cellY[i]) & mask; next[i] = head[at]; head[at] = i; }
@@ -3525,10 +3529,12 @@ export class Game {
   // dark, and the sound of the place.
   ambient(dt) {
     const w = this.world, W = this.W, H = this.H;
-    for (const p of this.parts) { p.t += dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= 1 - 3.5 * dt; p.vy *= 1 - 3.5 * dt; }
-    keepIf(this.parts, partLives);
-    for (const r of this.rings) r.t += dt;
-    keepIf(this.rings, ringLives);
+    // (Walked by index: by for-of, they cost the browser an iterator of the motes a frame, 0.7 KB in a panel.)
+    const parts = this.parts, rings = this.rings, motes = this.motes;
+    for (let i = 0; i < parts.length; i++) { const p = parts[i]; p.t += dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= 1 - 3.5 * dt; p.vy *= 1 - 3.5 * dt; }
+    keepIf(parts, partLives);
+    for (let i = 0; i < rings.length; i++) rings[i].t += dt;
+    keepIf(rings, ringLives);
     this.flash = Math.max(0, this.flash - dt); this.counted = Math.max(0, this.counted - dt);
     // The dark eases to the colour and the depth of the ground the drill is in.
     const here = w.row(this.di), want = here.gloom, k = 1 - Math.exp(-dt * 1.5);
@@ -3540,7 +3546,8 @@ export class Game {
       const x = this.cam.x + (Math.random() - 0.5) * (W + 60), y = this.cam.y + (Math.random() - 0.5) * (H + 60), row = w.row(Math.floor(y / T) * N + Math.floor(x / T));
       this.motes.push({ x, y, seed: Math.random() * 100, t: 0, life: 4 + Math.random() * 5, mote: row.mote, air: row.air });
     }
-    for (const m of this.motes) {
+    for (let i = 0; i < motes.length; i++) {
+      const m = motes[i];
       m.t += dt;
       const drift = m.mote[1], sway = Math.sin(this.time * 1.3 + m.seed);
       if (drift === 'fall') { m.y += 9 * dt; m.x += sway * 6 * dt; }

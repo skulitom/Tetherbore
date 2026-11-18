@@ -1433,7 +1433,9 @@ export class Drawing {
     // A long line is cut down to the part that crosses the view before it is walked.
     const dxf = x1 - x0, dyf = y1 - y0;
     let t0 = 0, t1 = 1;
-    for (const [p, q] of [[-dxf, x0 + 2], [dxf, W + 2 - x0], [-dyf, y0 + 2], [dyf, H + 2 - y0]]) {
+    // (Its four sides in turn, left, right, top and bottom, with no list made of them.)
+    for (let k = 0; k < 4; k++) {
+      const p = k === 0 ? -dxf : k === 1 ? dxf : k === 2 ? -dyf : dyf, q = k === 0 ? x0 + 2 : k === 1 ? W + 2 - x0 : k === 2 ? y0 + 2 : H + 2 - y0;
       if (p === 0) { if (q < 0) return; continue; }
       const t = q / p;
       if (p < 0) { if (t > t1) return; if (t > t0) t0 = t; } else { if (t < t0) return; if (t < t1) t1 = t; }
