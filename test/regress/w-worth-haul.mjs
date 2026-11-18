@@ -16,7 +16,7 @@
 //   node test/regress/w-worth-haul.mjs
 import { makeGame, world, C, N, K, B } from '../harness.mjs';
 const { WORTH_AT } = await import('../../js/worth.js');
-const { TIER_RIM } = await import('../../js/drawing.js');
+const { TIER_RIM, UI } = await import('../../js/drawing.js');
 const { SHRINES } = world;
 
 const fails = [], check = (ok, what) => { if (!ok) fails.push(what); };
@@ -82,24 +82,66 @@ check(got.pay.top === SUN, `the same, the other way round: ${got.pay.top}`);
 got = haul([[...RING[0], K.ORE_B], [...RING[1], K.ORE_A], [...RING[2], K.ORE_A], [...RING[3], K.ORE_A]]);
 check(got.pay.top === CINDER && got.top === null, `three of cinder ore and one of sunstone: ${got.pay.top}, ${JSON.stringify(got.top)}`);
 
-// ---- on the banner, at 160 x 284
+// ---- on the banner: laid under the gems where it fits the screen and the banner's foot stays DRILL_CLEAR over the
+// drill, and not where it does not (at 160 x 284 a banner with a line of its size and one of gems has no room for it,
+// so it is held on a taller screen as narrow)
+const drillTop = H => Math.round((H - 44) / 2) - 8;
 game.resize(160, 284, 1);
 S.lab = { [SUN]: 1 };
 got = haul([0, 1, 2, 3, 4, 5].map(n => [60 + n, 52, K.ORE_B]));
 const b = game.banner;
 game.drawHud(0, 0);
-check(b.topAt === 12 && b.topW <= game.W - 8 && b.topW > 40, `sunstone's line on the banner: ${b.topAt} at ${b.topW} wide on ${game.W}`);
+check(b.topAt === 0 && game.bannerHead() + b.foot + 14 > drillTop(284) - UI.DRILL_CLEAR, `at 160 x 284 sunstone's line would reach the drill and is not laid: ${b.topAt}, foot ${b.foot}`);
+game.resize(160, 400, 1);
+game.drawHud(0, 0);
+check(b.topAt === 14 && b.topW <= game.W - 8 && b.topW > 40 && game.bannerHead() + b.foot <= drillTop(400) - UI.DRILL_CLEAR, `sunstone's line on the banner at 160 x 400: ${b.topAt} at ${b.topW} wide on ${game.W}, foot ${b.foot}`);
 const room = { ...b, splitW: 0 };
-game.bannerSplit(room, null);
-check(room.topAt === 12, 'a plain banner has no room for what paid most');
-// (Two lines of gems, a prism's line and a word more already: no room; with two of those, room. bannerSplit works out
-// `split` itself: a banner of every gem paid is one that splits over three lines at 160, and of five over two.)
+game.bannerSplit(room);
+check(room.topAt === 14, 'a plain banner has no room for what paid most');
+// (Three lines of gems, a prism's line and a word more: it would reach the drill; two lines and a prism's: room.)
 const every = { ...b, gems: [0, 9e5, 9e5, 9e5, 9e5, 9e5, 9e5, 9e5, 9e5], shine: 2, sub: 'THE WINCH IS CRYING', splitW: 0 };
-game.bannerSplit(every, null);
-check(every.split > 0 && every.topAt === 0, `a banner of two lines of gems, a prism and a word more still says what paid most: split ${every.split}, ${every.topAt}`);
+game.bannerSplit(every);
+check(every.breaks.length === 3 && every.topAt === 0, `a banner of three lines of gems, a prism and a word more still says what paid most: ${every.breaks}, ${every.topAt}`);
 const two = { ...every, gems: [0, 9e5, 9e5, 9e5, 9e5, 9e5, 0, 0, 0], sub: null, splitW: 0 };
-game.bannerSplit(two, null);
-check(two.split > 0 && !two.split2 && two.topAt === 12, `a banner of two lines of gems and a prism has no room for what paid most: split ${two.split}, ${two.topAt}`);
+game.bannerSplit(two);
+check(two.breaks.length === 2 && two.topAt === 14, `a banner of two lines of gems and a prism has no room for what paid most: ${two.breaks}, ${two.topAt}`);
+
+// ---- the gems on the narrowest phones: every gem at 900K, grit at 9.9B and 30 specimens, with and without a pocket's
+// mineral, laid within the screen less EDGE each side on every line, a line GROUP between groups, on no more than
+// three lines (four at 160 with the specimens: no line there holds more than three of those groups); and the
+// banner's foot, which what stands under it is set by, the foot of what is drawn
+{
+  // (Each glyph's shadow, a row and a column down from it, left out: a line's foot is its cell's, LINE_MIN under it.)
+  const { sheets, tinted } = await import('../../js/atlas.js'), SHADOW = tinted('font', '#0c0a12');
+  const items = [], record = { on: false };
+  game.ctx.drawImage = (image, sx, sy, sw, sh, dx, dy, dw, dh) => {
+    if (!record.on || dw === undefined || image === SHADOW) return;
+    items.push({ x: dx, y: dy, w: dw, h: dh });
+  };
+  const hud = game.fitter.hud;
+  game.fitter.hud = function (...args) { record.on = false; return hud.apply(this, args); };
+  const worst = { title: 'BIG HAUL!', n: 900, mult: 2.4, over: 1, grit: 9.9e9, gems: [0, 9e5, 9e5, 9e5, 9e5, 9e5, 9e5, 9e5, 9e5], light: false, shine: 1, spec: 30, specOf: 2, giant: 0, colour: null, sub: null, top: null, t: 1, life: 60 };
+  const MINERAL = Object.keys(sheets.minerals.frames)[0];
+  for (const [cw, ch] of [[160, 284], [180, 320], [206, 458]]) {
+    game.resize(cw, ch, 1);
+    for (const o of [{}, { mineral: MINERAL }, { spec: 0 }, { shine: 3, sub: 'GEOLOGISTS ARE SCREAMING' }, { trophy: true, gems: [0, 0, 0, 0, 0, 0, 0, 0, 0], n: 1, loud: true }]) {
+      const bn = { ...worst, ...o, splitW: 0 };
+      game.place = null; game.notice = null; game.banner = bn;
+      items.length = 0; record.on = true;
+      game.drawHud(0, 0);
+      record.on = false;
+      const what = `${cw} x ${ch} ${JSON.stringify(o)}`, most = cw === 160 && bn.spec && !bn.trophy ? 4 : 3;
+      check(bn.breaks.length <= most && bn.lws.length === bn.breaks.length, `${what}: the gems take ${bn.breaks.length} lines`);
+      for (const lw of bn.lws) check(lw <= cw - 2 * UI.EDGE, `${what}: a line of gems ${lw} wide on a screen ${cw} wide`);
+      // (What was drawn of them: within the screen, EDGE in.)
+      const y0 = game.bannerHead() - 8, left = Math.min(...items.map(i => i.x)), right = Math.max(...items.map(i => i.x + i.w)), foot = Math.max(...items.map(i => i.y + i.h));
+      check(left >= UI.EDGE - 1 && right <= cw - UI.EDGE, `${what}: the banner is drawn from ${left} to ${right}`);
+      check(foot - game.bannerHead() === bn.foot, `${what}: the banner's foot is ${bn.foot} under its head, and what is drawn of it ends ${foot - game.bannerHead()} under`);
+      check(items.every(i => i.y >= y0), `${what}: something of the banner is drawn over it`);
+    }
+  }
+  game.fitter.hud = hud;
+}
 
 console.log(fails.length ? `DEFECT: ${fails.join('\n        ')}` : 'ok: a haul\'s banner names what paid most in it, of the second tier or the third, as worth.js says it, and not for a relic, a shrine, a light haul or a common ore');
 process.exit(fails.length ? 1 : 0);

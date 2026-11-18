@@ -239,18 +239,20 @@ const frames = (game, seconds) => { for (let f = 0; f < Math.round(seconds * 60)
 
 // ---- a haul's banner: the line of what paid most, of every thing of the second tier or the third at any level of
 // the winch, known or not, 999 cells of it, at home or not, laid under the gems where it fits the narrowest phones
-// and dropped where it does not (js/game.js: `topPayer`; js/drawing.js: `bannerSplit`)
+// and dropped where it does not (js/game.js: `topPayer`; js/drawing.js: `bannerSplit`). (Held on screens of the
+// narrowest phones' widths and taller than they are, as the line is laid only where the banner stays clear of the
+// drill too, and at 284 and 320 under a line of the haul's size and a line of gems there is no room for it.)
 {
   const game = await makeGame(7), S = game.S;
   let laid = 0, dropped = 0;
-  for (const [cw, ch] of [[160, 284], [180, 320]]) {
+  for (const [cw, ch] of [[160, 400], [180, 400]]) {
     game.resize(cw, ch, 1);
     for (const e of LAB) for (let lv = 0; lv < WORTH_AT.length; lv++) for (const known of [0, 1]) for (const topHome of [false, true]) {
       S.lv.winch = lv; S.lab = known ? { [e.key]: 1 } : {};
       const top = game.topPayer({ top: e.key, topN: 999, topHome });
       if (!top) { check(WORTH_AT[lv][e.key].tier < 2, `${e.key} of the tier ${WORTH_AT[lv][e.key].tier} at the winch's ${lv} names nothing`); continue; }
-      const b = { n: 40, grit: 99999, gems: [0, 0, 0, 0, 9999, 0, 0, 0, 0], trophy: false, shine: 1, top, splitW: 0 };
-      game.bannerSplit(b, '+9');
+      const b = { title: 'BIG HAUL!', n: 40, mult: 1.6, over: 1, grit: 99999, gems: [0, 0, 0, 0, 9999, 0, 0, 0, 0], trophy: false, shine: 1, spec: 9, specOf: 1, top, splitW: 0 };
+      game.bannerSplit(b);
       check(b.topAt ? b.topW <= game.W - 8 && b.topW === textWidth(top.said) + 16 : b.topW > game.W - 8, `'${top.said}' is ${b.topW} wide on a screen ${game.W} wide, ${b.topAt ? 'laid' : 'dropped'}`);
       if (b.topAt) laid++; else dropped++;
     }

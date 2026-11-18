@@ -179,7 +179,7 @@ export class Fitter {
     this.pool = this.makePool(CAP); this.panelPool = this.makePool(PANEL_CAP);
     this.rings = Array.from({ length: RINGS }, () => ({ on: false, x: 0, y: 0, follow: false, colour: '#ffffff', reach: 0, t: 0, life: 0.5, alpha: 0.9 }));
     this.effects = Array.from({ length: EFFECTS }, () => ({ on: false, sheet: '', animation: '', x: 0, y: 0, t: 0, follow: false }));
-    this.labels = Array.from({ length: LABELS }, () => ({ on: false, text: '', colour: '#ffffff', x: 0, y: 0, follow: false, t: 0 }));
+    this.labels = Array.from({ length: LABELS }, () => ({ on: false, text: '', colour: '#ffffff', x: 0, y: 0, follow: false, t: 0, w: 0 }));
     this.queue = Array.from({ length: QUEUE }, () => ({ on: false, u: null, level: 0, grand: false, seq: 0 }));
     this.playing = Array.from({ length: 3 }, () => ({ on: false, u: null, level: 0, grand: false, kind: 0, colour: '#ffffff', label: '', t: 0, life: LIFE, seated: false, still: false, sub: '' }));
     this.moment = { t: 0, tab: '', id: '', row: 0, grand: false, colour: '#ffffff', stamp: '', fresh: false };
@@ -457,7 +457,7 @@ export class Fitter {
     this.ring(x, y, f.colour, 26, 0, 0.45, follow);
     this.burst(x, y, 8, c, 60);
     const label = this.labelSlot();
-    label.on = true; label.text = f.label; label.colour = f.colour; label.x = x; label.y = y - (f.kind === 1 ? 10 : 18); label.follow = follow; label.t = -0.05;
+    label.on = true; label.text = f.label; label.w = textWidth(f.label); label.colour = f.colour; label.x = x; label.y = y - (f.kind === 1 ? 10 : 18); label.follow = follow; label.t = -0.05;
     if (id === 'drill') { this.heatKick = 1; const bit = Math.min(7, lv.drill), ca = Math.cos(d.ang), sa = Math.sin(d.ang); for (let n = 0; n < 10; n++) { const a = d.ang + Math.PI + (this.rnd() - 0.5) * 2, v = 50 + this.rnd() * 60; this.emit(this.pool, x + ca * (TIP[bit] + 2), y + sa * (TIP[bit] + 2), Math.cos(a) * v, Math.sin(a) * v, 0.3, 120, SPARK_CI[Math.max(2, bit)][(this.rnd() * 2) | 0], this.rnd() < 0.33 ? STAR : SPARK); } }
     else if (id === 'momentum') { this.flameKick = 0.5; const ram = Math.min(6, lv.momentum), ca = Math.cos(d.ang), sa = Math.sin(d.ang); if (ram >= 3) for (let n = 0; n < 12; n++) { this.side = -this.side; this.puff(x, y, ca, sa, -9, this.side * 2.5, EXHAUST_CI[ram][n & 1], 40 + this.rnd() * 30, 0.3, SPARK); } }
     else if (id === 'hull') { this.tintOn('#aab4c8', 0.8, 0.4); if (lv.hull >= ROW.hull.values.length - 1) this.effect('ward', 'shield', x, y, true); }
@@ -705,8 +705,10 @@ export class Fitter {
     for (let k = 0; k < LABELS; k++) {
       const l = this.labels[k];
       if (!l.on || l.t < 0) continue;
+      // (Centred on its part, but never nearer the screen's edge than EDGE: measured once, as it was seated.)
+      const half = l.w / 2, cx = Math.min(W - UI.EDGE - half, Math.max(UI.EDGE + half, (l.follow ? d.x * T : l.x) - this.ox));
       ctx.globalAlpha = base * Math.min(1, (0.9 - l.t) * 4, l.t * 12);
-      text(ctx, l.text, (l.follow ? d.x * T : l.x) - this.ox, (l.follow ? d.y * T - 18 : l.y) - this.oy - l.t * 18, l.colour, 0.5);
+      text(ctx, l.text, Math.round(cx - half), (l.follow ? d.y * T - 18 : l.y) - this.oy - l.t * 18, l.colour);
     }
     const b = this.banner;
     if (b.t > 0 && !game.shop && !game.lab) {

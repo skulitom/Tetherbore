@@ -2255,8 +2255,10 @@ export class Game {
     const mineral = pay.mineral && sheets.minerals?.frames[pay.mineral] ? pay.mineral : null;
     // (And what paid most in it, under what it paid: not on a relic's banner or a shrine's, which say what they are.)
     const top = light || relic >= 0 || pay.shrine >= 0 ? null : this.topPayer(pay);
+    // (A find with a name of its own, however few its cells, has its title as large as a big haul's: `loud`.)
+    const loud = relic >= 0 || pay.shrine >= 0 || parts > 0 || caches > 0 || !!pay.rare || pay.fossil > 0 || pay.twins > 0 || pay.spin >= 2;
     this.hauled = { title, n, mult, over, grit, gems, light, shine: pay.shine, minerals: pay.minerals, mineral, spec: specUp, specOf, chain: pay.chain, spin: pay.spin, live: pay.live, t: 0,
-      life: half ? 7 : 2.2 + Math.min(1.2, n * 0.01) + giant * 0.4, giant, colour: named ? bright(ground.map) : null, sub, top };
+      life: half ? 7 : 2.2 + Math.min(1.2, n * 0.01) + giant * 0.4, giant, colour: named ? bright(ground.map) : null, sub, top, loud };
     if (light) {
       this.shake = Math.max(this.shake, Math.min(1.5, 0.7 + n * 0.08));
       this.ring(cx, cy, '#fff6c8', 12 + n);

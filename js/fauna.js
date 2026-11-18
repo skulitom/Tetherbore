@@ -1350,7 +1350,7 @@ export class Fauna {
         game.popup(Math.floor(x), Math.floor(y) - 1, 'TROPHY!', colour);
         game.popup(Math.floor(x), Math.floor(y), `+${v}`, colour, `spec-${icon}`);
         const up = game.banner;
-        if (!(up && up.t < up.life)) game.banner = { title: 'TROPHY', n: 1, mult: 1, over: 1, grit: 0, gems: NO_GEMS, light: false, shine: 0, spec: v, specOf: kin, giant: 0, colour, sub: null, trophy: true, t: 0, life: 2.2 };
+        if (!(up && up.t < up.life)) game.banner = { title: 'TROPHY', n: 1, mult: 1, over: 1, grit: 0, gems: NO_GEMS, light: false, shine: 0, spec: v, specOf: kin, giant: 0, colour, sub: null, trophy: true, loud: true, t: 0, life: 2.2 };
         game.specLine = { kin, t: 0, life: 3 };
         this.spot(x * T, y * T, 26, ink(colour));
         voices.trophy?.();
