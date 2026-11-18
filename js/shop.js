@@ -395,8 +395,8 @@ export const ROWS = [...UPGRADES, ...WORKS, ...MAPS, ...CORE];
 // js/game.js: SHRINE_GEMS, once a game): the north east's for
 // the bit's MK8 and the scanner's 13, the south east's for the ram's x2.8 and the hull's 12, the south west's for the
 // black box's 90% and the lamp's 18, the north west's for the map's range of 10 and the winch's x5. They ask about
-// three times the gems they asked of their row's direction (420 thousand in all where they asked 143 thousand, 95 to
-// 115 thousand a corner): a cell of a deep seam's rich ore pays ten of them (five, twice over, as deep ground's ore
+// two and a half times the gems they asked of their row's direction (365 thousand in all where they asked 143
+// thousand, 75 to 115 thousand a corner): a cell of a deep seam's rich ore pays ten of them (five, twice over, as deep ground's ore
 // pays), and a corner's deep seam holds more than its two prices within 1,500 cells of the core once the gem cutter
 // doubles them. Their grit and what they ask found are as they were, and no level is added or taken away for them,
 // so a game saved before has its levels where they were. They are a sink that costs the rest of the late game time:
@@ -406,8 +406,12 @@ export const ROWS = [...UPGRADES, ...WORKS, ...MAPS, ...CORE];
 // about 0.4 million a second at the end where it earned 0.9; the levels that ask relics (the refinery's last two,
 // the gem cutter's last and LIVE CATCH's) are bought on none of the seven plays, where the game before bought them
 // on five, the pilot no longer reaching the relics 2,000 out; and on world 11 with the hull three of the eight are
-// not bought by 300 minutes. Their prices are kept for the owner's word: the hull's 12 and the winch's x5 at about
-// 50,000 would come some forty minutes sooner. (The pilot works a corner as no player need, CORNER_LINES: how much of
+// not bought by 300 minutes. By the owner's word the two dearest, the hull's 12 and the winch's x5, ask 50,000 where
+// they asked 75,000 and 80,000, the last each of the two corners has to save for: played again, the hull's 12 comes
+// 21 to 41 minutes sooner (255 to 273 minutes in where it came at 284 to 295) and the winch's x5 9 to 22 sooner
+// (236 to 272 where it came at 250 to 283) on the six plays that buy them, the rest of each game as it was, the
+// grit earned by five hours within a twentieth either way, and world 11 with the hull, a game an hour behind, still
+// buying neither. (The pilot works a corner as no player need, CORNER_LINES: how much of
 // this a player would pay is not known.)
 // No two of them ask the same distance, and none what a level of reach asks (900, for 2,300): they open one at a
 // time, forty or fifty cells apart, as the drill goes further out, the first three (the ram, the spore drive's
@@ -419,10 +423,10 @@ export const ROWS = [...UPGRADES, ...WORKS, ...MAPS, ...CORE];
 // grit comes in, there is still something to save for.
 const LATE = {
   drill: [[6, 25e6, 4000, 950], [7, 120e6, 10000, 1350], [8, 375e6, 75000, 1750, 0, G.NE]],
-  winch: [[3.5, 25e6, 5000, 1050], [4, 120e6, 12000, 1450], [5, 375e6, 80000, 1850, 0, G.NW]],
+  winch: [[3.5, 25e6, 5000, 1050], [4, 120e6, 12000, 1450], [5, 375e6, 50000, 1850, 0, G.NW]],
   scanner: [[11, 20e6, 3000, 6], [13, 105e6, 40000, 8, 0, G.NE]],
   momentum: [[2.5, 30e6, 5000, 760], [2.8, 150e6, 30000, 1550, 0, G.SE]],
-  hull: [[10, 25e6, 3000, 1200], [11, 120e6, 8000, 1500], [12, 375e6, 75000, 1800, 0, G.SE]],
+  hull: [[10, 25e6, 3000, 1200], [11, 120e6, 8000, 1500], [12, 375e6, 50000, 1800, 0, G.SE]],
   // (The mender's asked 60 and 120 of the north's specimens, the scarcest kind, where a long game gathers sixty to a
   // hundred in three hours: they were bought on two worlds of six. And they mended every 3 and 2 seconds, no slower
   // than the shield: no steady fire could wear the hull down. See WORKS.)

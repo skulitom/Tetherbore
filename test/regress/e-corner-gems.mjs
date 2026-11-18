@@ -76,7 +76,7 @@ for (let b = 1; b <= 8; b++) { const paid = game.payOf([], block(b, K.ORE_B)).ge
 
 // (e) The eight levels and their prices.
 {
-  const want = { drill: [8, 75000, G.NE], scanner: [13, 40000, G.NE], momentum: [2.8, 30000, G.SE], hull: [12, 75000, G.SE], blackbox: [0.9, 35000, G.SW], lamp: [18, 60000, G.SW], maprange: [10, 25000, G.NW], winch: [5, 80000, G.NW] };
+  const want = { drill: [8, 75000, G.NE], scanner: [13, 40000, G.NE], momentum: [2.8, 30000, G.SE], hull: [12, 50000, G.SE], blackbox: [0.9, 35000, G.SW], lamp: [18, 60000, G.SW], maprange: [10, 25000, G.NW], winch: [5, 50000, G.NW] };
   const moved = ROWS.flatMap(u => (u.gemAt ?? []).map((g, l) => [u, l, g]).filter(([, , g]) => g >= 5));
   check(moved.length === 8 && moved.every(([u, l]) => want[u.id] && u.values[l + 1] === want[u.id][0]), `the levels paid in a corner's gems: ${moved.map(([u, l]) => `${u.id} ${u.values[l + 1]}`)}`);
   for (const [id, [value, gems, gem]] of Object.entries(want)) {

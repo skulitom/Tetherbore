@@ -40,6 +40,8 @@ const GEM_ORDER = [1, 2, 3, 4, 5, 6, 7, 8];
 // the east's), where the corners' are what matter (`cornerBar`); and on a screen wide enough for eight (BAR_ALL_W:
 // each as much room as one of four has on the common phone), all eight in their order.
 const BAR_DIRS = [1, 2, 3, 4], BAR_CORNERS = [8, 6, 7, 5], BAR_ALL = GEM_ORDER, BAR_ALL_W = 330;
+// How long, in seconds, the goal's line blinks green as what it asks for is all banked.
+export const GOAL_BLINK = 3;
 // Where the corners' gems are what matter: out where they are had, past CORNER_BAR cells from the core and within
 // CORNER_LANE of the distance of a diagonal (the deep seams lie along them from 900 out).
 export const CORNER_BAR = 840, CORNER_LANE = 0.3;
@@ -1440,11 +1442,16 @@ export class Drawing {
     const B = H - 44;
     slice9(ctx, 'ui', 'panel', 2, B + 2, W - 4, 40);
     // What the player is saving for (js/goal.js): a line along the bar's top edge, as far across as what is banked
-    // has come towards its price (the least of its grit, gems and specimens), in yellow, blinking green once all of
-    // it is there. Its price was kept when it was chosen: nothing of the shop is asked here.
-    if (this.saving().id !== null) {
-      const share = goalShare(this), full = share >= 1;
-      if (!full || ((now / 250) | 0) % 2 === 0) { ctx.fillStyle = full ? '#8ce060' : '#ffe14a'; ctx.fillRect(4, B + 3, Math.round((W - 8) * share), 1); }
+    // has come towards its price (the least of its grit, gems and specimens), in yellow, and green once all of it is
+    // there: blinking for three seconds as it fills (GOAL_BLINK) or until the bar is tapped, then steady, so a goal the
+    // player leaves unbought does not blink on for as long as they leave it. Its price was kept when it was chosen:
+    // nothing of the shop is asked here.
+    const goal = this.saving();
+    if (goal.id !== null) {
+      const share = goalShare(this), full = share >= 1, of = `${goal.id} ${goal.level}`;
+      if (!full) this.goalLitFor = null;
+      else if (this.goalLitFor !== of) { this.goalLitFor = of; this.goalBlink = GOAL_BLINK; }
+      if (!full || !(this.goalBlink > 0) || ((now / 250) | 0) % 2 === 0) { ctx.fillStyle = full ? '#8ce060' : '#ffe14a'; ctx.fillRect(4, B + 3, Math.round((W - 8) * share), 1); }
     }
     draw(ctx, 'icons', 'grit', 6, B + 5);
     text(ctx, compact(S.grit - this.pending.grit), 18, B + 6 - (this.counted > 0 ? 1 : 0), this.counted > 0 ? '#ffffff' : '#ffe14a');
@@ -1489,7 +1496,7 @@ export class Drawing {
       text(ctx, count, W - 6, B + 6, lit ? '#ffffff' : '#8cf2c4', 1);
       draw(ctx, 'icons', 'lab', W - 6 - textWidth(count) - 11, B + 5);
     }
-    this.button(0, B, W, 44, () => this.openLab(!this.lab));
+    this.button(0, B, W, 44, () => { this.goalBlink = 0; this.openLab(!this.lab); });
     // The place the drill has come into: its name on a plate, with its direction's gem (and a second gem, where
     // the place pays two).
     if (!place || place.card) this.plateLow = false;

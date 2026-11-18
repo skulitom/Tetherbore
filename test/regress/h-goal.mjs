@@ -1,6 +1,7 @@
 // What the player is saving for (js/goal.js). A new game saves for a row of the first tab; a purchase moves it on;
 // a tap on a row that asks only for grit not yet banked makes that row the goal, held until it is bought, and the
-// shop pins it; the line along the top of the bar grows with the grit banked and blinks green once it is all there;
+// shop pins it; the line along the top of the bar grows with the grit banked and blinks green once it is all there,
+// for three seconds and then steady green, and a tap on the bar stops it at once;
 // coming home with enough says '<ROW> READY' at the core; and nothing of it is saved, so a game saved before
 // there was a goal loads and saves with no key it did not have.
 //   node test/regress/h-goal.mjs
@@ -67,6 +68,17 @@ check(game.goal.id === 'winch', `chosen again, the goal is ${game.goal.id}`);
   const blink = [];
   for (let f = 0; f < 40; f++) { game.time += 1 / 60; blink.push(lit()); }
   check(blink.some(([w, c]) => c === '#8ce060' && w === game.W - 8) && blink.some(([w]) => w < 0), `with all of it banked the line is ${JSON.stringify(blink.slice(0, 20))}`);
+  // (Steady green after three seconds, the goal left unbought.)
+  const steady = () => { const seen = []; for (let f = 0; f < 40; f++) { game.time += 1 / 60; seen.push(lit()); } return seen.every(([w, c]) => c === '#8ce060' && w === game.W - 8); };
+  for (let f = 0; f < 200; f++) game.update(1 / 60);
+  check(S.grit >= price && steady(), 'the line still blinks three seconds after all of it was banked');
+  // (Blinks again when it fills again, and stops at a tap on the bar.)
+  S.grit = 0; lit(); S.grit = price;
+  const again = []; for (let f = 0; f < 40; f++) { game.time += 1 / 60; again.push(lit()); }
+  check(again.some(([w]) => w < 0), 'the line does not blink when it is filled again');
+  game.pointerDown(1, game.W / 2, game.H - 20); game.pointerUp(1);
+  check(game.lab && steady(), `the line still blinks after a tap on the bar (the lab is ${game.lab ? 'open' : 'shut'})`);
+  game.openLab(false);
 }
 
 // ---- home with enough

@@ -384,7 +384,7 @@ export class Game {
     this.swept = 0;                         // cells the tether's sweeps have looked at, for tests of how much work is done
     this.effects = []; this.popups = []; this.hauls = []; this.clouds = []; this.sparks = new Map(); this.lavaVol = new Map(); this.frostOpen = [];
     this.parts = []; this.rings = []; this.motes = []; this.gloom = [10, 8, 7]; this.murk = 1; this.flash = 0; this.counted = 0; this.chime = 3; this.clock = 0;
-    this.shake = 0; this.twang = 0; this.edge = 0; this.hurt = 0; this.coreFlash = 0; this.banner = null; this.shop = false; this.shopRise = 0; this.lab = false; this.labRise = 0; this.labSel = null; this.labFlash = 0; this.confirmReset = 0;
+    this.shake = 0; this.twang = 0; this.edge = 0; this.hurt = 0; this.coreFlash = 0; this.banner = null; this.shop = false; this.shopRise = 0; this.lab = false; this.labRise = 0; this.labSel = null; this.labFlash = 0; this.goalBlink = 0; this.goalLitFor = null; this.confirmReset = 0;
     // The lab's list: how far it is scrolled, in pixels, and how fast it is going; the finger holding it ({ id, y0,
     // s0, moved, caught }: where it came down, the scroll then, the furthest it has gone since, and whether it came
     // down on the list still running on), a scroll it is easing to, and the scroll at the last step (`stepLab`);
@@ -483,7 +483,7 @@ export class Game {
     this.called.clear(); this.calledAt = {}; this.tickIn = 0; this.rung.clear(); this.eye = null; this.eyeQueue.length = 0;
     // The first piece, beside the core, lies loose from the start: the open cell between them tells of it.
     this.changed([C * N + C + 3]);
-    this.shop = false; this.lab = false; this.labSel = null; this.labFlash = 0;
+    this.shop = false; this.lab = false; this.labSel = null; this.labFlash = 0; this.goalBlink = 0; this.goalLitFor = null;
     this.labScroll = 0; this.labVel = 0; this.labTouch = null; this.labAim = null; this.labPrev = 0; this.labHeld = null;
     this.recount();
     this.feel.reset(this.S.seed);
@@ -3430,6 +3430,7 @@ export class Game {
     if (this.bought) { this.bought.t -= dt; if (this.bought.t <= 0) this.bought = null; }
     if (this.confirmReset > 0) this.confirmReset -= dt;
     if (this.labFlash > 0) this.labFlash -= dt;
+    if (this.goalBlink > 0) this.goalBlink -= dt;
     this.stepLab(dt);
     if (!this.shop && !this.lab) {
       // The clock the ground's own changes are timed by (a cut in the north icing over) stands still with the shop
