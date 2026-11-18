@@ -7,6 +7,10 @@
 //     tabs, what a row needs, the lab's things (name, note, where found, the line and the note said before it is
 //     known), every place's title and the banner of a haul there, the giants and the other banners, what is called
 //     out when it is seen, the creatures, the menu, and every line of STATS at every level of every row;
+//   - the lords at the ends (js/bosses.js): each name and title, BEATEN!, the word across the screen once all four are
+//     beaten, and STATS with lords met and one beaten (S.bosses = 0x15) and with every rare hazard met besides; and on
+//     the narrowest phone each lord's card as it wakes, its name large on one line or two and its title under it,
+//     its banner beaten with BEATEN! under its name, and that word, each within the screen, as the game sets them;
 //   - a number in a line kept as it was, and a line no key fits drawn as it is;
 //   - the language asked for by a link (`?lang=`) chosen and kept, one kept chosen with no link, and English with
 //     neither; an unknown one ignored.
@@ -46,6 +50,7 @@ const { BIOMES, GEM_PAST } = await import('../../js/world.js');
 const { GIANTS, placeHaul, haulTitle, SIZES, QUIPS, GIANT_SAYS, OVER_SAYS } = await import('../../js/game.js');
 const { SPOT, GEM_WHERE, GEM_SHORT, LAB_LIST, labCount } = await import('../../js/drawing.js');
 const { CREATURES } = await import('../../js/fauna.js');
+const { BOSS } = await import('../../js/bosses.js');
 const { readFileSync } = await import('node:fs');
 
 const fails = [], check = (ok, what) => { if (!ok && fails.length < 40) fails.push(what); };
@@ -126,7 +131,14 @@ for (const k of [0, 0.5, 1]) {
   S.shrines = [1, 0, 0, 0]; S.fossils = 1;
   for (const [name, value] of game.stats()) { names.add(name); names.add(value); }
   S.shrines = [0, 0, 0, 0]; S.fossils = 0;
+  // (And with lords at the ends met, one of them beaten.)
+  S.bosses = 0x15;
+  for (const [name, value] of game.stats()) { names.add(name); names.add(value); }
+  delete S.bosses;
 }
+// The lords at the ends: each name and title, and what is said as one is beaten and as the last is.
+for (const B of BOSS) { names.add(B.name); names.add(B.lord); }
+names.add('BEATEN!'); names.add('THE DEEP IS STILL');
 const missing = [...names].filter(s => s && !fits(s));
 check(!missing.length, `${missing.length} lines have no turn in ${lang}: ${missing.slice(0, process.env.ALL ? 999 : 12).map(s => `'${s}'`).join(', ')}`);
 
@@ -158,6 +170,40 @@ check(!missing.length, `${missing.length} lines have no turn in ${lang}: ${missi
 {
   const { textWidth } = await import('../../js/atlas.js');
   for (const t of hauls) check(textWidth(t, 1) <= 152, `'${tr(t)}' is ${textWidth(t, 1)} pixels wide, too wide for a narrow phone`);
+}
+
+// The lords at the ends on the narrowest phone, as the game sets what it says of them: each woken, its name on its
+// card large (on one line or two) with its title under it; each beaten, its name on its banner large with BEATEN!
+// under it; and the last beaten, the word across the screen, large. Each line within the screen, 8 pixels to spare.
+{
+  const { textWidth } = await import('../../js/atlas.js');
+  const lords = await makeGame(7);
+  lords.resize(320, 568, 1);
+  const W = lords.W, within = (o, what) => {
+    check(o.big === 2, `${what}: '${tr(o.title)}' is set small (${o.lines.join(' / ')}), not large`);
+    for (const l of o.lines) check(textWidth(l, o.big) <= W - 8, `${what}: '${l}' is ${textWidth(l, o.big)} pixels wide, too wide for ${W}`);
+  };
+  BOSS.forEach((B, b) => {
+    lords.place = null;
+    lords.lordMet(b);
+    const card = lords.place;
+    check(card?.card && card.title === B.name && card.sub === B.lord, `${B.name} woken: its card is ${JSON.stringify(card && [card.title, card.sub])}, not its name and title`);
+    if (card?.card) { within(lords.fitLarge(card, W), `${B.name}'s card`); check(textWidth(card.sub) <= W - 8, `${B.name}'s card: '${tr(card.sub)}' is too wide for ${W}`); }
+    lords.banner = null;
+    lords.lordBeaten(b, lords.drill.x, lords.drill.y);
+    const banner = lords.banner;
+    check(banner?.title === B.name && banner.sub === 'BEATEN!', `${B.name} beaten: its banner is ${JSON.stringify(banner && [banner.title, banner.sub])}, not its name and BEATEN!`);
+    if (banner) { within(lords.fitLarge(banner, W), `${B.name}'s banner`); check(textWidth(banner.sub) <= W - 8, `${B.name}'s banner: '${tr(banner.sub)}' is too wide for ${W}`); }
+  });
+  const still = lords.notice;
+  check(still?.title === 'THE DEEP IS STILL', `all four beaten, the word across the screen is ${JSON.stringify(still?.title)}`);
+  if (still) within(lords.fitLarge(still, W), 'the word once all four are beaten');
+  // (And drawn: every line of the card, the banner and the word, and nothing thrown.)
+  lords.place = { title: BOSS[1].name, sub: BOSS[1].lord, icon: 'grit', colour: '#ffffff', t: 1, card: true, life: 9 };
+  lords.over = document.createElement('canvas'); lords.overCtx = lords.over.getContext('2d');
+  let threw = null;
+  try { lords.render(); } catch (error) { threw = error.message; }
+  check(!threw, `the lords' card, banner and word drawn threw: ${threw}`);
 }
 
 // A number is kept; a line no key fits is drawn as it is; English is never turned.

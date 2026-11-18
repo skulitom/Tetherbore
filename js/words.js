@@ -245,6 +245,7 @@ export const WORDS = [
   ['WORMS', 'ЧЕРВИ', '萤虫'],
   ['BITE', 'УКУС', '咬伤'],
   ['LODESTONES', 'МАГНЕТИТЫ', '磁石'],
+  ['BELLS/JETS', 'КОЛОК./СТРУИ', '霜钟/喷流'],
   ['*, x# LIVE', '*, x# ЖИВЬЕМ', '*，活捉 x#'],
   ['* x# LIVE', '* x# ЖИВЬЕМ', '* 活捉 x#'],
   ['x# LIVE', 'x# ЖИВЬЕМ', '活捉 x#'],
@@ -531,6 +532,20 @@ export const WORDS = [
   ['TROPHY!', 'ТРОФЕЙ!', '战利品！'],
   ['TROPHY', 'ТРОФЕЙ', '战利品'],
   ['PAL!', 'ДРУГ!', '伙伴！'],
+  // (The lords at the ends, js/bosses.js: each name, its title under it as it wakes, BEATEN! under it beaten (the
+  // Russian a victory, so that it agrees with no lord's gender), the line of STATS that counts them, and the word
+  // across the screen once all four are.)
+  ['FROST WYRM', 'ИНЕЙНЫЙ ЗМЕЙ', '霜龙'],
+  ['MAGMA BEHEMOTH', 'ИСПОЛИН МАГМЫ', '熔岩巨兽'],
+  ['SPORE MOTHER', 'ГРИБНАЯ МАТКА', '菌母'],
+  ['CRYSTAL KING', 'КРИСТАЛЬНЫЙ КОРОЛЬ', '晶王'],
+  ['LORD OF THE NORTH', 'ВЛАДЫКА СЕВЕРА', '北方之主'],
+  ['LORD OF THE SOUTH', 'ВЛАДЫКА ЮГА', '南方之主'],
+  ['LORD OF THE WEST', 'ВЛАДЫКА ЗАПАДА', '西方之主'],
+  ['LORD OF THE EAST', 'ВЛАДЫКА ВОСТОКА', '东方之主'],
+  ['BEATEN!', 'ПОБЕДА!', '击败！'],
+  ['LORDS', 'ВЛАДЫКИ', '霸主'],
+  ['THE DEEP IS STILL', 'ГЛУБИНА УТИХЛА', '深处已安静'],
 
   // ---- hauls: their banners
   ['HAUL', 'УЛОВ', '收获'],

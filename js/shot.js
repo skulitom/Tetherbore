@@ -71,6 +71,17 @@
 // `faunabook`, as `orebook`, shows no world: each creature in each of its poses on its own ground's rock, by name,
 // with what it is to the player (FRIEND, FOE or only seen, KIN).
 //
+// The lords at the ends (js/bosses.js) are staged by `fauna` too: `fauna=boss-<e|s|w|n>[:<state>[:<stage>]]` raises
+// the east's, south's, west's or north's where it would rise near the drill (`Bosses.stageAs`), in a state of its own
+// (`tell`, `act`, `rest`, `hurt`, `yield`, `sunk`, `gone`, `idle` (risen, the default), `icefall` the north's,
+// `return` the south's charge back, `second` and `latch` the west's, `blink` the east's) at a stage of its own (1 to 3;
+// 1 if none is given). Where no `at` is given (or `at=0,0`) the drill stands LORD_SHORT cells short of that lord's
+// lair on its axis (a lord rises only within NEAR of its lair). With `met` every lord is taken as met as well (its
+// mark on the chart, its line in STATS); none is woken by it, and the one staged is put in its state as it is. And
+// `bossbook`, as `faunabook`, shows no world: each lord in each of its poses facing east, and telling facing west, on
+// the rock of the ground at its lair, by name and title. (The creatures' book has none of them: they are not of
+// `CREATURES`, and their frames are on a sheet of their own.)
+//
 // The view is held still: `tetherbore.advance(ms)` steps it, `tetherbore.resume()` lets it play.
 import * as world from './world.js';
 import { T, UPGRADES, BOOST } from './game.js';
@@ -78,6 +89,8 @@ import { ROWS, EARLY, LAB } from './shop.js';
 import { draw, frameAt, sheets, text } from './atlas.js';
 import { TETHERS, CORE_IDLE, DISH, REFINERY, CUTTER, BOX, ORBIT, LIVECATCH, TROPHY } from './fit.js';
 import { CREATURES, ROSTER, KIN_FAUNA, FOE_EYE, frameName } from './fauna.js';
+import { BOSS, LAIR, P as POSE, lairX, lairY, frameName as lordFrame } from './bosses.js';
+import { tr } from './lang.js';
 
 const { N, C, K } = world, HX = C + 0.5, HY = C + 0.5;
 const ROOM = 2;                                 // the room is this many cells out from the drill's own, each way
@@ -86,6 +99,8 @@ const WAKE = 12;                                // how far from the drill a haza
 const KEY = 80;                                 // how far from `at` the middle of a slab to stage the last key of may lie
 const POCKET = 150;                             // and the middle of a pocket to stand the drill in
 const CAVE = 40;                                // and a cave to stand the drill in
+const LORD_SHORT = 8;                           // how far short of a lord's lair the drill stands, where no `at` is given
+const LORDS = { e: 0, s: 1, w: 2, n: 3 };       // `fauna=boss-<letter>`: which lord, by its direction (js/world.js: DX, DY)
 
 // The pocket nearest (ax, ay) and where the drill may stand in it: { zone, at: [x, y] }, or null where none is
 // near. The place is an open cell among those three cells from the pocket's middle (in a hive, the lane of the
@@ -211,6 +226,9 @@ export function stage(game, query) {
   const reaches = UPGRADES.find(u => u.id === 'tether').values;
   const seed = Math.floor(number('seed', 7));
   let [dx = 0, dy = 0] = (query.get('at') ?? '').split(',').map(v => Math.round(+v) || 0);
+  // A lord at the ends (above): which, and where no `at` was given (or the core), the drill short of its lair.
+  const [faunaKind, faunaState, faunaStage] = (query.get('fauna') ?? '').split(':'), lord = /^boss-[eswn]$/.test(faunaKind) ? LORDS[faunaKind[5]] : -1;
+  if (lord >= 0 && !dx && !dy) { dx = world.DX[lord] * (LAIR - LORD_SHORT); dy = world.DY[lord] * (LAIR - LORD_SHORT); }
   const zoom = Math.max(1, number('zoom', 1)), lit = query.has('lit') && query.get('lit') !== '0', met = query.has('met') && query.get('met') !== '0';
   const wake = query.has('wake') && query.get('wake') !== '0', only = world.HAZARDS[query.get('wake')] ? query.get('wake') : null;
   const haul = Math.max(0, Math.min(9, Math.floor(number('haul', 0))));
@@ -231,8 +249,8 @@ export function stage(game, query) {
   game.S.lv.tether = level;
   game.daylight = lit;
   if (met) for (const row of world.BIOMES) if (row) game.S.met[row.id] = 1;
-  const [faunaKind, faunaState] = (query.get('fauna') ?? '').split(':');
-  if (met && faunaKind) game.S.fauna = { pal: null, met: Object.fromEntries(CREATURES.slice(1).map(c => [c.key, 1])), spent: [] };
+  if (met && lord >= 0) game.S.bosses = 15;
+  if (met && faunaKind && lord < 0) game.S.fauna = { pal: null, met: Object.fromEntries(CREATURES.slice(1).map(c => [c.key, 1])), spent: [] };
   const d = game.drill, w = game.world;
   if (dx || dy) {
     // (To a slab's last key the tunnel is one cell wide where it comes through the collar, and leaves the slab
@@ -338,6 +356,7 @@ export function stage(game, query) {
   if (query.has('ladder') && query.get('ladder') !== '0') game.render = () => ladder(game);
   if (query.has('orebook') && query.get('orebook') !== '0') game.render = () => orebook(game);
   if (query.has('faunabook') && query.get('faunabook') !== '0') game.render = () => faunabook(game);
+  if (query.has('bossbook') && query.get('bossbook') !== '0') game.render = () => bossbook(game);
   // The lab's notes (above): what it knows, then the panel opened at the thing chosen, once the view has its size.
   const lab = query.get('lab');
   if (lab !== null && lab !== '0') {
@@ -371,7 +390,8 @@ export function stage(game, query) {
       for (let y = cy - radius; y <= cy + radius; y++) for (let x = cx - radius; x <= cx + radius; x++) game.spot(y * N + x);
       game.version++;
       // (A creature is set down once the ground about it is seen: it lives only in ground that has been.)
-      if (faunaKind) { creature = game.fauna.stage(game, faunaKind); if (faunaState) game.fauna.stageAs(game, creature, faunaState); }
+      if (lord >= 0) game.fauna.bosses.stageAs(game, lord, faunaState || 'idle', Math.max(1, Math.min(3, Math.floor(+faunaStage) || 1)));
+      else if (faunaKind) { creature = game.fauna.stage(game, faunaKind); if (faunaState) game.fauna.stageAs(game, creature, faunaState); }
       // (A foe at rest with the trophy line's lamps fired is caught as a loop round it would catch it: `--fauna
       // bat:rest --fire trophy`.)
       if (fire === 'trophy' && creature >= 0 && game.fauna.atRest(creature)) game.fauna.trophy(game, creature);
@@ -392,7 +412,9 @@ export function stage(game, query) {
         biome: b, ground: world.BIOMES[b]?.name ?? `${b}`,
         loose: game.pieces.length, woke,
         // The creature set down: where, and in what state; and how many are about.
-        fauna: faunaKind ? { kind: faunaKind, slot: creature, at: creature >= 0 ? [+(game.fauna.x[creature] - C).toFixed(1), +(game.fauna.y[creature] - C).toFixed(1)] : null, state: creature >= 0 ? game.fauna.st[creature] : null, alive: game.fauna.alive } : null,
+        fauna: faunaKind && lord < 0 ? { kind: faunaKind, slot: creature, at: creature >= 0 ? [+(game.fauna.x[creature] - C).toFixed(1), +(game.fauna.y[creature] - C).toFixed(1)] : null, state: creature >= 0 ? game.fauna.st[creature] : null, alive: game.fauna.alive } : null,
+        // The lord staged: which, where, in what state (js/bosses.js: ST) and at what stage.
+        boss: lord >= 0 ? { lord: BOSS[lord].key, at: [+(game.fauna.bosses.x[lord] - C).toFixed(1), +(game.fauna.bosses.y[lord] - C).toFixed(1)], state: game.fauna.bosses.st[lord], stage: game.fauna.bosses.stage[lord] } : null,
         // What of the ground's feel is on show, and whether what was made to come has still to (`feel`).
         feel: { particles: game.feel.live, events: game.feel.events, forced: game.feel.forced },
         // Inside a pocket: where its middle lies, its radius and its ground; and how many cells were hauled.
@@ -427,6 +449,29 @@ function faunabook(game) {
       ctx.drawImage(s.image, r[0], r[1], r[2], r[3], x, y, 32, 32);
       ctx.fillStyle = FOE_EYE;
       for (const [ex, ey] of s.eyes?.[f] ?? []) ctx.fillRect(x + ex * 2, y + ey * 2, 2, 2);
+    });
+  });
+}
+
+// Each lord at the ends (js/bosses.js), in a row of its own: its name and title, then each of its poses facing east and
+// its tell facing west, at the sheet's own size, on the rock of the ground at its lair, its eyes and lamps lit over it as
+// the game lights them. In two columns where the page is wide enough.
+function bossbook(game) {
+  const ctx = game.ctx, s = sheets.bosses, rowH = 66, cols = Math.max(1, Math.min(2, Math.floor(game.W / 520))), colW = Math.floor(game.W / cols), per = Math.ceil(BOSS.length / cols);
+  ctx.globalAlpha = 1; ctx.fillStyle = '#100e18'; ctx.fillRect(0, 0, game.W, game.H);
+  game.overCtx?.clearRect(0, 0, game.over.width, game.over.height);
+  if (!s) { text(ctx, 'NO BOSSES SHEET', 4, 4, FOE_EYE); return; }
+  BOSS.forEach((B, b) => {
+    const x0 = 4 + Math.floor(b / per) * colW, y0 = 4 + (b % per) * rowH, row = world.BIOMES[game.world.b(Math.floor(lairY(b)) * N + Math.floor(lairX(b)))] ?? world.BIOMES[0], tiles = sheets[row.sheet].tiles[255];
+    text(ctx, `${tr(B.name)}  ${tr(B.lord)}  (${tr(row.title ?? row.name.toUpperCase())})`, x0, y0, FOE_EYE);
+    const shown = [...B.poses.map((p, pose) => [pose, false]), [POSE.tell, true]];
+    shown.forEach(([pose, left], m) => {
+      const x = x0 + m * 50, y = y0 + 12, f = lordFrame(b, pose, left), r = s.frames[f];
+      for (let n = 0; n < 9; n++) { const t = tiles[(m + n) % tiles.length]; ctx.drawImage(sheets[row.sheet].image, t[0], t[1], t[2], t[3], x + (n % 3) * 16, y + Math.floor(n / 3) * 16, 16, 16); }
+      if (!r) return;
+      ctx.drawImage(s.image, r[0], r[1], r[2], r[3], x, y, 48, 48);
+      ctx.fillStyle = FOE_EYE;
+      for (const [ex, ey] of s.eyes?.[f] ?? []) ctx.fillRect(x + ex, y + ey, 1, 1);
     });
   });
 }

@@ -19,6 +19,7 @@ import { TETHERS, BODY, BODY_A, HOT, HOT_A, RAM, PLATE, FLAME, FLAME_TIER, FITS,
 // that copies the methods from here before there are any: so nothing loads it but js/game.js.)
 import { HX, HY, BOOST, DEATH, BELL, VENT, WORM, STONE, GIANTS } from './game.js';
 import { KINDS } from './fauna.js';
+import { LAIR, EYE as FOE_EYE } from './bosses.js';
 
 export const T = 16;                            // pixels in a cell
 const VOLUME_BAR = 49;                          // the menu's bar of ten steps of loudness, in pixels
@@ -1253,6 +1254,25 @@ export class Drawing {
   // And third, where the haul held a pocket's mineral that raised a count of specimens: by how many. (A foe caught
   // as a trophy, js/fauna.js, is no haul: its banner has the specimens it paid and nothing else.)
   bannerSays(b) { if (b.trophy) return ['', null, `+${b.spec}`]; return [`${b.n} x${b.mult.toFixed(1)}${b.over < 1 ? ' WINCH OVER LOAD' : ''}`, b.shine > 1 ? `PRISM x${b.shine}` : null, b.spec > 0 ? `+${b.spec}` : null]; }
+  // How a title said large across the screen (a place met for the first time, a lord woken, the word across the
+  // screen) is set for a screen `W` wide, in the language spoken: at twice the font's size on one line where it
+  // fits, else broken between its words onto two lines that do (the break that leaves the wider line the
+  // narrowest), else at the font's own size. Worked out once for the thing and the screen and kept on it (`lines`,
+  // `big`), so nothing is measured or made in a frame.
+  fitLarge(o, W) {
+    if (o.fitW === W) return o;
+    const said = tr(o.title), fits = s => textWidth(s, 2) <= W - 8;
+    o.fitW = W; o.lines = [said]; o.big = 2;
+    if (fits(said)) return o;
+    const { parts, join } = words(said);
+    let best = null;
+    for (let n = 1; n < parts.length; n++) {
+      const a = parts.slice(0, n).join(join), b = parts.slice(n).join(join), wide = Math.max(textWidth(a, 2), textWidth(b, 2));
+      if (fits(a) && fits(b) && (!best || wide < best[2])) best = [a, b, wide];
+    }
+    if (best) o.lines = [best[0], best[1]]; else o.big = 1;
+    return o;
+  }
   // How a banner's line of what it paid is laid out, for a screen `W` wide: worked out once a banner (and again only
   // if the screen changes), so that drawing it every frame measures and makes nothing. `lw` is the line's width;
   // where that is wider than the screen, the gems go on over a second line, `lw2` wide, from the gem `split` (0:
@@ -1327,15 +1347,21 @@ export class Drawing {
     // a place's plate where that has had to go under the map: `plateLow`.)
     const head = this.plateLow ? 78 : Math.max(60, H * 0.2);
     if (this.banner) {
-      const b = this.banner, pop = Math.min(1, b.t / 0.12), y = Math.round(head - (1 - pop) * 8);
+      const b = this.banner, pop = Math.min(1, b.t / 0.12);
+      let y = Math.round(head - (1 - pop) * 8);
       ctx.globalAlpha = Math.min(1, (b.life - b.t) * 3);
       // (A title too wide for the screen at its size is set a size smaller. A haul named by its place is in its
       // colour; a giant's title is gold and white by turns, faster the bigger it is, and HALF's runs through the gems'.)
-      let big = (b.n >= 10 ? 2 : 1) + (b.t < 0.07 || (b.giant > 3 && b.t < 0.3) ? 1 : 0);
-      while (big > 1 && textWidth(b.title, big) > W - 8) big--;
+      // (A lord beaten is named large, as a place met is, on two lines where one is too narrow for it (`fitLarge`),
+      // with BEATEN! under the rest.)
+      let big = (b.n >= 10 ? 2 : 1) + (b.t < 0.07 || (b.giant > 3 && b.t < 0.3) ? 1 : 0), tall = 0;
+      if (b.lord !== undefined) { this.fitLarge(b, W); big = b.big + (b.lines.length === 1 && b.big === 2 && b.t < 0.07 && textWidth(b.lines[0], 3) <= W - 8 ? 1 : 0); tall = (b.lines.length - 1) * 11 * b.big; }
+      else while (big > 1 && textWidth(b.title, big) > W - 8) big--;
       const giant = b.giant ?? 0, beat = (now / Math.max(60, 260 - giant * 30)) | 0;
       const colour = giant > GIANTS.length ? GEM_COLOR[1 + beat % 4] : giant ? (beat % 2 ? '#ffffff' : '#ffe14a') : b.colour ?? (b.n >= 30 ? '#ffe14a' : '#ffffff');
-      text(ctx, b.title, W / 2, y, colour, 0.5, big);
+      if (b.lord !== undefined) for (let n = 0; n < b.lines.length; n++) text(ctx, b.lines[n], W / 2, y + n * 11 * b.big, colour, 0.5, big);
+      else text(ctx, b.title, W / 2, y, colour, 0.5, big);
+      y += tall;
       const [size, prism, spec] = this.bannerSays(b);
       if (size) text(ctx, size, W / 2, y + 11 * big + 2, b.over < 1 ? '#ffb060' : '#bfe6ff', 0.5);
       // (The gems it paid, in their order: those it paid none of are passed over. Too wide for the screen, they
@@ -1369,31 +1395,27 @@ export class Drawing {
     if (d.mode === 'dead' && this.tow) { ctx.globalAlpha = Math.min(0.85, this.tow.t / DEATH); ctx.fillStyle = '#07060b'; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1; }
     if (this.notice) {
       const note = this.notice, pop = Math.min(1, note.t / 0.12);
+      // (Large, on two lines or small where the screen is too narrow for it: `fitLarge`.)
+      this.fitLarge(note, W);
+      const y = Math.round(head - (1 - pop) * 8), more = (note.lines.length - 1) * 11 * note.big;
       ctx.globalAlpha = Math.min(1, (note.life - note.t) * 3);
-      text(ctx, note.title, W / 2, Math.round(head - (1 - pop) * 8), note.colour, 0.5, 2 + (note.t < 0.07 ? 1 : 0));
-      if (note.sub) text(ctx, note.sub, W / 2, Math.round(head) + 24, '#ffe14a', 0.5);
+      for (let n = 0; n < note.lines.length; n++) text(ctx, note.lines[n], W / 2, y + n * 11 * note.big, note.colour, 0.5, note.big + (note.lines.length === 1 && note.big === 2 && note.t < 0.07 && textWidth(note.lines[0], 3) <= W - 8 ? 1 : 0));
+      if (note.sub) text(ctx, note.sub, W / 2, Math.round(head) + 24 + more, '#ffe14a', 0.5);
       ctx.globalAlpha = 1;
     }
     // The names of parts as they are fitted, a milestone's banner (under the core, clear of all of the above).
     this.fitter.hud(this, ctx, head);
     if (S.won && this.wonAt !== undefined && this.time - this.wonAt < 6) text(ctx, 'CORE RESTORED', W / 2, H * 0.36, '#ffe14a', 0.5, 2);
     // A ground met for the first time: its name alone, large, a little under where a haul's banner goes (and under
-    // the banner itself, if one is up). A name too long for the screen is set on two lines, or small.
+    // the banner itself, if one is up). A name too long for the screen is set on two lines, or small (`fitLarge`).
+    // A lord woken is named so too, with its title under its name (`sub`: LORD OF THE NORTH).
     const place = this.place;
     if (place && place.card) {
-      const pop = Math.min(1, place.t / 0.12), words = place.title.split(' '), fits = s => textWidth(s, 2) <= W - 8;
-      let lines = [place.title], big = 2;
-      if (!fits(place.title)) {
-        let best = null;
-        for (let n = 1; n < words.length; n++) {
-          const a = words.slice(0, n).join(' '), b = words.slice(n).join(' '), wide = Math.max(textWidth(a, 2), textWidth(b, 2));
-          if (fits(a) && fits(b) && (!best || wide < best[2])) best = [a, b, wide];
-        }
-        if (best) lines = [best[0], best[1]]; else big = 1;
-      }
-      const under = this.banner ? Math.round(head) + 11 * (this.banner.n >= 10 ? 2 : 1) + (this.banner.shine > 1 ? 42 : 30) + (this.banner.sub ? 12 : 0) + (this.banner.split ? 12 : 0) + (this.banner.topAt ?? 0) : 0, y = Math.max(under, Math.round(Math.max(head + 14, H * 0.3) - (1 - pop) * 8));
+      const pop = Math.min(1, place.t / 0.12), { lines, big } = this.fitLarge(place, W);
+      const under = this.banner ? Math.round(head) + 11 * (this.banner.n >= 10 ? 2 : this.banner.lord !== undefined ? (this.banner.big ?? 2) * (this.banner.lines?.length ?? 1) : 1) + (this.banner.shine > 1 ? 42 : 30) + (this.banner.sub ? 12 : 0) + (this.banner.split ? 12 : 0) + (this.banner.topAt ?? 0) : 0, y = Math.max(under, Math.round(Math.max(head + 14, H * 0.3) - (1 - pop) * 8));
       ctx.globalAlpha = Math.min(1, (place.life - place.t) * 3);
-      lines.forEach((line, n) => text(ctx, line, W / 2, y + n * 11 * big, place.colour, 0.5, big + (n === 0 && lines.length === 1 && place.t < 0.07 ? 1 : 0)));
+      for (let n = 0; n < lines.length; n++) text(ctx, lines[n], W / 2, y + n * 11 * big, place.colour, 0.5, big + (lines.length === 1 && big === 2 && place.t < 0.07 && textWidth(lines[0], 3) <= W - 8 ? 1 : 0));
+      if (place.sub) text(ctx, place.sub, W / 2, y + lines.length * 11 * big + 3, '#fff6c8', 0.5);
       ctx.globalAlpha = 1;
     }
     // The bar, at the foot of the screen: what has been banked, the hull, what the lab knows, and how much of its
@@ -1602,6 +1624,15 @@ export class Drawing {
       if (this.S.relics[dir]) continue;
       const [mx, my] = at(HX + DX[dir] * RELIC_R, HY + DY[dir] * RELIC_R);
       ctx.fillStyle = GEM_COLOR[DIR_BIOME[dir]]; ctx.fillRect(Math.round(mx) - 1, Math.round(my) - 1, 3, 3);
+    }
+    // The lords at the ends (js/bosses.js), each once it has been met: a diamond in the foe's eye at its lair, until
+    // it is beaten.
+    const lords = this.S.bosses ?? 0;
+    for (let dir = 0; dir < 4; dir++) {
+      if (!(lords >> dir & 1) || lords >> (4 + dir) & 1) continue;
+      const [mx, my] = at(HX + DX[dir] * LAIR, HY + DY[dir] * LAIR), ax = Math.round(mx), ay = Math.round(my);
+      ctx.fillStyle = FOE_EYE; ctx.fillRect(ax - 1, ay, 3, 1); ctx.fillRect(ax, ay - 1, 1, 3);
+      ctx.fillRect(ax - 2, ay, 1, 1); ctx.fillRect(ax + 2, ay, 1, 1); ctx.fillRect(ax, ay - 2, 1, 1); ctx.fillRect(ax, ay + 2, 1, 1);
     }
     // And what each corner hides, a shrine (where it is laid: js/world.js, `shrine`), from the start as a relic is:
     // a cross in its two parents' colours, until it is hauled.
@@ -1865,6 +1896,12 @@ export class Drawing {
     const shrines = (S.shrines ?? []).filter(Boolean).length, fossils = [0, 1, 2, 3].filter(n => (S.fossils ?? 0) & (1 << n)).length, deep = shrines + fossils > 0;
     // (A rare hazard alive in a loop pays more with the live catch, said on its own line.)
     const rare = (name, does) => live > 1 ? [...first([name, `${does}, x${live} LIVE`], [name, `${does} x${live} LIVE`], [name, `x${live} LIVE`]), true] : [name, does, false];
+    // (The lords at the ends, once one has been met: how many of the four are beaten, lit once one is. That is a line
+    // more, and with every rare hazard met the panel has none to spare: the bells and the jets, which do the same
+    // to the drill, are then said on one line.)
+    const lords = S.bosses ?? 0, beaten = [0, 1, 2, 3].filter(n => lords >> (4 + n) & 1).length;
+    const rares = [['bell', 'BELLS', 'KNOCK'], ['vent', 'JETS', 'KNOCK'], ['worm', 'WORMS', 'BITE'], ['lodestone', 'LODESTONES', 'KNOCK']].filter(([type]) => S.rare?.[type]);
+    if (lords & 15 && rares.length === 4) rares.splice(0, 2, ['', 'BELLS/JETS', 'KNOCK']);
     return [
       // (How far out the drill has been, of how far the tether goes.)
       first(['REACH', `${tierOf('tether')} ${out > 0 ? `${Math.min(out, this.val('tether'))}/${this.val('tether')}` : this.val('tether')} CELLS`],
@@ -1883,7 +1920,7 @@ export class Drawing {
       ['SPORES', this.val('sporedrive') ? `SPEED x${BOOST.by}${lv.sporedrive >= 2 ? ', GRAFT' : ''}` : 'KNOCK', this.val('sporedrive') > 0],
       ['ARCS', this.val('arccoil') ? lv.arccoil >= 2 ? 'MEND, CHARGE BIT' : 'MEND A PIP' : 'KNOCK', this.val('arccoil') > 0],
       // (A rare hazard has its line once it has been met: there would be no room on a phone for all of them.)
-      ...[['bell', 'BELLS', 'KNOCK'], ['vent', 'JETS', 'KNOCK'], ['worm', 'WORMS', 'BITE'], ['lodestone', 'LODESTONES', 'KNOCK']].filter(([type]) => S.rare?.[type]).map(([, name, does]) => rare(name, does)),
+      ...rares.map(([, name, does]) => rare(name, does)),
       // (The wrecks' parts, and the flywheel's run.)
       spin ? [...first(['HAUL PAY', `+${parts * 10}% ${parts}/8, SPIN +${Math.round(spin * 100)}%`], ['HAUL PAY', `+${parts * 10}%, SPIN +${Math.round(spin * 100)}%`]), true]
         : ['HAUL PAY', `+${parts * 10}% (${parts}/8 PARTS)`, parts > 0],
@@ -1892,6 +1929,7 @@ export class Drawing {
       // (What the refinery and the gem cutter multiply: on the narrowest phone the refinery's own is plainly grit.)
       [...first(['REFINERY', `GRIT x${refine}, GEMS x${cut}`], ['REFINERY', `GRIT x${refine} GEMS x${cut}`], ['REFINERY', `x${refine}, GEMS x${cut}`]), S.lv.refinery + S.lv.cutter > 0],
       ...(deep ? [first(['CORNERS', `${shrines}/4, FOSSILS ${fossils}/4`], ['CORNERS', `${shrines}/4 FOSSILS ${fossils}/4`], ['SHRINES', `${shrines}/4 BONES ${fossils}/4`])] : [['LAMP', `${this.val('lamp')} CELLS`, S.lv.lamp > 0]]),
+      ...(lords & 15 ? [['LORDS', `${beaten}/4`, beaten > 0]] : []),
       // (From its third level the black box keeps what a lost trip learnt as well: js/game.js, `keepLore`.)
       lv.blackbox >= 3 ? [...first(['BLACK BOX', `KEEPS ${keeps}% +LORE`], ['BLACK BOX', `${keeps}% +LORE`]), true] : ['BLACK BOX', keeps ? `KEEPS ${keeps}%` : 'NONE', S.lv.blackbox > 0],
       known ? [...first(['ANALYSED', `${known}/${LAB.length}, UP TO +${best}%`], ['ANALYSED', `${known}/${LAB.length}, +${best}%`]), true] : ['ANALYSED', `0/${LAB.length}`, false],

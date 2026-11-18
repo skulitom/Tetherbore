@@ -70,6 +70,8 @@ const found = all => {
   S.relics = [all, all, all, all].map(Boolean);
   // (Every corner's shrine and every fossil: STATS says them on a line of its own, and the lamp on the scanner's.)
   S.shrines = [all, all, all, all].map(Number); S.fossils = all ? 15 : 0;
+  // (And every lord at the ends met, three of them beaten: STATS counts them on a line of its own.)
+  S.bosses = all ? 0x7f : 0;
   S.wrecks = all ? new Array(8).fill(1) : [];
   S.met = all ? Object.fromEntries(Array.from({ length: 40 }, (_, n) => [`place${n}`, 1])) : { crust: 1 };
   S.fauna = all ? { met: Object.fromEntries(Array.from({ length: KINDS }, (_, n) => [`kind${n}`, 1])), pal: { fed: 3 } } : undefined;

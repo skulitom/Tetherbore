@@ -2,6 +2,7 @@
 //   node tools/shot.mjs <out.png> [--seed 7] [--at dx,dy] [--reach level] [--size 360x640] [--zoom n] [--frames n] [--lit] [--met] [--wake [type]]
 //                                 [--key] [--pocket] [--haul n] [--cave] [--feel event] [--lv list] [--grit n] [--shop tab] [--buy id] [--steer x,y]
 //                                 [--fire id] [--ladder] [--lab what] [--labsel name] [--scroll px] [--orebook] [--fauna kind[:state]] [--faunabook]
+//                                 [--bossbook] [--lang en|ru|zh]
 //
 //   --at dx,dy    where the drill stands, in cells from the core: east and south are counted up, so 300 cells north
 //                 is `--at 0,-300`. Away from the core it stands in a small room at the end of a tunnel carved from
@@ -75,6 +76,15 @@
 //                 `--cave --at -316,131 --fauna frog --met --frames 90`.
 //   --faunabook   no world: each creature in each of its poses on its own ground's rock, by name, FRIEND, FOE or
 //                 KIN (`--size 360x660 --zoom 2 --frames 2`).
+//   --fauna boss-d[:state[:stage]]
+//                 a lord at the ends (d: e, s, w or n, its direction) raised where it would rise near the drill, in a
+//                 state of its own (tell, act, rest, hurt, yield, sunk, gone, idle; icefall for the north, return
+//                 for the south, second and latch for the west, blink for the east) at stage 1 to 3. With no --at
+//                 the drill stands eight cells short of its lair on its axis; with --met every lord is taken as met.
+//                 `--fauna boss-n:tell:3 --size 320x568 --frames 20` catches the north's breath told at its last stage.
+//   --bossbook    no world: each lord in each of its poses, and telling facing west, on the rock at its lair, by
+//                 name and title (`--size 520x280 --zoom 1 --frames 2`).
+//   --lang l      the language the game speaks, en, ru or zh (js/lang.js; English if not given).
 //   --browser p   the Edge or Chrome to use, if the installed one is not to be.
 //
 // It serves this checkout on a free loopback port (static files, read only), opens `index.html?shot&...` in an
@@ -96,11 +106,11 @@ import { WORLD_R, HAZARDS } from '../js/world.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
-const usage = 'node tools/shot.mjs <out.png> [--seed 7] [--at dx,dy] [--reach level] [--size 360x640] [--zoom n] [--frames n] [--lit] [--met] [--wake [type]] [--key] [--pocket] [--haul n] [--cave] [--feel event] [--lv list] [--grit n] [--shop tab] [--buy id] [--steer x,y] [--fire id] [--ladder] [--lab what] [--labsel name] [--scroll px] [--orebook] [--browser path] [--fauna kind[:state]] [--faunabook]';
+const usage = 'node tools/shot.mjs <out.png> [--seed 7] [--at dx,dy] [--reach level] [--size 360x640] [--zoom n] [--frames n] [--lit] [--met] [--wake [type]] [--key] [--pocket] [--haul n] [--cave] [--feel event] [--lv list] [--grit n] [--shop tab] [--buy id] [--steer x,y] [--fire id] [--ladder] [--lab what] [--labsel name] [--scroll px] [--orebook] [--browser path] [--fauna kind[:state]] [--faunabook] [--bossbook] [--lang en|ru|zh]';
 const wrong = why => { console.error(`${why}\n  ${usage}`); process.exit(2); };
 
 // ---------------------------------------------------------------- what was asked for
-const options = { seed: '7', at: '0,0', reach: '', size: '360x640', zoom: '1', frames: '180', lit: false, met: false, wake: '', key: false, pocket: false, haul: '0', cave: false, feel: '', lv: '', grit: '', shop: '', buy: '', steer: '', fire: '', ladder: false, lab: '', labsel: '', scroll: '', orebook: false, fauna: '', faunabook: false, browser: '' };
+const options = { seed: '7', at: '0,0', reach: '', size: '360x640', zoom: '1', frames: '180', lit: false, met: false, wake: '', key: false, pocket: false, haul: '0', cave: false, feel: '', lv: '', grit: '', shop: '', buy: '', steer: '', fire: '', ladder: false, lab: '', labsel: '', scroll: '', orebook: false, fauna: '', faunabook: false, bossbook: false, lang: '', browser: '' };
 let out = null;
 for (let args = process.argv.slice(2), i = 0; i < args.length; i++) {
   const arg = args[i];
@@ -140,7 +150,9 @@ const FIRES = ['mender', 'arccoil', 'sporedrive', 'lavaskin', 'diamond', 'blackb
 if (options.fire && !FIRES.includes(options.fire)) wrong(`--fire is one of ${FIRES.join(', ')}, not ${options.fire}.`);
 if (options.grit && !(Number(options.grit) >= 0)) wrong(`--grit is how much grit is banked, not ${options.grit}.`);
 const KINDS = ['beetle', 'pup', 'moth', 'spitter', 'salamander', 'bat', 'frog', 'puff', 'leech', 'skink', 'wren', 'bee', 'jelly', 'newt'];
-if (options.fauna && !KINDS.includes(options.fauna.split(':')[0])) wrong(`--fauna is one of ${KINDS.join(', ')} (with :state if it has one), not ${options.fauna}.`);
+const LORDS = ['boss-e', 'boss-s', 'boss-w', 'boss-n'];
+if (options.fauna && !KINDS.includes(options.fauna.split(':')[0]) && !LORDS.includes(options.fauna.split(':')[0])) wrong(`--fauna is one of ${KINDS.join(', ')} (with :state if it has one), or a lord, ${LORDS.join(', ')} (with :state and :stage), not ${options.fauna}.`);
+if (options.lang && !['en', 'ru', 'zh'].includes(options.lang)) wrong(`--lang is en, ru or zh, not ${options.lang}.`);
 if (!(zoom >= 1 && zoom <= 64)) wrong(`--zoom is a number from 1 to 64, not ${options.zoom}.`);
 const at = options.at.split(',').map(Number), size = options.size.toLowerCase().split('x').map(Number);
 if (at.length !== 2 || !at.every(Number.isInteger)) wrong(`--at is two whole numbers of cells, dx,dy, not ${options.at}.`);
@@ -292,6 +304,8 @@ async function take() {
   if (options.orebook) query.set('orebook', '1');
   if (options.fauna) query.set('fauna', options.fauna);
   if (options.faunabook) query.set('faunabook', '1');
+  if (options.bossbook) query.set('bossbook', '1');
+  if (options.lang) query.set('lang', options.lang);
   await page('Page.navigate', { url: `${origin}/index.html?${query}` });
   await processes();
   // The page says when the view is staged; if its scripts failed it never will, and what it said instead is told.

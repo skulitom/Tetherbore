@@ -1047,10 +1047,12 @@ export class Bosses {
       return;
     }
     const locked = t >= B.tell[s] - LOCK, fill = Math.min(1, t / B.tell[s]) * r;
-    ctx.globalAlpha = locked ? 0.95 : 0.4 + 0.3 * Math.sin(now * 30);
-    for (let n = 0; n < 48; n++) { const a = n * Math.PI / 24 + now * 0.8; ctx.fillRect(Math.round(x0 + Math.cos(a) * r), Math.round(y0 + Math.sin(a) * r), 1, 1); }
-    ctx.globalAlpha = 0.5;
-    for (let n = 0; n < 32; n++) { const a = n * Math.PI / 16 - now * 1.2; ctx.fillRect(Math.round(x0 + Math.cos(a) * fill), Math.round(y0 + Math.sin(a) * fill), 1, 1); }
+    // (Its dots two pixels across and four apart, and the growing ring's one across: a ring of one-pixel dots seven
+    // apart, as it was first drawn, was lost against the ground in play.)
+    ctx.globalAlpha = locked ? 0.95 : 0.55 + 0.3 * Math.sin(now * 30);
+    for (let n = 0; n < 88; n++) { const a = n * Math.PI / 44 + now * 0.8; ctx.fillRect(Math.round(x0 + Math.cos(a) * r) - 1, Math.round(y0 + Math.sin(a) * r) - 1, 2, 2); }
+    ctx.globalAlpha = 0.6;
+    for (let n = 0; n < 48; n++) { const a = n * Math.PI / 24 - now * 1.2; ctx.fillRect(Math.round(x0 + Math.cos(a) * fill), Math.round(y0 + Math.sin(a) * fill), 1, 1); }
     this.ringed(ctx, b, x0, y0);
     ctx.globalAlpha = 1;
   }
