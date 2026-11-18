@@ -274,6 +274,26 @@ const PART_CROP = { refinery: [0, 1], cutter: [48, 47], blackbox: [0, 45] };
 // lists made once.
 const RIM = 8, RIM_FAR = new Float64Array(RIM), RIM_OF = new Int32Array(RIM);
 const NO_DASH = [], NO_FINDS = [];
+// The tether turned back at the edge, red: as thick as it was (`drawTether`).
+const TWANGED = [{ a: '#ff5a4a', b: '#ff5a4a', dash: 1, thick: false }, { a: '#ff5a4a', b: '#ff5a4a', dash: 1, thick: true }];
+// The names of frames a frame draws by a figure, made once: a crack by its stage.
+const CRACK = ['crack-0', 'crack-1', 'crack-2', 'crack-3', 'crack-4'];
+// (And the lava's by which of its eight neighbours hold it in, a fumarole's flames by which way the jet goes and
+// which of two, a glowworm swimming by its heading and which of two; the core's relics where each sits on it.)
+const LAVA_FRAME = Array.from({ length: 256 }, (_, m) => `lava-${m}`);
+const JET_FRAME = [['jet-h-a', 'jet-h-b'], ['jet-v-a', 'jet-v-b']], SWIM_FRAME = [...'eswn'].map(c => [`swim-${c}-a`, `swim-${c}-b`]);
+const RELIC_ON_CORE = [[39, 20], [20, 39], [1, 20], [20, 1]];
+// The drill's lamp lights the four cells it is among, each this far from the cell it is in.
+const LAMP_CELLS = [[0, 0], [1, 0], [0, 1], [1, 1]];
+// How the dark's own little canvas is asked for (`light`), and what of the ground awake lights it, each with `this`
+// the game: a hazard's fuse burning, a bell, a fumarole, a glowworm (from the cell it leaves until half way), a
+// lodestone.
+const DARK_CTX = { willReadFrequently: true };
+function shineSpark(sp, i) { if (sp.fuse > 0) this.shine(i % N, Math.floor(i / N), 0.9, 3); }
+function shineBell(b, i) { if (b.cool <= 0) this.shine(i % N, Math.floor(i / N), 0.6, 2.5); }
+function shineVent(v, i) { if (v.cool <= 0) this.shine(i % N, Math.floor(i / N), 0.6, 2); }
+function shineWorm(m, i) { const j = m.since < WORM.tween / 2 ? m.from : i; this.shine(j % N, Math.floor(j / N), 0.8, 3.5); }
+function shineStone(s, i) { if (s.cool <= 0) this.shine(i % N, Math.floor(i / N), 0.5, 2.5); }
 // How ground not yet seen is shown on the map and the chart (`drawMap`): its row's colour on the map, as dark as a
 // third of it, but never darker than a luminance of UNSEEN_LUM (a deep flank's colours, a third as bright, were
 // nearly black, and a wedge of one ground read as a hole in the world) nor brighter than UNSEEN_MOST of it (which
@@ -301,6 +321,51 @@ const CAP_OVER = ['minerals', 'cap'], LANTERN_OVER = ['minerals', 'lantern'], TW
 const FOSSIL_OVER = [0, 1, 2, 3, 4].map(kin => ['head', 'body', 'tail'].map(part => ['finds', `fossil-${kin}-${part}`]));
 const SHRINE_OVER = [0, 1, 2, 3].map(d => ['shrines', `shrine-${d}`]);              // (a line with no dashes, and no finds: the one list each, given each time)
 const STONE_OVER = STONES.map(name => ['stones', name]);
+// What a frame of the hauls' drawing works in (`render`), made once and grown: the corners of what a haul's loop
+// goes round, as figures (`x`, `y`), and as places in those: the octagon inside them (`compass`, the eight before
+// any that repeats the one before it is left out, `oct` after), the corners kept outside it (`kept`, sorted in place
+// with `tmp`), and the outline (`ring`). The ink of the hatch's three rings, and the shadow of a haul's rope.
+const hull = { x: new Float64Array(256), y: new Float64Array(256), kept: new Int32Array(256), tmp: new Int32Array(256), ring: new Int32Array(514), compass: new Int32Array(8), oct: new Int32Array(8) };
+const HATCH_INK = ['#f4ecd8', '#3a3046', '#07060a'], HAUL_SHADOW = { a: '#16121c', b: '#16121c', dash: 1 };
+// The four corners of a box, (x0, y0), (x1, y0), (x0, y1), (x1, y1), put after the `n` there are: how many now.
+function hullCorners(n, x0, y0, x1, y1) {
+  if (hull.x.length < n + 4) {
+    const m = hull.x.length * 2, x = new Float64Array(m), y = new Float64Array(m);
+    x.set(hull.x); y.set(hull.y); hull.x = x; hull.y = y;
+    hull.kept = new Int32Array(m); hull.tmp = new Int32Array(m); hull.ring = new Int32Array(m * 2 + 2);
+  }
+  const X = hull.x, Y = hull.y;
+  X[n] = x0; Y[n] = y0; X[n + 1] = x1; Y[n + 1] = y0; X[n + 2] = x0; Y[n + 2] = y1; X[n + 3] = x1; Y[n + 3] = y1;
+  return n + 4;
+}
+// Which way the corners `o`, `a`, `b` turn (a place each in `hull`): above 0 the one way, below it the other.
+function hullTurn(o, a, b) { const X = hull.x, Y = hull.y; return (X[a] - X[o]) * (Y[b] - Y[o]) - (Y[a] - Y[o]) * (X[b] - X[o]); }
+// The first `n` of `hull.kept` sorted by x and then y, corners alike left in the order they were: as the sort of
+// the corners as lists of two did it, with no list made (a merge, each run of 8 put in order first by insertion).
+function hullSort(n) {
+  const X = hull.x, Y = hull.y;
+  let from = hull.kept, to = hull.tmp;
+  for (let s = 0; s < n; s += 8) {
+    const e = Math.min(n, s + 8);
+    for (let i = s + 1; i < e; i++) {
+      const p = from[i];
+      let j = i - 1;
+      while (j >= s && (X[from[j]] - X[p] || Y[from[j]] - Y[p]) > 0) { from[j + 1] = from[j]; j--; }
+      from[j + 1] = p;
+    }
+  }
+  for (let width = 8; width < n; width *= 2) {
+    for (let s = 0; s < n; s += width * 2) {
+      const mid = Math.min(n, s + width), e = Math.min(n, s + width * 2);
+      let i = s, j = mid, k = s;
+      while (i < mid && j < e) to[k++] = (X[from[i]] - X[from[j]] || Y[from[i]] - Y[from[j]]) <= 0 ? from[i++] : from[j++];
+      while (i < mid) to[k++] = from[i++];
+      while (j < e) to[k++] = from[j++];
+    }
+    const t = from; from = to; to = t;
+  }
+  if (from !== hull.kept) for (let i = 0; i < n; i++) hull.kept[i] = from[i];
+}
 const ROUND = 3.5, BRAID = 4;                    // on the fine canvas: how wide a rope rounds a corner, and the length of one turn of its braid, in the game's pixels
 const LIGHT_STEP = [[1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, -1, 1], [1, 1, 1.41], [-1, 1, 1.41], [1, -1, 1.41], [-1, -1, 1.41]];
 // How far light goes to each of those neighbours, in a flat array: the flood of light reads it eight times for
@@ -447,7 +512,7 @@ export class Drawing {
     for (let cy = y0 >> 3; cy <= y1 >> 3; cy++) for (let cx = x0 >> 3; cx <= x1 >> 3; cx++) ctx.drawImage(this.chunk(cx, cy), cx * 128 - ox, cy * 128 - oy);
     for (const i of w.lava.keys()) {
       const x = i % N, y = Math.floor(i / N);
-      if (x >= x0 && x <= x1 && y >= y0 && y <= y1 && w.s(i)) draw(ctx, 'lava', frameAt('lava', `lava-${w.lavaMask(x, y)}`, now + cellHash(x, y, 2) * 300), x * T - ox, y * T - oy);
+      if (x >= x0 && x <= x1 && y >= y0 && y <= y1 && w.s(i)) draw(ctx, 'lava', frameAt('lava', LAVA_FRAME[w.lavaMask(x, y)], now + cellHash(x, y, 2) * 300), x * T - ox, y * T - oy);
     }
     for (const i of this.frostOpen) {
       // Ice about to close over a cut: a rim of it creeps in first.
@@ -481,7 +546,7 @@ export class Drawing {
     // The block being cut cracks further the nearer it is to giving way, and what it would free glows.
     if (d.dig >= 0) {
       const stage = Math.min(4, Math.floor(d.digT / d.digDur * 5));
-      if (stage > 0) draw(ctx, 'cracks', `crack-${stage}`, (d.dig % N) * T - ox, Math.floor(d.dig / N) * T - oy);
+      if (stage > 0) draw(ctx, 'cracks', CRACK[stage], (d.dig % N) * T - ox, Math.floor(d.dig / N) * T - oy);
       for (const p of this.preview) {
         ctx.fillStyle = '#ffffff'; ctx.globalAlpha = 0.16 + 0.12 * Math.sin(now / 110);
         for (const i of p.cells) ctx.fillRect((i % N) * T - ox, Math.floor(i / N) * T - oy, T, T);
@@ -496,126 +561,12 @@ export class Drawing {
       draw(ctx, 'core', this.coreFlash > 0 ? CORE_FLASH[hull] : this.S.won ? CORE_C[hull] : frameAt('core', CORE_IDLE[hull], now), coreX, coreY);
       draw(ctx, 'dish', frameAt('dish', DISH[Math.min(6, this.S.lv.scanner)], now), coreX + 34, coreY - 6);
       this.fitter.station(this, ctx, coreX, coreY, now);
-      [[39, 20], [20, 39], [1, 20], [20, 1]].forEach(([u, v], dir) => {
-        if (this.S.relics[dir]) drawScaled(ctx, BIOMES[DIR_BIOME[dir]].items, 'relic', coreX + u, coreY + v, 8, 8);
-      });
+      for (let dir = 0; dir < 4; dir++) if (this.S.relics[dir]) drawScaled(ctx, BIOMES[DIR_BIOME[dir]].items, 'relic', coreX + RELIC_ON_CORE[dir][0], coreY + RELIC_ON_CORE[dir][1], 8, 8);
     }
     this.drawTether(ox, oy);
     // Lassoed pieces: blocks tremble, crack and break into bits of ground, held in a loop of the tether, and the
     // hatch they are bound for.
-    for (const h of this.hauls) {
-      const flash = h.t < h.lift && ((h.t * 24) | 0) % 2 === 0, hx = Math.round(HX * T - ox), hy = Math.round(HY * T - oy), hull = [];
-      if (h.hole > 0.5) {
-        const R = h.hole;
-        for (const [rad, color] of [[R + 1.5, '#f4ecd8'], [R + 0.5, '#3a3046'], [R - 0.5, '#07060a']]) {
-          ctx.fillStyle = color;
-          for (let y = -Math.ceil(rad); y <= Math.ceil(rad); y++) { const half = Math.sqrt(rad * rad - y * y); if (half > 0) ctx.fillRect(Math.round(hx - half), hy + y, Math.round(half * 2), 1); }
-        }
-      }
-      for (const s of h.sprites) {
-        const before = h.t - s.go;
-        if (before >= 0) continue;
-        const shake = Math.max(0, 1 + before / 0.3) * 1.4;
-        const px = s.x * T - ox + Math.sin(h.t * 83 + s.x * 3.1) * shake, py = s.y * T - oy - Math.min(1, h.t / h.lift) * 3 + Math.cos(h.t * 71 + s.y * 2.3) * shake;
-        hull.push([px, py], [px + T, py], [px, py + T], [px + T, py + T]);
-        if (px < -T || py < -T || px > W || py > H) continue;
-        draw(ctx, s.tile[0], s.tile[1], px, py);
-        if (s.item) ctx.drawImage(s.item[0], s.item[1][0], s.item[1][1], T, T, Math.round(px), Math.round(py), T, T);
-        if (before > -0.24) draw(ctx, 'cracks', `crack-${Math.min(4, 1 + (((before + 0.24) / 0.06) | 0))}`, px, py);
-        if (flash) { ctx.globalAlpha = 0.6; ctx.fillStyle = '#ffffff'; ctx.fillRect(Math.round(px) + 2, Math.round(py) + 2, 12, 12); ctx.globalAlpha = 1; }
-      }
-      const size = h.size, half = size / 2;
-      for (const b of h.bits) {
-        if (b.st === 2) continue;
-        let x = b.x - ox, y = b.y - oy, sz = size;
-        if (b.st === 1) {
-          // Dropping down the hatch: away from the eye, into the dark.
-          const u = Math.min(1, b.ft / 0.16);
-          x += (hx - x) * u * 0.7; y += (hy - y) * u * 0.7; sz = Math.max(1, Math.round(size * (1 - u * 0.7))); ctx.globalAlpha = 1 - u * 0.8;
-        } else hull.push([x - half, y - half], [x + half, y - half], [x - half, y + half], [x + half, y + half]);
-        if (x > -size && y > -size && x < W + size && y < H + size) {
-          const r = b.s.tile[1], px = Math.round(x - sz / 2), py = Math.round(y - sz / 2);
-          ctx.drawImage(sheets[b.s.tile[0]].image, r[0] + b.sx, r[1] + b.sy, size, size, px, py, sz, sz);
-          if (b.s.item) ctx.drawImage(b.s.item[0], b.s.item[1][0] + b.sx, b.s.item[1][1] + b.sy, size, size, px, py, sz, sz);
-          // The break shows white for a moment.
-          if (h.t - b.born < 0.07) { ctx.globalAlpha = 0.7; ctx.fillStyle = '#ffffff'; ctx.fillRect(px, py, sz, sz); }
-        }
-        ctx.globalAlpha = 1;
-      }
-      // The haul's own rope: a loop round the lot, and a line from it along the way home.
-      if (hull.length && h.doneAt === undefined) {
-        const turn = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]), ring = [];
-        // A big heap has a thousand corners and an outline of a score of them, and sorting them all was the dearest
-        // part of drawing a busy frame. The corners furthest out to the right, down, left and up and along the four
-        // diagonals between make an octagon inside the outline, and a corner inside that cannot be on the outline,
-        // so those are thrown out before the sort. Only a corner inside by more than rounding could account for
-        // goes: one on the octagon's edge, or a hair either side of it, is left to the outline to keep or pass over.
-        // (r is the corner furthest right, dr the one furthest down and right, and so on round.)
-        let r = hull[0], dr = r, d = r, dl = r, l = r, ul = r, u = r, ur = r;
-        for (const p of hull) {
-          const x = p[0], y = p[1];
-          if (x > r[0]) r = p; if (x < l[0]) l = p; if (y > d[1]) d = p; if (y < u[1]) u = p;
-          if (x + y > dr[0] + dr[1]) dr = p; if (x + y < ul[0] + ul[1]) ul = p; if (y - x > dl[1] - dl[0]) dl = p; if (y - x < ur[1] - ur[0]) ur = p;
-        }
-        // (In turn round the compass, with any corner that repeats the one before it left out: an edge of no length
-        // would have every corner on it.)
-        const oct = [r, dr, d, dl, l, ul, u, ur].filter((p, i, all) => p[0] !== all[(i + 7) % 8][0] || p[1] !== all[(i + 7) % 8][1]), n = oct.length;
-        let kept = hull;
-        if (n > 2) {
-          kept = [];
-          for (const p of hull) { let i = 0; while (i < n && turn(oct[i], oct[(i + 1) % n], p) > 1e-3) i++; if (i < n) kept.push(p); }
-        }
-        kept.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
-        for (const pass of [0, 1]) {
-          const start = ring.length;
-          for (let k = 0; k < kept.length; k++) {
-            const p = kept[pass ? kept.length - 1 - k : k];
-            while (ring.length >= start + 2 && turn(ring[ring.length - 2], ring[ring.length - 1], p) <= 0) ring.pop();
-            ring.push(p);
-          }
-          ring.pop();
-        }
-        if (ring.length > 2) {
-          let mx = 0, my = 0;
-          for (const p of ring) { mx += p[0] / ring.length; my += p[1] / ring.length; }
-          const own = TETHERS[this.S.lv.tether], dark = { a: '#16121c', b: '#16121c', dash: 1 };
-          const line = [this.along(h, h.S)];
-          for (let k = 1; k < h.route.length; k++) if (h.cum[k] > h.S) line.push(h.route[k]);
-          if (this.over) this.ropes.push({ pts: line.map(([x, y]) => [x - ox, y - oy]).reverse(), style: own });
-          else for (const pass of [1, 0]) for (let i = 0; i + 1 < line.length; i++) {
-            const a = line[i], b = line[i + 1];
-            if (Math.max(a[0], b[0]) - ox < -2 || Math.max(a[1], b[1]) - oy < -2 || Math.min(a[0], b[0]) - ox > W + 2 || Math.min(a[1], b[1]) - oy > H + 2) continue;
-            this.drawSpan(a[0] - ox, a[1] - oy, b[0] - ox, b[1] - oy, pass ? dark : own, pass);
-          }
-          // The loop lies like rope, not like a line drawn from bit to bit: it is the heap's outline as a distance
-          // from its middle in each direction, eased round the loop and over time, and drawn as one smooth curve.
-          // Slack at first, drawn tight as the blocks break up.
-          const M = 28, slack = 2.5 + 3 * Math.max(0, 1 - h.t / h.gathered), want = new Float32Array(M), loop = h.loop ??= new Float32Array(M);
-          const ease = h.loopAt === undefined ? 1 : Math.max(0, Math.min(1, (this.time - h.loopAt) * 16));
-          h.loopAt = this.time;
-          for (let i = 0; i < M; i++) {
-            const ux = Math.cos(i / M * 6.2832), uy = Math.sin(i / M * 6.2832);
-            let far = Infinity;
-            for (let k = 0; k < ring.length; k++) {
-              const a = ring[k], b = ring[(k + 1) % ring.length], ex = b[0] - a[0], ey = b[1] - a[1], den = ux * ey - uy * ex;
-              if (Math.abs(den) < 1e-6) continue;
-              const t = ((a[0] - mx) * ey - (a[1] - my) * ex) / den, v = ((a[0] - mx) * uy - (a[1] - my) * ux) / den;
-              if (t > 0 && v >= -0.001 && v <= 1.001 && t < far) far = t;
-            }
-            want[i] = (far === Infinity ? 4 : far) + slack;
-          }
-          const round = [];
-          for (let i = 0; i < M; i++) {
-            loop[i] += (want[(i + M - 1) % M] * 0.25 + want[i] * 0.5 + want[(i + 1) % M] * 0.25 - loop[i]) * ease;
-            round.push([mx + Math.cos(i / M * 6.2832) * loop[i], my + Math.sin(i / M * 6.2832) * loop[i]]);
-          }
-          if (Math.max(mx, my) > -80 && mx < W + 80 && my < H + 80) {
-            if (this.over) this.ropes.push({ pts: round, style: own, loop: true });
-            else for (const pass of [1, 0]) this.rope(round, true, pass ? dark : own, pass);
-          }
-        }
-      }
-    }
+    for (const h of this.hauls) this.drawHaul(h, ox, oy);
     // Spore clouds.
     for (const c of this.clouds) {
       // (A pod that rimed leaves no cloud, and one burnt off a thin one: js/game.js, `trigger`.)
@@ -635,20 +586,28 @@ export class Drawing {
     // stands exactly where it is, not on the nearest pixel of the game's, and turned to any heading each of its
     // pixels is still a clean square (`drawRopes`). With a panel up, and where there is no such canvas, it is drawn
     // here with the ground.
-    const wake = speed > 14 ? [3, 2, 1].map(g => [0.34 - g * 0.09, dx - d.vx / speed * g * 7, dy - d.vy / speed * g * 7]) : [];
+    // (Three copies, each its alpha and place, `n` of them drawn: kept on the game, as are where the drill is drawn
+    // and how, `drillDrawn`, and what the fine canvas draws of it, `drillFine`.)
+    const wake = this.wakeAt ??= { n: 0, a: [0, 0, 0], x: [0, 0, 0], y: [0, 0, 0] };
+    wake.n = speed > 14 ? 3 : 0;
+    for (let k = 0; k < wake.n; k++) { const g = 3 - k; wake.a[k] = 0.34 - g * 0.09; wake.x[k] = dx - d.vx / speed * g * 7; wake.y[k] = dy - d.vy / speed * g * 7; }
     // (Turned as it is fitted on the core: drawn so, and its heading left as it is. js/fit.js: `look`.)
-    this.drillDrawn = [dx, dy, d.ang + this.fitter.look.spin, this.S.lv.drill, this.S.lv.momentum, d.mode !== 'dead' && (d.dig >= 0 || speed > 1) ? now : -1, along, across];
+    const q = this.drillAt ??= [0, 0, 0, 0, 0, 0, 0, 0];
+    q[0] = dx; q[1] = dy; q[2] = d.ang + this.fitter.look.spin; q[3] = this.S.lv.drill; q[4] = this.S.lv.momentum; q[5] = d.mode !== 'dead' && (d.dig >= 0 || speed > 1) ? now : -1; q[6] = along; q[7] = across;
+    this.drillDrawn = q;
     // A wreck is dark; a drill that has just been knocked blinks for as long as nothing can knock it again.
     const alpha = d.mode === 'dead' ? 0.5 : this.shield > 0 && ((now / 70) | 0) % 2 === 0 ? 0.35 : 1, hurt = this.hurt > 0 && ((now / 50) | 0) % 2 === 1;
-    this.drillFine = this.over && this.shopRise <= 0.02 && this.labRise <= 0.02 ? { wake, alpha, hurt } : null;
+    const fine = this.fineAt ??= { wake, alpha: 1, hurt: false };
+    fine.alpha = alpha; fine.hurt = hurt;
+    this.drillFine = this.over && this.shopRise <= 0.02 && this.labRise <= 0.02 ? fine : null;
     if (!this.drillFine) {
       // Speed leaves a wake: fading copies of the drill back along the way it came.
-      for (const [a, wx, wy] of wake) { ctx.globalAlpha = a; this.drawDrill(wx, wy, d.ang, this.S.lv.drill, this.S.lv.momentum, -1, along, across); }
+      for (let k = 0; k < wake.n; k++) { ctx.globalAlpha = wake.a[k]; this.drawDrill(wake.x[k], wake.y[k], d.ang, this.S.lv.drill, this.S.lv.momentum, -1, along, across); }
       ctx.globalAlpha = alpha;
-      this.drawDrill(...this.drillDrawn, ctx, this.S.lv.hull, null, this.fitter.look);
+      this.drawDrill(q[0], q[1], q[2], q[3], q[4], q[5], q[6], q[7], ctx, this.S.lv.hull, null, this.fitter.look);
       ctx.globalAlpha = 1;
       // (What rides on the drill: the pal on its tail, a leech on its hull.)
-      this.fauna.rider(this, ctx, this.drillDrawn[0], this.drillDrawn[1], d.ang, alpha);
+      this.fauna.rider(this, ctx, q[0], q[1], d.ang, alpha);
       if (hurt) { ctx.globalAlpha = 0.5; ctx.fillStyle = '#ff5a4a'; ctx.fillRect(Math.round(dx) - 5, Math.round(dy) - 5, 10, 10); ctx.globalAlpha = 1; }
     }
     // What the ground's feel lets fall and drift, under the dark.
@@ -732,6 +691,145 @@ export class Drawing {
     if (this.over) { const t0 = performance.now(); this.drawRopes(ox, oy); this.timed('ropes', t0); }
   }
 
+  // A haul on its way (`render`): its blocks trembling and cracking, its bits, the hatch they are bound for, and its
+  // rope, a loop round the lot and a line home. (A method of its own, so that the browser optimises it on its own:
+  // inside `render` its figures were boxed as numbers on the heap.)
+  drawHaul(h, ox, oy) {
+    const { ctx, W, H } = this;
+    const flash = h.t < h.lift && ((h.t * 24) | 0) % 2 === 0, hx = Math.round(HX * T - ox), hy = Math.round(HY * T - oy);
+    // (The corners of what is in the loop, `hn` of them, in `hull` in the order they are come to: `hullCorners`.)
+    let hn = 0;
+    if (h.hole > 0.5) {
+      const R = h.hole;
+      for (let q = 0; q < 3; q++) {
+        const rad = q === 0 ? R + 1.5 : q === 1 ? R + 0.5 : R - 0.5;
+        ctx.fillStyle = HATCH_INK[q];
+        for (let y = -Math.ceil(rad); y <= Math.ceil(rad); y++) { const half = Math.sqrt(rad * rad - y * y); if (half > 0) ctx.fillRect(Math.round(hx - half), hy + y, Math.round(half * 2), 1); }
+      }
+    }
+    for (let q = 0; q < h.sprites.length; q++) {
+      const s = h.sprites[q], before = h.t - s.go;
+      if (before >= 0) continue;
+      const shake = Math.max(0, 1 + before / 0.3) * 1.4;
+      const px = s.x * T - ox + Math.sin(h.t * 83 + s.x * 3.1) * shake, py = s.y * T - oy - Math.min(1, h.t / h.lift) * 3 + Math.cos(h.t * 71 + s.y * 2.3) * shake;
+      hn = hullCorners(hn, px, py, px + T, py + T);
+      if (px < -T || py < -T || px > W || py > H) continue;
+      draw(ctx, s.tile[0], s.tile[1], px, py);
+      if (s.item) ctx.drawImage(s.item[0], s.item[1][0], s.item[1][1], T, T, Math.round(px), Math.round(py), T, T);
+      if (before > -0.24) draw(ctx, 'cracks', CRACK[Math.min(4, 1 + (((before + 0.24) / 0.06) | 0))], px, py);
+      if (flash) { ctx.globalAlpha = 0.6; ctx.fillStyle = '#ffffff'; ctx.fillRect(Math.round(px) + 2, Math.round(py) + 2, 12, 12); ctx.globalAlpha = 1; }
+    }
+    const size = h.size, half = size / 2;
+    for (let q = 0; q < h.bits.length; q++) {
+      const b = h.bits[q];
+      if (b.st === 2) continue;
+      let x = b.x - ox, y = b.y - oy, sz = size;
+      if (b.st === 1) {
+        // Dropping down the hatch: away from the eye, into the dark.
+        const u = Math.min(1, b.ft / 0.16);
+        x += (hx - x) * u * 0.7; y += (hy - y) * u * 0.7; sz = Math.max(1, Math.round(size * (1 - u * 0.7))); ctx.globalAlpha = 1 - u * 0.8;
+      } else hn = hullCorners(hn, x - half, y - half, x + half, y + half);
+      if (x > -size && y > -size && x < W + size && y < H + size) {
+        const r = b.s.tile[1], px = Math.round(x - sz / 2), py = Math.round(y - sz / 2);
+        ctx.drawImage(sheets[b.s.tile[0]].image, r[0] + b.sx, r[1] + b.sy, size, size, px, py, sz, sz);
+        if (b.s.item) ctx.drawImage(b.s.item[0], b.s.item[1][0] + b.sx, b.s.item[1][1] + b.sy, size, size, px, py, sz, sz);
+        // The break shows white for a moment.
+        if (h.t - b.born < 0.07) { ctx.globalAlpha = 0.7; ctx.fillStyle = '#ffffff'; ctx.fillRect(px, py, sz, sz); }
+      }
+      ctx.globalAlpha = 1;
+    }
+    // The haul's own rope: a loop round the lot, and a line from it along the way home.
+    if (hn && h.doneAt === undefined) {
+      const X = hull.x, Y = hull.y;
+      // A big heap has a thousand corners and an outline of a score of them, and sorting them all was the dearest
+      // part of drawing a busy frame. The corners furthest out to the right, down, left and up and along the four
+      // diagonals between make an octagon inside the outline, and a corner inside that cannot be on the outline,
+      // so those are thrown out before the sort. Only a corner inside by more than rounding could account for
+      // goes: one on the octagon's edge, or a hair either side of it, is left to the outline to keep or pass over.
+      // (r is the corner furthest right, dr the one furthest down and right, and so on round: each the place of a
+      // corner in `hull`, as are the octagon's, those kept, sorted, and the outline's, with every figure worked
+      // out as it was when each corner was a list of its own two.)
+      let r = 0, dr = 0, d = 0, dl = 0, l = 0, ul = 0, u = 0, ur = 0;
+      for (let p = 0; p < hn; p++) {
+        const x = X[p], y = Y[p];
+        if (x > X[r]) r = p; if (x < X[l]) l = p; if (y > Y[d]) d = p; if (y < Y[u]) u = p;
+        if (x + y > X[dr] + Y[dr]) dr = p; if (x + y < X[ul] + Y[ul]) ul = p; if (y - x > Y[dl] - X[dl]) dl = p; if (y - x < Y[ur] - X[ur]) ur = p;
+      }
+      // (In turn round the compass, with any corner that repeats the one before it left out: an edge of no length
+      // would have every corner on it.)
+      const all = hull.compass, oct = hull.oct;
+      all[0] = r; all[1] = dr; all[2] = d; all[3] = dl; all[4] = l; all[5] = ul; all[6] = u; all[7] = ur;
+      let n = 0;
+      for (let i = 0; i < 8; i++) { const p = all[i], q = all[(i + 7) % 8]; if (X[p] !== X[q] || Y[p] !== Y[q]) oct[n++] = p; }
+      const kept = hull.kept;
+      let kn = 0;
+      if (n > 2) { for (let p = 0; p < hn; p++) { let i = 0; while (i < n && hullTurn(oct[i], oct[(i + 1) % n], p) > 1e-3) i++; if (i < n) kept[kn++] = p; } }
+      else for (let p = 0; p < hn; p++) kept[kn++] = p;
+      hullSort(kn);
+      const ring = hull.ring;
+      let rn = 0;
+      for (let pass = 0; pass < 2; pass++) {
+        const start = rn;
+        for (let k = 0; k < kn; k++) {
+          const p = kept[pass ? kn - 1 - k : k];
+          while (rn >= start + 2 && hullTurn(ring[rn - 2], ring[rn - 1], p) <= 0) rn--;
+          ring[rn++] = p;
+        }
+        if (rn > 0) rn--;
+      }
+      if (rn > 2) {
+        let mx = 0, my = 0;
+        for (let k = 0; k < rn; k++) { mx += X[ring[k]] / rn; my += Y[ring[k]] / rn; }
+        const own = TETHERS[this.S.lv.tether], dark = HAUL_SHADOW;
+        // (The line home, kept on the haul: where the rope's end is along the route, then the route's corners past
+        // it, as figures, x and y by turns; and for the fine canvas the same less the view, from the far end.)
+        const at = h.drawn ??= { xy: new Float64Array(16), pts: [], line: { pts: null, style: own }, round: null, loop: null };
+        let ln = 1;
+        for (let k = 1; k < h.route.length; k++) if (h.cum[k] > h.S) ln++;
+        if (at.xy.length < ln * 2) at.xy = new Float64Array(Math.max(ln * 2, at.xy.length * 2));
+        const xy = at.xy;
+        this.alongInto(h, h.S, xy);
+        for (let k = 1, j = 2; k < h.route.length; k++) if (h.cum[k] > h.S) { xy[j++] = h.route[k][0]; xy[j++] = h.route[k][1]; }
+        if (this.over) {
+          const pts = at.pts;
+          for (let k = 0; k < ln; k++) { const q = pts[k] ??= [0, 0], j = (ln - 1 - k) * 2; q[0] = xy[j] - ox; q[1] = xy[j + 1] - oy; }
+          pts.length = ln;
+          at.line.pts = pts; at.line.style = own;
+          this.ropes.push(at.line);
+        } else for (let pass = 1; pass >= 0; pass--) for (let i = 0; i + 1 < ln; i++) {
+          const ax = xy[i * 2], ay = xy[i * 2 + 1], bx = xy[i * 2 + 2], by = xy[i * 2 + 3];
+          if (Math.max(ax, bx) - ox < -2 || Math.max(ay, by) - oy < -2 || Math.min(ax, bx) - ox > W + 2 || Math.min(ay, by) - oy > H + 2) continue;
+          this.drawSpan(ax - ox, ay - oy, bx - ox, by - oy, pass ? dark : own, pass);
+        }
+        // The loop lies like rope, not like a line drawn from bit to bit: it is the heap's outline as a distance
+        // from its middle in each direction, eased round the loop and over time, and drawn as one smooth curve.
+        // Slack at first, drawn tight as the blocks break up.
+        const M = 28, slack = 2.5 + 3 * Math.max(0, 1 - h.t / h.gathered), want = h.want ??= new Float32Array(M), loop = h.loop ??= new Float32Array(M);
+        const ease = h.loopAt === undefined ? 1 : Math.max(0, Math.min(1, (this.time - h.loopAt) * 16));
+        h.loopAt = this.time;
+        for (let i = 0; i < M; i++) {
+          const ux = Math.cos(i / M * 6.2832), uy = Math.sin(i / M * 6.2832);
+          let far = Infinity;
+          for (let k = 0; k < rn; k++) {
+            const a = ring[k], b = ring[(k + 1) % rn], ex = X[b] - X[a], ey = Y[b] - Y[a], den = ux * ey - uy * ex;
+            if (Math.abs(den) < 1e-6) continue;
+            const t = ((X[a] - mx) * ey - (Y[a] - my) * ex) / den, v = ((X[a] - mx) * uy - (Y[a] - my) * ux) / den;
+            if (t > 0 && v >= -0.001 && v <= 1.001 && t < far) far = t;
+          }
+          want[i] = (far === Infinity ? 4 : far) + slack;
+        }
+        const round = at.round ??= Array.from({ length: M }, () => [0, 0]);
+        for (let i = 0; i < M; i++) {
+          loop[i] += (want[(i + M - 1) % M] * 0.25 + want[i] * 0.5 + want[(i + 1) % M] * 0.25 - loop[i]) * ease;
+          round[i][0] = mx + Math.cos(i / M * 6.2832) * loop[i]; round[i][1] = my + Math.sin(i / M * 6.2832) * loop[i];
+        }
+        if (Math.max(mx, my) > -80 && mx < W + 80 && my < H + 80) {
+          if (this.over) { const rope = at.loop ??= { pts: round, style: own, loop: true }; rope.style = own; this.ropes.push(rope); }
+          else for (let pass = 1; pass >= 0; pass--) this.rope(round, true, pass ? dark : own, pass);
+        }
+      }
+    }
+  }
   // The drill as its upgrades have made it (the bit's metal, whatever the ram has bolted on, the hull's plates, what
   // is fitted), drawn about its middle at any heading, `along` and `across` times its size. `fitted` is a row drawn
   // a level on from where it is (the shop's picture of what it will look like); `look` is what the drill shows this
@@ -777,7 +875,7 @@ export class Drawing {
   drawRopes(ox, oy) {
     const o = this.overCtx, k = this.scale, { W, H } = this;
     o.setTransform(1, 0, 0, 1, 0, 0);
-    if (this.ropeDirty) { const [x0, y0, x1, y1] = this.ropeDirty; o.clearRect(x0 * k, y0 * k, (x1 - x0) * k, (y1 - y0) * k); }
+    if (this.ropeDirty) { const box = this.ropeDirty, x0 = box[0], y0 = box[1], x1 = box[2], y1 = box[3]; o.clearRect(x0 * k, y0 * k, (x1 - x0) * k, (y1 - y0) * k); }
     this.ropeDirty = null;
     const fine = this.drillFine && this.drillDrawn ? this.drillFine : null;
     if ((!this.ropes.length && !fine) || this.shopRise > 0.02 || this.labRise > 0.02) return;
@@ -786,78 +884,58 @@ export class Drawing {
     let bx0 = Infinity, by0 = Infinity, bx1 = -Infinity, by1 = -Infinity;
     for (const r of this.ropes) {
       const pts = r.pts;
-      if (pts.length < 2) continue;
+      if (pts.length < 2) { r.runs = undefined; continue; }
       const wide = r.style.thick ? 2 : r.style.fine ? 1 : 1.4, braid = r.style.b !== r.style.a, turn = BRAID * (r.style.turn ?? 1);
       // A rope that is no loop is traced only where it crosses the view (`ropeRuns`). Far out nearly all of the
       // tether lies off the screen, and so does nearly all of the rope of every haul on its way home: traced whole,
       // three times each, a dozen hauls a thousand cells out were a dozen ropes twenty thousand pixels long in every
       // frame, and a phone stood still drawing them.
-      // (A rope that lights run along is measured as a braided one is: the lights keep their places on it.)
-      const runs = r.loop ? null : this.ropeRuns(pts, braid || !!r.pulse);
+      // (A rope that lights run along is measured as a braided one is: the lights keep their places on it.) Its
+      // parts are kept on the rope and written again each frame (`runs`), and it is traced by `traceRope`.
+      const runs = r.loop ? null : this.ropeRuns(pts, braid || !!r.pulse, r.runList ??= []);
       r.runs = runs; r.wide = wide;
       if (runs !== null && !runs.length) continue;
-      const trace = (dy, only = null) => {
-        o.beginPath();
-        if (r.loop) {
-          // A closed curve through the middles of its sides.
-          const n = pts.length, mid = i => [(pts[i % n][0] + pts[(i + 1) % n][0]) / 2, (pts[i % n][1] + pts[(i + 1) % n][1]) / 2 + dy];
-          o.moveTo(...mid(0));
-          for (let i = 1; i <= n; i++) o.quadraticCurveTo(pts[i % n][0], pts[i % n][1] + dy, ...mid(i));
-          o.closePath();
-          return;
-        }
-        for (const [from, to] of only ? [only] : runs) {
-          o.moveTo(pts[from][0], pts[from][1] + dy);
-          for (let i = from + 1; i <= to; i++) {
-            const [x, y] = pts[i], [px, py] = pts[i - 1];
-            if (r.wob && Math.hypot(x - px, y - py) < 600) {
-              // A plucked string: each span bows across itself.
-              const len = Math.hypot(x - px, y - py) || 1;
-              o.quadraticCurveTo((px + x) / 2 - (y - py) / len * r.wob * 2, (py + y) / 2 + (x - px) / len * r.wob * 2 + dy, x, y + dy);
-            } else if (i < to) {
-              // Round the corner, as wide as the shorter span beside it allows.
-              const nx = pts[i + 1][0], ny = pts[i + 1][1];
-              o.arcTo(x, y + dy, nx, ny + dy, Math.min(ROUND, Math.hypot(x - px, y - py) / 2, Math.hypot(nx - x, ny - y) / 2));
-            } else o.lineTo(x, y + dy);
-          }
-        }
-      };
-      r.trace = trace;
       o.setLineDash(NO_DASH); o.lineCap = 'round';
-      o.strokeStyle = 'rgba(10, 8, 16, 0.7)'; o.lineWidth = wide + 1.2; trace(0.8); o.stroke();
-      o.strokeStyle = r.style.a; o.lineWidth = wide; trace(0); o.stroke();
+      o.strokeStyle = 'rgba(10, 8, 16, 0.7)'; o.lineWidth = wide + 1.2; this.traceRope(o, r, 0.8, null); o.stroke();
+      o.strokeStyle = r.style.a; o.lineWidth = wide; this.traceRope(o, r, 0, null); o.stroke();
       if (braid) {
         // The second strand of the braid, in short lengths along it: each part of the rope begins its lengths where
         // the whole rope would have them, so the braid stays put on the ground whatever part of it is in view.
         // (A chain's links are the strand drawn wide with round ends.)
         o.lineCap = r.style.links ? 'round' : 'butt'; o.setLineDash(r.style.braid ??= [turn * r.style.dash, turn * (1 - r.style.dash)]);
         o.strokeStyle = r.style.b; o.lineWidth = wide * (r.style.links ?? 0.62);
-        if (r.loop) { trace(0); o.stroke(); }
-        else for (const run of runs) { o.lineDashOffset = run[2] % turn; trace(0, run); o.stroke(); }
+        if (r.loop) { this.traceRope(o, r, 0, null); o.stroke(); }
+        else for (let j = 0; j < runs.length; j++) { const run = runs[j]; o.lineDashOffset = run[2] % turn; this.traceRope(o, r, 0, run); o.stroke(); }
         o.lineDashOffset = 0; o.setLineDash(NO_DASH);
       }
       // Its knots, or its stars, every so far along it, where the whole rope would have them.
       if (r.style.knot) {
         o.lineCap = 'round'; o.setLineDash(r.style.knots ??= [0.01, r.style.every]); o.strokeStyle = r.style.knot; o.lineWidth = wide + 1.4;
-        if (r.loop) { trace(0); o.stroke(); }
-        else for (const run of runs) { o.lineDashOffset = run[2] % r.style.every; trace(0, run); o.stroke(); }
+        if (r.loop) { this.traceRope(o, r, 0, null); o.stroke(); }
+        else for (let j = 0; j < runs.length; j++) { const run = runs[j]; o.lineDashOffset = run[2] % r.style.every; this.traceRope(o, r, 0, run); o.stroke(); }
         o.lineDashOffset = 0; o.setLineDash(NO_DASH);
       }
       // (The trophy line's barbs, on the tether out to the drill: js/fit.js.)
       if (r.pulse) this.fitter.barbs(this, o, r);
-      if (r.loop) for (const [x, y] of pts) { bx0 = Math.min(bx0, x); by0 = Math.min(by0, y); bx1 = Math.max(bx1, x); by1 = Math.max(by1, y); }
-      else for (const [from, to] of runs) for (let i = from; i <= to; i++) { const [x, y] = pts[i]; bx0 = Math.min(bx0, x); by0 = Math.min(by0, y); bx1 = Math.max(bx1, x); by1 = Math.max(by1, y); }
+      if (r.loop) for (let i = 0; i < pts.length; i++) { const x = pts[i][0], y = pts[i][1]; bx0 = Math.min(bx0, x); by0 = Math.min(by0, y); bx1 = Math.max(bx1, x); by1 = Math.max(by1, y); }
+      else for (let j = 0; j < runs.length; j++) for (let i = runs[j][0], to = runs[j][1]; i <= to; i++) { const x = pts[i][0], y = pts[i][1]; bx0 = Math.min(bx0, x); by0 = Math.min(by0, y); bx1 = Math.max(bx1, x); by1 = Math.max(by1, y); }
     }
     // (The drill and its wake are drawn here too: their place is cleared with the ropes'.)
     // (A box about each of them as wide as the ram's flame reaches behind the drill at any heading.)
-    if (fine) for (const [x, y] of [[this.drillDrawn[0], this.drillDrawn[1]], ...fine.wake.map(([, wx, wy]) => [wx, wy])]) { bx0 = Math.min(bx0, x - 24); by0 = Math.min(by0, y - 24); bx1 = Math.max(bx1, x + 24); by1 = Math.max(by1, y + 24); }
+    if (fine) for (let j = -1; j < fine.wake.n; j++) {
+      const x = j < 0 ? this.drillDrawn[0] : fine.wake.x[j], y = j < 0 ? this.drillDrawn[1] : fine.wake.y[j];
+      bx0 = Math.min(bx0, x - 24); by0 = Math.min(by0, y - 24); bx1 = Math.max(bx1, x + 24); by1 = Math.max(by1, y + 24);
+    }
     if (bx0 > bx1) return;
     bx0 = Math.max(0, Math.floor(bx0 - 12)); by0 = Math.max(0, Math.floor(by0 - 12)); bx1 = Math.min(W, Math.ceil(bx1 + 12)); by1 = Math.min(H, Math.ceil(by1 + 12));
-    this.ropeDirty = [bx0, by0, bx1, by1];
+    const box = this.ropeBox ??= [0, 0, 0, 0];
+    box[0] = bx0; box[1] = by0; box[2] = bx1; box[3] = by1;
+    this.ropeDirty = box;
     // In the dark it is as dim as the ground it lies on.
     if (this.dark && this.darkAt) {
+      const at = this.darkAt;
       o.globalCompositeOperation = 'source-atop'; o.imageSmoothingEnabled = true; o.globalAlpha = 0.85;
-      o.drawImage(this.dark, ...this.darkAt);
+      o.drawImage(this.dark, at[0], at[1], at[2], at[3]);
       o.globalCompositeOperation = 'source-over'; o.globalAlpha = 1;
     }
     // From the seventh reach, light runs along the tether from the core out to the drill, over the dark: a short
@@ -868,31 +946,32 @@ export class Drawing {
       // (A glow about it first, where it has one.)
       if (style.halo) {
         o.globalCompositeOperation = 'lighter'; o.globalAlpha = 0.22; o.lineCap = 'round'; o.strokeStyle = style.halo; o.lineWidth = r.wide + 3.5;
-        for (const run of r.runs) { r.trace(0, run); o.stroke(); }
+        for (let j = 0; j < r.runs.length; j++) { this.traceRope(o, r, 0, r.runs[j]); o.stroke(); }
         o.globalAlpha = 1; o.globalCompositeOperation = 'source-over';
       }
       const period = 3 + style.gap;
       o.globalCompositeOperation = 'lighter'; o.lineCap = 'butt'; o.setLineDash(style.dashes); o.lineWidth = r.wide + 0.6;
       for (let pass = 0; pass < (style.twin ? 2 : 1); pass++) {
         o.strokeStyle = pass ? style.twin : style.glow;
-        for (const run of r.runs) { o.lineDashOffset = ((run[2] - this.time * style.run + pass * period / 2) % period + period) % period; r.trace(0, run); o.stroke(); }
+        for (let j = 0; j < r.runs.length; j++) { const run = r.runs[j]; o.lineDashOffset = ((run[2] - this.time * style.run + pass * period / 2) % period + period) % period; this.traceRope(o, r, 0, run); o.stroke(); }
       }
       o.lineDashOffset = 0; o.setLineDash(NO_DASH); o.globalCompositeOperation = 'source-over';
     }
     // The tether lies under the drill: it is cut away in the drill's own shape, so that at the core, where its end
     // is made fast under the drill, and wherever the drill flies back over it, the drill is whole on top.
-    if (this.drillDrawn) {
+    const q = this.drillDrawn;
+    if (q) {
       o.globalCompositeOperation = 'destination-out'; o.imageSmoothingEnabled = false;
-      this.drawDrill(...this.drillDrawn, o);
+      this.drawDrill(q[0], q[1], q[2], q[3], q[4], q[5], q[6], q[7], o);
       o.globalCompositeOperation = 'source-over';
     }
     // The drill itself, with its wake behind it, each pixel of it as many of the screen's as the game is scaled by.
     if (fine) {
-      const [dx, dy, ang, bit, ram, , along, across] = this.drillDrawn;
+      const dx = q[0], dy = q[1], ang = q[2], bit = q[3], ram = q[4], along = q[6], across = q[7], wake = fine.wake;
       o.imageSmoothingEnabled = false;
-      for (const [a, wx, wy] of fine.wake) { o.globalAlpha = a; this.drawDrill(wx, wy, ang, bit, ram, -1, along, across, o); }
+      for (let j = 0; j < wake.n; j++) { o.globalAlpha = wake.a[j]; this.drawDrill(wake.x[j], wake.y[j], ang, bit, ram, -1, along, across, o); }
       o.globalAlpha = fine.alpha;
-      this.drawDrill(...this.drillDrawn, o, this.S.lv.hull, null, this.fitter.look);
+      this.drawDrill(q[0], q[1], q[2], q[3], q[4], q[5], q[6], q[7], o, this.S.lv.hull, null, this.fitter.look);
       o.globalAlpha = 1;
       this.fauna.rider(this, o, dx, dy, this.drill.ang, fine.alpha);
       if (fine.hurt) { o.globalAlpha = 0.5; o.fillStyle = '#ff5a4a'; o.fillRect(dx - 5, dy - 5, 10, 10); o.globalAlpha = 1; }
@@ -901,12 +980,45 @@ export class Drawing {
     // top bar (a place's plate, the count of specimens) and over the bar (a thing's worth first seen), which the frame's
     // own drawing of the interface listed.
     o.clearRect(0, H - UI.BAR, W, UI.BAR);
-    if (this.mapRect) o.clearRect(...this.mapRect);
+    const m = this.mapRect;
+    if (m) o.clearRect(m[0], m[1], m[2], m[3]);
     for (const b of this.buttons) o.clearRect(b.x, b.y, b.w, b.h);
-    for (const p of this.panels) o.clearRect(...p);
+    for (const p of this.panels) o.clearRect(p[0], p[1], p[2], p[3]);
     // Nor over a line called out across the screen: a line under the drill, where the tether runs down from it toward
     // the core, is read across a gap in the rope and not struck through by it (`callText`).
     for (let i = 0, c = this.callBoxes, n = 4 * this.callN; i < n; i += 4) o.clearRect(c[i], c[i + 1], c[i + 2], c[i + 3]);
+  }
+  // A rope's path (`traceRope`): a loop as a closed curve through the middles of its sides; any other rope along the
+  // parts of it in view (`r.runs`), or along the one part `only`, its corners rounded, or bowed where it is plucked.
+  traceRope(o, r, dy, only) {
+    const pts = r.pts;
+    o.beginPath();
+    if (r.loop) {
+      // A closed curve through the middles of its sides.
+      const n = pts.length;
+      o.moveTo((pts[0 % n][0] + pts[1 % n][0]) / 2, (pts[0 % n][1] + pts[1 % n][1]) / 2 + dy);
+      for (let i = 1; i <= n; i++) o.quadraticCurveTo(pts[i % n][0], pts[i % n][1] + dy, (pts[i % n][0] + pts[(i + 1) % n][0]) / 2, (pts[i % n][1] + pts[(i + 1) % n][1]) / 2 + dy);
+      o.closePath();
+      return;
+    }
+    if (only) { this.traceRun(o, r, dy, only[0], only[1]); return; }
+    for (let j = 0; j < r.runs.length; j++) this.traceRun(o, r, dy, r.runs[j][0], r.runs[j][1]);
+  }
+  traceRun(o, r, dy, from, to) {
+    const pts = r.pts;
+    o.moveTo(pts[from][0], pts[from][1] + dy);
+    for (let i = from + 1; i <= to; i++) {
+      const x = pts[i][0], y = pts[i][1], px = pts[i - 1][0], py = pts[i - 1][1];
+      if (r.wob && Math.hypot(x - px, y - py) < 600) {
+        // A plucked string: each span bows across itself.
+        const len = Math.hypot(x - px, y - py) || 1;
+        o.quadraticCurveTo((px + x) / 2 - (y - py) / len * r.wob * 2, (py + y) / 2 + (x - px) / len * r.wob * 2 + dy, x, y + dy);
+      } else if (i < to) {
+        // Round the corner, as wide as the shorter span beside it allows.
+        const nx = pts[i + 1][0], ny = pts[i + 1][1];
+        o.arcTo(x, y + dy, nx, ny + dy, Math.min(ROUND, Math.hypot(x - px, y - py) / 2, Math.hypot(nx - x, ny - y) / 2));
+      } else o.lineTo(x, y + dy);
+    }
   }
   // The parts of a rope that cross the view, each [its first point, its last, how far along the whole rope it
   // begins]. A part is the spans that come within a few pixels of the screen, and one span more at each end so that
@@ -914,14 +1026,19 @@ export class Drawing {
   // (asked for a braided rope: it is where the braid's short lengths begin) is measured along the rope as it is
   // drawn, round every corner's arc and not through its point, so a part traced alone lies on the pixels the whole
   // rope would have drawn there. Nothing here is in proportion to the rope's length but a little arithmetic.
-  ropeRuns(pts, braid = false) {
-    const { W, H } = this, n = pts.length, m = 12, runs = [];
+  // (Written into `into`, where it is given, with the parts kept from frame to frame in `into.spare`.)
+  ropeRuns(pts, braid = false, into = null) {
+    const { W, H } = this, n = pts.length, m = 12, runs = into ?? [], spare = into ? into.spare ??= [] : null;
+    let c = 0;
     for (let i = 1; i < n; i++) {
       const a = pts[i - 1], b = pts[i];
       if (Math.max(a[0], b[0]) < -m || Math.min(a[0], b[0]) > W + m || Math.max(a[1], b[1]) < -m || Math.min(a[1], b[1]) > H + m) continue;
-      const from = Math.max(0, i - 2), to = Math.min(n - 1, i + 1), last = runs[runs.length - 1];
-      if (last && from <= last[1]) last[1] = to; else runs.push([from, to, 0]);
+      const from = Math.max(0, i - 2), to = Math.min(n - 1, i + 1), last = c ? runs[c - 1] : undefined;
+      if (last && from <= last[1]) last[1] = to;
+      else if (spare) { const run = spare[c] ??= [0, 0, 0]; run[0] = from; run[1] = to; run[2] = 0; runs[c++] = run; }
+      else runs[c++] = [from, to, 0];
     }
+    if (runs.length !== c) runs.length = c;
     const far = runs.length ? runs[runs.length - 1][0] : 0;
     if (!braid || far === 0) return runs;
     // Along the rope from its first point: straight to where each corner's arc begins, round the arc, and on from
@@ -929,7 +1046,7 @@ export class Drawing {
     // the length of its tangent.
     let cx = pts[0][0], cy = pts[0][1], len = 0, next = runs[0][0] === 0 ? 1 : 0;
     for (let i = 1; i <= far; i++) {
-      const [x, y] = pts[i], [px, py] = pts[i - 1], [nx, ny] = pts[i + 1];
+      const x = pts[i][0], y = pts[i][1], px = pts[i - 1][0], py = pts[i - 1][1], nx = pts[i + 1][0], ny = pts[i + 1][1];
       const r = Math.min(ROUND, Math.hypot(x - px, y - py) / 2, Math.hypot(nx - x, ny - y) / 2);
       const ax = cx - x, ay = cy - y, al = Math.hypot(ax, ay), bx = nx - x, by = ny - y, bl = Math.hypot(bx, by);
       let t = 0, arc = 0;
@@ -1154,7 +1271,7 @@ export class Drawing {
       const sx = x0 - L.x0, sy = y0 - L.y0;
       L.next.fill(0);
       for (let y = Math.max(0, -sy); y < Math.min(rows, rows - sy); y++) for (let x = Math.max(0, -sx); x < Math.min(cols, cols - sx); x++) L.next[y * cols + x] = L.lit[(y + sy) * cols + x + sx];
-      [L.lit, L.next] = [L.next, L.lit]; L.x0 = x0; L.y0 = y0;
+      const was = L.lit; L.lit = L.next; L.next = was; L.x0 = x0; L.y0 = y0;
     }
     L.want.fill(0);
     const keys = L.keys ??= [], rares = L.rares ??= [];
@@ -1171,8 +1288,8 @@ export class Drawing {
     // light under the drill is the same wherever in a cell it is. (Lit from its cell's middle alone, brighter
     // while the bit cut and with a waver, the light pulsed as the drill crossed each cell and at every cut.)
     const LAMP = this.val('lamp'), dcx = Math.floor(d.x), dcy = Math.floor(d.y);
-    for (const [u, v] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
-      const cx = Math.floor(d.x - 0.5) + u, cy = Math.floor(d.y - 0.5) + v, lx = cx - x0, ly = cy - y0;
+    for (let q = 0; q < 4; q++) {
+      const cx = Math.floor(d.x - 0.5) + LAMP_CELLS[q][0], cy = Math.floor(d.y - 0.5) + LAMP_CELLS[q][1], lx = cx - x0, ly = cy - y0;
       if ((cx !== dcx || cy !== dcy) && (lx < 0 || ly < 0 || lx >= cols || ly >= rows || L.solid[ly * cols + lx])) continue;
       const power = 1.1 - Math.hypot(d.x - cx - 0.5, d.y - cy - 0.5) / LAMP;
       this.shine(cx, cy, power, LAMP * power);
@@ -1181,7 +1298,8 @@ export class Drawing {
     let lavas = 0;
     for (const i of w.lava.keys()) { if (lavas++ > 40) break; this.shine(i % N, Math.floor(i / N), 0.85, 3.5); }
     for (const e of this.effects) if (e.sheet === 'zap' || e.sheet === 'haul' || e.sheet === 'bank') this.shine(Math.floor(e.x / T), Math.floor(e.y / T), 1, 6);
-    for (const [i, sp] of this.sparks) if (sp.fuse > 0) this.shine(i % N, Math.floor(i / N), 0.9, 3);
+    // (The Maps of what is awake are walked by forEach and a function made once, `this` the game: no entry made.)
+    this.sparks.forEach(shineSpark, this);
     for (const i of this.quenched.keys()) this.shine(i % N, Math.floor(i / N), 0.8, 2.5);
     this.feel.lights(this);
     this.fauna.lights(this);
@@ -1198,22 +1316,23 @@ export class Drawing {
       const far = i => ((i % N) + 0.5 - d.x) ** 2 + (Math.floor(i / N) + 0.5 - d.y) ** 2;
       rares.sort((a, b) => far(a) - far(b)); rares.length = RARE_GLINTS;
     }
-    for (const i of rares) { const [power, reach] = w.hazAt(i) === 'worm' ? WORM_GLOW : RARE_GLINT; this.shine(i % N, Math.floor(i / N), power, reach); }
-    for (const [i, b] of this.bells) if (b.cool <= 0) this.shine(i % N, Math.floor(i / N), 0.6, 2.5);
+    for (const i of rares) { const glow = w.hazAt(i) === 'worm' ? WORM_GLOW : RARE_GLINT; this.shine(i % N, Math.floor(i / N), glow[0], glow[1]); }
+    this.bells.forEach(shineBell, this);
     for (const f of this.flares) this.shine(f.x, f.y, f.power, f.reach);
-    for (const [i, v] of this.vents) if (v.cool <= 0) this.shine(i % N, Math.floor(i / N), 0.6, 2);
+    this.vents.forEach(shineVent, this);
     let flames = 0;
     for (const e of this.jets) for (const i of e.cells) if (flames++ < JET_LIGHTS) this.shine(i % N, Math.floor(i / N), 0.9, 3);
-    for (const [i, m] of this.worms) { const j = m.since < WORM.tween / 2 ? m.from : i; this.shine(j % N, Math.floor(j / N), 0.8, 3.5); }
-    for (const [i, s] of this.stones) if (s.cool <= 0) this.shine(i % N, Math.floor(i / N), 0.5, 2.5);
+    this.worms.forEach(shineWorm, this);
+    this.stones.forEach(shineStone, this);
     // One pixel of darkness per cell, drawn sixteen times the size and smoothed.
     const mcols = vx1 - vx0 + 1, mrows = vy1 - vy0 + 1;
     let map = this.dark;
-    if (!map || map.width !== mcols || map.height !== mrows) { map = this.dark = document.createElement('canvas'); map.width = mcols; map.height = mrows; this.darkData = null; }
+    if (!map || map.width !== mcols || map.height !== mrows) { map = this.dark = document.createElement('canvas'); map.width = mcols; map.height = mrows; this.darkData = null; this.darkCtx = null; }
     // (The dark's own little canvas is kept in memory, not on the graphics card: pixels are written to it every
     // frame, and writing pixels to a canvas the card holds stalled a frame for 50 to 90 ms every so often on a
     // desktop, several times that on a phone. `willReadFrequently` is how a canvas is asked to stay in memory.)
-    const mc = map.getContext('2d', { willReadFrequently: true }), data = this.darkData ??= mc.createImageData(mcols, mrows), px = data.data, [r, g, b] = this.gloom;
+    // (Its context is asked for once, with the canvas, and kept.)
+    const mc = this.darkCtx ??= map.getContext('2d', DARK_CTX), data = this.darkData ??= mc.createImageData(mcols, mrows), px = data.data, r = this.gloom[0], g = this.gloom[1], b = this.gloom[2];
     // (Eased by the time that has passed, not by the frame: the same on a screen of any rate. At sixty frames a
     // second this is three tenths of the way each frame.)
     const since = Math.max(0, Math.min(0.1, this.time - (this.litAt ?? this.time - 1 / 60))), ease = 1 - Math.exp(-since * 21.4);
@@ -1227,7 +1346,8 @@ export class Drawing {
     ctx.imageSmoothingEnabled = true;
     ctx.drawImage(map, vx0 * T - ox, vy0 * T - oy, mcols * T, mrows * T);
     ctx.imageSmoothingEnabled = false;
-    this.darkAt = [vx0 * T - ox, vy0 * T - oy, mcols * T, mrows * T];
+    const at = this.darkAt ??= [0, 0, 0, 0];
+    at[0] = vx0 * T - ox; at[1] = vy0 * T - oy; at[2] = mcols * T; at[3] = mrows * T;
     this.halos(ox, oy);
     // The core's slow turning rays.
     const cxp = HX * T - ox, cyp = HY * T - oy;
@@ -1262,17 +1382,19 @@ export class Drawing {
   drawRares(ctx, ox, oy, now) {
     const w = this.world, flick = ((now / 60) | 0) % 2, px = i => (i % N) * T - ox, py = i => Math.floor(i / N) * T - oy;
     const shown = i => px(i) > -T && py(i) > -T && px(i) < this.W && py(i) < this.H;
-    for (const [i, b] of this.bells) {
+    for (const i of this.bells.keys()) {
+      const b = this.bells.get(i);
       if (b.cool > 0) continue;
-      const stage = Math.min(4, 1 + Math.floor(b.t / BELL.fuse * 4));
-      for (const j of this.ringOf(i)) { const k = w.peek(j % N, Math.floor(j / N)); if (k >= 0 && CRUSH[k] && shown(j)) draw(ctx, 'cracks', `crack-${stage}`, px(j), py(j)); }
+      const stage = Math.min(4, 1 + Math.floor(b.t / BELL.fuse * 4)), crack = CRACK[stage] ?? `crack-${stage}`;
+      for (const j of this.ringOf(i)) { const k = w.peek(j % N, Math.floor(j / N)); if (k >= 0 && CRUSH[k] && shown(j)) draw(ctx, 'cracks', crack, px(j), py(j)); }
     }
     const vent = HAZARDS.vent.sheet, worm = HAZARDS.worm.sheet, stone = HAZARDS.lodestone.sheet;
-    for (const e of this.jets) e.cells.forEach((j, n) => { if (shown(j)) draw(ctx, vent, `jet-${e.upright ? 'v' : 'h'}-${(flick + n) % 2 ? 'b' : 'a'}`, px(j), py(j)); });
-    for (const [i, m] of this.worms) {
+    for (const e of this.jets) { const jet = JET_FRAME[e.upright ? 1 : 0]; for (let n = 0; n < e.cells.length; n++) { const j = e.cells[n]; if (shown(j)) draw(ctx, vent, jet[(flick + n) % 2], px(j), py(j)); } }
+    for (const i of this.worms.keys()) {
+      const m = this.worms.get(i);
       if (m.trail >= 0 && m.trailT > 0 && shown(m.trail)) { ctx.globalAlpha = Math.min(1, m.trailT / WORM.trail); draw(ctx, worm, 'trail', px(m.trail), py(m.trail)); }
       const u = Math.min(1, m.since / WORM.tween), x = px(m.from) + (px(i) - px(m.from)) * u, y = py(m.from) + (py(i) - py(m.from)) * u;
-      const frame = !m.steps && m.t < WORM.uncoil ? (((now / 100) | 0) % 2 ? 'hazard-b' : 'hazard') : m.stuck ? (flick ? 'hazard-b' : 'hazard') : `swim-${'eswn'[m.way]}-${((now / 120) | 0) % 2 ? 'b' : 'a'}`;
+      const frame = !m.steps && m.t < WORM.uncoil ? (((now / 100) | 0) % 2 ? 'hazard-b' : 'hazard') : m.stuck ? (flick ? 'hazard-b' : 'hazard') : SWIM_FRAME[m.way]?.[((now / 120) | 0) % 2] ?? `swim-${'eswn'[m.way]}-${((now / 120) | 0) % 2 ? 'b' : 'a'}`;
       ctx.globalAlpha = 0.8; draw(ctx, worm, frame, x, y); ctx.globalAlpha = 1;
     }
     for (const s of this.stones.values()) if (s.next && s.cool <= 0 && s.t >= STONE.hum && flick && shown(s.next.from)) draw(ctx, stone, 'filing', px(s.next.from), py(s.next.from));
@@ -1345,21 +1467,29 @@ export class Drawing {
       }
       ctx.globalAlpha = 1;
     }
-    const pts = this.lay().map(([x, y]) => [x * T - ox, y * T - oy]);
+    // (The string as it lies, `layInto`, into figures kept on the game, x and y by turns, then less the view.)
+    const n = this.layInto(this.layAt ??= { xy: new Float64Array(64) }), xy = this.layAt.xy;
+    for (let i = 0; i < n * 2; i += 2) { xy[i] = xy[i] * T - ox; xy[i + 1] = xy[i + 1] * T - oy; }
     const wob = this.twang > 0 ? Math.sin(this.time * 90) * this.twang * 5 : 0;
     // Turned back at the edge it shows red; otherwise it is whatever the reach upgrades have made it.
-    const own = TETHERS[this.S.lv.tether], style = this.twang > 0 ? { a: '#ff5a4a', b: '#ff5a4a', dash: 1, thick: own.thick } : own;
+    const own = TETHERS[this.S.lv.tether], style = this.twang > 0 ? TWANGED[own.thick ? 1 : 0] : own;
     if (this.over) {
       // It leaves the drill's tail, and is laid out from the core's end so that its braid stays put on the ground
-      // as the drill pays it out.
-      pts[0] = [d.x * T - ox - Math.cos(d.ang) * 5, d.y * T - oy - Math.sin(d.ang) * 5];
-      this.ropes.push({ pts: pts.reverse(), style, wob, pulse: true });
+      // as the drill pays it out. (Its points are kept on the game, as its rope is.)
+      const rope = this.tetherRope ??= { pts: [], style, wob, pulse: true }, pts = rope.pts, m = Math.max(1, n);
+      for (let k = 0; k < m; k++) {
+        const j = m - 1 - k, p = pts[k] ??= [0, 0];
+        if (j === 0) { p[0] = d.x * T - ox - Math.cos(d.ang) * 5; p[1] = d.y * T - oy - Math.sin(d.ang) * 5; } else { p[0] = xy[j * 2]; p[1] = xy[j * 2 + 1]; }
+      }
+      pts.length = m;
+      rope.style = style; rope.wob = wob;
+      this.ropes.push(rope);
       return;
     }
-    for (const pass of own.thick ? [2, 1, 0] : [1, 0]) {
-      const shadow = pass === (own.thick ? 2 : 1), use = shadow ? { a: '#16121c', b: '#16121c', dash: 1 } : style;
-      for (let i = 0; i < pts.length - 1; i++) {
-        const [x0, y0] = pts[i], [x1, y1] = pts[i + 1];
+    for (let pass = own.thick ? 2 : 1; pass >= 0; pass--) {
+      const shadow = pass === (own.thick ? 2 : 1), use = shadow ? HAUL_SHADOW : style;
+      for (let i = 0; i < n - 1; i++) {
+        const x0 = xy[i * 2], y0 = xy[i * 2 + 1], x1 = xy[i * 2 + 2], y1 = xy[i * 2 + 3];
         if (Math.max(x0, x1) < -2 || Math.max(y0, y1) < -2 || Math.min(x0, x1) > W + 2 || Math.min(y0, y1) > H + 2) continue;
         if (wob && Math.hypot(x1 - x0, y1 - y0) < 600) {
           // A plucked string: the middle of each span swings across it.

@@ -370,8 +370,15 @@ for (const coil of [0, 1]) {
   check(game.stalls.length === 0, 'a frame of sixteen milliseconds was written down as long');
   const t0 = performance.now() - 300; game.timed('save', t0);
   game.frameTook(1400, 320, 40);
-  check(game.stalls.length === 1 && game.stalls[0].gap === 1400 && game.stalls[0].top === 'save' && game.stalls[0].ms >= 300 && Object.keys(game.probe).length === 0, `a frame of 1.4 s was written down as ${JSON.stringify(game.stalls)}`);
-  for (let n = 0; n < 8; n++) game.frameTook(250 + n, 1, 1);
+  check(game.stalls.length === 1 && game.stalls[0].gap === 1400 && game.stalls[0].top === 'save' && game.stalls[0].ms >= 300 && Object.values(game.probe).every(ms => ms === 0) && !game.probeOrder.length, `a frame of 1.4 s was written down as ${JSON.stringify(game.stalls)}, the probe left ${JSON.stringify(game.probe)}`);
+  // (The probe is one object, its names there from the first and set to 0 again: a long frame with nothing timed says so.)
+  const probe = game.probe;
+  game.frameTook(900, 1, 1);
+  check(game.stalls.length === 2 && game.stalls[1].top === '' && game.stalls[1].ms === 0 && game.probe === probe && 'updateHauls' in probe && 'fauna' in probe, `a long frame with nothing timed was written down as ${JSON.stringify(game.stalls[1])}`);
+  game.timed('look', performance.now()); game.timed('haul', performance.now() - 20); game.timed('look', performance.now() - 50);
+  game.frameTook(900, 1, 1);
+  check(game.stalls[2].top === 'look' && game.stalls[2].ms >= 50 && game.probe === probe, `a long frame of two parts was written down as ${JSON.stringify(game.stalls[2])}`);
+  for (let n = 0; n < 6; n++) game.frameTook(250 + n, 1, 1);
   check(game.stalls.length === 5 && JSON.parse(localStorage.getItem('tetherbore-stalls')).length === 5, `after nine long frames ${game.stalls.length} are kept`);
   const again = await makeGame(7);
   check(again.stalls.length === 5, `a game started afterwards knows of ${again.stalls.length} long frames`);

@@ -683,7 +683,7 @@ export class Fitter {
     if (!level || r.loop || !r.runs || !r.runs.length) return;
     o.lineCap = 'butt'; o.setLineDash(BARB_DASH); o.lineWidth = r.wide + 2.4;
     o.strokeStyle = this.barbLit > 0 && ((this.barbLit * 10) | 0) % 2 === 0 ? '#ffffff' : BARB_COLOURS[level];
-    for (const run of r.runs) { o.lineDashOffset = run[2] % BARB_GAP; r.trace(0, run); o.stroke(); }
+    for (let j = 0; j < r.runs.length; j++) { const run = r.runs[j]; o.lineDashOffset = run[2] % BARB_GAP; game.traceRope(o, r, 0, run); o.stroke(); }
     o.lineDashOffset = 0; o.setLineDash(NO_DASH);
   }
   drawPool(ctx, P, ox, oy, W, H) {

@@ -287,7 +287,7 @@ check(!steps.length, `levels that draw just what the level before draws: ${steps
   Math.random = () => { n++; return 0.5; };
   f.fire('arccoil'); f.fire('mender'); f.fire('lavaskin'); f.fire('sporedrive'); f.fire('livecatch'); f.fire('trophy');
   game.charge = 8; game.spin.n = 5; game.spin.t = game.time;
-  const rope = { loop: false, runs: [[0, 1, 0]], wide: 2, trace: () => {} };
+  const rope = { loop: false, pts: [[0, 0], [8, 8]], runs: [[0, 1, 0]], wide: 2 };  // (traced by js/drawing.js's `traceRope`)
   // (The rows as js/drawing.js's `drawShop` lays them out for the panel, 32 tall under its header.)
   const rows = Array.from({ length: 6 }, (_, n) => ({ y: 40 + 32 * n, top: 42 + 32 * n, vx: 12, vy: 48 + 32 * n, sx: 60 }));
   game.shop = true; f.bought(game, row('hull'), 7); f.bought(game, row('cutter'), 6); game.shop = false;

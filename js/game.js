@@ -117,11 +117,17 @@ export function haulTitle(n, { relic = -1, parts = 0, caches = 0, rare = null, l
   const size = SIZES.find(([at]) => n >= at);
   return [size ? one(size[1]) : 'HAUL', 0, false, over < 1 ? OVER_SAYS : null];
 }
-// Which bits of rubble are in which cell, to find the bits near each (`jostle`): a table of chains, each cell hashed
-// to one chain, which holds the bits by their place in the list being jostled, in that order. The rubble is sorted
-// into cells up to eight times a frame, so the arrays are kept and grown, not made anew. (It was a Map of arrays made
-// anew each time, keyed by numbers too big to be small integers: rubble took half as long again.)
-const crowd = { head: new Int32Array(64), next: new Int32Array(32), cellX: new Int32Array(32), cellY: new Int32Array(32) };
+// Which bits of rubble are in which cell, to find the bits near each (`jostle`): where the cells the bits lie in
+// make a box of GRID_MOST cells or fewer (nearly always: a haul's heap is a few dozen cells across), a grid of the
+// box, a chain a cell (`grid`, grown and kept); past that, a table of chains, each cell hashed to one, its bits told
+// apart by `cellX` and `cellY`. Either way a chain holds the bits by their place in the list being jostled, in that
+// order, and the bits' places are copied once a call into `xs` and `ys` and written back at its end. The rubble is
+// sorted into cells up to eight times a frame, so the arrays are kept and grown, not made anew. (It was a Map of
+// arrays made anew each time, keyed by numbers too big to be small integers: rubble took half as long again; and
+// the table alone, read through the bits' own objects, took a third as long again as the grid.)
+const crowd = { head: new Int32Array(64), next: new Int32Array(32), cellX: new Int32Array(32), cellY: new Int32Array(32), xs: new Float64Array(32), ys: new Float64Array(32) };
+const GRID_MOST = 1 << 16;
+let grid = new Int32Array(1024);
 const chainOf = (x, y) => Math.imul(x, 73856093) ^ Math.imul(y, 19349663);
 // How long a spore pod's burst drives a drill fitted with the spore drive, and how much faster.
 export const BOOST = { time: 3, by: 1.5 };
@@ -339,6 +345,37 @@ const store = () => opened ??= new Promise((resolve, reject) => {
 // The bits of a haul still on their way, gathered afresh at each small step of `updateHauls` so that the steps walk
 // only those and not the many already home. (One list serves every haul: each is done with it before the next.)
 const live = [];
+// The parts of a frame timed by name (`Game.timed`), with how many arguments each takes, and every name timed.
+const TIMED = { save: 0, changed: 2, haul: 2, revert: 0, updateHazards: 1, updateHauls: 1, homecoming: 0, sweepHome: 1, look: 0 };
+const PROBED = [...Object.keys(TIMED), 'fauna', 'light', 'feel', 'fit', 'hud', 'ropes'];
+function timing(game, name, part, n) {
+  if (n === 0) return () => { const t0 = performance.now(); try { return part.call(game); } finally { game.timed(name, t0); } };
+  if (n === 1) return a => { const t0 = performance.now(); try { return part.call(game, a); } finally { game.timed(name, t0); } };
+  return (a, b) => { const t0 = performance.now(); try { return part.call(game, a, b); } finally { game.timed(name, t0); } };
+}
+// Marks of cells for `split`: a byte a cell for each piece of the world that holds one (by CellBook's figures), set
+// for what is left of a loose piece and taken again as it is followed, so every mark is clear when a split is done;
+// the bytes then go back to a few kept for the next (`marksDone`). (A Set of the cells was made for every split.)
+const marks = new Map(), markPool = [];
+function markSet(c) { const id = CellBook.part(c); let m = marks.get(id); if (!m) marks.set(id, m = markPool.pop() ?? new Uint8Array(4096)); m[CellBook.at(c)] = 1; }
+function markTake(c) { const m = marks.get(CellBook.part(c)); if (!m) return false; const at = CellBook.at(c); if (!m[at]) return false; m[at] = 0; return true; }
+function marksDone() { marks.forEach(keepMarks); marks.clear(); }
+function keepMarks(m) { if (markPool.length < 64) markPool.push(m); }
+const splitOrder = [];
+// Keeps in place the things of a list that `ok` says to keep, in their order: the list is not made again. (The
+// tests of what is kept are made once, here: those of the motes read where the view is from `moteView`.)
+function keepIf(list, ok) { let n = 0; for (let i = 0; i < list.length; i++) if (ok(list[i])) list[n++] = list[i]; list.length = n; }
+const partLives = p => p.t < p.life, ringLives = r => r.t < (r.life ?? 0.5), popupLives = p => p.t < 0.9, effectLives = e => e.t < duration(e.sheet, e.animation);
+const cloudLives = c => c.t < c.life, timeLeft = e => e.t > 0;
+const moteView = { x: 0, y: 0, w: 0, h: 0 };
+// The lava as a step of the hazards begins (`updateHazards`): its cells and their lives, `lavaN` of them.
+let lavaCells = new Int32Array(256), lavaLives = new Float64Array(256), lavaN = 0;
+function lavaTaken(life, i) {
+  if (lavaN === lavaCells.length) { const c = new Int32Array(lavaN * 2), l = new Float64Array(lavaN * 2); c.set(lavaCells); l.set(lavaLives); lavaCells = c; lavaLives = l; }
+  lavaCells[lavaN] = i; lavaLives[lavaN] = life; lavaN++;
+}
+const moteLives = m => m.t < m.life && Math.abs(m.x - moteView.x) < moteView.w / 2 + 40 && Math.abs(m.y - moteView.y) < moteView.h / 2 + 40;
+const toAt = [0, 0];
 // No two bits in the same place: this is what makes the heap flow instead of shrinking. Each of `bits[0..n)` is
 // pushed apart from any other nearer than two radii, twice over. Each push moves both bits of the pair at once, so
 // the pairs must be met in the same order every time: each cell's bits in the order of `bits`, which the chains of
@@ -346,29 +383,61 @@ const live = [];
 function jostle(bits, n, size, rad) {
   // The crowd's arrays are grown to hold every bit, and its table to twice as many chains.
   const span = Math.max(64, 2 ** Math.ceil(Math.log2(n * 2)));
-  if (crowd.next.length < n) for (const key of ['next', 'cellX', 'cellY']) crowd[key] = new Int32Array(span / 2);
+  if (crowd.next.length < n) { for (const key of ['next', 'cellX', 'cellY']) crowd[key] = new Int32Array(span / 2); crowd.xs = new Float64Array(span / 2); crowd.ys = new Float64Array(span / 2); }
   if (crowd.head.length < span) crowd.head = new Int32Array(span);
-  const { head, next, cellX, cellY } = crowd, mask = span - 1;
+  const { next, cellX, cellY, xs, ys } = crowd, mask = span - 1, r4 = 4 * rad * rad, r2 = 2 * rad;
+  for (let i = 0; i < n; i++) { xs[i] = bits[i].x; ys[i] = bits[i].y; }
   for (let pass = 0; pass < 2; pass++) {
-    head.fill(-1, 0, span);
-    for (let i = n - 1; i >= 0; i--) {
-      const b = bits[i], x = Math.floor(b.x / size), y = Math.floor(b.y / size), at = chainOf(x, y) & mask;
-      cellX[i] = x; cellY[i] = y; next[i] = head[at]; head[at] = i;
-    }
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     for (let i = 0; i < n; i++) {
-      const b = bits[i], gx = Math.floor(b.x / size), gy = Math.floor(b.y / size);
+      const x = Math.floor(xs[i] / size), y = Math.floor(ys[i] / size);
+      cellX[i] = x; cellY[i] = y;
+      if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+    }
+    const gw = x1 - x0 + 1, gh = y1 - y0 + 1, dense = gw * gh <= GRID_MOST;
+    if (dense) {
+      // A cell for every cell of the box the bits lie in: each chain is the bits of one cell, in order.
+      if (grid.length < gw * gh) grid = new Int32Array(Math.max(gw * gh, grid.length * 2));
+      grid.fill(-1, 0, gw * gh);
+      for (let i = n - 1; i >= 0; i--) { const at = (cellY[i] - y0) * gw + cellX[i] - x0; next[i] = grid[at]; grid[at] = i; }
+      for (let i = 0; i < n; i++) {
+        const gx = Math.floor(xs[i] / size), gy = Math.floor(ys[i] / size);
+        for (let oy = -1; oy <= 1; oy++) {
+          const y = gy + oy;
+          if (y < y0 || y > y1) continue;
+          for (let ox = -1; ox <= 1; ox++) {
+            const x = gx + ox;
+            if (x < x0 || x > x1) continue;
+            for (let j = grid[(y - y0) * gw + x - x0]; j >= 0; j = next[j]) {
+              if (j === i) continue;
+              const ux = xs[j] - xs[i], uy = ys[j] - ys[i], far2 = ux * ux + uy * uy;
+              if (far2 >= r4) continue;
+              const far = Math.sqrt(far2) || 0.01, push = (r2 - far) * 0.25, nx = far2 ? ux / far : 1, ny = far2 ? uy / far : 0;
+              xs[i] -= nx * push; ys[i] -= ny * push; xs[j] += nx * push; ys[j] += ny * push;
+            }
+          }
+        }
+      }
+      continue;
+    }
+    const head = crowd.head;
+    head.fill(-1, 0, span);
+    for (let i = n - 1; i >= 0; i--) { const at = chainOf(cellX[i], cellY[i]) & mask; next[i] = head[at]; head[at] = i; }
+    for (let i = 0; i < n; i++) {
+      const gx = Math.floor(xs[i] / size), gy = Math.floor(ys[i] / size);
       for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
         const x = gx + ox, y = gy + oy;
         for (let j = head[chainOf(x, y) & mask]; j >= 0; j = next[j]) {
           if (j === i || cellX[j] !== x || cellY[j] !== y) continue;
-          const c = bits[j], ux = c.x - b.x, uy = c.y - b.y, far2 = ux * ux + uy * uy;
-          if (far2 >= 4 * rad * rad) continue;
-          const far = Math.sqrt(far2) || 0.01, push = (2 * rad - far) * 0.25, nx = far2 ? ux / far : 1, ny = far2 ? uy / far : 0;
-          b.x -= nx * push; b.y -= ny * push; c.x += nx * push; c.y += ny * push;
+          const ux = xs[j] - xs[i], uy = ys[j] - ys[i], far2 = ux * ux + uy * uy;
+          if (far2 >= r4) continue;
+          const far = Math.sqrt(far2) || 0.01, push = (r2 - far) * 0.25, nx = far2 ? ux / far : 1, ny = far2 ? uy / far : 0;
+          xs[i] -= nx * push; ys[i] -= ny * push; xs[j] += nx * push; ys[j] += ny * push;
         }
       }
     }
   }
+  for (let i = 0; i < n; i++) { bits[i].x = xs[i]; bits[i].y = ys[i]; }
 }
 
 export class Game {
@@ -431,7 +500,11 @@ export class Game {
     this.zip = new Int32Array(ZIP.ring); this.zipHead = 0; this.zipN = 0; this.zipLeft = 0; this.zipAcc = 0; this.zipRun = 0; this.zipped = [];
     this.tally = new Map(); this.bones = World.findRecord(); this.saidAt = { thaw: -9, glass: -9, burn: -9, rime: -9 };
     // The last frames that took long (see `frameTook`), kept apart from the game's own save, to find what freezes.
-    this.probe = {}; this.stalls = [];
+    // (`probe` is one object made once with every name a part is timed by, set to 0 again by `frameTook`; and the
+    // names timed this frame, in the order each was first timed, which says which of two that took as long is
+    // the one written down, as it did when the probe was made anew each frame.)
+    this.probe = Object.fromEntries(PROBED.map(name => [name, 0])); this.probeSeen = Object.fromEntries(PROBED.map(name => [name, false])); this.probeOrder = [];
+    this.stalls = [];
     try { this.stalls = JSON.parse(localStorage.getItem('tetherbore-stalls') ?? '[]'); } catch { this.stalls = []; }
     this.docked = null;                                               // what was banked and bought at the last docking, to go back to (`dockMark`)
     this.spoils = null;                                               // a lord beaten on this trip and what it paid, kept only once the drill is home (`lordBeaten`)
@@ -441,10 +514,11 @@ export class Game {
     this.fallen = this.feel.fallen;                                   // the cells whose icicle has fallen: the feel's, which it keeps and gives back
     this.fitter = new Fitter(FLY, BOOST.by);                          // what the upgrades show, and the moment of buying (js/fit.js)
     this.fauna = new Fauna(FLY, JOLT.bat);                            // the creatures of the ground (js/fauna.js)
-    // (The parts of a frame whose time is added up by name, for `frameTook`.)
-    for (const name of ['save', 'changed', 'haul', 'revert', 'updateHazards', 'updateHauls', 'homecoming', 'sweepHome', 'look']) {
+    // (The parts of a frame whose time is added up by name, for `frameTook`: each wrapped by a function taking as
+    // many arguments as the part does (`TIMED`), so that a call makes no list of them.)
+    for (const name in TIMED) {
       const part = this[name];
-      if (typeof part === 'function') this[name] = (...args) => { const t0 = performance.now(); try { return part.apply(this, args); } finally { this.timed(name, t0); } };
+      if (typeof part === 'function') this[name] = timing(this, name, part, TIMED[name]);
     }
     const seed = (Math.random() * 1e9) | 0;
     if (blank) this.blankSeed = seed; else this.fresh(seed, true);
@@ -819,8 +893,8 @@ export class Game {
         const a = tri[e], b = tri[(e + 1) % 3];
         if (a[1] >= ya && a[1] <= yb) { lo = Math.min(lo, a[0]); hi = Math.max(hi, a[0]); }
         if (a[1] === b[1]) continue;
-        for (const y of [ya, yb]) {
-          const t = (y - a[1]) / (b[1] - a[1]);
+        for (let q = 0; q < 2; q++) {
+          const y = q ? yb : ya, t = (y - a[1]) / (b[1] - a[1]);
           if (t >= 0 && t <= 1) { const x = a[0] + (b[0] - a[0]) * t; lo = Math.min(lo, x); hi = Math.max(hi, x); }
         }
       }
@@ -987,6 +1061,23 @@ export class Game {
       if (len < 0.05) { const k = b[4] % 4; ux = k & 1 ? 1 : -1; uy = k >> 1 ? 1 : -1; return [b[0] + ux * m * 0.7, b[1] + uy * m * 0.7]; }
       return [b[0] + ux / len * m, b[1] + uy / len * m];
     });
+  }
+  // (As `lay`, into `at.xy`, x and y by turns, grown where it is too short: kept by the caller and filled every
+  // frame the tether is drawn, by the same figures. Returns how many points.)
+  layInto(at) {
+    const P = this.band, m = 0.16, n = P.length;
+    if (at.xy.length < n * 2) at.xy = new Float64Array(Math.max(n * 2, at.xy.length * 2));
+    const xy = at.xy;
+    for (let k = 0; k < n; k++) {
+      const b = P[k];
+      if (k === 0 || k === n - 1 || b[4] === undefined) { xy[k * 2] = b[0]; xy[k * 2 + 1] = b[1]; continue; }
+      const a = P[k - 1], c = P[k + 1], al = Math.hypot(a[0] - b[0], a[1] - b[1]) || 1, cl = Math.hypot(c[0] - b[0], c[1] - b[1]) || 1;
+      let ux = -(a[0] - b[0]) / al - (c[0] - b[0]) / cl, uy = -(a[1] - b[1]) / al - (c[1] - b[1]) / cl;
+      const len = Math.hypot(ux, uy);
+      if (len < 0.05) { const q = b[4] % 4; ux = q & 1 ? 1 : -1; uy = q >> 1 ? 1 : -1; xy[k * 2] = b[0] + ux * m * 0.7; xy[k * 2 + 1] = b[1] + uy * m * 0.7; continue; }
+      xy[k * 2] = b[0] + ux / len * m; xy[k * 2 + 1] = b[1] + uy / len * m;
+    }
+    return n;
   }
   // After the ground changed: which pieces lie loose, and how the tether settles. `opened` is every cell that was
   // opened together (a cut and what burst beside it, a haul), `closed` every cell that grew back. Called
@@ -1172,17 +1263,25 @@ export class Game {
       for (let s = 0; s < 4; s++) if (of.get(i + SIDE[s]) === cells) sides.push((i + SIDE[s]) * 4 + ((s + 2) & 3));
       if (sides.length && (sides.length === 1 || w.oneOutline(sides, 400))) { cells.splice(cells.indexOf(i), 1); return [cells]; }
     }
-    const left = new Set();
-    for (const c of cells) { if (w.k(c) !== K.EMPTY && of.get(c) === cells) left.add(c); else if (of.get(c) === cells) of.delete(c); }
+    // (What is left is marked in `marks`, a byte a cell kept for each piece of the world, and followed in the order
+    // of the piece's own list, as a Set of it would be.)
+    const order = splitOrder;
+    order.length = 0;
+    for (const c of cells) { if (w.k(c) !== K.EMPTY && of.get(c) === cells) { order.push(c); markSet(c); } else if (of.get(c) === cells) of.delete(c); }
     const parts = [];
     let most = 0;
-    for (const start of left) {
-      const part = [start];
-      left.delete(start);
-      for (let head = 0; head < part.length; head++) for (const s of SIDE) if (left.delete(part[head] + s)) part.push(part[head] + s);
-      if (part.length > parts[most]?.length) most = parts.length;
-      parts.push(part);
-    }
+    // (Every cell of `order` is taken here, by its own start or by the flood before it, so no mark is left set; and
+    // should anything throw on the way, what is left is taken before the bytes are kept for the next split.)
+    try {
+      for (let k = 0; k < order.length; k++) {
+        const start = order[k];
+        if (!markTake(start)) continue;
+        const part = [start];
+        for (let head = 0; head < part.length; head++) for (let s = 0; s < 4; s++) { const j = part[head] + SIDE[s]; if (markTake(j)) part.push(j); }
+        if (part.length > parts[most]?.length) most = parts.length;
+        parts.push(part);
+      }
+    } catch (error) { for (let k = 0; k < order.length; k++) markTake(order[k]); throw error; } finally { marksDone(); order.length = 0; }
     if (!parts.length) return [];
     cells.length = 0;
     for (const c of parts[most]) cells.push(c);
@@ -1292,8 +1391,8 @@ export class Game {
   // ------------------------------------------------------------ flying and cutting
   free(x, y) {
     const w = this.world;
-    for (const [u, v] of [[-BODY, -BODY], [BODY, -BODY], [-BODY, BODY], [BODY, BODY]]) {
-      const i = Math.floor(y + v) * N + Math.floor(x + u);
+    for (let c = 0; c < 4; c++) {
+      const u = c & 1 ? BODY : -BODY, v = c & 2 ? BODY : -BODY, i = Math.floor(y + v) * N + Math.floor(x + u);
       if (w.k(i) !== K.EMPTY || (w.lava.has(i) && !this.swims)) return false;
     }
     return true;
@@ -1966,7 +2065,7 @@ export class Game {
     const was = this.S.lab[key] ?? 0, n = this.S.lab[key] = this.learnt(key) + 1;
     if (!was) this.known++;
     // (One count on the screen at a time: cutting through a seam of ore, each would lie over the last.)
-    this.popups = this.popups.filter(p => !p.label.startsWith('SAMPLE '));
+    keepIf(this.popups, p => !p.label.startsWith('SAMPLE '));
     if (!was || (n & (n - 1)) === 0) {
       this.popup(x, y + 0.7, `ANALYSED +${labLevel(n)}%`, '#8cf2c4');
       this.sparkle((x + 0.5) * T, (y + 0.5) * T, 6, '#8cf2c4');
@@ -2377,6 +2476,28 @@ export class Game {
     const u = (dist - cum[k - 1]) / ((cum[k] - cum[k - 1]) || 1);
     return [route[k - 1][0] + (route[k][0] - route[k - 1][0]) * u, route[k - 1][1] + (route[k][1] - route[k - 1][1]) * u];
   }
+  // (As `along`, written into `out`.)
+  alongInto(h, dist, out) {
+    const { route, cum } = h;
+    if (dist <= 0 || route.length < 2) { out[0] = route[0][0]; out[1] = route[0][1]; return out; }
+    if (dist >= h.length) { const e = route[route.length - 1]; out[0] = e[0]; out[1] = e[1]; return out; }
+    let k = 1;
+    while (cum[k] < dist) k++;
+    const u = (dist - cum[k - 1]) / ((cum[k] - cum[k - 1]) || 1);
+    out[0] = route[k - 1][0] + (route[k][0] - route[k - 1][0]) * u; out[1] = route[k - 1][1] + (route[k][1] - route[k - 1][1]) * u;
+    return out;
+  }
+  // (As `onRoute`, the two figures left in `routeAt` and `routeSeg`.)
+  onRouteInto(h, px, py, from, to) {
+    const { route, cum } = h;
+    let best = Infinity, at = 0, seg = 1;
+    for (let k = Math.max(1, from); k < Math.min(route.length, to); k++) {
+      const ax = route[k - 1][0], ay = route[k - 1][1], bx = route[k][0] - ax, by = route[k][1] - ay, len = bx * bx + by * by;
+      const u = len ? Math.max(0, Math.min(1, ((px - ax) * bx + (py - ay) * by) / len)) : 0, gap = (px - ax - bx * u) ** 2 + (py - ay - by * u) ** 2;
+      if (gap < best) { best = gap; at = cum[k - 1] + (cum[k] - cum[k - 1]) * u; seg = k; }
+    }
+    this.routeAt = at; this.routeSeg = seg;
+  }
   // The nearest place on a haul's route to a point, looking at segments `from` to `to`: [pixels along, segment].
   onRoute(h, px, py, from, to) {
     const { route, cum } = h;
@@ -2476,9 +2597,11 @@ export class Game {
       } else if (b.fast) { b.fast = false; b.ghost = false; b.stall = 0; }
       if (age > 0.18) {
         // Drawn along the tether toward where the bundle is, never faster than it can follow.
-        const [u, k] = this.onRoute(h, b.x, b.y, b.k - 1, b.k + 3);
-        b.k = k;
-        const to = home && h.hole > 3 ? [homeX, homeY] : this.along(h, u < h.S ? Math.min(h.S, u + 24) : Math.max(h.S, u - 24));
+        this.onRouteInto(h, b.x, b.y, b.k - 1, b.k + 3);
+        const u = this.routeAt;
+        b.k = this.routeSeg;
+        let to;
+        if (home && h.hole > 3) { to = toAt; to[0] = homeX; to[1] = homeY; } else to = this.alongInto(h, u < h.S ? Math.min(h.S, u + 24) : Math.max(h.S, u - 24), toAt);
         const tx = to[0] - b.x, ty = to[1] - b.y, gap = Math.hypot(tx, ty) || 1, top = Math.min(h.v * 1.5 + 90, gap * 12), ease = Math.min(1, sdt * 12);
         b.vx += (tx / gap * top - b.vx) * ease; b.vy += (ty / gap * top - b.vy) * ease;
         // A bit that is caught behind rock is let through it rather than left behind.
@@ -2909,11 +3032,18 @@ export class Game {
   // or more the frame is written down: how long from the frame before, how long the game's own stepping and
   // drawing took of that, and the part that took longest. The rest is the browser's (its own drawing, its
   // collecting of memory, the phone doing something else). The last five are kept and shown in the menu.
-  timed(name, t0) { this.probe[name] = (this.probe[name] ?? 0) + performance.now() - t0; }
+  timed(name, t0) {
+    this.probe[name] = (this.probe[name] ?? 0) + performance.now() - t0;
+    if (!this.probeSeen[name]) { this.probeSeen[name] = true; this.probeOrder.push(name); }
+  }
   frameTook(gap, update, render) {
-    const probe = this.probe; this.probe = {};
-    if (!(gap >= 200) || gap > 60000) return;
-    const [top, ms] = Object.entries(probe).sort((a, b) => b[1] - a[1])[0] ?? ['', 0];
+    const probe = this.probe, order = this.probeOrder, write = gap >= 200 && gap <= 60000;
+    // The part that took longest: the first timed this frame of those that took the most.
+    let top = '', ms = 0;
+    if (write) for (let k = 0; k < order.length; k++) { const v = probe[order[k]]; if (k === 0 || v > ms) { top = order[k]; ms = v; } }
+    for (let k = 0; k < order.length; k++) { probe[order[k]] = 0; this.probeSeen[order[k]] = false; }
+    order.length = 0;
+    if (!write) return;
     this.stalls.push({ gap: Math.round(gap), update: Math.round(update), render: Math.round(render), top, ms: Math.round(ms), out: Math.round(this.far), pieces: this.pieces.length, hauls: this.hauls.length });
     this.stalls = this.stalls.slice(-5);
     try { localStorage.setItem('tetherbore-stalls', JSON.stringify(this.stalls)); } catch { /* not kept */ }
@@ -3070,7 +3200,12 @@ export class Game {
     this.lavaTick = (this.lavaTick ?? 0) + dt;
     const flow = this.lavaTick >= 0.26;
     if (flow) this.lavaTick = 0;
-    for (const [i, life] of [...w.lava]) {
+    // (What lava there is as the step begins, its cells and their lives, is read into lists kept for it, and the
+    // step walks those: the lava it pours and puts out on the way is not met again in this step.)
+    lavaN = 0;
+    w.lava.forEach(lavaTaken);
+    for (let at = 0, many = lavaN; at < many; at++) {
+      const i = lavaCells[at], life = lavaLives[at];
       const x = i % N, y = Math.floor(i / N);
       if (flow) {
         const vol = this.lavaVol.get(i) ?? 1, start = (cellHash(x, y, (this.time * 10) | 0) * 4) | 0;
@@ -3143,7 +3278,7 @@ export class Game {
       }
       if (grafted) { this.fitter.fire('sporedrive'); if (this.onScreen(c.x, c.y)) sfx.gem(0); }
     }
-    this.clouds = this.clouds.filter(c => c.t < c.life);
+    keepIf(this.clouds, cloudLives);
     // Charged crystals: a short fuse, then an arc that jumps to every crystal near it.
     for (const [i, s] of this.sparks) {
       if (w.hazAt(i) !== 'spark') { this.sparks.delete(i); continue; }
@@ -3183,10 +3318,12 @@ export class Game {
   rareHazards(dt, opened) {
     const w = this.world, d = this.drill;
     let swum = false;
-    for (const list of [this.jets, this.flying, this.flares]) { for (const e of list) e.t -= dt; }
-    this.jets = this.jets.filter(e => e.t > 0); this.flying = this.flying.filter(e => e.t > 0); this.flares = this.flares.filter(e => e.t > 0);
+    for (const e of this.jets) e.t -= dt;
+    for (const e of this.flying) e.t -= dt;
+    for (const e of this.flares) e.t -= dt;
+    keepIf(this.jets, timeLeft); keepIf(this.flying, timeLeft); keepIf(this.flares, timeLeft);
     // Rime bells: the fuse, the toll, and a while before one can ring again.
-    for (const [i, b] of [...this.bells]) {
+    if (this.bells.size) for (const [i, b] of [...this.bells]) {
       if (w.hazAt(i) !== 'bell') { this.bells.delete(i); continue; }
       if (b.cool > 0) { if ((b.cool -= dt) <= 0) this.bells.delete(i); continue; }
       if ((b.t += dt) < BELL.fuse) continue;
@@ -3194,7 +3331,7 @@ export class Game {
       b.cool = BELL.cool;
     }
     // Fumaroles: the rumble, three jets, and a while asleep.
-    for (const [i, v] of [...this.vents]) {
+    if (this.vents.size) for (const [i, v] of [...this.vents]) {
       if (w.hazAt(i) !== 'vent') { this.vents.delete(i); continue; }
       if (v.cool > 0) { if ((v.cool -= dt) <= 0) this.vents.delete(i); continue; }
       v.t += dt;
@@ -3203,7 +3340,7 @@ export class Game {
     }
     // Glowworms: each swims a cell at a time, bites a drill that comes close and darts away two cells at once, and
     // coils up where it is after a while, or with the drill far off.
-    for (const [i, m] of [...this.worms]) {
+    if (this.worms.size) for (const [i, m] of [...this.worms]) {
       if (w.hazAt(i) !== 'worm') { this.worms.delete(i); continue; }
       const x = i % N, y = Math.floor(i / N), far = Math.hypot(d.x - x - 0.5, d.y - y - 0.5);
       m.t += dt; m.since += dt; m.trailT -= dt;
@@ -3225,7 +3362,7 @@ export class Game {
       }
     }
     // Lodestones: the hum, then a pull at a time, each shown a pull ahead; then it settles.
-    for (const [i, s] of [...this.stones]) {
+    if (this.stones.size) for (const [i, s] of [...this.stones]) {
       if (w.hazAt(i) !== 'lodestone') { this.stones.delete(i); continue; }
       if (s.cool > 0) { if ((s.cool -= dt) <= 0) this.stones.delete(i); continue; }
       if ((s.t += dt) < STONE.hum) continue;
@@ -3389,9 +3526,9 @@ export class Game {
   ambient(dt) {
     const w = this.world, W = this.W, H = this.H;
     for (const p of this.parts) { p.t += dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= 1 - 3.5 * dt; p.vy *= 1 - 3.5 * dt; }
-    this.parts = this.parts.filter(p => p.t < p.life);
+    keepIf(this.parts, partLives);
     for (const r of this.rings) r.t += dt;
-    this.rings = this.rings.filter(r => r.t < (r.life ?? 0.5));
+    keepIf(this.rings, ringLives);
     this.flash = Math.max(0, this.flash - dt); this.counted = Math.max(0, this.counted - dt);
     // The dark eases to the colour and the depth of the ground the drill is in.
     const here = w.row(this.di), want = here.gloom, k = 1 - Math.exp(-dt * 1.5);
@@ -3411,7 +3548,7 @@ export class Game {
       else if (drift === 'sway') { m.y += Math.cos(this.time * 0.9 + m.seed) * 4 * dt; m.x += sway * 5 * dt; }
       else { m.y -= 2 * dt; m.x += sway * 2 * dt; }
     }
-    this.motes = this.motes.filter(m => m.t < m.life && Math.abs(m.x - this.cam.x) < W / 2 + 40 && Math.abs(m.y - this.cam.y) < H / 2 + 40);
+    moteView.x = this.cam.x; moteView.y = this.cam.y; moteView.w = W; moteView.h = H; keepIf(this.motes, moteLives);
     // A glint now and then on ore in view.
     for (let n = 0; n < 2; n++) {
       const x = Math.floor((this.cam.x + (Math.random() - 0.5) * W) / T), y = Math.floor((this.cam.y + (Math.random() - 0.5) * H) / T), kk = w.peek(x, y);
@@ -3426,7 +3563,7 @@ export class Game {
   effect(sheet, animation, x, y) { this.effects.push({ sheet, animation, x, y, t: 0 }); }
   // Words that rise from a cell and fade (with an icon of the `icons` sheet before them). The same words in the
   // same colour take the place of those already up.
-  popup(cx, cy, label, color, icon) { this.popups = this.popups.filter(p => p.label !== label || p.color !== color); this.popups.push({ x: (cx + 0.5) * T, y: cy * T, label, color, icon, t: 0, w: 0 }); }
+  popup(cx, cy, label, color, icon) { keepIf(this.popups, p => p.label !== label || p.color !== color); this.popups.push({ x: (cx + 0.5) * T, y: cy * T, label, color, icon, t: 0, w: 0 }); }
   onScreen(x, y) { const sx = x * T - this.cam.x + this.W / 2, sy = y * T - this.cam.y + (this.H - 44) / 2; return sx > -T && sy > -T && sx < this.W && sy < this.H; }
 
   // ------------------------------------------------------------ update
@@ -3494,9 +3631,9 @@ export class Game {
     this.feel.step(this, dt);
     this.fitter.step(this, dt);
     for (const e of this.effects) e.t += dt * 1000;
-    this.effects = this.effects.filter(e => e.t < duration(e.sheet, e.animation));
+    keepIf(this.effects, effectLives);
     for (const p of this.popups) p.t += dt;
-    this.popups = this.popups.filter(p => p.t < 0.9);
+    keepIf(this.popups, popupLives);
     if (this.banner) { this.banner.t += dt; if (this.banner.t > this.banner.life) this.banner = null; }
     if (this.place) { this.place.t += dt; if (this.place.t > this.place.life) { this.place = this.placeNext; this.placeNext = null; } }
     if (this.specLine) { this.specLine.t += dt; if (this.specLine.t > this.specLine.life) this.specLine = null; }
