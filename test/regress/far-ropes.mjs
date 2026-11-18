@@ -73,7 +73,7 @@ const traced = async far => {
   let rects = 0;
   const fill = game.ctx.fillRect;
   game.ctx.fillRect = () => { rects++; };
-  game.drawMap(game.W - 52, 6);
+  game.drawMap(game.W - 53, 7);
   game.ctx.fillRect = fill;
   return { out: Math.round(game.far), band: game.band.length, ropes: game.ropes.length, ...count, rects };
 };

@@ -93,13 +93,13 @@ const room = { ...b, splitW: 0 };
 game.bannerSplit(room, null);
 check(room.topAt === 12, 'a plain banner has no room for what paid most');
 // (Two lines of gems, a prism's line and a word more already: no room; with two of those, room. bannerSplit works out
-// `split` itself, and a banner of every gem paid is one that splits.)
+// `split` itself: a banner of every gem paid is one that splits over three lines at 160, and of five over two.)
 const every = { ...b, gems: [0, 9e5, 9e5, 9e5, 9e5, 9e5, 9e5, 9e5, 9e5], shine: 2, sub: 'THE WINCH IS CRYING', splitW: 0 };
 game.bannerSplit(every, null);
 check(every.split > 0 && every.topAt === 0, `a banner of two lines of gems, a prism and a word more still says what paid most: split ${every.split}, ${every.topAt}`);
-const two = { ...every, sub: null, splitW: 0 };
+const two = { ...every, gems: [0, 9e5, 9e5, 9e5, 9e5, 9e5, 0, 0, 0], sub: null, splitW: 0 };
 game.bannerSplit(two, null);
-check(two.split > 0 && two.topAt === 12, `a banner of two lines of gems and a prism has no room for what paid most: split ${two.split}, ${two.topAt}`);
+check(two.split > 0 && !two.split2 && two.topAt === 12, `a banner of two lines of gems and a prism has no room for what paid most: split ${two.split}, ${two.topAt}`);
 
 console.log(fails.length ? `DEFECT: ${fails.join('\n        ')}` : 'ok: a haul\'s banner names what paid most in it, of the second tier or the third, as worth.js says it, and not for a relic, a shrine, a light haul or a common ore');
 process.exit(fails.length ? 1 : 0);

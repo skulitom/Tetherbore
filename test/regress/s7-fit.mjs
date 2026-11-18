@@ -26,6 +26,7 @@
 //   node test/regress/s7-fit.mjs
 import { readFile } from 'node:fs/promises';
 import { Game, UPGRADES, WORKS, MAPS, CORE, farStart, setDown, random, world, C, N, K } from '../harness.mjs';
+const { UI } = await import('../../js/drawing.js');
 
 const { Fitter, CAP, PANEL_CAP, RINGS, QUEUE, TETHERS, CORE_A, DISH, REFINERY, CUTTER, BOX } = await import(new URL('../../js/fit.js', import.meta.url));
 const { sheets } = await import(new URL('../../js/atlas.js', import.meta.url));
@@ -290,7 +291,7 @@ check(!steps.length, `levels that draw just what the level before draws: ${steps
   game.shop = true; f.bought(game, row('hull'), 7); f.bought(game, row('cutter'), 6); game.shop = false;
   for (let k = 0; k < 300; k++) {
     f.step(game, 1 / 60);
-    f.station(game, game.ctx, 100, 100, k * 16); f.glow(game, game.ctx, 0, 0, k * 16); f.hud(game, game.ctx, 60); f.map(game, game.ctx, 0, 0, 46, 46);
+    f.station(game, game.ctx, 100, 100, k * 16); f.glow(game, game.ctx, 0, 0, k * 16); f.hud(game, game.ctx, 60, UI); f.map(game, game.ctx, 0, 0, 46, 46);
     f.panel(game, game.ctx, 4, 20, 172, 236, 32, TABS[0]); f.barbs(game, game.ctx, rope);
   }
   Math.random = own;

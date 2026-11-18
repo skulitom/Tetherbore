@@ -11,7 +11,9 @@
 // east is too wide for the narrowest phone), and the footer's note of a tap refused for want of them too. And the
 // bar at the foot of the screen, with the corners' gems in the directions' places (`cornerBar`: a corner's level
 // saved for) and with all eight on a screen 330 wide, at the widest figures a count can have there ('9.9K', and
-// '999K' with all eight): each gem's icon is its own, and no figure runs into the next icon or off the bar.
+// '999K' with all eight): each gem's icon is its own, and no figure runs into the next icon or off the bar; and at
+// the widest figure there is, '999K' or '987M', on the narrowest phones and with all eight, the same holds, each
+// icon and figure at the same height.
 //   node test/regress/h-shop-fit.mjs
 import '../harness.mjs';
 
@@ -20,7 +22,7 @@ const make = document.createElement;
 document.createElement = () => { const c = make(); const ctx = c.getContext('2d'); c.getContext = () => new Proxy(ctx, { set: (t, k, v) => { if (k === 'fillStyle') c.tint = v; t[k] = v; return true; } }); return c; };
 const { makeGame, B } = await import('../harness.mjs');
 const { TABS, LAB, CORE, ROWS } = await import('../../js/shop.js');
-const { GEM_ICON, GEM_SHORT } = await import('../../js/drawing.js');
+const { GEM_ICON, GEM_SHORT, compact } = await import('../../js/drawing.js');
 const { KINDS } = await import('../../js/fauna.js');
 const { sheets, textWidth } = await import('../../js/atlas.js');
 const { lang } = await import('../../js/lang.js');
@@ -143,12 +145,15 @@ for (const [cssW, cssH] of [[320, 568], [360, 640]]) {
 // The levels paid in a corner's gems, each tapped with too few of them in hand and all else found: the footer says
 // where they are had, whole or short, within the panel; and that level, now saved for, puts the corners' gems on
 // the bar in the directions' places (at their widest, '9.9K'), each with its own icon, clear of the next and on the
-// bar. And on a screen 330 wide the bar has all eight, at '999K'.
+// bar. And on a screen 330 wide the bar has all eight, at '999K'; and at '999K' and '987M' on the narrowest phones
+// and with all eight, every figure and icon is on the bar, clear of the next.
 const moved = ROWS.flatMap(u => (u.gemAt ?? []).map((gem, l) => [u, l, gem]).filter(([, , gem]) => gem >= 5));
 check(moved.length === 8, `${moved.length} levels are paid in a corner's gems, not eight`);
 const bar = (W, H, at) => {
-  const row = hudGlyphs.filter(g => g.y === H - 44 + 18), marks = hudIcons.filter(c => c.y === H - 44 + 17);
-  for (const g of row) check(g.x >= 6 && g.x + g.w <= W - 6, `${at}: a figure on the bar's gems runs from ${g.x} to ${g.x + g.w}, off the bar (6 to ${W - 6})`);
+  // (A figure at its icon's own height: js/drawing.js, UI.ICON_DY.)
+  const row = hudGlyphs.filter(g => g.y === H - 44 + 17), marks = hudIcons.filter(c => c.y === H - 44 + 17);
+  check(row.length > 0, `${at}: no figure was drawn on the bar's gems' line, at the height of their icons`);
+  for (const g of [...row, ...marks]) check(g.x >= 6 && g.x + g.w <= W - 6, `${at}: a figure or an icon on the bar's gems runs from ${g.x} to ${g.x + g.w}, off the bar (6 to ${W - 6})`);
   check(clashes(row, marks) === 0, `${at}: a figure on the bar's gems runs into another or into an icon`);
   return marks.map(c => Object.entries(sheets.icons.frames).find(([, f]) => f[0] === c.sx && f[1] === c.sy)?.[0]);
 };
@@ -188,6 +193,13 @@ for (const [cssW, cssH] of [[320, 568], [360, 640]]) {
   hudGlyphs.length = 0; hudIcons.length = 0; game.render(); renders++;
   const shown = bar(W, H, `${W}x${H}, every gem at 999K`);
   check(shown.join() === GEM_ICON.slice(1).join(), `${W}x${H}: the bar's gems are ${shown}`);
+  for (const [cssW, cssH] of [[160, 284], [180, 320], [330, 450]]) for (const [have, said] of [[999999, '999K'], [987654321, '987M']]) {
+    game.resize(cssW, cssH, 1);
+    for (let g = 1; g < 9; g++) S.gems[g] = have;
+    check(compact(have) === said, `${have} is written '${compact(have)}', not '${said}'`);
+    hudGlyphs.length = 0; hudIcons.length = 0; game.render(); renders++;
+    check(bar(game.W, game.H, `${game.W}x${game.H}, every gem at ${said}`).length === (game.W >= 330 ? 8 : 4), `${game.W}x${game.H}: the bar does not show its gems at ${said}`);
+  }
   // (Back to the common phone, where the lines below were measured.)
   game.resize(360, 640, 1);
 }

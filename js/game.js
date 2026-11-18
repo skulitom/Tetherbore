@@ -2258,11 +2258,12 @@ export class Game {
     if (light) {
       this.shake = Math.max(this.shake, Math.min(1.5, 0.7 + n * 0.08));
       this.ring(cx, cy, '#fff6c8', 12 + n);
-      // (What a pocket's mineral paid has the mineral beside it, and under it the specimens it added.)
+      // (What a pocket's mineral paid has the mineral beside it, and over it, a line of the banner's apart, the
+      // specimens it added and the gems.)
       this.popup(mx, my - 0.6, `+${compact(grit)}`, '#ffe14a', mineral ? ['minerals', mineral] : 'grit');
       let up = 1;
-      if (specUp > 0) this.popup(mx, my - 0.6 - 0.6 * up++, `+${specUp}`, GEM_COLOR[specOf], `spec-${GEM_ICON[specOf]}`);
-      for (let g = 1; g < GEM_N; g++) if (gems[g] > 0) this.popup(mx, my - 0.6 - 0.6 * up++, `+${compact(gems[g])}`, GEM_COLOR[g], GEM_ICON[g]);
+      if (specUp > 0) this.popup(mx, my - 0.6 - 0.75 * up++, `+${specUp}`, GEM_COLOR[specOf], `spec-${GEM_ICON[specOf]}`);
+      for (let g = 1; g < GEM_N; g++) if (gems[g] > 0) this.popup(mx, my - 0.6 - 0.75 * up++, `+${compact(gems[g])}`, GEM_COLOR[g], GEM_ICON[g]);
     } else {
       if (n >= 20) this.effect('bank', 'area', cx, cy);
       this.shake = Math.max(this.shake, Math.min(9, 2.5 + n * 0.12));
@@ -3350,7 +3351,7 @@ export class Game {
   effect(sheet, animation, x, y) { this.effects.push({ sheet, animation, x, y, t: 0 }); }
   // Words that rise from a cell and fade (with an icon of the `icons` sheet before them). The same words in the
   // same colour take the place of those already up.
-  popup(cx, cy, label, color, icon) { this.popups = this.popups.filter(p => p.label !== label || p.color !== color); this.popups.push({ x: (cx + 0.5) * T, y: cy * T, label, color, icon, t: 0 }); }
+  popup(cx, cy, label, color, icon) { this.popups = this.popups.filter(p => p.label !== label || p.color !== color); this.popups.push({ x: (cx + 0.5) * T, y: cy * T, label, color, icon, t: 0, w: 0 }); }
   onScreen(x, y) { const sx = x * T - this.cam.x + this.W / 2, sy = y * T - this.cam.y + (this.H - 44) / 2; return sx > -T && sy > -T && sx < this.W && sy < this.H; }
 
   // ------------------------------------------------------------ update

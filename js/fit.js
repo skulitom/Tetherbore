@@ -12,7 +12,7 @@
 // colours are made here at load, and the tinted copies of the sheets it lays over the drill and the station are
 // made one a frame over a game's first frames (`warm`).
 import { UPGRADES, WORKS, MAPS, CORE, TABS } from './shop.js';
-import { sheets, draw, frameAt, duration, tinted, text, textWidth } from './atlas.js';
+import { sheets, draw, frameAt, duration, tinted, text, textWidth, wrap } from './atlas.js';
 import { sfx } from './audio.js';
 import { tr } from './lang.js';
 import { N, C, K } from './world.js';
@@ -183,7 +183,7 @@ export class Fitter {
     this.queue = Array.from({ length: QUEUE }, () => ({ on: false, u: null, level: 0, grand: false, seq: 0 }));
     this.playing = Array.from({ length: 3 }, () => ({ on: false, u: null, level: 0, grand: false, kind: 0, colour: '#ffffff', label: '', t: 0, life: LIFE, seated: false, still: false, sub: '' }));
     this.moment = { t: 0, tab: '', id: '', row: 0, grand: false, colour: '#ffffff', stamp: '', fresh: false };
-    this.banner = { t: 0, life: 1.6, title: '', sub: '', colour: '#ffffff' };
+    this.banner = { t: 0, life: 1.6, title: '', sub: '', colour: '#ffffff', W: 0, big: 2, subs: null };
     // The shape of the arc coil's crackle: four lines of five pieces, each piece's end off the straight by so much.
     this.jag = new Float32Array(4 * 5);
     // What the drill looks like this frame, beyond its levels (js/drawing.js: `drawDrill`).
@@ -486,7 +486,7 @@ export class Fitter {
       this.burst(x, y, 24, c, 90);
       this.flash = 0.3;
       const b = this.banner;
-      b.t = b.life; b.title = f.u.tiers ? f.label : f.u.name; b.sub = f.sub; b.colour = f.colour;
+      b.t = b.life; b.title = f.u.tiers ? f.label : f.u.name; b.sub = f.sub; b.colour = f.colour; b.W = 0;
     }
   }
   tintOn(colour, alpha, fade = 0.3) { this.tintColour = colour; this.tintAlpha = alpha; this.tint = fade; this.tintFade = fade; }
@@ -699,8 +699,8 @@ export class Fitter {
   }
   // Over the interface: the names of parts as they are fitted, rising over them; a milestone's banner, under the
   // core, clear of the haul's banner, the word across the screen and a place's name, which are all above it; and
-  // the screen lit a moment.
-  hud(game, ctx, head) {
+  // the screen lit a moment. (`UI` is js/drawing.js's, which imports this module: its figures for the interface.)
+  hud(game, ctx, head, UI) {
     const W = game.W, H = game.H, base = ctx.globalAlpha, d = game.drill;
     for (let k = 0; k < LABELS; k++) {
       const l = this.labels[k];
@@ -711,9 +711,12 @@ export class Fitter {
     const b = this.banner;
     if (b.t > 0 && !game.shop && !game.lab) {
       const age = b.life - b.t, pop = Math.min(1, age / 0.12), y = Math.round((H - 44) / 2 + 30 + (1 - pop) * 6);
+      // (Its title at size 2 where that fits the screen, else 1, and what it says under that on as many lines as it
+      // takes: laid out once a banner, and again only if the screen changes.)
+      if (b.W !== W) { const room = W - 2 * UI.EDGE; b.W = W; b.big = textWidth(b.title, 2) > room ? 1 : 2; b.subs = b.sub ? wrap(b.sub, room) : null; }
       ctx.globalAlpha = base * Math.min(1, b.t * 3);
-      text(ctx, b.title, W / 2, y, b.colour, 0.5, textWidth(b.title, 2) > W - 8 ? 1 : 2);
-      text(ctx, b.sub, W / 2, y + 22, '#ffe14a', 0.5);
+      text(ctx, b.title, W / 2, y, b.colour, 0.5, b.big);
+      if (b.subs) for (let n = 0; n < b.subs.length; n++) text(ctx, b.subs[n], W / 2, y + UI.TITLE * b.big + UI.TITLE_GAP + n * UI.LINE, '#ffe14a', 0.5);
     }
     if (this.flash > 0) { ctx.globalAlpha = base * Math.min(0.25, this.flash); ctx.fillStyle = '#fff6c8'; ctx.fillRect(0, 0, W, H); }
     ctx.globalAlpha = base;
@@ -725,7 +728,8 @@ export class Fitter {
     ctx.fillStyle = '#5cc4f0';
     for (let k = 0; k < 4; k++) { if (row - k < y || row - k >= y + h) continue; ctx.globalAlpha = base * 0.6 * (1 - k / 4); ctx.fillRect(x, row - k, w, 1); }
     ctx.globalAlpha = base * 0.8 * (1 - u);
-    ctx.fillRect(x - 2, y - 2, w + 4, 1); ctx.fillRect(x - 2, y + h + 1, w + 4, 1); ctx.fillRect(x - 2, y - 2, 1, h + 4); ctx.fillRect(x + w + 1, y - 2, 1, h + 4);
+    // (Along the frame's light rim: a row deeper under the map than over it, js/drawing.js's MAP_FRAME_H.)
+    ctx.fillRect(x - 2, y - 2, w + 4, 1); ctx.fillRect(x - 2, y + h + 2, w + 4, 1); ctx.fillRect(x - 2, y - 2, 1, h + 5); ctx.fillRect(x + w + 1, y - 2, 1, h + 5);
     ctx.globalAlpha = base;
   }
   // Whether a row's new value is stamped where its steps are written: the shop leaves its own words out meanwhile.

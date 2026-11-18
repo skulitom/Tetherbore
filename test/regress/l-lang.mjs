@@ -160,6 +160,27 @@ check(!missing.length, `${missing.length} lines have no turn in ${lang}: ${missi
   for (const t of hauls) check(textWidth(t, 1) <= 152, `'${tr(t)}' is ${textWidth(t, 1)} pixels wide, too wide for a narrow phone`);
 }
 
+// Every place's name on its plate and on its card, on the narrowest phones, with a second gem and with a pocket's
+// mineral: the plate EDGE from either side of the screen at the most, every line of it inside its frame (and the
+// longest names, HOLLOW KILNSTONE's and HOLLOW MOULDSTONE's, among them); the card's lines within the screen.
+{
+  const { textWidth } = await import('../../js/atlas.js');
+  const { UI } = await import('../../js/drawing.js');
+  const titles = [...new Set(BIOMES.filter(Boolean).map(b => b.title))];
+  check(titles.includes('HOLLOW KILNSTONE') && titles.includes('HOLLOW MOULDSTONE'), 'the longest names of places are not among the titles of the grounds');
+  for (const [cw, ch] of [[160, 284], [180, 320]]) {
+    game.resize(cw, ch, 1);
+    const W = game.W;
+    for (const title of titles) for (const [also, mineral] of [['mire', null], [null, 'amber']]) {
+      const place = { title, icon: 'lode', mineral, also, colour: '#ffffff', t: 1, card: false, life: 4 }, L = game.plateFit(place);
+      const at = `${W}: '${tr(title)}'${also ? ' with a second gem' : ''}${mineral ? ' with a mineral' : ''}`;
+      check(UI.EDGE + L.pw <= W - UI.EDGE && L.lines.length <= 2 && L.h === 14 + 11 * (L.lines.length - 1), `${at}: a plate ${L.pw} wide and ${L.h} tall, on ${L.lines.length} lines`);
+      for (const line of L.lines) check(L.tx + textWidth(line) + UI.INSET <= L.pw, `${at}: '${line}' runs out of its plate (${L.tx} + ${textWidth(line)} in ${L.pw})`);
+      for (const line of L.card) check(textWidth(line, L.big) <= W - 2 * UI.EDGE, `${at}: the card's line '${line}' is ${textWidth(line, L.big)} wide at size ${L.big}`);
+    }
+  }
+}
+
 // A number is kept; a line no key fits is drawn as it is; English is never turned.
 if (column > 0) {
   check(tr('SAMPLE 3/4') === WORDS.find(r => r[0] === 'SAMPLE #/#')[column].replace('#', '3').replace('#', '4'), `SAMPLE 3/4 is '${tr('SAMPLE 3/4')}'`);

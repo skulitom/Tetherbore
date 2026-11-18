@@ -4,7 +4,7 @@
 // rule of play: what these methods keep on the game is what was drawn and where (the pieces of ground, the chart's
 // picture and view, what can be tapped this frame).
 import { N, C, K, B, DX, DY, BIOMES, HAZARDS, CRUSH, ZONE, FIND, rowOf, hazOf, cellHash, RELIC_R, SEAMS, SHRINES, CORNER_HERALDS, fossilKin, GEM_PAST, STONES } from './world.js';
-import { sheets, draw, drawScaled, frameAt, duration, slice9, text, textWidth, tinted } from './atlas.js';
+import { sheets, draw, drawScaled, frameAt, duration, slice9, text, textWidth, tinted, wrap } from './atlas.js';
 import { tr, words, LANGS, lang, chooseLang } from './lang.js';
 import { decorAt, markAt, natural, framesOf, placeOf } from './decor.js';
 import { sfx, soundVolume, musicVolume, setSoundVolume, setMusicVolume, STEPS_OF_VOLUME } from './audio.js';
@@ -21,6 +21,50 @@ import { HX, HY, BOOST, DEATH, BELL, VENT, WORM, STONE, GIANTS } from './game.js
 import { KINDS } from './fauna.js';
 
 export const T = 16;                            // pixels in a cell
+// How the interface is laid out, in the game's pixels: one set of figures for every panel and line of it, so that the
+// same thing stands the same way everywhere. They follow the font: a line of text is a cell 10 rows tall, a capital's
+// or a figure's ink on its rows 1 to 7 and its shadow a row lower, a Mandarin character's on rows 0 to 8 and its
+// shadow on 9; a 10 pixel icon's ink is on rows 0 to 8, so an icon drawn at its text's own height is centred on it.
+// The 'panel' 9-slice at (x, w) has two columns of rim each side and a fill from x+2 to x+w-3, two rows of rim on top
+// and three under, its fill from y+2 to y+h-4.
+//   EDGE    from the screen's edge to any panel that floats (the place's plate, the map's frame, the shop and the
+//           lab); a line across the screen has W - 2*EDGE.
+//   DOCK    from the screen's edge to the bar, which alone is docked to the foot of the screen.
+//   INSET   inside any box at (x, w), what is in it begins at x+INSET and what is set to the right ends at x+w-INSET
+//           (its ink a column short of that and its shadow on it): two columns of fill clear of the rim either side.
+//   ICON    from a 10 pixel icon to its words (GAP, two columns, clear of the icon's frame). A 12 pixel mineral is
+//           drawn a column left of where an icon would be, and its words a column further on (ICON + 1).
+//   CHIP    from a 12 pixel ringed chip to its words (CHIP_GAP, four columns, clear of it).
+//   ICON_DY, PIC_DY  a 10 pixel icon stands at its text's own height, a 12 pixel chip or mineral 2 rows above it.
+//   GROUP   blank columns between one figure with its icon and the next on the same line.
+//   WORD    the least room between two runs of words on one line that must read apart (a space is 4).
+//   FIG     the widest figure `compact` writes ('987K', '987M'): it never writes more than four characters.
+//   LINE    from one line of small text to the next, in banners, notices and popups' stacks; LINE_MIN the least.
+//   TITLE, TITLE_GAP  a line under a title of size s stands TITLE * s + TITLE_GAP under it (`under`).
+//   HEAD, TAB_GAP    a panel's header, and between its tabs.
+//   STACK   rows between two chips stacked at the head of the screen.
+//   DRILL_CLEAR      rows between words called out over the view and the top of the drill.
+//   MAP     the map in the corner, square.
+export const UI = Object.freeze({ EDGE: 4, DOCK: 2, INSET: 4, GAP: 2, ICON: 12, CHIP: 16, CHIP_GAP: 4, ICON_DY: 0, PIC_DY: -2, GROUP: 6, WORD: 8, FIG: 23,
+  LINE: 12, LINE_MIN: 10, TITLE: 11, TITLE_GAP: 2, HEAD: 20, TAB_GAP: 9, STACK: 2, DRILL_CLEAR: 4, MAP: 46 });
+const under = s => UI.TITLE * s + UI.TITLE_GAP;
+// A name said on two lines no wider than `room` at size `s`, broken where the longer of the two is shortest (so that
+// no short word hangs at the end of the first), or null where no two lines fit.
+const halves = (said, room, s) => {
+  const { parts, join } = words(tr(said));
+  let best = null, most = Infinity;
+  for (let n = 1; n < parts.length; n++) {
+    const a = parts.slice(0, n).join(join), b = parts.slice(n).join(join), w = Math.max(textWidth(a, s), textWidth(b, s));
+    if (w <= room && w < most) { most = w; best = [a, b]; }
+  }
+  return best;
+};
+// The map's frame in the corner: three pixels of frame round the map, and four under it, as the panel's foot is a row
+// deeper than its head, so that the map has a pixel of fill clear of the rim all round; EDGE from the top and the
+// right. And the room left for the place's plate beside it, EDGE clear of it.
+const MAP_FRAME = UI.MAP + 6, MAP_FRAME_H = UI.MAP + 7, MAP_X = W => W - UI.EDGE - MAP_FRAME + 3, MAP_Y = UI.EDGE + 3, BESIDE_MAP = W => W - UI.EDGE - MAP_FRAME - UI.EDGE;
+// Where the drill's picture begins, from the top of the screen (its middle at the middle of the view, above the bar).
+const drillTop = H => Math.round((H - 44) / 2) - 8;
 const VOLUME_BAR = 49;                          // the menu's bar of ten steps of loudness, in pixels
 const LANG_ROW = 18, LANG_ROWS = 3 * LANG_ROW + 2; // the menu's list of languages: a row each, and all it adds to the menu
 // A heart of the hull, 9 pixels by 8, two round lobes over a point: each row's runs of pixels, first and last column.
@@ -38,22 +82,14 @@ const GEM_ORDER = [1, 2, 3, 4, 5, 6, 7, 8];
 // north west's in the north's, the south east's in the south's, the south west's in the west's, the north east's in
 // the east's), where the corners' are what matter (`cornerBar`); and on a screen wide enough for eight (BAR_ALL_W:
 // each as much room as one of four has on the common phone), all eight in their order.
-const BAR_DIRS = [1, 2, 3, 4], BAR_CORNERS = [8, 6, 7, 5], BAR_ALL = GEM_ORDER, BAR_ALL_W = 330;
+// BAR_COL: what a gem's column on the bar takes, its icon and the widest figure. A plate at the head of the screen is
+// PLATE_H tall, and the worth of a thing seen first stands on a panel EYE_H tall (two lines under its chip).
+const BAR_DIRS = [1, 2, 3, 4], BAR_CORNERS = [8, 6, 7, 5], BAR_ALL = GEM_ORDER, BAR_ALL_W = 330, BAR_COL = UI.ICON + UI.FIG, PLATE_H = 14, EYE_H = 32;
 // How long, in seconds, the goal's line blinks green as what it asks for is all banked.
 export const GOAL_BLINK = 3;
 // Where the corners' gems are what matter: out where they are had, past CORNER_BAR cells from the core and within
 // CORNER_LANE of the distance of a diagonal (the deep seams lie along them from 900 out).
 export const CORNER_BAR = 840, CORNER_LANE = 0.3;
-// Text broken into lines no wider than `wide` pixels, at the spaces: in the language chosen, turned whole before it
-// is broken (and in Mandarin broken between characters: js/lang.js, `words`).
-const wrap = (said, wide) => {
-  const lines = [], { parts, join } = words(tr(said));
-  for (const word of parts) {
-    const last = lines[lines.length - 1];
-    if (last !== undefined && textWidth(`${last}${join}${word}`) <= wide) lines[lines.length - 1] = `${last}${join}${word}`; else lines.push(word);
-  }
-  return lines;
-};
 // The lab's notes are one list in parts (js/shop.js: `LAB_PARTS`), laid out once here: a line of SEC pixels at the
 // head of each part that has anything in it (its icon, its title and how many of it are known) and a line of RH for
 // each thing, in the order of `LAB`. `lines` is every line from the top, `line[i]` thing i's (with what is said of it
@@ -196,8 +232,11 @@ const LIGHT_STEP = [[1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, -1, 1], [1, 1, 1.41], 
 // The steps themselves, as offsets in the light's window, are kept on the window (lightMap.step), which alone
 // knows how many cells it is across.
 const LIGHT_FAR = Float64Array.from(LIGHT_STEP, s => s[2]);
-export const compact = n => n < 1000 ? `${Math.floor(n)}` : n < 10000 ? `${(Math.floor(n / 100) / 10).toFixed(1)}K` : n < 1e6 ? `${Math.floor(n / 1000)}K`
-  : n < 1e9 ? `${(Math.floor(n / 1e5) / 10).toFixed(1)}M` : `${(Math.floor(n / 1e8) / 10).toFixed(1)}B`;
+// A figure in no more than four characters (UI.FIG wide) below a thousand thousand million: with a tenth under ten
+// of a K, an M or a B, and with none from ten on ('9.9K', '987K', '9.8M', '987M').
+const tenths = (n, of, sign) => `${(Math.floor(n / (of / 10)) / 10).toFixed(1)}${sign}`;
+export const compact = n => n < 1000 ? `${Math.floor(n)}` : n < 1e4 ? tenths(n, 1e3, 'K') : n < 1e6 ? `${Math.floor(n / 1e3)}K`
+  : n < 1e7 ? tenths(n, 1e6, 'M') : n < 1e9 ? `${Math.floor(n / 1e6)}M` : n < 1e10 ? tenths(n, 1e9, 'B') : `${Math.floor(n / 1e9)}B`;
 
 // A piece of the ground is drawn first into a Sketch, a list of the calls drawing it takes, and only drawn into its
 // canvas when that list is not the one the canvas was last drawn from (`Game.chunk`). Any change to the ground, a
@@ -604,9 +643,13 @@ export class Drawing {
     for (const p of this.popups) {
       const py = p.y - oy - p.t * 18, px = p.x - ox;
       ctx.globalAlpha = Math.min(1, (0.9 - p.t) * 4);
-      if (typeof p.icon === 'string') draw(ctx, 'icons', p.icon, px - textWidth(p.label) / 2 - 11, py - 1);
-      else if (p.icon) this.drawMineral(ctx, p.icon[1], px - textWidth(p.label) / 2 - 13, py - 3);
-      text(ctx, p.label, px, py, p.color, 0.5);
+      // (An icon and its figure centred as one on where the haul was, measured once a popup.)
+      if (p.icon) {
+        if (!(p.w > 0)) p.w = textWidth(p.label) + UI.ICON + (typeof p.icon === 'string' ? 0 : 1);
+        const lx = Math.round(px - p.w / 2);
+        if (typeof p.icon === 'string') draw(ctx, 'icons', p.icon, lx, py); else this.drawMineral(ctx, p.icon[1], lx - 1, py + UI.PIC_DY);
+        text(ctx, p.label, lx + p.w, py, p.color, 1);
+      } else text(ctx, p.label, px, py, p.color, 0.5);
       ctx.globalAlpha = 1;
     }
     { const t0 = performance.now(); this.drawHud(ox, oy); this.timed('hud', t0); }
@@ -1266,27 +1309,38 @@ export class Drawing {
   // drill, than it could before it said this.
   bannerSplit(b, spec) {
     this.splitGems(b, spec);
-    b.topW = b.top ? textWidth(b.top.said) + 14 : 0;
-    b.topAt = b.top && b.topW <= this.W - 8 && (b.split ? 1 : 0) + (b.shine > 1 ? 1 : 0) + (b.sub ? 1 : 0) <= 2 ? 12 : 0;
+    b.topW = b.top ? textWidth(b.top.said) + UI.CHIP : 0;
+    b.topAt = b.top && b.topW <= this.W - 2 * UI.EDGE && (b.split ? 1 : 0) + (b.split2 ? 1 : 0) + (b.shine > 1 ? 1 : 0) + (b.sub ? 1 : 0) <= 2 ? UI.LINE : 0;
   }
+  // (Each figure on the line with its icon before it, GROUP clear of the one before; the specimens' mineral a column
+  // wider than an icon. A second line too wide for the screen goes on over a third, from `split2`: a gem, or 9 for
+  // the specimens alone. `down` is how far under the first line the last is.)
   splitGems(b, spec) {
-    const W = this.W, room = W - 8, gemW = g => textWidth(`+${compact(b.gems[g])}`) + 15, specW = spec ? textWidth(spec) + 17 : 0;
-    let lw = b.trophy ? -4 : textWidth(`+${compact(b.grit)}`) + 11;
+    const W = this.W, room = W - 2 * UI.EDGE, gemW = g => textWidth(`+${compact(b.gems[g])}`) + UI.ICON + UI.GROUP;
+    const specW = spec ? textWidth(spec) + UI.ICON + (b.mineral ? 1 : 0) + UI.GROUP : 0, first = b.trophy ? -UI.GROUP : textWidth(`+${compact(b.grit)}`) + UI.ICON;
+    let lw = first;
     for (const g of GEM_ORDER) if (b.gems[g] > 0) lw += gemW(g);
-    b.splitW = W; b.split = 0; b.lw = lw + specW; b.lw2 = 0;
+    b.splitW = W; b.split = 0; b.split2 = 0; b.lw = lw + specW; b.lw2 = 0; b.lw3 = 0; b.down = 0;
     if (b.lw <= room) return;
-    let first = b.trophy ? -4 : textWidth(`+${compact(b.grit)}`) + 11, corner = 0, over = 0, upTo = first, w1 = first;
+    let corner = 0, over = 0, upTo = first, w1 = first;
     for (const g of GEM_ORDER) {
       if (!(b.gems[g] > 0)) continue;
       if (!corner && g >= 5) { corner = g; w1 = upTo; }
       if (!over && upTo + gemW(g) > room) over = g;
       upTo += gemW(g);
     }
-    const split = corner && w1 <= room && w1 > first ? corner : over;
+    const split = corner && w1 <= room && w1 > first ? corner : over || (spec ? 9 : 0);
     if (!split) return;
-    let a = first, c = 0;
-    for (const g of GEM_ORDER) if (b.gems[g] > 0) { if (g < split) a += gemW(g); else c += gemW(g); }
-    b.split = split; b.lw = a; b.lw2 = c + specW - 4;
+    let a = first, c = -UI.GROUP, d = -UI.GROUP, split2 = 0;
+    for (const g of GEM_ORDER) {
+      if (!(b.gems[g] > 0)) continue;
+      if (g < split) a += gemW(g);
+      else if (!split2 && c + gemW(g) <= room) c += gemW(g);
+      else { split2 ||= g; d += gemW(g); }
+    }
+    if (spec && !split2 && c + specW > room && c > -UI.GROUP) split2 = 9;
+    if (spec) { if (split2) d += specW; else c += specW; }
+    b.split = split; b.split2 = split2; b.lw = a; b.lw2 = c; b.lw3 = split2 ? d : 0; b.down = split2 ? 2 * UI.LINE : UI.LINE;
   }
   // A thing of the lab's seen for the first time: its picture on a chip rimmed by its tier, its name (or what the lab
   // says of it before it is known) and what it is worth as the lab says it (js/worth.js), on a panel just over the
@@ -1296,202 +1350,261 @@ export class Drawing {
   // name where there is room, else after the worth, else on a third line. Laid out once a thing (and again only if
   // the screen changes), so a frame measures and makes nothing.
   eyeFit(e) {
-    const room = this.W - 8, l1 = textWidth(e.name) + 24, l2 = textWidth(e.said) + 10, tw = e.tag ? textWidth(e.tag) + 6 : 0;
+    // (The chip and the name after it on the first line, INSET in; the worth under them; the tag set to the right,
+    // INSET in, WORD clear of whatever is before it on its line.)
+    const room = this.W - 2 * UI.EDGE, l1 = UI.INSET + UI.CHIP + textWidth(e.name) + UI.INSET, l2 = UI.INSET + textWidth(e.said) + UI.INSET, tw = e.tag ? textWidth(e.tag) + UI.WORD : 0;
     e.tagAt = !e.tag ? 0 : l1 + tw <= room ? 1 : l2 + tw <= room ? 2 : 3;
-    e.w = Math.min(room, Math.max(l1 + (e.tagAt === 1 ? tw : 0), l2 + (e.tagAt === 2 ? tw : 0), e.tagAt === 3 ? tw + 4 : 0));
-    e.h = e.tagAt === 3 ? 40 : 30; e.W = this.W;
+    e.w = Math.min(room, Math.max(l1 + (e.tagAt === 1 ? tw : 0), l2 + (e.tagAt === 2 ? tw : 0), e.tagAt === 3 ? tw - UI.WORD + 2 * UI.INSET : 0));
+    e.h = e.tagAt === 3 ? EYE_H + 10 : EYE_H; e.W = this.W;
   }
   drawEye() {
     const { ctx, W, H } = this, e = this.eye;
     if (e.W !== W) this.eyeFit(e);
     const slide = Math.min(1, e.t / 0.15);
-    // (On a screen wider than it is tall the drill may come further down it: the panel stands at the left.)
-    const x = W > H ? 4 : Math.round(W / 2 - e.w / 2), y = H - 46 - e.h + Math.round((1 - slide) * (1 - slide) * 8);
+    // (On a screen wider than it is tall the drill may come further down it: the panel stands at the left. It stands
+    // EDGE over the bar's frame.)
+    const x = W > H ? UI.EDGE : Math.round(W / 2 - e.w / 2), y = H - 42 - UI.EDGE - e.h + Math.round((1 - slide) * (1 - slide) * 8);
     ctx.globalAlpha = Math.min(1, slide, (e.life - e.t) / 0.3);
     slice9(ctx, 'ui', 'panel', x, y, e.w, e.h);
     e.rect[0] = x; e.rect[1] = y; e.rect[2] = e.w; e.rect[3] = e.h;
     this.panels.push(e.rect);
-    chip(ctx, x + 4, y + 4, null, '#5a5674');
+    const cx = x + UI.INSET, cy = y + UI.INSET, ty = cy - UI.PIC_DY;
+    chip(ctx, cx, cy, null, '#5a5674');
     const f = sheets[e.sheet].frames[e.frame];
-    ctx.drawImage(sheets[e.sheet].image, f[0] + 2, f[1] + 2, 12, 12, x + 4, y + 4, 12, 12);
-    if (e.rim) ring(ctx, x + 4, y + 4, e.rim);
-    text(ctx, e.name, x + 20, y + 6, '#ffffff');
-    text(ctx, e.said, x + 5, y + 19, '#ffe14a');
-    if (e.tag) text(ctx, e.tag, x + e.w - 5, y + (e.tagAt === 1 ? 6 : e.tagAt === 2 ? 19 : 29), '#8ce060', 1);
+    ctx.drawImage(sheets[e.sheet].image, f[0] + 2, f[1] + 2, 12, 12, cx, cy, 12, 12);
+    if (e.rim) ring(ctx, cx, cy, e.rim);
+    text(ctx, e.name, cx + UI.CHIP, ty, '#ffffff');
+    text(ctx, e.said, cx, ty + UI.LINE, '#ffe14a');
+    if (e.tag) text(ctx, e.tag, x + e.w - UI.INSET, e.tagAt === 1 ? ty : e.tagAt === 2 ? ty + UI.LINE : ty + UI.LINE + 11, '#8ce060', 1);
     ctx.globalAlpha = 1;
   }
   // What the next thing to be bought with a direction's specimens asks of them, or 0 where nothing is left to buy.
   specNeed(kin) { const u = WORKS.find(u => u.kin === kin && this.cost(u)); return u ? this.cost(u).spec : 0; }
+  // How a place's name is laid out on a screen `W` wide: worked out once a place (and again only if the screen
+  // changes), so that a frame measures and makes nothing; and before the banner is drawn, which stands clear of a
+  // plate that has gone under the map. On its plate (`lay`): its gem's icon (or its pocket's mineral), the second
+  // gem where it pays two, and its name after them, the whole no wider than the screen less EDGE each side: the
+  // second gem dropped first where it is too wide, and then the name set on two lines (`lines`, `h` tall). Beside the
+  // map where it fits there (`ty`), else under it. And as a card across the screen (`card`), at size 2 (`big`) on one
+  // line or two, else at size 1.
+  plateFit(place) {
+    const W = this.W, room = W - 2 * UI.EDGE, L = place.lay ?? (place.lay = { W: 0, pw: 0, h: 0, ty: 0, tx: 0, also: false, lines: null, card: null, big: 2, cardW: 0, pop: 0 });
+    const pic = UI.INSET + UI.ICON + (place.mineral ? 1 : 0), widest = lines => lines.reduce((m, l) => Math.max(m, textWidth(l)), 0);
+    L.W = W; L.also = !!place.also; L.lines = [place.title];
+    let pw = pic + (L.also ? UI.ICON : 0) + textWidth(place.title) + UI.INSET;
+    if (pw > room && L.also) { L.also = false; pw -= UI.ICON; }
+    if (pw > room) {
+      L.lines = halves(place.title, room - pic - UI.INSET, 1) ?? wrap(place.title, room - pic - UI.INSET);
+      pw = pic + widest(L.lines) + UI.INSET;
+    }
+    L.pw = Math.min(room, pw); L.tx = pic + (L.also ? UI.ICON : 0); L.h = PLATE_H + UI.TITLE * (L.lines.length - 1);
+    L.ty = UI.EDGE + L.pw > BESIDE_MAP(W) ? MAP_Y - 3 + MAP_FRAME_H + UI.STACK : UI.EDGE;
+    L.big = 2; L.card = [place.title];
+    if (textWidth(place.title, 2) > room) {
+      const two = halves(place.title, room, 2);
+      if (two) L.card = two; else { L.big = 1; L.card = halves(place.title, room, 1) ?? wrap(place.title, room); }
+    }
+    L.cardW = L.card.reduce((m, l) => Math.max(m, textWidth(l, L.big)), 0);
+    L.pop = L.card.length === 1 && L.big === 2 && textWidth(place.title, 3) <= room ? 1 : 0;
+    return L;
+  }
+  // A notice laid out for a screen `W` wide, once: its title at size 2 where it fits (3 as it pops up, where that
+  // fits too), else at 1; and what it says under that on as many lines as it takes.
+  noticeFit(note) {
+    const room = this.W - 2 * UI.EDGE;
+    let big = 2;
+    while (big > 1 && textWidth(note.title, big) > room) big--;
+    note.lay = { W: this.W, big, pop: big === 2 && textWidth(note.title, 3) <= room ? 1 : 0, subs: !note.sub ? null : textWidth(note.sub) <= room ? [note.sub] : halves(note.sub, room, 1) ?? wrap(note.sub, room) };
+    return note.lay;
+  }
   drawHud(ox, oy) {
     const { ctx, W, H, S } = this, now = this.time * 1000, d = this.drill;
     this.buttons.length = 0; this.panels.length = 0;
+    // The place the drill has come into, laid out before anything that stands clear of it.
+    const place = this.place, lay = place ? (place.lay?.W === W ? place.lay : this.plateFit(place)) : null, low = place && !place.card && lay.ty > UI.EDGE;
+    this.plateLow = !!low;
     // Banner of the last haul. (It, the word across the screen and a new place's name stand clear of the map, and of
     // a place's plate where that has had to go under the map: `plateLow`.)
-    const head = this.plateLow ? 78 : Math.max(60, H * 0.2);
+    const head = Math.max(60, H * 0.2, low ? lay.ty + lay.h + 6 : 0);
     if (this.banner) {
       const b = this.banner, pop = Math.min(1, b.t / 0.12), y = Math.round(head - (1 - pop) * 8);
       ctx.globalAlpha = Math.min(1, (b.life - b.t) * 3);
       // (A title too wide for the screen at its size is set a size smaller. A haul named by its place is in its
       // colour; a giant's title is gold and white by turns, faster the bigger it is, and HALF's runs through the gems'.)
       let big = (b.n >= 10 ? 2 : 1) + (b.t < 0.07 || (b.giant > 3 && b.t < 0.3) ? 1 : 0);
-      while (big > 1 && textWidth(b.title, big) > W - 8) big--;
+      while (big > 1 && textWidth(b.title, big) > W - 2 * UI.EDGE) big--;
       const giant = b.giant ?? 0, beat = (now / Math.max(60, 260 - giant * 30)) | 0;
       const colour = giant > GIANTS.length ? GEM_COLOR[1 + beat % 4] : giant ? (beat % 2 ? '#ffffff' : '#ffe14a') : b.colour ?? (b.n >= 30 ? '#ffe14a' : '#ffffff');
       text(ctx, b.title, W / 2, y, colour, 0.5, big);
       const [size, prism, spec] = this.bannerSays(b);
-      if (size) text(ctx, size, W / 2, y + 11 * big + 2, b.over < 1 ? '#ffb060' : '#bfe6ff', 0.5);
+      if (size) text(ctx, size, W / 2, y + under(big), b.over < 1 ? '#ffb060' : '#bfe6ff', 0.5);
       // (The gems it paid, in their order: those it paid none of are passed over. Too wide for the screen, they
-      // go on over a second line from the gem `split` says: `bannerSplit`, measured once a banner.)
+      // go on over a second line from the gem `split` says, and a third from `split2`: `bannerSplit`, measured once
+      // a banner. Each figure has its icon before it, at its own height.)
       if (b.splitW !== W) this.bannerSplit(b, spec);
-      const line = `+${compact(b.grit)}`, ly = y + 11 * big + (size ? 14 : 2), down = b.split ? 12 : 0;
+      const line = `+${compact(b.grit)}`, ly = y + under(big) + (size ? UI.LINE : 0), down = b.down;
       let lx = Math.round(W / 2 - b.lw / 2), at = ly;
-      if (!b.trophy) { draw(ctx, 'icons', 'grit', lx, at - 1); text(ctx, line, lx + 11, at, '#ffe14a'); lx += textWidth(line) + 15; }
+      if (!b.trophy) { draw(ctx, 'icons', 'grit', lx, at); text(ctx, line, lx + UI.ICON, at, '#ffe14a'); lx += textWidth(line) + UI.ICON + UI.GROUP; }
       for (const g of GEM_ORDER) {
         if (!(b.gems[g] > 0)) continue;
-        if (g === b.split) { lx = Math.round(W / 2 - b.lw2 / 2); at = ly + 12; }
-        draw(ctx, 'icons', GEM_ICON[g], lx, at - 1); text(ctx, `+${compact(b.gems[g])}`, lx + 11, at, GEM_COLOR[g]); lx += textWidth(`+${compact(b.gems[g])}`) + 15;
+        if (g === b.split) { lx = Math.round(W / 2 - b.lw2 / 2); at = ly + UI.LINE; }
+        if (g === b.split2) { lx = Math.round(W / 2 - b.lw3 / 2); at = ly + 2 * UI.LINE; }
+        draw(ctx, 'icons', GEM_ICON[g], lx, at); text(ctx, `+${compact(b.gems[g])}`, lx + UI.ICON, at, GEM_COLOR[g]); lx += textWidth(`+${compact(b.gems[g])}`) + UI.ICON + UI.GROUP;
       }
       // The specimens a pocket's mineral added, with the mineral itself beside the figure.
-      if (spec) { if (b.mineral) this.drawMineral(ctx, b.mineral, lx - 1, at - 3); else draw(ctx, 'icons', `spec-${GEM_ICON[b.specOf]}`, lx, at - 1); text(ctx, spec, lx + 13, at, GEM_COLOR[b.specOf]); }
+      if (spec) {
+        if (b.split === 9) { lx = Math.round(W / 2 - b.lw2 / 2); at = ly + UI.LINE; }
+        if (b.split2 === 9) { lx = Math.round(W / 2 - b.lw3 / 2); at = ly + 2 * UI.LINE; }
+        if (b.mineral) { this.drawMineral(ctx, b.mineral, lx - 1, at + UI.PIC_DY); text(ctx, spec, lx + UI.ICON + 1, at, GEM_COLOR[b.specOf]); }
+        else { draw(ctx, 'icons', `spec-${GEM_ICON[b.specOf]}`, lx, at); text(ctx, spec, lx + UI.ICON, at, GEM_COLOR[b.specOf]); }
+      }
       // What paid most in it, with its picture rimmed by its tier, in that tier's colour.
       if (b.topAt) {
-        const t = b.top, tx = Math.round(W / 2 - b.topW / 2), f = sheets[t.sheet].frames[t.frame];
-        ctx.drawImage(sheets[t.sheet].image, f[0] + 2, f[1] + 2, 12, 12, tx, ly + down + 9, 12, 12);
-        ring(ctx, tx, ly + down + 9, t.colour);
-        text(ctx, t.said, tx + 14, ly + down + 12, t.colour);
+        const t = b.top, tx = Math.round(W / 2 - b.topW / 2), f = sheets[t.sheet].frames[t.frame], ty = ly + down + UI.LINE;
+        ctx.drawImage(sheets[t.sheet].image, f[0] + 2, f[1] + 2, 12, 12, tx, ty + UI.PIC_DY, 12, 12);
+        ring(ctx, tx, ty + UI.PIC_DY, t.colour);
+        text(ctx, t.said, tx + UI.CHIP, ty, t.colour);
       }
       // A prism among the cells: what it multiplied the gems by, in the gems' colours by turns.
       const more = down + b.topAt;
-      if (prism) text(ctx, prism, W / 2, ly + more + 12, GEM_COLOR[1 + ((now / 240) | 0) % 4], 0.5);
+      if (prism) text(ctx, prism, W / 2, ly + more + UI.LINE, GEM_COLOR[1 + ((now / 240) | 0) % 4], 0.5);
       // A word more under the rest, where the haul has one (HALF's).
-      if (b.sub) text(ctx, b.sub, W / 2, ly + more + (prism ? 24 : 12), '#fff6c8', 0.5);
+      if (b.sub) text(ctx, b.sub, W / 2, ly + more + (prism ? 2 : 1) * UI.LINE, '#fff6c8', 0.5);
       ctx.globalAlpha = 1;
     }
     // Over a dead drill the screen goes dark.
     if (d.mode === 'dead' && this.tow) { ctx.globalAlpha = Math.min(0.85, this.tow.t / DEATH); ctx.fillStyle = '#07060b'; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1; }
     if (this.notice) {
-      const note = this.notice, pop = Math.min(1, note.t / 0.12);
+      // (Laid out once a notice: `noticeFit`.)
+      const note = this.notice, pop = Math.min(1, note.t / 0.12), nl = note.lay?.W === W ? note.lay : this.noticeFit(note);
       ctx.globalAlpha = Math.min(1, (note.life - note.t) * 3);
-      text(ctx, note.title, W / 2, Math.round(head - (1 - pop) * 8), note.colour, 0.5, 2 + (note.t < 0.07 ? 1 : 0));
-      if (note.sub) text(ctx, note.sub, W / 2, Math.round(head) + 24, '#ffe14a', 0.5);
+      text(ctx, note.title, W / 2, Math.round(head - (1 - pop) * 8), note.colour, 0.5, nl.big + (note.t < 0.07 ? nl.pop : 0));
+      if (nl.subs) for (let n = 0; n < nl.subs.length; n++) text(ctx, nl.subs[n], W / 2, Math.round(head) + under(nl.big) + n * UI.LINE, '#ffe14a', 0.5);
       ctx.globalAlpha = 1;
     }
     // The names of parts as they are fitted, a milestone's banner (under the core, clear of all of the above).
-    this.fitter.hud(this, ctx, head);
-    if (S.won && this.wonAt !== undefined && this.time - this.wonAt < 6) text(ctx, 'CORE RESTORED', W / 2, H * 0.36, '#ffe14a', 0.5, 2);
+    this.fitter.hud(this, ctx, head, UI);
+    if (S.won && this.wonAt !== undefined && this.time - this.wonAt < 6) {
+      if (this.wonW !== W) { this.wonW = W; this.wonBig = textWidth('CORE RESTORED', 2) <= W - 2 * UI.EDGE ? 2 : 1; }
+      text(ctx, 'CORE RESTORED', W / 2, H * 0.36, '#ffe14a', 0.5, this.wonBig);
+    }
     // A ground met for the first time: its name alone, large, a little under where a haul's banner goes (and under
-    // the banner itself, if one is up). A name too long for the screen is set on two lines, or small.
-    const place = this.place;
+    // the banner itself, if one is up), and clear of the drill. A name too long for the screen is set on two lines,
+    // or small (`plateFit`). On a screen wider than it is tall, where the banner leaves no room over the drill, it
+    // goes up at the head of the screen, in the room left of the map; on one taller than it is wide, under the drill.
     if (place && place.card) {
-      const pop = Math.min(1, place.t / 0.12), words = place.title.split(' '), fits = s => textWidth(s, 2) <= W - 8;
-      let lines = [place.title], big = 2;
-      if (!fits(place.title)) {
-        let best = null;
-        for (let n = 1; n < words.length; n++) {
-          const a = words.slice(0, n).join(' '), b = words.slice(n).join(' '), wide = Math.max(textWidth(a, 2), textWidth(b, 2));
-          if (fits(a) && fits(b) && (!best || wide < best[2])) best = [a, b, wide];
-        }
-        if (best) lines = [best[0], best[1]]; else big = 1;
+      const pop = Math.min(1, place.t / 0.12), lines = lay.card, big = lay.big, tall = lines.length * UI.TITLE * big;
+      const bn = this.banner, below = bn ? Math.round(head) + UI.TITLE * (bn.n >= 10 ? 2 : 1) + (bn.shine > 1 ? 42 : 30) + (bn.sub ? UI.LINE : 0) + (bn.down ?? 0) + (bn.topAt ?? 0) : 0;
+      let y = Math.min(Math.round(Math.max(head + 14, H * 0.3)), drillTop(H) - UI.DRILL_CLEAR - tall), cx = W / 2;
+      if (y < below) {
+        const left = W - UI.EDGE - MAP_FRAME;
+        const past = Math.max(below, drillTop(H) + 16 + UI.DRILL_CLEAR);
+        if (W > H && lay.cardW <= left - 2 * UI.EDGE) { y = UI.EDGE + 2; cx = left / 2; } else y = past + tall <= H - 44 - UI.EDGE ? past : below;
       }
-      const under = this.banner ? Math.round(head) + 11 * (this.banner.n >= 10 ? 2 : 1) + (this.banner.shine > 1 ? 42 : 30) + (this.banner.sub ? 12 : 0) + (this.banner.split ? 12 : 0) + (this.banner.topAt ?? 0) : 0, y = Math.max(under, Math.round(Math.max(head + 14, H * 0.3) - (1 - pop) * 8));
+      y = Math.round(y - (1 - pop) * 8);
       ctx.globalAlpha = Math.min(1, (place.life - place.t) * 3);
-      lines.forEach((line, n) => text(ctx, line, W / 2, y + n * 11 * big, place.colour, 0.5, big + (n === 0 && lines.length === 1 && place.t < 0.07 ? 1 : 0)));
+      for (let n = 0; n < lines.length; n++) text(ctx, lines[n], cx, y + n * UI.TITLE * big, place.colour, 0.5, big + (place.t < 0.07 ? lay.pop : 0));
       ctx.globalAlpha = 1;
     }
     // The bar, at the foot of the screen: what has been banked, the hull, what the lab knows, and how much of its
     // reach the tether has left. A tap on it opens the panel (what the drill is, the lab's notes, the chart, the
-    // menu), and another shuts it.
-    const B = H - 44;
-    slice9(ctx, 'ui', 'panel', 2, B + 2, W - 4, 40);
-    // What the player is saving for (js/goal.js): a line along the bar's top edge, as far across as what is banked
-    // has come towards its price (the least of its grit, gems and specimens), in yellow, and green once all of it is
-    // there: blinking for three seconds as it fills (GOAL_BLINK) or until the bar is tapped, then steady, so a goal the
-    // player leaves unbought does not blink on for as long as they leave it. Its price was kept when it was chosen:
-    // nothing of the shop is asked here.
+    // menu), and another shuts it. It is docked DOCK from the sides and the foot; what is in it stands INSET in from
+    // its frame (`left` and `right`), three rows of an icon with its figure at the icon's own height.
+    const B = H - 44, left = UI.DOCK + UI.INSET, right = W - UI.DOCK - UI.INSET, row1 = B + 5, row2 = row1 + 12, row3 = row2 + 12;
+    slice9(ctx, 'ui', 'panel', UI.DOCK, B + UI.DOCK, W - 2 * UI.DOCK, 40);
+    // What the player is saving for (js/goal.js): a line along the bar's top edge, its light rim from end to end, as
+    // far across as what is banked has come towards its price (the least of its grit, gems and specimens), in yellow,
+    // and green once all of it is there: blinking for three seconds as it fills (GOAL_BLINK) or until the bar is
+    // tapped, then steady, so a goal the player leaves unbought does not blink on for as long as they leave it. Its
+    // price was kept when it was chosen: nothing of the shop is asked here.
     const goal = this.saving();
     if (goal.id !== null) {
-      const share = goalShare(this), full = share >= 1, of = `${goal.id} ${goal.level}`;
+      const share = goalShare(this), full = share >= 1, of = `${goal.id} ${goal.level}`, rim = UI.DOCK + 1;
       if (!full) this.goalLitFor = null;
       else if (this.goalLitFor !== of) { this.goalLitFor = of; this.goalBlink = GOAL_BLINK; }
-      if (!full || !(this.goalBlink > 0) || ((now / 250) | 0) % 2 === 0) { ctx.fillStyle = full ? '#8ce060' : '#ffe14a'; ctx.fillRect(4, B + 3, Math.round((W - 8) * share), 1); }
+      if (!full || !(this.goalBlink > 0) || ((now / 250) | 0) % 2 === 0) { ctx.fillStyle = full ? '#8ce060' : '#ffe14a'; ctx.fillRect(rim, B + 3, Math.round((W - 2 * rim) * share), 1); }
     }
-    draw(ctx, 'icons', 'grit', 6, B + 5);
-    text(ctx, compact(S.grit - this.pending.grit), 18, B + 6 - (this.counted > 0 ? 1 : 0), this.counted > 0 ? '#ffffff' : '#ffe14a');
+    draw(ctx, 'icons', 'grit', left, row1);
+    text(ctx, compact(S.grit - this.pending.grit), left + UI.ICON, row1 - (this.counted > 0 ? 1 : 0), this.counted > 0 ? '#ffffff' : '#ffe14a');
     // The gems: the four directions', or the corners' where they are what matter, or all eight where there is room.
-    const gems = W >= BAR_ALL_W ? BAR_ALL : this.cornerBar() ? BAR_CORNERS : BAR_DIRS, gw = (W - 30) / gems.length;
+    // Each has a column as wide as an icon and the widest figure, spread at an even pitch from the bar's left to its
+    // right, the last ending where the rows above and below it do.
+    const gems = W >= BAR_ALL_W ? BAR_ALL : this.cornerBar() ? BAR_CORNERS : BAR_DIRS, gw = (right - left - BAR_COL) / (gems.length - 1);
     for (let n = 0; n < gems.length; n++) {
-      const g = gems[n], gx = Math.round(6 + n * gw), have = (S.gems[g] ?? 0) - (this.pending.gems[g] ?? 0);
+      const g = gems[n], gx = Math.round(left + n * gw), have = (S.gems[g] ?? 0) - (this.pending.gems[g] ?? 0);
       ctx.globalAlpha = S.gems[g] > 0 ? 1 : 0.35;
-      draw(ctx, 'icons', GEM_ICON[g], gx, B + 17);
-      text(ctx, compact(have), gx + 12, B + 18, GEM_COLOR[g]);
+      draw(ctx, 'icons', GEM_ICON[g], gx, row2);
+      text(ctx, compact(have), gx + UI.ICON, row2, GEM_COLOR[g]);
       ctx.globalAlpha = 1;
     }
-    const R = this.val('tether'), far = this.far, left = Math.max(0, R - far), label = compact(left), room = textWidth(label) + 10;
-    this.bar(6, B + 29, W - 12 - room, 'tether', left / R, far / R > 0.93 ? '#ff7a5a' : '#f4ecd8', this.twang > 0);
-    text(ctx, label, W - 6, B + 30, this.twang > 0 ? '#ff7a5a' : '#f4ecd8', 1);
+    // (The figure of the reach left in a slot as wide as the widest figure, set to the right, so the track before it
+    // keeps its length as the figure counts down.)
+    const R = this.val('tether'), far = this.far, left2 = Math.max(0, R - far), label = compact(left2);
+    this.bar(left, row3, right - left - UI.FIG - UI.INSET, 'tether', left2 / R, far / R > 0.93 ? '#ff7a5a' : '#f4ecd8', this.twang > 0);
+    text(ctx, label, right, row3, this.twang > 0 ? '#ff7a5a' : '#f4ecd8', 1);
     // The hull, after the grit: hearts, each two of the knocks it can take, so a knock is half a heart (a hull of an
-    // odd number has a half heart last). Half a heart just lost blinks white for a moment, the last half left
-    // blinks red, and a hull just mended shows white.
-    const pips = this.val('hull'), sound = this.hull, hx = 18 + textWidth(compact(S.grit - this.pending.grit)) + 7, hearts = Math.ceil(pips / 2);
+    // odd number has a half heart last), on the grit's line, their rims on its figure's ink and shadow. Half a heart
+    // just lost blinks white for a moment, the last half left blinks red, and a hull just mended shows white.
+    const pips = this.val('hull'), sound = this.hull, hx = left + UI.ICON + textWidth(compact(S.grit - this.pending.grit)) + UI.GROUP + 1, hearts = Math.ceil(pips / 2);
     const blink = ((now / 150) | 0) % 2 === 0, half = (n, l, h) => n & 1 ? [Math.max(l, HEART_MID + 1), h] : [l, Math.min(h, HEART_MID)];
     // (The dark rim of every heart first, a whole heart's as one, and its colour over it: a heart whole is not
     // parted down the middle.)
     ctx.fillStyle = '#16121c';
     for (let n = 0; n < pips; n += 2) {
       const x = hx + (n >> 1) * HEART_PITCH, last = n + 1 >= pips;
-      for (const [a, b, r] of HEART) { const [l, h] = last ? half(n, a, b) : [a, b]; if (l <= h) ctx.fillRect(x + l - 1, B + 4 + r, h - l + 3, 3); }
+      for (const [a, b, r] of HEART) { const [l, h] = last ? half(n, a, b) : [a, b]; if (l <= h) ctx.fillRect(x + l - 1, row1 + r, h - l + 3, 3); }
     }
     for (let n = 0; n < pips; n++) {
       const x = hx + (n >> 1) * HEART_PITCH, full = n < sound, lost = n === sound && this.knocked > 0;
       const colour = lost ? (blink ? '#ffffff' : '#ff4d6d') : !full ? '#3a3450' : this.mended > 0 ? '#ffffff' : sound === 1 ? (blink ? '#ff4d6d' : '#8a2038') : '#ff4d6d';
       ctx.fillStyle = colour;
-      for (const [a, b, r] of HEART) { const [l, h] = half(n, a, b); if (l <= h) ctx.fillRect(x + l, B + 5 + r, h - l + 1, 1); }
+      for (const [a, b, r] of HEART) { const [l, h] = half(n, a, b); if (l <= h) ctx.fillRect(x + l, row1 + 1 + r, h - l + 1, 1); }
       // (A glint on the left lobe of a heart lit as ever.)
-      if (!(n & 1) && colour === '#ff4d6d' && !lost && sound > 1) { ctx.fillStyle = '#ffc2cf'; ctx.fillRect(x + 1, B + 6, 1, 1); }
+      if (!(n & 1) && colour === '#ff4d6d' && !lost && sound > 1) { ctx.fillStyle = '#ffc2cf'; ctx.fillRect(x + 1, row1 + 2, 1, 1); }
     }
     // What the lab has analysed, of all it can: shown once there is a first sample, lit for a moment by a new level.
     // (`known` is the game's count, kept as samples come in: counting the lab's list here made a list every frame.)
     const known = this.known;
-    if (this.knownFor !== known) { this.knownFor = known; this.knownSaid = `${known}/${LAB.length}`; }
-    if (known && hx + hearts * HEART_PITCH + 3 < W - 6 - textWidth(this.knownSaid) - 11) {
-      const count = this.knownSaid, lit = this.labFlash > 0 && ((now / 120) | 0) % 2 === 0;
-      text(ctx, count, W - 6, B + 6, lit ? '#ffffff' : '#8cf2c4', 1);
-      draw(ctx, 'icons', 'lab', W - 6 - textWidth(count) - 11, B + 5);
+    if (this.knownFor !== known) { this.knownFor = known; this.knownSaid = `${known}/${LAB.length}`; this.knownW = textWidth(this.knownSaid); }
+    if (known && hx + hearts * HEART_PITCH + 3 < right - this.knownW - UI.ICON) {
+      const lit = this.labFlash > 0 && ((now / 120) | 0) % 2 === 0;
+      text(ctx, this.knownSaid, right, row1, lit ? '#ffffff' : '#8cf2c4', 1);
+      draw(ctx, 'icons', 'lab', right - this.knownW - UI.ICON, row1);
     }
     this.button(0, B, W, 44, () => { this.goalBlink = 0; this.openLab(!this.lab); });
     // The place the drill has come into: its name on a plate, with its direction's gem (and a second gem, where
-    // the place pays two).
-    if (!place || place.card) this.plateLow = false;
+    // the place pays two), laid out once a place (`plateFit`): at the head of the screen, EDGE in, or under the map
+    // where its name is too long to stand beside it.
     if (place && !place.card) {
-      const more = place.also ? 11 : 0, slide = Math.min(1, place.t / 0.15), pw = textWidth(place.title) + 23 + more, px = 4 - Math.round((1 - slide) * (1 - slide) * 10);
+      const slide = Math.min(1, place.t / 0.15), px = UI.EDGE - Math.round((1 - slide) * (1 - slide) * 10), ty = lay.ty, ix = px + UI.INSET;
       ctx.globalAlpha = Math.min(1, slide, (place.life - place.t) / 0.3);
-      // (At the head of the screen; under the map, where its name is too long to stand beside it.)
-      const ty = px + pw > W - 60 ? 58 : 4;
-      this.plateLow = ty > 4;
-      slice9(ctx, 'ui', 'panel', px, ty, pw, 14);
-      this.panels.push([px, ty, pw, 14]);
-      if (place.mineral) this.drawMineral(ctx, place.mineral, px + 3, ty + 1); else draw(ctx, 'icons', place.icon, px + 4, ty + 2);
-      if (place.also) draw(ctx, 'icons', place.also, px + 15, ty + 2);
-      text(ctx, place.title, px + 17 + more, ty + 2, place.colour);
+      slice9(ctx, 'ui', 'panel', px, ty, lay.pw, lay.h);
+      this.panels.push([px, ty, lay.pw, lay.h]);
+      // (A pocket's mineral is drawn as the middle ten rows of it, which the plate holds.)
+      if (place.mineral) { const r = sheets.minerals.frames[place.mineral]; ctx.drawImage(sheets.minerals.image, r[0] + 2, r[1] + 3, 12, 10, ix - 1, ty + 2, 12, 10); }
+      else draw(ctx, 'icons', place.icon, ix, ty + 2);
+      if (lay.also) draw(ctx, 'icons', place.also, ix + UI.ICON, ty + 2);
+      for (let n = 0; n < lay.lines.length; n++) text(ctx, lay.lines[n], px + lay.tx, ty + 2 + n * UI.TITLE, place.colour);
       ctx.globalAlpha = 1;
     }
-    // Specimens just banked: the count of that direction's slides out under the top bar, below where a place's
-    // plate goes, with what the next thing they buy asks, while there is one.
+    // Specimens just banked: the count of that direction's slides out at the head of the screen, under a place's
+    // plate where one stands there, with what the next thing they buy asks, while there is one.
     const line = this.specLine;
     if (line) {
       const need = this.specNeed(line.kin), label = `${Math.floor(S.spec[line.kin] + 1e-9)}${need ? `/${need}` : ''}`;
-      const slide = Math.min(1, line.t / 0.15), pw = textWidth(label) + 23, px = 4 - Math.round((1 - slide) * (1 - slide) * 10);
+      const slide = Math.min(1, line.t / 0.15), pw = UI.INSET + UI.ICON + textWidth(label) + UI.INSET, px = UI.EDGE - Math.round((1 - slide) * (1 - slide) * 10);
+      const sy = place && !place.card && !low ? UI.EDGE + lay.h + UI.STACK : UI.EDGE;
       ctx.globalAlpha = Math.min(1, slide, (line.life - line.t) / 0.3);
-      slice9(ctx, 'ui', 'panel', px, 20, pw, 14);
-      this.panels.push([px, 20, pw, 14]);
-      draw(ctx, 'icons', `spec-${GEM_ICON[line.kin]}`, px + 4, 22);
-      text(ctx, label, px + 17, 22, GEM_COLOR[line.kin]);
+      slice9(ctx, 'ui', 'panel', px, sy, pw, PLATE_H);
+      this.panels.push([px, sy, pw, PLATE_H]);
+      draw(ctx, 'icons', `spec-${GEM_ICON[line.kin]}`, px + UI.INSET, sy + 2);
+      text(ctx, label, px + UI.INSET + UI.ICON, sy + 2, GEM_COLOR[line.kin]);
       ctx.globalAlpha = 1;
     }
     // A thing of the lab's seen for the first time (js/game.js: `showEye`), out in the ground, and not over a wreck.
     if (this.eye && !this.shop && !this.lab && !this.atCore && this.drill.mode !== 'dead') this.drawEye();
     // The map, in the top right corner.
-    this.drawMap(W - 52, 6);
+    this.drawMap(MAP_X(W), MAP_Y);
     // The shop's button, over the bar, when the drill is home.
     const by = H - 88;
     if (this.atCore && !this.shop && !this.lab && d.mode === 'free') {
@@ -1502,7 +1615,8 @@ export class Drawing {
       slice9(ctx, 'ui', afford ? (up ? 'button-down' : 'button') : 'panel', x, by + 6, w, 24);
       text(ctx, 'UPGRADES', x + w / 2, by + 13, afford ? '#ffffff' : '#9a94a8', 0.5);
       this.button(x - 4, by, w + 8, 36, () => { this.shop = true; sfx.tap(); });
-      if (afford && S.stats.buys === 0) draw(ctx, 'ui', 'hand', x + w / 2 - 4, by + 18 + Math.round(Math.sin(now / 150) * 3));
+      // (The hand under the word, pointing up at it, its fingertip at the word's middle and never over it.)
+      if (afford && S.stats.buys === 0) draw(ctx, 'ui', 'hand', x + w / 2 - 7, by + 22 + Math.round(Math.abs(Math.sin(now / 150)) * 3));
     }
     // The idea, shown and not told: a hand draws a loop, as the tether must be drawn round the loose piece.
     if (S.stats.hauls === 0 && !this.shop && !this.lab && this.input.id === null) {
@@ -1539,12 +1653,12 @@ export class Drawing {
     const size = big ? big.size : 46, per = big ? big.per : this.val('maprange'), mx0 = big ? big.cx ?? HX : Math.floor(d.x) + 0.5, my0 = big ? big.cy ?? HY : Math.floor(d.y) + 0.5;
     const M = big ? (this.chartMap ??= {}) : this;
     if (!big) {
-      slice9(ctx, 'ui', 'panel', x - 3, y - 3, size + 6, size + 6);
-      this.mapRect = [x - 3, y - 3, size + 6, size + 6];
+      slice9(ctx, 'ui', 'panel', x - 3, y - 3, MAP_FRAME, MAP_FRAME_H);
+      this.mapRect = [x - 3, y - 3, MAP_FRAME, MAP_FRAME_H];
       // With the chart bought, a tap on the map opens it.
       if (this.val('chart') && !this.lab && !this.shop) {
-        ctx.fillStyle = '#ffe14a'; ctx.fillRect(x - 2, y - 2, size + 4, 1); ctx.fillRect(x - 2, y + size + 1, size + 4, 1);
-        this.button(x - 3, y - 3, size + 6, size + 6, () => this.openLab(true, 'chart'));
+        ctx.fillStyle = '#ffe14a'; ctx.fillRect(x - 2, y - 2, size + 4, 1); ctx.fillRect(x - 2, y + size + 2, size + 4, 1);
+        this.button(x - 3, y - 3, MAP_FRAME, MAP_FRAME_H, () => this.openLab(true, 'chart'));
       }
     }
     let map = M.mapCanvas;

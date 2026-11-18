@@ -55,21 +55,21 @@ check(game.goal.id === 'winch', `chosen again, the goal is ${game.goal.id}`);
 {
   const lit = () => {
     let most = -1, colour = null;
-    game.ctx.fillRect = (x, y, w, h) => { if (y === game.H - 41 && h === 1 && x === 4 && w > most) { most = w; colour = game.ctx.fillStyle; } };
+    game.ctx.fillRect = (x, y, w, h) => { if (y === game.H - 41 && h === 1 && x === 3 && w > most) { most = w; colour = game.ctx.fillStyle; } };
     game.render();
     delete game.ctx.fillRect;
     return [most, colour];
   };
   const price = game.goal.grit, widths = [];
   for (const share of [0.1, 0.4, 0.8]) { S.grit = Math.floor(price * share); widths.push(lit()); }
-  check(widths.every(([w, c]) => c === '#ffe14a') && widths[0][0] < widths[1][0] && widths[1][0] < widths[2][0] && Math.abs(widths[1][0] - Math.round((game.W - 8) * Math.floor(price * 0.4) / price)) <= 1, `with a tenth, two fifths and four fifths of ${price} banked the line is ${JSON.stringify(widths)}`);
+  check(widths.every(([w, c]) => c === '#ffe14a') && widths[0][0] < widths[1][0] && widths[1][0] < widths[2][0] && Math.abs(widths[1][0] - Math.round((game.W - 6) * Math.floor(price * 0.4) / price)) <= 1, `with a tenth, two fifths and four fifths of ${price} banked the line is ${JSON.stringify(widths)}`);
   check(Math.abs(goalShare(game) - Math.floor(price * 0.8) / price) < 1e-9, `goalShare is ${goalShare(game)}`);
   S.grit = price;
   const blink = [];
   for (let f = 0; f < 40; f++) { game.time += 1 / 60; blink.push(lit()); }
-  check(blink.some(([w, c]) => c === '#8ce060' && w === game.W - 8) && blink.some(([w]) => w < 0), `with all of it banked the line is ${JSON.stringify(blink.slice(0, 20))}`);
+  check(blink.some(([w, c]) => c === '#8ce060' && w === game.W - 6) && blink.some(([w]) => w < 0), `with all of it banked the line is ${JSON.stringify(blink.slice(0, 20))}`);
   // (Steady green after three seconds, the goal left unbought.)
-  const steady = () => { const seen = []; for (let f = 0; f < 40; f++) { game.time += 1 / 60; seen.push(lit()); } return seen.every(([w, c]) => c === '#8ce060' && w === game.W - 8); };
+  const steady = () => { const seen = []; for (let f = 0; f < 40; f++) { game.time += 1 / 60; seen.push(lit()); } return seen.every(([w, c]) => c === '#8ce060' && w === game.W - 6); };
   for (let f = 0; f < 200; f++) game.update(1 / 60);
   check(S.grit >= price && steady(), 'the line still blinks three seconds after all of it was banked');
   // (Blinks again when it fills again, and stops at a tap on the bar.)

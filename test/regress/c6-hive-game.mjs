@@ -104,7 +104,8 @@ const stand = (game, x, y) => { const d = game.drill; d.x = d.px = x + 0.5; d.y 
   check(game.place && game.place.title === 'AMBER HIVE' && game.place.card === false && game.place.mineral === 'amber', `into the hive a second time: ${JSON.stringify(game.place)}`);
   const minerals = atlas.sheets.minerals, r = minerals.frames.amber;
   let plate = 0;
-  game.ctx.drawImage = (image, sx, sy, sw, sh, dx, dy) => { if (image === minerals.image && sx === r[0] + 2 && sy === r[1] + 2 && sw === 12 && dy === 5) plate++; };
+  // (The middle ten rows of it, which the plate holds: js/drawing.js, drawHud.)
+  game.ctx.drawImage = (image, sx, sy, sw, sh, dx, dy) => { if (image === minerals.image && sx === r[0] + 2 && sy === r[1] + 3 && sw === 12 && sh === 10 && dy === game.place.lay.ty + 2) plate++; };
   game.render();
   check(plate === 1, `the plate has the amber on it ${plate} times`);
 }

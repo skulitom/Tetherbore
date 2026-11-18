@@ -99,7 +99,9 @@ const GEM_COLOR = [null, '#bfe6ff', '#ffb060', '#b8f06a', '#d8b8ff'];
   w.zoneOf = () => null;
   const cells = [at(-60, 10)]; w.setK(cells[0], K.MINERAL); w.setB(cells[0], 32);
   let drawn = 0;
-  game.ctx.drawImage = (image, sx, sy, sw, sh, dx, dy) => { if (image === icons.image && sx === r[0] && sy === r[1] && dy === 22) drawn++; };
+  // (On its plate at the head of the screen, or under a place's plate where one stands there: js/drawing.js, drawHud.)
+  const specY = () => 6 + (game.place && !game.place.card && !game.plateLow ? game.place.lay.h + 2 : 0);
+  game.ctx.drawImage = (image, sx, sy, sw, sh, dx, dy) => { if (image === icons.image && sx === r[0] && sy === r[1] && dy === specY()) drawn++; };
   game.render();
   check(drawn === 0, 'the count of specimens is drawn with none banked');
   game.haul(cells);

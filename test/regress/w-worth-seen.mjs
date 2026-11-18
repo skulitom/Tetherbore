@@ -225,9 +225,11 @@ const frames = (game, seconds) => { for (let f = 0; f < Math.round(seconds * 60)
       game.drawEye();
       const [x, y, w, h] = e.rect;
       widest = Math.max(widest, w); tall = Math.max(tall, h);
-      const l1 = 24 + textWidth(e.name) + (e.tagAt === 1 ? textWidth(e.tag) + 6 : 0), l2 = 10 + textWidth(e.said) + (e.tagAt === 2 ? textWidth(e.tag) + 6 : 0);
-      check(x >= 4 && x + w <= W - 4 && Math.max(l1, l2, e.tagAt === 3 ? textWidth(e.tag) + 10 : 0) <= w, `${e.key} '${e.name}' '${e.said}' ${e.tag} is ${Math.max(l1, l2)} wide in a panel of ${w} at ${x}, on a screen ${W} wide`);
-      check(y + h <= bar && y > drill && game.panels.includes(e.rect), `${e.key} lies from ${y} to ${y + h} on a screen ${H} tall: the drill comes down to ${drill}, the bar begins at ${bar}`);
+      // (Its chip and name, its worth, and its tag each four in from the frame either side, the tag eight clear of
+      // what is before it on its line.)
+      const l1 = 24 + textWidth(e.name) + (e.tagAt === 1 ? textWidth(e.tag) + 8 : 0), l2 = 8 + textWidth(e.said) + (e.tagAt === 2 ? textWidth(e.tag) + 8 : 0);
+      check(x >= 4 && x + w <= W - 4 && Math.max(l1, l2, e.tagAt === 3 ? textWidth(e.tag) + 8 : 0) <= w, `${e.key} '${e.name}' '${e.said}' ${e.tag} is ${Math.max(l1, l2)} wide in a panel of ${w} at ${x}, on a screen ${W} wide`);
+      check(y + h === bar - 2 && h === (e.tagAt === 3 ? 42 : 32) && y > drill && game.panels.includes(e.rect), `${e.key} lies from ${y} to ${y + h} on a screen ${H} tall: the drill comes down to ${drill}, the bar begins at ${bar}`);
     }
   }
   check(widest > 100 && tall >= 30, `the panels were never laid out: ${widest} wide, ${tall} tall at the most`);
@@ -249,7 +251,7 @@ const frames = (game, seconds) => { for (let f = 0; f < Math.round(seconds * 60)
       if (!top) { check(WORTH_AT[lv][e.key].tier < 2, `${e.key} of the tier ${WORTH_AT[lv][e.key].tier} at the winch's ${lv} names nothing`); continue; }
       const b = { n: 40, grit: 99999, gems: [0, 0, 0, 0, 9999, 0, 0, 0, 0], trophy: false, shine: 1, top, splitW: 0 };
       game.bannerSplit(b, '+9');
-      check(b.topAt ? b.topW <= game.W - 8 && b.topW === textWidth(top.said) + 14 : b.topW > game.W - 8, `'${top.said}' is ${b.topW} wide on a screen ${game.W} wide, ${b.topAt ? 'laid' : 'dropped'}`);
+      check(b.topAt ? b.topW <= game.W - 8 && b.topW === textWidth(top.said) + 16 : b.topW > game.W - 8, `'${top.said}' is ${b.topW} wide on a screen ${game.W} wide, ${b.topAt ? 'laid' : 'dropped'}`);
       if (b.topAt) laid++; else dropped++;
     }
   }

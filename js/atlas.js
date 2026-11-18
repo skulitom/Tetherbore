@@ -1,5 +1,5 @@
 // Loads the sprite sheets Pixelbolt built (assets/atlas.json and its PNGs) and draws frames, animations and text.
-import { tr } from './lang.js';
+import { tr, words } from './lang.js';
 
 export const sheets = {};
 const tints = new Map();
@@ -81,6 +81,16 @@ export function textWidth(text, scale = 1) {
   for (const ch of tr(String(text))) w += ((glyphs[ch] ?? glyphs['?'])[1] + 1) * scale;
   return w - scale;
 }
+// Text broken into lines no wider than `wide` pixels, at the spaces: in the language chosen, turned whole before it
+// is broken (and in Mandarin broken between characters: js/lang.js, `words`).
+export const wrap = (said, wide) => {
+  const lines = [], { parts, join } = words(tr(said));
+  for (const word of parts) {
+    const last = lines[lines.length - 1];
+    if (last !== undefined && textWidth(`${last}${join}${word}`) <= wide) lines[lines.length - 1] = `${last}${join}${word}`; else lines.push(word);
+  }
+  return lines;
+};
 // Text in Pixelbolt's pixel font, with the Cyrillic capitals drawn for it and the Chinese characters the game says
 // taken from Fusion Pixel (art/build.mjs): a glyph is [x, width, row of the sheet]. `align`: 0 left, 0.5 centre, 1
 // right. A dark copy under it keeps it readable.
