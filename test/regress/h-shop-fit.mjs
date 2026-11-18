@@ -2,10 +2,12 @@
 // CSS pixels wide) and on the common one (180 x 320): every line drawn lies within its panel, and no two things
 // drawn on one line run into each other. For every tab, every level of every row (every row of a tab at once, each
 // at that level or its last), with what the levels ask not yet found and found, and with nothing in hand and with
-// everything: the words, the steps, what must be found (`lacks`, without its NEEDS where the line is too narrow
-// for it), the prices and their icons, measured as the glyphs and icons are drawn. And STATS, with every row at its
-// last level, every rare hazard and creature met, every shrine and fossil, and thousands of everything, fits above
-// the bar a line a line, and says what the bit and the winch are.
+// everything: the words, the steps, what must be found (with its NEEDS in every row or in none, as the widest
+// fits the line), the prices and their icons, measured as the glyphs and icons are drawn, each line ending on the
+// rows' right column (UI.INSET in from the row's box) and lying inside its row's fill, its lines clear of one
+// another (Mandarin's two a row, a row in from the rim). The reach's row says GROUND SPENT within its line. And
+// STATS, with every row at its last level, every rare hazard and creature met, every shrine and fossil, and
+// thousands of everything, fits above the bar a line a line, and says what the bit and the winch are.
 // The eight levels paid in a corner's gems (js/shop.js: LATE) are among them, short of their gems and not: where
 // they are had is said whole where it fits the line and short where it does not (GEM_SHORT: the Russian of the north
 // east is too wide for the narrowest phone), and the footer's note of a tap refused for want of them too. And the
@@ -25,7 +27,7 @@ const { TABS, LAB, CORE, ROWS } = await import('../../js/shop.js');
 const { GEM_ICON, GEM_SHORT, compact } = await import('../../js/drawing.js');
 const { KINDS } = await import('../../js/fauna.js');
 const { sheets, textWidth } = await import('../../js/atlas.js');
-const { lang } = await import('../../js/lang.js');
+const { lang, tr } = await import('../../js/lang.js');
 
 const fails = [], check = (ok, what) => { if (!ok && fails.length < 40) fails.push(what); };
 const game = await makeGame(7), S = game.S;
@@ -65,6 +67,28 @@ const clashes = (gs = glyphs, cs = icons) => {
   return n;
 };
 
+// Where the shop's panel and rows are on a screen H tall (js/drawing.js, `drawShop`, risen): six rows of 32, the
+// header over them and the footer under them, 4 from the top at the least.
+const shopAt = H => {
+  const most = Math.max(...TABS.map(t => t.rows.length)), rh = Math.max(24, Math.min(32, Math.floor((H - 92) / most))), ph = 20 + rh * most + 14;
+  return { most, rh, ph, py: Math.max(4, Math.round((H - 44 - ph) / 2)) };
+};
+// Each row's lines as its glyphs lie, in the language spoken: every glyph's ink and shadow inside the row box's
+// fill, clear of its rim (a capital's ink from its cell's row 1 and its shadow on row 8; a Mandarin character's
+// from row 0, its shadow on row 9), and so every icon's (ink rows 0 to 8); and no two lines of a row that share a
+// column so near that one's ink touches the other's shadow (9 rows apart, and 10 for Mandarin, whose lines then
+// abut).
+const zh = lang === 'zh', inkTop = zh ? 0 : 1, inkFoot = zh ? 9 : 8, pitch = zh ? 10 : 9;
+const rowLines = (at, H, n) => {
+  const { rh, py } = shopAt(H);
+  for (let k = 0; k < n; k++) {
+    const y0 = py + 20 + k * rh, own = glyphs.filter(g => g.y >= y0 - 2 && g.y < y0 + rh - 2 && g.w <= 12), marks = icons.filter(c => c.y >= y0 && c.y < y0 + rh);
+    for (const g of own) check(g.y + inkTop >= y0 + 2 && g.y + inkFoot <= y0 + rh - 4, `${at}: row ${k + 1} has a glyph at y ${g.y}, on its rim (its fill ${y0 + 2} to ${y0 + rh - 4})`);
+    for (const c of marks) check(c.y >= y0 + 2 && c.y + 8 <= y0 + rh - 4, `${at}: row ${k + 1} has an icon at y ${c.y}, on its rim (its fill ${y0 + 2} to ${y0 + rh - 4})`);
+    for (const a of own) for (const b of own) if (a.y < b.y && a.x < b.x + b.w && b.x < a.x + a.w) check(b.y - a.y >= pitch, `${at}: row ${k + 1} has lines at y ${a.y} and ${b.y}, ${b.y - a.y} apart where they share columns (${pitch} at the least)`);
+  }
+};
+
 // What has been found: nothing, or everything any level asks.
 const found = all => {
   S.out = all ? 3000 : 0;
@@ -95,9 +119,10 @@ for (const [cssW, cssH] of [[320, 568], [360, 640]]) {
       game.render(); renders++;
       const at = `${W}x${H}, ${tab.name} at level ${l}, ${all ? 'all found' : 'nothing found'}, ${rich ? 'rich' : 'poor'}`;
       check(glyphs.length > 40, `${at}: only ${glyphs.length} glyphs were drawn`);
-      for (const r of runs()) check(r.x >= px + 4 && r.x + r.w <= px + pw - 6, `${at}: a line of ${r.n} letters at y ${r.y} runs from x ${r.x} to ${r.x + r.w}, past the panel (${px + 4} to ${px + pw - 6})`);
+      for (const r of runs()) check(r.x >= px + 4 && r.x + r.w <= px + pw - 8, `${at}: a line of ${r.n} letters at y ${r.y} runs from x ${r.x} to ${r.x + r.w}, past the rows' column (${px + 4} to ${px + pw - 8})`);
       const n = clashes();
       check(n === 0, `${at}: ${n} glyphs run into another glyph or an icon`);
+      rowLines(at, H, tab.rows.length);
     }
   }
   // STATS, with everything there is.
@@ -131,7 +156,7 @@ for (const [cssW, cssH] of [[320, 568], [360, 640]]) {
     game.fitter.bought(game, u, l);
     glyphs.length = 0; icons.length = 0;
     game.render(); renders++;
-    for (const r of runs()) check(r.x >= px + 4 && r.x + r.w <= px + pw - 6, `${W}x${H}: ${u.name} bought to level ${l}, a line of ${r.n} letters at y ${r.y} runs from x ${r.x} to ${r.x + r.w}, past the panel (${px + 4} to ${px + pw - 6})`);
+    for (const r of runs()) check(r.x >= px + 4 && r.x + r.w <= px + pw - 8, `${W}x${H}: ${u.name} bought to level ${l}, a line of ${r.n} letters at y ${r.y} runs from x ${r.x} to ${r.x + r.w}, past the rows' column (${px + 4} to ${px + pw - 8})`);
   }
   game.fitter.moment.t = 0; game.shop = false;
   const sw = Math.min(W - 8, 200);
@@ -140,6 +165,35 @@ for (const [cssW, cssH] of [[320, 568], [360, 640]]) {
     const [name, value] = game.stats().find(([name]) => name === 'REFINERY');
     check(textWidth(name) + 4 + textWidth(value) <= sw - 16, `${W}x${H}: STATS's ${name} and '${value}' come within four pixels of each other`);
   }
+}
+
+// The reach's row where the ground it reaches is spent (`groundLeft` none), at every level from the third to the
+// last but one, with nothing found and everything, with nothing in hand and everything: it says GROUND SPENT within
+// its line, in the language spoken (ЗЕМЛЯ ВЫРАБОТАНА: СКИДКА ran off the narrowest phone), and the rows still hold.
+for (const [cssW, cssH] of [[320, 568], [360, 640]]) {
+  game.resize(cssW, cssH, 1);
+  const { W, H } = game, pw = Math.min(W - 8, 200), px = Math.round((W - pw) / 2), reach = TABS[0].rows.find(u => u.id === 'tether');
+  game.groundLeft = () => 0;
+  for (let l = 2; l <= 8; l++) for (const [all, rich] of [[false, false], [true, false], [true, true]]) {
+    for (const u of TABS[0].rows) S.lv[u.id] = 0;
+    S.lv.tether = l; found(all); hold(rich); game.pending.grit = 0; game.pending.gems.fill(0);
+    game.goal = undefined; game.bought = null; game.shopNote = null;
+    game.shop = true; game.shopRise = 1; game.shopTab = 'rig'; game.lab = false;
+    glyphs.length = 0; icons.length = 0;
+    game.render(); renders++;
+    const at = `${W}x${H}, the reach at level ${l} with its ground spent, ${all ? 'all found' : 'nothing found'}, ${rich ? 'rich' : 'poor'}`;
+    check(game.cost(reach)?.grit === 1, `${at}: the next reach costs ${game.cost(reach)?.grit}, not next to nothing`);
+    // (Said on the row's second or third line; in Mandarin, which has two, NEEDS takes its place where more must be
+    // found first.)
+    const said = [...tr('GROUND SPENT: CHEAPER')].filter(ch => ch !== ' ').length, { rh, py } = shopAt(H), y0 = py + 20 + TABS[0].rows.indexOf(reach) * rh;
+    const lines = [...new Set(glyphs.filter(g => g.y > y0 + 4 && g.y < y0 + rh).map(g => g.y))];
+    if (!zh || !game.lacks(reach)) check(lines.some(y => glyphs.filter(g => g.y === y).length === said), `${at}: GROUND SPENT was not said on the reach's row`);
+    for (const r of runs()) check(r.x >= px + 4 && r.x + r.w <= px + pw - 8, `${at}: a line of ${r.n} letters at y ${r.y} runs from x ${r.x} to ${r.x + r.w}, past the rows' column (${px + 4} to ${px + pw - 8})`);
+    check(clashes() === 0, `${at}: a glyph runs into another glyph or an icon`);
+    rowLines(at, H, TABS[0].rows.length);
+  }
+  delete game.groundLeft;
+  game.shop = false;
 }
 
 // The levels paid in a corner's gems, each tapped with too few of them in hand and all else found: the footer says
@@ -161,8 +215,7 @@ for (const [cssW, cssH] of [[320, 568], [360, 640]]) {
   game.resize(cssW, cssH, 1);
   const { W, H } = game, pw = Math.min(W - 8, 200), px = Math.round((W - pw) / 2);
   // (Where the footer's line is: js/drawing.js, `drawShop`, risen.)
-  const most = Math.max(...TABS.map(t => t.rows.length)), rh = Math.max(24, Math.min(32, Math.floor((H - 100) / most))), ph = 22 + rh * most + 22;
-  const foot = Math.max(2, Math.round((H - 44 - ph) / 2)) + ph - 19 + 4;
+  const { rh, ph, py } = shopAt(H), foot = py + ph - 13;
   for (const [u, l, gem] of moved) {
     for (const v of TABS.flatMap(t => t.rows)) S.lv[v.id] = 0;
     S.lv[u.id] = l; found(true); hold(true);
@@ -217,7 +270,7 @@ for (const [cssW, cssH] of [[320, 568], [360, 640]]) {
 // Every row's `says` (and its `what`) fits the narrowest line by itself, as js/shop.js promises.
 for (const u of TABS.flatMap(t => t.rows)) for (let l = 0; l < u.values.length - 1; l++) {
   const said = u.says?.(l) ?? u.what;
-  check(textWidth(said) <= 160 - 8 - 31, `${u.name} at level ${l} says '${said}', ${textWidth(said)} pixels: wider than the narrowest phone's line`);
+  check(textWidth(said) <= 160 - 8 - 34, `${u.name} at level ${l} says '${said}', ${textWidth(said)} pixels: wider than the narrowest phone's line`);
 }
 check(CORE.length === 6 && TABS.every(t => t.rows.length <= 6), `a tab has more than the six rows the panel is made for: ${TABS.map(t => t.rows.length)}`);
 

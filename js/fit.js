@@ -736,11 +736,13 @@ export class Fitter {
   stamps(tab, id) { return this.moment.t > 0 && this.moment.tab === tab && this.moment.id === id; }
   // The moment in the shop, drawn over its rows: the bought row's picture lit white, a ring and sparks out of it,
   // its new value stamped in, and for a milestone a light run once round the panel's edge (below its header,
-  // where the tabs are). Nothing of it is drawn above the header's line.
-  panel(game, ctx, px, py, pw, ph, rh, tab) {
-    const m = this.moment, base = ctx.globalAlpha;
-    if (m.t > 0 && m.tab === tab.id) {
-      const age = MOMENT - m.t, y = py + 20 + m.row * rh, vx = px + 7, vy = y + Math.floor((rh - 17) / 2), cx = vx + 8, cy = vy + 8;
+  // where the tabs are). Nothing of it is drawn above the header's line. Where the row bought is, its picture and
+  // its steps, and the last column its words may reach (`edge`), are the shop's own, as it has just laid them out
+  // (js/drawing.js, `drawShop`: `rows`, one a row of the tab, { y, top, vx, vy, sx }); `UI` is its figures.
+  panel(game, ctx, px, py, pw, ph, tab, rows, edge, UI) {
+    const m = this.moment, base = ctx.globalAlpha, head = py + UI.HEAD;
+    if (m.t > 0 && m.tab === tab.id && rows[m.row]) {
+      const r = rows[m.row], age = MOMENT - m.t, vx = r.vx, vy = r.vy, cx = vx + 8, cy = vy + 8;
       if (m.fresh) {
         m.fresh = false;
         const c = col(m.colour);
@@ -751,12 +753,12 @@ export class Fitter {
       if (age < 0.3) {
         const u = age / 0.3, rad = 3 + 11 * (1 - (1 - u) * (1 - u)), n = Math.max(12, (rad * 1.6) | 0);
         ctx.globalAlpha = base * (1 - u); ctx.fillStyle = m.colour;
-        for (let a = 0; a < n; a++) { const ry = Math.round(cy + Math.sin(a / n * 6.283) * rad); if (ry >= py + 20) ctx.fillRect(Math.round(cx + Math.cos(a / n * 6.283) * rad), ry, 1, 1); }
+        for (let a = 0; a < n; a++) { const ry = Math.round(cy + Math.sin(a / n * 6.283) * rad); if (ry >= head) ctx.fillRect(Math.round(cx + Math.cos(a / n * 6.283) * rad), ry, 1, 1); }
       }
       if (m.grand && age < 0.5) {
         // (Round the panel below the header: down its left side, along its foot, up its right side, and back
         // along the header's line.)
-        const top = py + 20, side = ph - 20, all = 2 * side + 2 * pw, at = (age / 0.5) * all;
+        const top = head, side = ph - UI.HEAD, all = 2 * side + 2 * pw, at = (age / 0.5) * all;
         ctx.fillStyle = m.colour; ctx.globalAlpha = base * 0.9;
         for (let k = 0; k < 6; k++) {
           let s = (at - k + all) % all, ex, ey;
@@ -768,8 +770,8 @@ export class Fitter {
       ctx.globalAlpha = base;
       // (Twice the size, shadow and all, only where that ends within the line: on the narrowest phone a long name
       // and a long value, TROPHY LINE's 2 SPEC, would run past the panel and the screen, and are stamped as drawn.)
-      const sx = px + 31 + textWidth(ROW[m.id].name), big = age < STAMP && sx + 2 * textWidth(m.stamp) + 2 <= px + pw - 6;
-      text(ctx, m.stamp, sx, y + 2 - (big ? 5 : 0), '#ffe14a', 0, big ? 2 : 1);
+      const sx = r.sx, big = age < STAMP && sx + 2 * textWidth(m.stamp) + 2 <= edge;
+      text(ctx, m.stamp, sx, r.top - (big ? 5 : 0), '#ffe14a', 0, big ? 2 : 1);
     }
     ctx.globalCompositeOperation = 'lighter';
     this.drawPool(ctx, this.panelPool, 0, 0, game.W, game.H);

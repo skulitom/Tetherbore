@@ -68,7 +68,7 @@ check(!lacking.size, `the font has no glyph for ${[...lacking].join('')}`);
 // Every name the game holds.
 const game = await makeGame(7), S = game.S;
 const names = new Set(['STATS', 'LAB', 'MAP', 'MENU', 'SOUND', 'MUSIC', 'LANGUAGE', 'ON', 'OFF', 'NEW WORLD', 'TAP AGAIN: NEW WORLD', 'LONG FRAMES',
-  'NOT ANALYSED YET', 'NOT ENOUGH GRIT', 'GROUND SPENT: PRICE CUT', 'FITTED', 'BUILT', 'CRUSHED', 'SAMPLE 3/4', 'ANALYSED +3%', 'GAME LOADED',
+  'NOT ANALYSED YET', 'NOT ENOUGH GRIT', 'GROUND SPENT: CHEAPER', 'FITTED', 'BUILT', 'CRUSHED', 'SAMPLE 3/4', 'ANALYSED +3%', 'GAME LOADED',
   'IT WAS PLAYED ON IN ANOTHER TAB', 'GROUND MENDED', '1200 PIECES OF AN OLD WORLD', 'DISCHARGE', 'CHARGED', 'BOOST', 'HULL GONE', 'TRIP LOST',
   '-350 GRIT', '-1.2K GRIT, 300 KEPT', 'CORE RESTORED', 'CAUGHT!', 'CAUGHT', '+12 GRIT', 'TROPHY!', 'TROPHY', 'PAL!', 'PRISM x3', 'HALF THE REACH IN ONE HAUL']);
 for (const tab of TABS) {

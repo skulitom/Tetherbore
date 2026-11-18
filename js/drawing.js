@@ -5,10 +5,10 @@
 // picture and view, what can be tapped this frame).
 import { N, C, K, B, DX, DY, BIOMES, HAZARDS, CRUSH, ZONE, FIND, rowOf, hazOf, cellHash, RELIC_R, SEAMS, SHRINES, CORNER_HERALDS, fossilKin, GEM_PAST, STONES } from './world.js';
 import { sheets, draw, drawScaled, frameAt, duration, slice9, text, textWidth, tinted, wrap } from './atlas.js';
-import { tr, words, LANGS, lang, chooseLang } from './lang.js';
+import { tr, words, LANGS, lang, chooseLang, spaced } from './lang.js';
 import { decorAt, markAt, natural, framesOf, placeOf } from './decor.js';
 import { sfx, soundVolume, musicVolume, setSoundVolume, setMusicVolume, STEPS_OF_VOLUME } from './audio.js';
-import { WORKS, MAPS, TABS, LAB, LAB_OF, LAB_PARTS, PART_INDEX, labLevel, labNext, ROWS, FOUND, FINDER, CUT, WINCH_LOAD } from './shop.js';
+import { WORKS, MAPS, TABS, LAB, LAB_OF, LAB_PARTS, PART_INDEX, labLevel, labNext, ROWS, FOUND, FINDER, CUT, WINCH_LOAD, NEEDS } from './shop.js';
 import { pickGoal, goalShare } from './goal.js';
 import { WORTH_AT } from './worth.js';
 import { TETHERS, BODY, BODY_A, HOT, HOT_A, RAM, PLATE, FLAME, FLAME_TIER, FITS, FIT_BIT, CORE_IDLE, CORE_C, CORE_FLASH, DISH, REFINERY, CUTTER, BOX, ORBIT, BEACON, STATION_PARTS } from './fit.js';
@@ -48,6 +48,18 @@ export const T = 16;                            // pixels in a cell
 export const UI = Object.freeze({ EDGE: 4, DOCK: 2, INSET: 4, GAP: 2, ICON: 12, CHIP: 16, CHIP_GAP: 4, ICON_DY: 0, PIC_DY: -2, GROUP: 6, WORD: 8, FIG: 23,
   LINE: 12, LINE_MIN: 10, TITLE: 11, TITLE_GAP: 2, HEAD: 20, TAB_GAP: 9, STACK: 2, DRILL_CLEAR: 4, MAP: 46 });
 const under = s => UI.TITLE * s + UI.TITLE_GAP;
+// The shop: as many rows as its longest tab has, each SHOP_RH tall where the screen allows (every phone's does), and
+// a footer under them for a refused tap's note. SHOP_GROUP: from one of a price's icons to the next, past the
+// figure between them (an icon, UI.GROUP, and UI.GAP before the icon).
+const SHOP_MOST = Math.max(...TABS.map(t => t.rows.length)), SHOP_RH = 32, SHOP_FOOT = 14, SHOP_GROUP = 10 + UI.GROUP + UI.GAP;
+// A price as the shop says it: as `compact` writes it with a tenth that is nought left out ('25M', '4K' where it
+// writes '25.0M', '4.0K'), made once a figure (the prices are few) and kept.
+const PRICES = new Map();
+const price = n => {
+  let s = PRICES.get(n);
+  if (s === undefined) { if (PRICES.size > 512) PRICES.clear(); PRICES.set(n, s = compact(n).replace(/\.0(?=[KMB])/, '')); }
+  return s;
+};
 // A name said on two lines no wider than `room` at size `s`, broken where the longer of the two is shortest (so that
 // no short word hangs at the end of the first), or null where no two lines fit.
 const halves = (said, room, s) => {
@@ -123,14 +135,15 @@ const ring = (ctx, x, y, rim) => {
 };
 // What is said under the list of a thing analysed n times: its count, and the count its next level comes at.
 // Two values of a shop's row, `a>b`, in no more than `room` pixels: a word the two share said once ('ALL x3>x4',
-// '3>4 SPEC'), and failing that the next alone ('>ALL x2'). (What the row says on its second line says the rest.)
+// '3>4 SPEC'), failing that the next alone ('>ALL x2'), and failing that its figure without its word ('>2' for '2
+// SPEC', where TROPHY LINE's long name leaves no more in Russian). (What the row says on its second line says the rest.)
 const fewer = (a, b, room) => {
   const A = a.split(' '), B = b.split(' ');
   if (A.length === 2 && B.length === 2) {
     const one = A[0] === B[0] ? `${A[0]} ${A[1]}>${B[1]}` : A[1] === B[1] ? `${A[0]}>${B[0]} ${A[1]}` : null;
     if (one && textWidth(one) <= room) return one;
   }
-  return `>${b}`;
+  return B.length === 2 && textWidth(`>${b}`) > room ? `>${B[0]}` : `>${b}`;
 };
 export const labCount = n => `${compact(n)} ${n === 1 ? 'SAMPLE' : 'SAMPLES'}. +1% AT ${compact(labNext(n))}`;
 // What the lens shows a kind of ground as, and from which level of it: [level, red, green, blue].
@@ -1943,18 +1956,30 @@ export class Drawing {
   // The tabs of the panel the top bar opens (STATS: what the drill is now; ANALYSIS: the lab's notes; CHART: the
   // whole reach), and its cross. (A tab chosen stops the lab's list where it is: left running, it would run on again
   // when its tab came back, with no finger near it.)
-  panelTabs(px, py, pw, HEAD) {
-    const { ctx } = this;
-    let tx = px + 8;
-    for (const id of this.panelIds()) {
-      const name = PANEL_NAMES[id], tw = textWidth(name), on = this.labTab === id;
-      text(ctx, name, tx, py + 7, on ? '#ffe14a' : '#8a84a0');
-      if (on) { ctx.fillStyle = '#ffe14a'; ctx.fillRect(tx, py + 17, tw, 1); }
-      this.buttons.unshift({ x: tx - 4, y: py, w: tw + 10, h: HEAD, act: () => { this.labTab = id; this.labVel = 0; this.labAim = null; sfx.tap(); } });
-      tx += tw + 12;
-    }
-    text(ctx, 'x', px + pw - 12, py + 6, '#ffffff');
-    this.buttons.unshift({ x: px + pw - 24, y: py, w: 24, h: HEAD, act: () => { this.lab = false; sfx.tap(); } });
+  panelTabs(px, py, pw) {
+    this.headAt(px, py, pw);
+    for (const id of this.panelIds()) this.headTab(PANEL_NAMES[id], this.labTab === id, false, () => { this.labTab = id; this.labVel = 0; this.labAim = null; sfx.tap(); });
+    this.headClose(() => { this.lab = false; sfx.tap(); });
+  }
+  // A panel's header, the shop's and the bar's panel's alike (UI.HEAD tall): its tabs from the content's column
+  // (UI.INSET into the row boxes under them), UI.TAB_GAP apart, their boxes meeting; the one open underlined at the
+  // header's foot, a row clear of a Mandarin tab's shadow and a row over the first box; a green dot after one with
+  // something to buy. Then the cross, its ink ending on the content's right column, and its box from the last tab's
+  // to the panel's edge, so that neither takes a tap meant for the other. `headAt` begins a header, `headTab` adds
+  // a tab to it, `headClose` ends it. (Its place is kept on one object, made once.)
+  headAt(px, py, pw) { const h = this.headFit ??= { px: 0, py: 0, pw: 0, tx: 0, end: 0 }; h.px = px; h.py = py; h.pw = pw; h.tx = px + 2 * UI.INSET; h.end = px; }
+  headTab(name, on, ready, act) {
+    const { ctx } = this, h = this.headFit, tw = textWidth(name), tx = h.tx;
+    text(ctx, name, tx, h.py + 7, on ? '#ffe14a' : '#8a84a0');
+    if (on) { ctx.fillStyle = '#ffe14a'; ctx.fillRect(tx, h.py + UI.HEAD - 2, tw, 1); }
+    if (ready) { ctx.fillStyle = '#8ce060'; ctx.fillRect(tx + tw + 2, h.py + 6, 2, 2); }
+    this.buttons.unshift({ x: tx - UI.INSET, y: h.py, w: tw + UI.TAB_GAP, h: UI.HEAD, act });
+    h.end = tx - UI.INSET + tw + UI.TAB_GAP; h.tx = tx + tw + UI.TAB_GAP;
+  }
+  headClose(act) {
+    const h = this.headFit, x = Math.max(h.px + h.pw - 24, h.end);
+    text(this.ctx, 'x', h.px + h.pw - 2 * UI.INSET, h.py + 6, '#ffffff', 1);
+    this.buttons.unshift({ x, y: h.py, w: h.px + h.pw - x, h: UI.HEAD, act });
   }
   // What the player is saving for, chosen for this game where it has not been yet (js/goal.js).
   saving() { const g = this.goal; return g !== undefined && g.of === this.S ? g : pickGoal(this); }
@@ -2127,7 +2152,7 @@ export class Drawing {
     this.button(px, py, pw, ph, () => {});
     this.buttons.at(-1).swallow = true;
     this.chartRect = null;
-    this.panelTabs(px, py, pw, HEAD);
+    this.panelTabs(px, py, pw);
     if (this.labTab === 'stats') { this.drawStats(px, py + HEAD, pw); return; }
     if (this.labTab === 'menu') { this.drawMenu(px, py + HEAD, pw); if (this.stalls.length) this.drawStalls(px, py + HEAD + 102 + (this.langOpen ? LANG_ROWS : 0), pw); return; }
     if (this.labTab === 'chart') {
@@ -2275,89 +2300,121 @@ export class Drawing {
   drawShop() {
     const { ctx, W, H, S } = this, goal = this.saving();
     ctx.globalAlpha = 0.6 * this.shopRise; ctx.fillStyle = '#07060b'; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1;
-    // (The panel is as tall as its longest tab, so it does not jump when the tab is changed.)
-    const most = Math.max(...TABS.map(t => t.rows.length)), tab = TABS.find(t => t.id === this.shopTab) ?? TABS[0];
-    const pw = Math.min(W - 8, 200), px = Math.round((W - pw) / 2), rh = Math.max(24, Math.min(32, Math.floor((H - 100) / most)));
-    const rise = 1 - this.shopRise, ph = 22 + rh * most + 22, py = Math.max(2, Math.round((H - 44 - ph) / 2)) + Math.round(rise * rise * 60);
+    // (The panel is as tall as its longest tab, so it does not jump when the tab is changed: its header, its rows
+    // and the footer where a refused tap is said. A row is as tall as the screen allows up to SHOP_RH, which every
+    // screen the game is played on allows.)
+    const tab = TABS.find(t => t.id === this.shopTab) ?? TABS[0];
+    const pw = Math.min(W - 2 * UI.EDGE, 200), px = Math.round((W - pw) / 2), rh = Math.max(24, Math.min(SHOP_RH, Math.floor((H - 92) / SHOP_MOST)));
+    const rise = 1 - this.shopRise, ph = UI.HEAD + rh * SHOP_MOST + SHOP_FOOT, py = Math.max(UI.EDGE, Math.round((H - 44 - ph) / 2)) + Math.round(rise * rise * 60);
     slice9(ctx, 'ui', 'panel', px, py, pw, ph);
     this.button(px, py, pw, ph, () => {});
     // The tabs: the one that is open in yellow, and a dot on one that has something to buy.
-    let tx = px + 8;
-    for (const t of TABS) {
-      const tw = textWidth(t.name), id = t.id;
-      text(ctx, t.name, tx, py + 7, t === tab ? '#ffe14a' : '#8a84a0');
-      if (t === tab) { ctx.fillStyle = '#ffe14a'; ctx.fillRect(tx, py + 17, tw, 1); }
-      if (t.rows.some(u => this.canBuy(u))) { ctx.fillStyle = '#8ce060'; ctx.fillRect(tx + tw + 2, py + 6, 2, 2); }
-      this.buttons.unshift({ x: tx - 4, y: py, w: tw + 10, h: 20, act: () => { this.shopTab = id; sfx.tap(); } });
-      tx += tw + 9;
-    }
-    text(ctx, 'x', px + pw - 12, py + 6, '#ffffff');
-    this.buttons.unshift({ x: px + pw - 24, y: py, w: 24, h: 22, act: () => { this.shop = false; sfx.tap(); } });
-    tab.rows.forEach((u, n) => {
-      const y = py + 20 + n * rh, c = this.cost(u), can = this.canBuy(u), lit = this.bought?.id === u.id;
-      slice9(ctx, 'ui', lit ? 'button-down' : !c ? 'button-max' : can ? 'button' : 'button-off', px + 4, y, pw - 8, rh - 1);
-      // What it will look like once bought (or does now, at its last level), moving as it will.
-      const l = S.lv[u.id], next = Math.min(l + 1, u.values.length - 1), vx = px + 7, vy = y + Math.floor((rh - 17) / 2);
-      ctx.fillStyle = '#0c0a12'; ctx.fillRect(vx, vy, 16, 16);
-      this.drawPreview(ctx, u, next, vx, vy);
-      // What it is, what it does, and what the next level changes. (Where a level has just been bought, the new
-      // value is stamped in its place for a moment: js/fit.js, `panel`.)
-      text(ctx, u.name, px + 25, y + 2, '#ffffff');
-      // (The row saved for, `goal`, has a pin after its name.)
-      if (goal.id === u.id) { ctx.fillStyle = '#ffe14a'; ctx.fillRect(px + 27 + textWidth(u.name), y + 5, 2, 2); }
+    this.headAt(px, py, pw);
+    for (const t of TABS) this.headTab(t.name, t === tab, t.rows.some(u => this.canBuy(u)), () => { this.shopTab = t.id; sfx.tap(); });
+    this.headClose(() => { this.shop = false; sfx.tap(); });
+    // The rows' columns: each row a box UI.INSET in from the panel's, its words and figures UI.INSET in from that
+    // (`left` to `edge`, the last column a shadow may fall on); the picture at the left, its name UI.GAP after it.
+    // Its lines: a Latin row tall enough has three, evenly spaced (`p`), its first and last a row clear of the
+    // box's rim; Mandarin, whose characters fill their whole cell, has two, a row further in, and says NEEDS in
+    // place of what the thing does, and leaves out where gems are had where the price is on its second line (the
+    // footer says it on a tap).
+    const left = px + 2 * UI.INSET, edge = px + pw - 2 * UI.INSET, nx = left + 16 + UI.GAP, lead = spaced ? 0 : 1;
+    const p = (rh - 14) >> 1, tall = rh >= 30 && spaced, mid = y => y + 2 + p, bottom = y => y + rh - 12 - lead;
+    // (Whether NEEDS is said is one answer for every row on this screen: `needsSaid`.)
+    const needs = this.needsSaid(edge - nx), rows = this.shopRows ??= Array.from({ length: SHOP_MOST }, () => ({ y: 0, top: 0, vx: 0, vy: 0, sx: 0, c: null, steps: '', lack: null, wide: false }));
+    // Each row's words first, to know whether any row of the tab has a third line: where none has, what the
+    // others say is on their last line and not their middle one, so that no row is heavy at its head.
+    let third = false;
+    for (let n = 0; n < tab.rows.length; n++) {
+      const u = tab.rows[n], r = rows[n], l = S.lv[u.id], c = this.cost(u);
+      r.y = py + UI.HEAD + n * rh; r.top = r.y + 2 + lead; r.vx = left; r.vy = r.y + ((rh - 16) >> 1); r.sx = nx + textWidth(u.name) + 6; r.c = c;
       // (A thing fitted once has no levels to show: it is FITTED or it is not. Where the two values are too wide
       // for the line, a word they share is said once, and failing that the next is said alone: `fewer`.)
-      const once = u.values.length === 2, sx = px + 31 + textWidth(u.name), edge = px + pw - 6;
-      let steps = once ? (c ? '' : 'FITTED') : c ? `${u.show(u.values[l])}>${u.show(u.values[l + 1])}` : `${u.show(u.values[l])} MAX`;
-      if (sx + textWidth(steps) > edge) steps = c ? fewer(u.show(u.values[l]), u.show(u.values[l + 1]), edge - sx) : u.show(u.values[l]);
-      if (!this.fitter.stamps(tab.id, u.id)) text(ctx, steps, sx, y + 2, c ? '#bfe6ff' : '#ffe14a');
-      // What must be found first is said on the second line, and no price is shown until it has been. (Without
-      // its NEEDS where the line is too narrow for it: the colour says as much.)
-      let lack = c ? this.lacks(u) : null;
-      if (lack && px + 25 + textWidth(lack) > edge) lack = lack.slice(6);
-      // (A row tall enough for three lines keeps what the thing does on its second, whatever is on the third.)
-      const tall = rh >= 30;
+      let steps = u.values.length === 2 ? (c ? '' : 'FITTED') : c ? `${u.show(u.values[l])}>${u.show(u.values[l + 1])}` : `${u.show(u.values[l])} MAX`;
+      if (r.sx + textWidth(steps) > edge) steps = c ? fewer(u.show(u.values[l]), u.show(u.values[l + 1]), edge - r.sx) : u.show(u.values[l]);
+      r.steps = steps;
+      // What must be found first, and no price shown until it has been.
+      const q = c ? this.need(u) : null;
+      r.lack = q && q.have < q.need ? needs ? `NEEDS ${q.have}/${q.need} ${NEEDS[q.what]}` : `${q.have}/${q.need} ${NEEDS[q.what]}` : null;
+      // The price: right to left from the edge, each figure UI.GAP before its icon and each group UI.GROUP clear
+      // of the next; on the second line where it would come within UI.WORD of the steps.
+      r.wide = false;
+      if (c && !r.lack) {
+        const costs = textWidth(price(c.grit)) + (c.gems > 0 ? SHOP_GROUP + textWidth(price(c.gems)) : 0) + (c.spec ? SHOP_GROUP + textWidth(`${this.specs(u.kin)}/${c.spec}`) : 0);
+        r.wide = r.sx + textWidth(steps) + UI.WORD > edge - 9 - UI.GAP - costs;
+      }
+      if (r.lack || r.wide) third = true;
+    }
+    // (What a row says goes on its middle line where any row has three, and else on its last.)
+    const says = y => tall && third ? mid(y) : bottom(y);
+    for (let n = 0; n < tab.rows.length; n++) {
+      const u = tab.rows[n], r = rows[n], { y, c, top } = r, can = this.canBuy(u), lit = this.bought?.id === u.id, l = S.lv[u.id];
+      slice9(ctx, 'ui', lit ? 'button-down' : !c ? 'button-max' : can ? 'button' : 'button-off', px + UI.INSET, y, pw - 2 * UI.INSET, rh - 1);
+      // What it will look like once bought (or does now, at its last level), moving as it will.
+      ctx.fillStyle = '#0c0a12'; ctx.fillRect(r.vx, r.vy, 16, 16);
+      this.drawPreview(ctx, u, Math.min(l + 1, u.values.length - 1), r.vx, r.vy);
+      // What it is, what it does, and what the next level changes. (Where a level has just been bought, the new
+      // value is stamped in its place for a moment: js/fit.js, `panel`.)
+      text(ctx, u.name, nx, top, '#ffffff');
+      // (The row saved for, `goal`, has a pin after its name, at the middle of its capitals.)
+      if (goal.id === u.id) { ctx.fillStyle = '#ffe14a'; ctx.fillRect(r.sx - 4, top + 3, 2, 2); }
+      if (!this.fitter.stamps(tab.id, u.id)) text(ctx, r.steps, r.sx, top, c ? '#bfe6ff' : '#ffe14a');
       // What the next level changes, where the row says (`says`), and what the thing does where it does not or
       // there is no next level. (The reach's row says so where its price is cut for ground that is spent.)
-      const spent = u.id === 'tether' && c && this.groundLeft() < 1, what = spent ? 'GROUND SPENT: PRICE CUT' : c ? u.says?.(l) ?? u.what : u.what;
-      if (lack) { if (tall) text(ctx, what, px + 25, y + 11, '#c8c2d4'); text(ctx, lack, px + 25, y + rh - (tall ? 11 : 12), '#ff9a6a'); }
+      const spent = u.id === 'tether' && c && this.groundLeft() < 1, what = spent ? 'GROUND SPENT: CHEAPER' : c ? u.says?.(l) ?? u.what : u.what;
+      if (r.lack) { if (tall) text(ctx, what, nx, mid(y), '#c8c2d4'); text(ctx, r.lack, nx, bottom(y), '#ff9a6a'); }
       else if (c) {
-        // The cost sits on the second line when the first is full. It is lit by what has come home (`banked`), as
-        // the purchase itself is judged: never shown as enough while the tap would be refused.
-        const have = c.spec ? this.specs(u.kin) : 0, asks = c.spec ? `${have}/${c.spec}` : '', grit = compact(c.grit), gems = c.gems > 0 ? compact(c.gems) : '';
-        // (Right to left from the panel's edge, each figure after its icon: the first line is full where they
-        // would come within four pixels of the steps.)
-        const costs = textWidth(grit) + (gems ? 16 + textWidth(gems) : 0) + (asks ? 16 + textWidth(asks) : 0);
-        const wide = sx + textWidth(steps) + 4 > px + pw - 20 - costs, cy = wide ? y + rh - (tall ? 11 : 12) : y + 2;
-        let cx = px + pw - 18, last = grit;
-        draw(ctx, 'icons', 'grit', cx, cy - 1);
-        text(ctx, grit, cx - 2, cy, this.banked() >= c.grit ? '#ffe14a' : '#ff7a5a', 1);
-        if (gems) {
-          cx -= textWidth(last) + 16; last = gems;
-          draw(ctx, 'icons', GEM_ICON[c.gem], cx, cy - 1);
-          text(ctx, gems, cx - 2, cy, this.banked(c.gem) >= c.gems ? GEM_COLOR[c.gem] : '#ff7a5a', 1);
+        // The cost is lit by what has come home (`banked`), as the purchase itself is judged: never shown as
+        // enough while the tap would be refused. Each icon at its figure's height (UI.ICON_DY), the grit's ink
+        // ending on the column the words end on.
+        const cy = r.wide ? bottom(y) : top, grit = price(c.grit);
+        let cx = edge - 9, last = grit;
+        draw(ctx, 'icons', 'grit', cx, cy + UI.ICON_DY);
+        text(ctx, grit, cx - UI.GAP, cy, this.banked() >= c.grit ? '#ffe14a' : '#ff7a5a', 1);
+        if (c.gems > 0) {
+          cx -= textWidth(last) + SHOP_GROUP; last = price(c.gems);
+          draw(ctx, 'icons', GEM_ICON[c.gem], cx, cy + UI.ICON_DY);
+          text(ctx, last, cx - UI.GAP, cy, this.banked(c.gem) >= c.gems ? GEM_COLOR[c.gem] : '#ff7a5a', 1);
         }
         // Specimens: how many are in hand of how many are asked, with the direction's own stone.
-        if (asks) {
-          cx -= textWidth(last) + 16;
-          draw(ctx, 'icons', `spec-${GEM_ICON[u.kin]}`, cx, cy - 1);
-          text(ctx, asks, cx - 2, cy, have >= c.spec ? GEM_COLOR[u.kin] : '#ff7a5a', 1);
+        if (c.spec) {
+          const have = this.specs(u.kin);
+          cx -= textWidth(last) + SHOP_GROUP;
+          draw(ctx, 'icons', `spec-${GEM_ICON[u.kin]}`, cx, cy + UI.ICON_DY);
+          text(ctx, `${have}/${c.spec}`, cx - UI.GAP, cy, have >= c.spec ? GEM_COLOR[u.kin] : '#ff7a5a', 1);
         }
         // (Where gems are short, where they are had: a corner's said short where the whole will not fit the line.)
         const short = c.gems > 0 && this.banked(c.gem) < c.gems;
         let where = short ? `${GEM_WHERE[c.gem]}, PAST ${GEM_PAST[c.gem]}` : what;
-        if (short && GEM_SHORT[c.gem] && px + 25 + textWidth(where) > edge) where = `${GEM_SHORT[c.gem]}, PAST ${GEM_PAST[c.gem]}`;
-        if (!wide || tall) text(ctx, where, px + 25, wide ? y + 11 : y + rh - 12, short ? GEM_COLOR[c.gem] : spent ? '#8ce060' : '#c8c2d4');
-      } else text(ctx, u.what, px + 25, y + rh - 12, '#e8c070');
-      this.buttons.unshift({ x: px + 4, y, w: pw - 8, h: rh - 1, act: () => this.buy(u) });
-    });
-    // The moment of a purchase, over the rows (js/fit.js).
-    this.fitter.panel(this, ctx, px, py, pw, ph, rh, tab);
-    const fy = py + ph - 19;
-    // Why a tap was refused is said on the footer's line: the header is the tabs'. (A new world is in the menu.)
+        if (short && GEM_SHORT[c.gem] && nx + textWidth(where) > edge) where = `${GEM_SHORT[c.gem]}, PAST ${GEM_PAST[c.gem]}`;
+        if (!r.wide || tall) text(ctx, where, nx, r.wide ? mid(y) : says(y), short ? GEM_COLOR[c.gem] : spent ? '#8ce060' : '#c8c2d4');
+      } else text(ctx, u.what, nx, says(y), '#e8c070');
+      this.buttons.unshift({ x: px + UI.INSET, y, w: pw - 2 * UI.INSET, h: rh - 1, act: () => this.buy(u) });
+    }
+    // The moment of a purchase, over the rows (js/fit.js), on the row bought as it was just laid out.
+    this.fitter.panel(this, ctx, px, py, pw, ph, tab, rows, edge, UI);
+    // Why a tap was refused is said in the footer, a row under its middle as a capital's ink is a row under its
+    // cell's top: the header is the tabs'. (A new world is in the menu.)
     const note = this.shopNote && this.shopNote.t > 0 ? this.shopNote : null;
     if (note) note.t -= 1 / 60;
     // (A corner's gems said short where the whole will not fit: js/game.js, `buy`.)
-    if (note) text(ctx, note.short && textWidth(note.text) > pw - 8 ? note.short : note.text, px + pw / 2, fy + 4, note.color, 0.5);
+    if (note) text(ctx, note.short && textWidth(note.text) > pw - 2 * UI.INSET ? note.short : note.text, px + pw / 2, py + ph - SHOP_FOOT + 1, note.color, 0.5);
+  }
+  // Whether the shop's rows say NEEDS before what is still to be found, the same in every row: where the longest
+  // that could ever be said fits `room` (each figure at its most and in the widest digit). Worked out once a
+  // screen's width, and kept.
+  needsSaid(room) {
+    const f = this.needsFit ??= { room: -1, said: false };
+    if (f.room === room) return f.said;
+    const digit = [...'0123456789'].reduce((a, b) => textWidth(b) > textWidth(a) ? b : a);
+    let most = 0;
+    for (const u of ROWS) if (u.needs) for (const asked of u.needs[1]) {
+      const [what, count] = Array.isArray(asked) ? asked : [u.needs[0], asked];
+      if (!count) continue;
+      const n = String(count).replace(/\d/g, digit);
+      most = Math.max(most, textWidth(`NEEDS ${n}/${n} ${NEEDS[what]}`));
+    }
+    f.room = room; f.said = most <= room;
+    return f.said;
   }
 }

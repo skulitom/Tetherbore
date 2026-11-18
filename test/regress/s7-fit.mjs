@@ -288,11 +288,13 @@ check(!steps.length, `levels that draw just what the level before draws: ${steps
   f.fire('arccoil'); f.fire('mender'); f.fire('lavaskin'); f.fire('sporedrive'); f.fire('livecatch'); f.fire('trophy');
   game.charge = 8; game.spin.n = 5; game.spin.t = game.time;
   const rope = { loop: false, runs: [[0, 1, 0]], wide: 2, trace: () => {} };
+  // (The rows as js/drawing.js's `drawShop` lays them out for the panel, 32 tall under its header.)
+  const rows = Array.from({ length: 6 }, (_, n) => ({ y: 40 + 32 * n, top: 42 + 32 * n, vx: 12, vy: 48 + 32 * n, sx: 60 }));
   game.shop = true; f.bought(game, row('hull'), 7); f.bought(game, row('cutter'), 6); game.shop = false;
   for (let k = 0; k < 300; k++) {
     f.step(game, 1 / 60);
     f.station(game, game.ctx, 100, 100, k * 16); f.glow(game, game.ctx, 0, 0, k * 16); f.hud(game, game.ctx, 60, UI); f.map(game, game.ctx, 0, 0, 46, 46);
-    f.panel(game, game.ctx, 4, 20, 172, 236, 32, TABS[0]); f.barbs(game, game.ctx, rope);
+    f.panel(game, game.ctx, 4, 20, 172, 226, TABS[0], rows, 168, UI); f.barbs(game, game.ctx, rope);
   }
   Math.random = own;
   check(n === 0, `stepping and drawing the fitter alone drew ${n} times from Math.random`);

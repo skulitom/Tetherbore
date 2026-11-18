@@ -38,8 +38,9 @@ check(WORKS.every(u => u.grit.length === u.values.length - 1 && u.spec.length ==
   check(game.S.lv.mender === 2 && game.val('mender') === 9 && Math.abs(game.S.spec[B.FROST] - 16) < 1e-9, `the mender bought as far as 40 specimens go: level ${game.S.lv.mender}, one pip every ${game.val('mender')} s, ${game.S.spec[B.FROST]} specimens left`);
   // Both tabs draw, and a tap on a tab opens it.
   game.resize(320, 568, 1); game.shop = true; game.shopRise = 1; game.render();
-  // (The tabs stand in the panel's header, left to right, each a button twenty high and under sixty wide.)
-  const tabs = game.buttons.filter(b => b.h === 20 && b.y < game.H / 2 && b.w < 60 && b.w > 24 && b.x < game.W - 40).sort((a, b) => a.x - b.x);
+  // (The tabs stand in the panel's header, left to right, each a button twenty high and under sixty wide, as wide as
+  // its name and the gap to the next: js/drawing.js, `headTab`.)
+  const tabs = game.buttons.filter(b => b.h === 20 && b.y < game.H / 2 && b.w < 60 && b.w > 20 && b.x < game.W - 40).sort((a, b) => a.x - b.x);
   tabs[1]?.act(); game.render();
   // What a refused tap says is written on the footer's line, never over the tabs in the header.
   {
