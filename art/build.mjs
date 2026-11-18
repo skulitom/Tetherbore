@@ -16,6 +16,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { ROCKS, STRAINS, POCKETS, CROSSES, CROSS_LOOKS, FLOORS, POCKET_FLOORS, OVERLAYS, LAVA } from './tiles.mjs';
 import { RECIPES, appIcon } from './sprites.mjs';
 import { DECOR_RECIPES } from './decor.mjs';
+import { BOSS_RECIPES } from './bosses.mjs';
 import { encodePNG } from '../tools/png.mjs';
 
 const ART = dirname(fileURLToPath(import.meta.url));
@@ -65,6 +66,9 @@ for (const { extra, ...recipe } of RECIPES) if (wanted(recipe.name)) await emit(
 // ---- each ground's own pieces in its caves, their halos and the air's motes (art/decor.mjs), with what the game
 // reads of them beside the frames: which pieces glow and where (`glows`), and which are icicles (`falls`)
 for (const [recipe, extra] of DECOR_RECIPES) if (wanted(recipe.name)) await emit(recipe, recipe.name, extra);
+
+// ---- the four lords at the ends (art/bosses.mjs), with where each frame's foe eyes and lamps lie
+for (const [recipe, extra] of BOSS_RECIPES) if (wanted(recipe.name)) await emit(recipe, recipe.name, extra);
 
 // ---- the home-screen icon, enlarged by whole numbers
 if (wanted('icon')) {
