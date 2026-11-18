@@ -137,6 +137,8 @@ export const HALOS = {
   wisp: { g: '#e8eeff', d: '#3448ff', halo: '#3a50ff' },
   rose: { g: '#ff9ab8', d: '#ff4a8a', halo: '#ff5a90' },
   phosphor: { g: '#d0ffc0', d: '#6ae078', halo: '#7af08a' },
+  // (Not a piece's: the spore pods' own, laid over the dark about each one near the drill: js/drawing.js, `podHalos`.)
+  toxin: { g: '#ffd8ff', d: '#e060ff', halo: '#f070ff' },
 };
 export const SETS = [
   { name: 'crust', floor: 'crust-floor', rock: 'crust', hue: '#8c8866', top: ['roots', 'thick', 'drips'], bottom: ['pebbles', 'mound'], side: ['creep'], marks: ['pebbles', 'hair'] },

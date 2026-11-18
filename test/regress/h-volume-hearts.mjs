@@ -1,7 +1,8 @@
 // How loud, and the hull's hearts. The menu sets the sounds and the music apart, ten steps each: a tap on a bar
 // sets the step under it (just left of its first, nothing), a tap on the name turns it off and back on at the step
 // it was at, each is kept on the device, and the music at nothing is its switch off. A game kept muted before there
-// were steps comes back with both at nothing and no longer muted. The bar shows the hull as hearts, two knocks to a
+// were steps comes back with both at nothing and no longer muted, and a step of the sounds kept from when they were
+// laid on louder comes back at the step as loud now (3 of then, 8 of now), kept under the new name. The bar shows the hull as hearts, two knocks to a
 // heart: a hull of seven is three hearts and a half, and five of seven left is two and a half lit.
 import { spawnSync } from 'node:child_process';
 import { makeGame } from '../harness.mjs';
@@ -14,12 +15,16 @@ const load = kept => spawnSync(process.execPath, ['--input-type=module', '-e', `
   const kept = new Map(${JSON.stringify(Object.entries(kept))});
   globalThis.localStorage = { getItem: k => kept.get(k) ?? null, setItem: (k, v) => kept.set(k, String(v)) };
   const a = await import(${JSON.stringify(new URL('../../js/audio.js', import.meta.url).href)});
-  console.log([a.soundVolume(), a.musicVolume(), a.isMuted(), a.isMusic(), kept.get('tetherbore-mute')].join(' '));`], { encoding: 'utf8' }).stdout.trim();
+  console.log([a.soundVolume(), a.musicVolume(), a.isMuted(), a.isMusic(), kept.get('tetherbore-mute'), kept.get('tetherbore-sfx')].join(' '));`], { encoding: 'utf8' }).stdout.trim();
 check(load({}) === '10 10 false true', `a new device has the sounds and music at '${load({})}'`);
-check(load({ 'tetherbore-mute': '1' }) === '0 0 false false 0', `a game kept muted loads as '${load({ 'tetherbore-mute': '1' })}'`);
-check(load({ 'tetherbore-sound': '4', 'tetherbore-music-step': '7' }) === '4 7 false true', `steps kept load as '${load({ 'tetherbore-sound': '4', 'tetherbore-music-step': '7' })}'`);
+check(load({ 'tetherbore-mute': '1' }) === '0 0 false false 0 0', `a game kept muted loads as '${load({ 'tetherbore-mute': '1' })}'`);
+check(load({ 'tetherbore-sfx': '4', 'tetherbore-music-step': '7' }) === '4 7 false true  4', `steps kept load as '${load({ 'tetherbore-sfx': '4', 'tetherbore-music-step': '7' })}'`);
+for (const [then, now] of [['3', 8], ['1', 3], ['0', 0], ['4', 10], ['10', 10]])
+  check(load({ 'tetherbore-sound': then }) === `${now} 10 false true  ${now}`, `the sounds kept at ${then} of the louder bar load as '${load({ 'tetherbore-sound': then })}', not ${now}`);
+check(load({ 'tetherbore-sound': '3', 'tetherbore-sfx': '5' }).startsWith('5 '), 'a step kept under the new name was turned again');
+check(load({ 'tetherbore-sound': '3', 'tetherbore-mute': '1' }) === '0 0 false false 0 0', 'a game kept muted with a louder step was not left at nothing');
 check(load({ 'tetherbore-music': '0', 'tetherbore-music-step': '7' }) === '10 0 false false', 'the music switched off does not load at its step');
-check(load({ 'tetherbore-sound': 'loud' }).startsWith('10 '), 'a step kept that is not a step was read');
+check(load({ 'tetherbore-sfx': 'loud' }).startsWith('10 ') && load({ 'tetherbore-sound': 'loud' }).startsWith('10 '), 'a step kept that is not a step was read');
 
 // The menu's rows.
 const game = await makeGame(7);
@@ -28,7 +33,7 @@ const rows = game.buttons.filter(b => b.h === 20 && b.w > 100).sort((a, b) => a.
 const bar = r => r.x + r.w - 4 - 49;          // where a row's bar of steps begins (its right edge 8 in from the panel's, 4 in from its box's)
 const tap = (r, x) => { r.act(x, r.y + 10); game.render(); };
 tap(sound, bar(sound) + 2);
-check(audio.soundVolume() === 1 && localStorage.getItem('tetherbore-sound') === '1', `a tap on the sound's first step set it to ${audio.soundVolume()}`);
+check(audio.soundVolume() === 1 && localStorage.getItem('tetherbore-sfx') === '1', `a tap on the sound's first step set it to ${audio.soundVolume()}`);
 tap(sound, bar(sound) + 5 * 4 + 2);
 check(audio.soundVolume() === 5, `a tap on its fifth step set it to ${audio.soundVolume()}`);
 tap(sound, bar(sound) + 49);

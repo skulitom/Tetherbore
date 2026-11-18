@@ -187,7 +187,11 @@ export const ember = {
 export const mire = {
   version: 1, name: 'mire-items', width: 16, height: 16,
   palette: { k: '#1c1426', d: '#30243e', l: '#8c7ca0', a: '#f0a020', A: '#ffd070', B: '#a85a10', c: '#58f0e0', C: '#2aa8b0', w: '#ffffff', s: '#e8e0d0', S: '#a89ab0',
-    v: '#b060d0', V: '#7a3a9a', u: '#f0c0f8', y: '#f4d86a', g: '#b8f06a', G: '#5cb848', D: '#2a7a3a' },
+    v: '#b060d0', V: '#7a3a9a', u: '#f0c0f8', y: '#f4d86a', g: '#b8f06a', G: '#5cb848', D: '#2a7a3a',
+    // (The pod's: a hot magenta shell with a pale shine, spotted white, so that it stands out of the mire's dark violet
+    // and the pale sporefall alike; it was a dull violet the size of a pebble, and players lost it. Its spots are not
+    // the lime they might be: that is the west's ore, and what hurts is kept far from what pays.)
+    p: '#e070ff', P: '#9a32c8', q: '#ffe0ff', t: '#fff0ff', T: '#a040d0' },
   symbols: {
     dense: [
       '............',
@@ -232,23 +236,23 @@ export const mire = {
       '............',
     ],
     pod: [
-      '............',
-      '............',
       '....kkkk....',
-      '...kvvvVk...',
-      '..kvuvvvVk..',
-      '..kvvvuvVk..',
-      '..kvvvvVVk..',
-      '..kVvuVVVk..',
-      '...kVVVVk...',
+      '..kkpppPkk..',
+      '.kpqqpptPPk.',
+      '.kpqpptTpPk.',
+      'kpppppppptPk',
+      'kptpppppTPPk',
+      'kpTpptpppPPk',
+      'kppppTpptPPk',
+      '.kPpppppPPk.',
+      '.kPPtPPPPPk.',
+      '..kkPPPPkk..',
       '....kkkk....',
-      '............',
-      '............',
     ],
     relic: RELIC,
   },
   frames: [frame('dense', 'dense'), frame('oreA', 'oreA'), frame('oreB', 'oreB'),
-    frame('hazard', 'pod', { duration: 500 }), frame('hazard-b', 'pod', { duration: 220, palette: { u: '#ffffff', v: '#c880e8' } }),
+    frame('hazard', 'pod', { duration: 500 }), frame('hazard-b', 'pod', { duration: 260, palette: { t: '#ffffff', T: '#ffc0ff', p: '#f4a0ff', q: '#ffffff' } }),
     ...relic({})],
   animations: { hazard: { frames: ['hazard', 'hazard-b'] }, relic: { frames: ['relic', 'relic', 'relic', 'relic-glint'] } },
 };

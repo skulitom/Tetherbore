@@ -262,6 +262,11 @@ const DECOR_MOST = 64, DECOR_HALO = 0.85, DECOR_GLOWS = 12, DECOR_GLOW = 0.4, DE
 // And rare hazards asleep (the nearest the drill): a glowworm glows brighter than the rest. And how many cells of
 // a fumarole's flames light the dark, at the most.
 const RARE_GLINTS = 8, RARE_GLINT = [0.3, 1.5], WORM_GLOW = [0.45, 2.5], JET_LIGHTS = 16;
+// Spore pods that have been seen glow, so that they read in the dark of the mire from across the screen (players
+// lost them against it): the nearest POD_GLINTS light the cave a little about them, as bright as POD_GLINT for as far
+// as POD_REACH cells, and have a halo of their magenta laid over the dark at POD_HALO, each breathing in its own time.
+// (POD_MOST is how many pods in the window are looked at, in arrays made once.)
+const POD_GLINTS = 12, POD_GLINT = 0.34, POD_REACH = 1.8, POD_HALO = 0.75, POD_MOST = 512;
 // (How the tether looks at each level of reach, and what lights run along it, is js/fit.js's: `TETHERS`.)
 // What the shop's pictures of the next level show of the drill besides its parts: the bit hot, the flame, what is
 // fitted lit (`drawShop`). One, made once and filled in for each picture.
@@ -1233,6 +1238,22 @@ export class Drawing {
     }
     ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
   }
+  // The halos of the spore pods that glow (`light`), magenta over the dark, each breathing in its own time, and each
+  // pod drawn again over its halo, as `render` draws it, so that it shows in its own colours through the dark and is
+  // not washed pale by the light laid on it. Not in daylight, as the pieces' are not.
+  podHalos(ox, oy) {
+    const L = this.lightMap, n = L?.podsLit ?? 0, s = sheets.halo, r = s?.frames['halo-toxin'], ctx = this.ctx, w = this.world;
+    if (!n || this.daylight || !r) return;
+    const now = this.time * 1000, items = HAZARDS.spore.sheet;
+    for (let m = 0; m < n; m++) {
+      const i = L.pods[m], x = i % N, y = Math.floor(i / N), mk = w.mask(x, y), sp = this.sparks.get(i);
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = POD_HALO * (0.65 + 0.35 * Math.sin(this.time * 2.4 + cellHash(x, y, 31) * 6.28));
+      ctx.drawImage(s.image, r[0], r[1], r[2], r[3], Math.round(x * T - ox + T / 2 - r[2] / 2), Math.round(y * T - oy + T / 2 - r[3] / 2), r[2], r[3]);
+      ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+      draw(ctx, items, sp && sp.fuse > 0 ? (((now / 60) | 0) % 2 ? 'hazard-b' : 'hazard') : frameAt(items, 'hazard', now + cellHash(x, y, 4) * 900), x * T - ox - ((mk & 4) ? 0 : 1), y * T - oy - ((mk & 16) ? 0 : 1));
+    }
+  }
 
   // Light spreads from a cell through open ground, losing a little with every cell, and soaks a short way into
   // the rock it meets: so it takes the shape of the tunnels and lights the faces of their walls. It is worked out
@@ -1274,13 +1295,15 @@ export class Drawing {
       const was = L.lit; L.lit = L.next; L.next = was; L.x0 = x0; L.y0 = y0;
     }
     L.want.fill(0);
-    const keys = L.keys ??= [], rares = L.rares ??= [];
+    const keys = L.keys ??= [], rares = L.rares ??= [], pods = L.pods ??= new Int32Array(POD_MOST), podFar = L.podFar ??= new Float32Array(POD_MOST);
     keys.length = 0; rares.length = 0;
+    let podsIn = 0;
     for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) {
       const k = w.peek(x0 + x, y0 + y);
       L.solid[y * cols + x] = k === K.EMPTY ? 0 : 1;
       if (k === K.KEY) keys.push((y0 + y) * N + x0 + x);
       else if (k === K.RARE) rares.push((y0 + y) * N + x0 + x);
+      else if ((k === K.HAZARD || k === K.HAZARD2) && podsIn < POD_MOST) { const i = (y0 + y) * N + x0 + x; if (hazOf(k, w.row(i)) === 'spore') pods[podsIn++] = i; }
     }
     // The drill's lamp is steady, and it stands where the drill is, not in the middle of the drill's cell: it is
     // lit from each open cell about the drill, less by the way from the drill to that cell's middle. Its power is
@@ -1317,6 +1340,16 @@ export class Drawing {
       rares.sort((a, b) => far(a) - far(b)); rares.length = RARE_GLINTS;
     }
     for (const i of rares) { const glow = w.hazAt(i) === 'worm' ? WORM_GLOW : RARE_GLINT; this.shine(i % N, Math.floor(i / N), glow[0], glow[1]); }
+    // The spore pods seen, the nearest POD_GLINTS of them brought to the front of the list (`podsLit`), each glowing.
+    for (let m = 0; m < podsIn; m++) { const i = pods[m]; podFar[m] = ((i % N) + 0.5 - d.x) ** 2 + (Math.floor(i / N) + 0.5 - d.y) ** 2; }
+    const podsLit = L.podsLit = Math.min(podsIn, POD_GLINTS);
+    for (let m = 0; m < podsLit; m++) {
+      let best = m;
+      for (let q = m + 1; q < podsIn; q++) if (podFar[q] < podFar[best]) best = q;
+      const i = pods[best], f = podFar[best];
+      pods[best] = pods[m]; podFar[best] = podFar[m]; pods[m] = i; podFar[m] = f;
+      this.shine(i % N, Math.floor(i / N), POD_GLINT + 0.06 * Math.sin(this.time * 2.4 + cellHash(i % N, Math.floor(i / N), 31) * 6.28), POD_REACH);
+    }
     this.bells.forEach(shineBell, this);
     for (const f of this.flares) this.shine(f.x, f.y, f.power, f.reach);
     this.vents.forEach(shineVent, this);
@@ -1349,6 +1382,7 @@ export class Drawing {
     const at = this.darkAt ??= [0, 0, 0, 0];
     at[0] = vx0 * T - ox; at[1] = vy0 * T - oy; at[2] = mcols * T; at[3] = mrows * T;
     this.halos(ox, oy);
+    this.podHalos(ox, oy);
     // The core's slow turning rays.
     const cxp = HX * T - ox, cyp = HY * T - oy;
     if (cxp > -80 && cyp > -80 && cxp < W + 80 && cyp < H + 80) {

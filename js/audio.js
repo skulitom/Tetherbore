@@ -25,19 +25,26 @@ let ctx = null, master = null, sounds = null, room = null, space = null, keys = 
 // How loud the sounds are and how loud the music is, each a tenth at a time from nothing (0) to all (10), set apart
 // in the menu and kept on the device; a step is heard as one, the gain the square of the share. The music at 0 is
 // off (`music`, its switch). A game kept from before there were steps, muted, keeps both at nothing and is no longer
-// muted: the steps say it.
+// muted: the steps say it. The sounds' step is kept as `tetherbore-sfx`; a step kept as `tetherbore-sound`, from
+// when the sounds were laid on at OLD_SOUNDS, is turned into the step nearest as loud now (3 of then is 8 of now) and
+// kept as the new one.
+const LEVEL = 0.4;                       // the master gain when not muted
+// What the sounds and the bed are laid on at, against the music: well under it, so that at the top of both bars the
+// sounds sit beside the music and not over it (they were 0.6, which players turned down to a third of the bar).
+const SOUNDS = 0.085;
+const OLD_SOUNDS = 0.6;
 let soundStep = 10, musicStep = 10;
 try {
   muted = localStorage.getItem('tetherbore-mute') === '1'; music = localStorage.getItem('tetherbore-music') !== '0';
   const step = key => { const v = localStorage.getItem(key); return v === null || !(+v >= 0 && +v <= 10) ? null : Math.round(+v); };
-  soundStep = step('tetherbore-sound') ?? 10; musicStep = step('tetherbore-music-step') ?? 10;
-  if (muted) { soundStep = 0; music = false; muted = false; localStorage.setItem('tetherbore-sound', '0'); localStorage.setItem('tetherbore-music', '0'); localStorage.setItem('tetherbore-mute', '0'); }
+  soundStep = step('tetherbore-sfx') ?? 10; musicStep = step('tetherbore-music-step') ?? 10;
+  const then = localStorage.getItem('tetherbore-sfx') === null ? step('tetherbore-sound') : null;
+  if (then !== null) { soundStep = Math.min(10, Math.round(then * Math.sqrt(OLD_SOUNDS / SOUNDS))); localStorage.setItem('tetherbore-sfx', String(soundStep)); }
+  if (muted) { soundStep = 0; music = false; muted = false; localStorage.setItem('tetherbore-sfx', '0'); localStorage.setItem('tetherbore-music', '0'); localStorage.setItem('tetherbore-mute', '0'); }
 } catch { /* private mode */ }
 export const STEPS_OF_VOLUME = 10;
 const share = step => (step / STEPS_OF_VOLUME) ** 2;
 
-const LEVEL = 0.4;                       // the master gain when not muted
-const SOUNDS = 0.6;                      // what the sounds and the bed are laid on at, against the music
 // Everything goes: layer -> sounds -> master (the mute switch) -> a gentle compressor -> a soft ceiling -> the
 // speaker. Every sound and the bed go through `sounds`, which lays them on at SOUNDS, and the music straight into the
 // master, so the music is heard beside them and not under them. The
@@ -132,7 +139,7 @@ export const soundVolume = () => soundStep;
 export const musicVolume = () => music ? musicStep : 0;
 export function setSoundVolume(step) {
   soundStep = Math.max(0, Math.min(STEPS_OF_VOLUME, Math.round(step)));
-  try { localStorage.setItem('tetherbore-sound', String(soundStep)); } catch { /* private mode */ }
+  try { localStorage.setItem('tetherbore-sfx', String(soundStep)); } catch { /* private mode */ }
   if (sounds) sounds.gain.value = SOUNDS * share(soundStep);
 }
 // (The music at 0 is its switch turned off, and at any other step turned on: the step it was at is kept for then.)

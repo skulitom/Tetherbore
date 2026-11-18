@@ -151,10 +151,11 @@ audio.unlock();
 const fixed = made.slice(), master = fixed.find(node => node.kind === 'gain'), ways = new Set([master]);
 // (The ways in are the gains that lead to the master through gains alone: the sounds' own level, the room, the space.)
 for (let more = true; more;) { more = false; for (const node of fixed) if (node.kind === 'gain' && !ways.has(node) && node.outs.some(o => ways.has(o))) { ways.add(node); more = true; } }
-// The sounds and the bed are laid on at a share of the master's level, through a gain of their own; the music goes
-// straight into the master, so it is not quietened with them.
+// The sounds and the bed are laid on at a share of the master's level, through a gain of their own, well under the
+// music's (players turned them down to a third of the bar when they were at 0.6); the music goes straight into the
+// master, so it is not quietened with them.
 const sounds = fixed.find(node => node.kind === 'gain' && node !== master && node.outs.length === 1 && node.outs[0] === master);
-if (!sounds || !(sounds.gain.value > 0.5 && sounds.gain.value < 0.7)) fails.push(`the sounds are not laid on through a gain of about 0.6 of their own (${sounds?.gain.value})`);
+if (!sounds || !(sounds.gain.value > 0.06 && sounds.gain.value < 0.11)) fails.push(`the sounds are not laid on through a gain of about 0.085 of their own (${sounds?.gain.value})`);
 // (The last thing made before the music is an oscillator that is never started: it is there to have its waveform drawn up.)
 const band = fixed.slice(fixed.findIndex(node => node.kind === 'oscillator' && node.started === undefined) + 1);
 audio.unlock();
