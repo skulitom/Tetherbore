@@ -204,6 +204,46 @@ check(!missing.length, `${missing.length} lines have no turn in ${lang}: ${missi
   let threw = null;
   try { lords.render(); } catch (error) { threw = error.message; }
   check(!threw, `the lords' card, banner and word drawn threw: ${threw}`);
+  // And where they are drawn, on the narrowest phone and the next: nothing of a lord's card as it wakes (its title
+  // too), nor of its banner beaten (its name on two lines and BEATEN! too), on the drill as it stands in the middle
+  // of the view; what it paid said on its banner, and no figure of it popped up raw by the drill (+1281134 GRIT); and
+  // the word once all four are beaten not drawn over the last one's banner, but once that has gone. (The title went
+  // over the drill, a name on two lines and BEATEN! too, the figure was popped up raw, and the word was drawn on the
+  // banner's name.)
+  const rects = [], real = lords.ctx;
+  const record = new Proxy({}, { get: (t, k) => k === 'drawImage' ? (...a) => { if (a.length >= 9) rects.push([a[5], a[6], a[7], a[8]]); } : k in t ? t[k] : () => {}, set: (t, k, v) => { t[k] = v; return true; } });
+  const hud = () => { rects.length = 0; lords.ctx = record; try { lords.drawHud(0, 0); } finally { lords.ctx = real; } return rects.length; };
+  const onDrill = () => { const x0 = lords.W / 2 - 8, y0 = (lords.H - 44) / 2 - 8; return rects.filter(([x, y, w, h]) => x < x0 + 16 && x + w > x0 && y < y0 + 16 && y + h > y0).length; };
+  for (const [cw, ch] of [[320, 568], [360, 640]]) {
+    lords.resize(cw, ch, 1);
+    BOSS.forEach((B, b) => {
+      lords.banner = null; lords.notice = null; lords.eye = null; lords.specLine = null; lords.popups.length = 0;
+      lords.place = null; lords.lordMet(b);
+      if (lords.place) lords.place.t = 1;
+      hud();
+      check(lords.place?.card && !onDrill(), `${B.name} woken, on a screen ${lords.W} by ${lords.H}: its card is drawn on the drill (${onDrill()} pictures)`);
+      lords.place = null; lords.lordBeaten(b, lords.drill.x + 2, lords.drill.y - 1); lords.notice = null;
+      if (lords.banner) lords.banner.t = 1;
+      hud();
+      check(lords.banner?.lord === b && !onDrill(), `${B.name} beaten, on a screen ${lords.W} by ${lords.H}: its banner is drawn on the drill (${onDrill()} pictures)`);
+      const raw = lords.popups.filter(p => /\d{4}/.test(p.label)).map(p => p.label);
+      check(!raw.length && lords.banner?.grit > 0, `${B.name} beaten: it popped up ${raw.join(', ')}, and its banner says ${lords.banner?.grit} grit`);
+    });
+  }
+  lords.resize(320, 568, 1);
+  lords.banner = null; lords.notice = null; lords.popups.length = 0; lords.S.bosses = 0x7f;
+  lords.lordBeaten(3, lords.drill.x + 2, lords.drill.y - 1);
+  lords.banner.t = 1;
+  const word = lords.notice, both = hud();
+  lords.notice = null;
+  const alone = hud();
+  lords.notice = word;
+  check(word?.title === 'THE DEEP IS STILL' && both === alone, `the last lord beaten: the word across the screen drew ${both - alone} pictures over its banner`);
+  lords.banner.t = 0;
+  for (let n = 0; n < 60 * 5 && (lords.banner || lords.notice?.wait > 0); n++) lords.update(1 / 60);
+  const after = hud();
+  lords.notice = null;
+  check(!lords.banner && word && after > hud(), `the last lord beaten: once its banner had gone the word across the screen was not drawn (${lords.banner ? 'the banner still up' : `${after} pictures`})`);
 }
 
 // A number is kept; a line no key fits is drawn as it is; English is never turned.

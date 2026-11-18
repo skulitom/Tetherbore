@@ -1252,7 +1252,8 @@ export class Drawing {
   // multiplied by, and that the piece was over the winch's load where it was (a keystone slab is the haul the winch
   // is for); and, where a prism came with it, what the prism multiplied the gems by (null: no prism).
   // And third, where the haul held a pocket's mineral that raised a count of specimens: by how many. (A foe caught
-  // as a trophy, js/fauna.js, is no haul: its banner has the specimens it paid and nothing else.)
+  // as a trophy, js/fauna.js, is no haul: its banner has the specimens it paid and nothing else; a lord beaten,
+  // js/game.js, the grit and the specimens it paid, and nothing else.)
   bannerSays(b) { if (b.trophy) return ['', null, `+${b.spec}`]; return [`${b.n} x${b.mult.toFixed(1)}${b.over < 1 ? ' WINCH OVER LOAD' : ''}`, b.shine > 1 ? `PRISM x${b.shine}` : null, b.spec > 0 ? `+${b.spec}` : null]; }
   // How a title said large across the screen (a place met for the first time, a lord woken, the word across the
   // screen) is set for a screen `W` wide, in the language spoken: at twice the font's size on one line where it
@@ -1273,6 +1274,16 @@ export class Drawing {
     if (best) o.lines = [best[0], best[1]]; else o.big = 1;
     return o;
   }
+  // Where a title said large, `tall` pixels from its top to the foot of its last line, is set to stand clear of the
+  // drill, which the view keeps in the middle of the screen above the bar (and there as it fights, or stands): at
+  // `y` where it ends above the drill, else at `up` where that does, else under the drill where it ends above the
+  // bar, else at `y` all the same (a screen too short for it either way).
+  clearOfDrill(y, tall, up = y) {
+    const mid = (this.H - 44) / 2, top = mid - 10, low = Math.round(mid + 12);
+    if (y + tall <= top) return y;
+    if (up + tall <= top) return up;
+    return low + tall <= this.H - 46 ? low : y;
+  }
   // How a banner's line of what it paid is laid out, for a screen `W` wide: worked out once a banner (and again only
   // if the screen changes), so that drawing it every frame measures and makes nothing. `lw` is the line's width;
   // where that is wider than the screen, the gems go on over a second line, `lw2` wide, from the gem `split` (0:
@@ -1289,11 +1300,11 @@ export class Drawing {
   }
   splitGems(b, spec) {
     const W = this.W, room = W - 8, gemW = g => textWidth(`+${compact(b.gems[g])}`) + 15, specW = spec ? textWidth(spec) + 17 : 0;
-    let lw = b.trophy ? -4 : textWidth(`+${compact(b.grit)}`) + 11;
+    let lw = b.trophy && !b.grit ? -4 : textWidth(`+${compact(b.grit)}`) + 11;
     for (const g of GEM_ORDER) if (b.gems[g] > 0) lw += gemW(g);
     b.splitW = W; b.split = 0; b.lw = lw + specW; b.lw2 = 0;
     if (b.lw <= room) return;
-    let first = b.trophy ? -4 : textWidth(`+${compact(b.grit)}`) + 11, corner = 0, over = 0, upTo = first, w1 = first;
+    let first = b.trophy && !b.grit ? -4 : textWidth(`+${compact(b.grit)}`) + 11, corner = 0, over = 0, upTo = first, w1 = first;
     for (const g of GEM_ORDER) {
       if (!(b.gems[g] > 0)) continue;
       if (!corner && g >= 5) { corner = g; w1 = upTo; }
@@ -1348,7 +1359,9 @@ export class Drawing {
     const head = this.plateLow ? 78 : Math.max(60, H * 0.2);
     if (this.banner) {
       const b = this.banner, pop = Math.min(1, b.t / 0.12);
-      let y = Math.round(head - (1 - pop) * 8);
+      // (A lord's, whose name may take two lines, stands clear of the drill: `clearOfDrill`.)
+      if (b.lord !== undefined) this.fitLarge(b, W);
+      let y = Math.round((b.lord !== undefined ? this.clearOfDrill(Math.round(head), (b.lines.length - 1) * 11 * b.big + 11 * b.big + 24) : head) - (1 - pop) * 8);
       ctx.globalAlpha = Math.min(1, (b.life - b.t) * 3);
       // (A title too wide for the screen at its size is set a size smaller. A haul named by its place is in its
       // colour; a giant's title is gold and white by turns, faster the bigger it is, and HALF's runs through the gems'.)
@@ -1369,7 +1382,7 @@ export class Drawing {
       if (b.splitW !== W) this.bannerSplit(b, spec);
       const line = `+${compact(b.grit)}`, ly = y + 11 * big + (size ? 14 : 2), down = b.split ? 12 : 0;
       let lx = Math.round(W / 2 - b.lw / 2), at = ly;
-      if (!b.trophy) { draw(ctx, 'icons', 'grit', lx, at - 1); text(ctx, line, lx + 11, at, '#ffe14a'); lx += textWidth(line) + 15; }
+      if (!b.trophy || b.grit) { draw(ctx, 'icons', 'grit', lx, at - 1); text(ctx, line, lx + 11, at, '#ffe14a'); lx += textWidth(line) + 15; }
       for (const g of GEM_ORDER) {
         if (!(b.gems[g] > 0)) continue;
         if (g === b.split) { lx = Math.round(W / 2 - b.lw2 / 2); at = ly + 12; }
@@ -1393,7 +1406,8 @@ export class Drawing {
     }
     // Over a dead drill the screen goes dark.
     if (d.mode === 'dead' && this.tow) { ctx.globalAlpha = Math.min(0.85, this.tow.t / DEATH); ctx.fillStyle = '#07060b'; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1; }
-    if (this.notice) {
+    // (A word that waits for the banner to go is not yet shown: `wait`.)
+    if (this.notice && !(this.notice.wait > 0)) {
       const note = this.notice, pop = Math.min(1, note.t / 0.12);
       // (Large, on two lines or small where the screen is too narrow for it: `fitLarge`.)
       this.fitLarge(note, W);
@@ -1408,11 +1422,13 @@ export class Drawing {
     if (S.won && this.wonAt !== undefined && this.time - this.wonAt < 6) text(ctx, 'CORE RESTORED', W / 2, H * 0.36, '#ffe14a', 0.5, 2);
     // A ground met for the first time: its name alone, large, a little under where a haul's banner goes (and under
     // the banner itself, if one is up). A name too long for the screen is set on two lines, or small (`fitLarge`).
-    // A lord woken is named so too, with its title under its name (`sub`: LORD OF THE NORTH).
+    // A lord woken is named so too, with its title under its name (`sub`: LORD OF THE NORTH). Either stands clear of
+    // the drill: a little higher where that is enough, else under it (`clearOfDrill`).
     const place = this.place;
     if (place && place.card) {
       const pop = Math.min(1, place.t / 0.12), { lines, big } = this.fitLarge(place, W);
-      const under = this.banner ? Math.round(head) + 11 * (this.banner.n >= 10 ? 2 : this.banner.lord !== undefined ? (this.banner.big ?? 2) * (this.banner.lines?.length ?? 1) : 1) + (this.banner.shine > 1 ? 42 : 30) + (this.banner.sub ? 12 : 0) + (this.banner.split ? 12 : 0) + (this.banner.topAt ?? 0) : 0, y = Math.max(under, Math.round(Math.max(head + 14, H * 0.3) - (1 - pop) * 8));
+      const under = this.banner ? Math.round(head) + 11 * (this.banner.n >= 10 ? 2 : this.banner.lord !== undefined ? (this.banner.big ?? 2) * (this.banner.lines?.length ?? 1) : 1) + (this.banner.shine > 1 ? 42 : 30) + (this.banner.sub ? 12 : 0) + (this.banner.split ? 12 : 0) + (this.banner.topAt ?? 0) : 0;
+      const tall = (lines.length - 1) * 11 * big + 10 * big + (place.sub ? 13 : 0), y = Math.round(this.clearOfDrill(Math.max(under, Math.round(Math.max(head + 14, H * 0.3))), tall, Math.max(under, Math.round(head + 14))) - (1 - pop) * 8);
       ctx.globalAlpha = Math.min(1, (place.life - place.t) * 3);
       for (let n = 0; n < lines.length; n++) text(ctx, lines[n], W / 2, y + n * 11 * big, place.colour, 0.5, big + (lines.length === 1 && big === 2 && place.t < 0.07 && textWidth(lines[0], 3) <= W - 8 ? 1 : 0));
       if (place.sub) text(ctx, place.sub, W / 2, y + lines.length * 11 * big + 3, '#fff6c8', 0.5);

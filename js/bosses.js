@@ -46,6 +46,10 @@ export const ICEFALL = { tell: 1.0, fall: 0.25, reach: 1.0, stun: 0.4, lead: 0.5
 export const PLUGS = 24, SHARDS = 6;
 // How near a drill no shard of the east's is laid (js/fauna.js: the deed 'shard').
 export const SHARD_KEEP = 2.5;
+// Where on the narrowest screen a shard may be laid, about the camera, in cells (`shardSeen`): across, its cell 4
+// pixels inside the sides; up and down, its middle as far in as a tell's must be (`inView`).
+export const SHARD_VIEW = { w: (NARROW.W / 2 - 4) / T - 0.5, h: (NARROW.H - NARROW.bar) / 2 / T - NARROW.margin / T };
+const ROOM_W = Math.floor(2 * SHARD_VIEW.w) + 3, ROOM_H = Math.floor(2 * SHARD_VIEW.h) + 3;
 // The states a lord is in.
 export const ST = { SLEEP: 0, SUNK: 1, RISE: 2, TELL: 3, ACT: 4, REST: 5, HURT: 6, YIELD: 7, LATCH: 8, BLINK: 9, GONE: 10 };
 const { SLEEP, SUNK, RISE: UP, TELL, ACT, REST, HURT: HURTING, YIELD: YIELDING, LATCH, BLINK, GONE } = ST;
@@ -82,7 +86,7 @@ export const BOSS = [
   // A ram is the drill flown into its middle as it rests, from `ram` cells or nearer at `rush` cells a second or more
   // (js/fauna.js's ram, RAM + 0.4 and RAM_SPEED, widened for its size).
   { key: 'behemoth', name: 'MAGMA BEHEMOTH', lord: 'LORD OF THE SOUTH', kin: 2, look: 'ember', fossil: 'EMBER RIBS', verb: 'ram', ready: true, attack: 'charge',
-    poses: POSES, tell: [1.2, 1.0, 0.9], again: 0.9, act: 0, rest: [2.6, 2.2, 1.9], near: [4, 7], charge: [16, 18, 20], lane: 1.6, hit: 1.0, over: 2, reach: 14,
+    poses: POSES, tell: [1.2, 1.0, 0.9], again: 0.9, rest: [2.6, 2.2, 1.9], near: [4, 7], charge: [16, 18, 20], lane: 1.6, hit: 1.0, over: 2, reach: 14,
     slide: 8, burrow: 3, arc: 6, ram: 1.6, rush: 3, stun: 0.4 },
   // The west: she roots near the drill where she sees it (`perch` 'sight') and stays there, sinking to follow it
   // through the rock at `follow` cells a second should it get `loose` cells from her, and rooting again once she is
@@ -95,7 +99,7 @@ export const BOSS = [
   // tendril is told `second` seconds after the first, which never anchors while another is. Then she cools `cool`
   // seconds, and tells no sooner than `every` after her last tell began.
   { key: 'mother', name: 'SPORE MOTHER', lord: 'LORD OF THE WEST', kin: 3, look: 'mire', fossil: 'ROOT WYRM', verb: 'cut', ready: true, attack: 'lash',
-    poses: POSES, tell: [1.1, 0.95, 0.8], act: 0, rest: [3.2, 2.7, 2.3], cool: [1.4, 1.2, 1.0], every: [4.5, 3.8, 3.2], near: [4, 7], reach: 14, lash: 30, back: 40,
+    poses: POSES, tell: [1.1, 0.95, 0.8], rest: [3.2, 2.7, 2.3], cool: [1.4, 1.2, 1.0], every: [4.5, 3.8, 3.2], near: [4, 7], reach: 14, lash: 30, back: 40,
     latch: 0.8, drag: 0.6, drink: 1.5, sip: 3.5, free: 12, shake: 0.5, most: 6, follow: 4, loose: 14, second: 0.4, arc: 6, stun: 0.3, perch: 'sight' },
   // The north: it swims at `swim` cells a second in arcs `arc` cells round the drill, rises on a perch (rock behind
   // it for the tether to bend on), and breathes `reach` cells at the most along a line to the drill; a drill within
@@ -136,8 +140,8 @@ export class Bosses {
     // faces; how long the drill has been past its leash; whether a loop round it now is a blow (the band was clear
     // of it since its rest began; for the east, whether his rest takes a ram, his shards spent or none to be laid);
     // the plugs and shards it has made this fight, the shard standing (-1 for none) and the cell it
-    // is anchored in; whether its attack has struck; its own phase; how many attacks it has made; when it last
-    // rumbled; and the north's icefall (how long since it was told, -1 for none) and its three rings.
+    // is anchored in; whether its attack has struck (the north's breath, the south's charge); its own phase; how many
+    // times the north has rested (its icefall comes on every second rest); when it last rumbled; and the north's icefall (how long since it was told, -1 for none) and its three rings.
     this.st = new Uint8Array(4); this.t = new Float32Array(4); this.stage = new Uint8Array(4); this.blows = new Uint8Array(4);
     this.x = new Float64Array(4); this.y = new Float64Array(4); this.cell = new Int32Array(4);
     this.ax = new Float64Array(4); this.ay = new Float64Array(4); this.lockX = new Float64Array(4); this.lockY = new Float64Array(4);
@@ -150,12 +154,14 @@ export class Bosses {
     this.toX = new Float64Array(4); this.toY = new Float64Array(4); this.fromX = new Float64Array(4); this.fromY = new Float64Array(4); this.leg = new Uint8Array(4);
     // The cells of ice each has laid this fight (PLUGS a lord), which only it thaws.
     this.laid = new Int32Array(4 * PLUGS);
-    // The west's tendrils (three slots of TD) and the drag they put on the drill (1: none); how long one has held
+    // The west's tendrils (two slots of TD) and the drag they put on the drill (1: none); how long one has held
     // the drill (-1: none), how long the drill has flown fast since, and how often she has drunk; and the time
     // before which she tells no more.
-    this.tendril = new Float64Array(3 * TD); this.drag = 1;
+    this.tendril = new Float64Array(2 * TD); this.drag = 1;
     this.latch = new Float32Array(4); this.fast = new Float32Array(4); this.sips = new Uint8Array(4); this.next = new Float64Array(4);
     this.near = new Float64Array(1);
+    // (The ground about the east and about the narrowest screen as he lays his shard: open or not, a cell a byte.)
+    this.room = new Uint8Array(2 * ROOM_W * ROOM_H);
     // (Asked when a lord's tell begins, by the tests: what, where its line or rings are. Null in play.)
     this.onTell = null;
     this.reset(7, null);
@@ -459,12 +465,7 @@ export class Bosses {
         break;
       }
       case ACT: this.rush(game, b); break;
-      case REST: {
-        if (this.ram(game, b) || t < B.rest[s]) break;
-        this.beat[b]++;
-        this.sink(game, b);
-        break;
-      }
+      case REST: if (!this.ram(game, b) && t >= B.rest[s]) this.sink(game, b); break;
       case HURTING: if (t >= HURT) { if (this.blows[b] >= BLOWS) { this.st[b] = YIELDING; this.t[b] = 0; } else this.sink(game, b); } break;
       case YIELDING: if (t >= YIELD) this.yielded(game, b); break;
     }
@@ -566,17 +567,12 @@ export class Bosses {
         if (t < B.tell[s] - LOCK) { this.aim(game, b); this.lockX[b] = this.ax[b]; this.lockY[b] = this.ay[b]; }
         if (t < B.tell[s]) break;
         // The pulse: a drill inside the ring is hit.
-        if (d.mode !== 'dead' && Math.hypot(d.x - this.x[b], d.y - this.y[b]) <= B.ring[s] && this.fauna.deed(game, 'hit', B.stun)) this.struck[b] = 1;
+        if (d.mode !== 'dead' && Math.hypot(d.x - this.x[b], d.y - this.y[b]) <= B.ring[s]) this.fauna.deed(game, 'hit', B.stun);
         this.st[b] = ACT; this.t[b] = 0;
         break;
       }
       case ACT: if (t >= B.act) this.rest(game, b); break;
-      case REST: {
-        if (this.ram(game, b) || t < B.rest[s]) break;
-        this.beat[b]++;
-        this.blink(b);
-        break;
-      }
+      case REST: if (!this.ram(game, b) && t >= B.rest[s]) this.blink(b); break;
       case HURTING: if (t >= HURT) { if (this.blows[b] >= BLOWS) { this.st[b] = YIELDING; this.t[b] = 0; } else this.blink(b); } break;
       case YIELDING: if (t >= YIELD) this.yielded(game, b); break;
     }
@@ -588,37 +584,97 @@ export class Bosses {
     const d = game.drill, r = BOSS[b].ring[this.stage[b] - 1], dx = d.x - this.x[b], dy = d.y - this.y[b], len = Math.hypot(dx, dy) || 1;
     this.ax[b] = this.x[b] + dx / len * r; this.ay[b] = this.y[b] + dy / len * r;
   }
-  // His shard: a cell `shard` cells from him, tried at WAYS ways round from a place his own generator picks, the
-  // first that is seen open ground with seen open ground all round it, no lava, SHARD_KEEP or more from the drill,
-  // inside the tether's reach and on the narrowest screen, which the deed 'shard' makes a loose cell of rich ore (with
-  // its own guards: never under the tether nor inside its loop, nor in a pocket; three asked at the most). SHARDS a
-  // fight. Returns whether one was laid.
+  // His shard: a loose cell of rich ore, laid by the deed 'shard' (with its own guards: never under the tether nor
+  // inside its loop, nor in a pocket; three asked at the most) in seen open ground with seen open ground all round
+  // it, no lava, SHARD_KEEP or more from the drill, inside the tether's reach and two cells or more from him: one
+  // `shard` cells from him, on the narrowest screen (`shardSeen`) where there is one, from a place his own generator
+  // picks, else off it; failing that, the one on the narrowest screen nearest him. (Every cell about him is looked
+  // at, and every cell of the screen, the ground about them peeked at once into `room`: a bore along his axis on the
+  // narrowest screen has no cell two to four cells from a lord risen three to five from the drill that is on it, and
+  // he had shed none there.) SHARDS a fight. Returns whether one was laid.
   layShard(game, b) {
     if (this.shards[b] >= SHARDS) return false;
-    const d = game.drill, B = BOSS[b], x0 = this.x[b], y0 = this.y[b], from = (this.rnd() * WAYS) | 0;
-    let asked = 0;
-    for (let n = 0; n < WAYS && asked < 3; n++) {
-      const way = (from + n * 7) % WAYS, r = B.shard[0] + (B.shard[1] - B.shard[0]) * FAR[n], x = Math.floor(x0 + WX[way] * r), y = Math.floor(y0 + WY[way] * r);
-      const mx = x + 0.5, my = y + 0.5, far = Math.hypot(mx - x0, my - y0);
-      this.work++;
-      if (far < B.shard[0] || far > B.shard[1] || Math.hypot(mx - d.x, my - d.y) < SHARD_KEEP || !game.within(mx, my) || !this.inView(game, mx, my) || !this.clear(game, x, y)) continue;
-      asked++;
-      if (!this.fauna.deed(game, 'shard', y * N + x)) continue;
-      this.shard[b] = y * N + x; this.shards[b]++;
-      this.voice(game, 'shard', b, 1);
-      return true;
+    const B = BOSS[b], x0 = this.x[b], y0 = this.y[b], from = this.rnd(), most = B.shard[1];
+    const cx = game.cam.x / T, cy = game.cam.y / T, ex = SHARD_VIEW.w + 0.5, ey = SHARD_VIEW.h + 0.5;
+    let tried0 = -1, tried1 = -1, peeked = 0;
+    for (let ask = 0; ask < 3; ask++) {
+      // (About him first; then the screen. The ground of each is peeked at the first time it is looked at.)
+      let c = this.shardIn(game, b, Math.floor(x0 - most), Math.floor(y0 - most), Math.floor(x0 + most), Math.floor(y0 + most), true, 0, !(peeked & 1), from, tried0, tried1);
+      peeked |= 1;
+      if (c < 0) { c = this.shardIn(game, b, Math.ceil(cx - ex), Math.ceil(cy - ey), Math.floor(cx + ex) - 1, Math.floor(cy + ey) - 1, false, ROOM_W * ROOM_H, !(peeked & 2), from, tried0, tried1); peeked |= 2; }
+      if (c < 0) return false;
+      if (this.fauna.deed(game, 'shard', c)) {
+        this.shard[b] = c; this.shards[b]++;
+        this.voice(game, 'shard', b, 1);
+        return true;
+      }
+      if (ask === 0) tried0 = c; else tried1 = c;
     }
     return false;
   }
-  // Seen open ground, no lava, in a cell and all eight about it.
-  clear(game, x, y) {
-    const w = game.world;
-    for (let v = -1; v <= 1; v++) for (let u = -1; u <= 1; u++) {
-      this.work++;
-      if (w.peek(x + u, y + v) !== K.EMPTY || w.lava.has((y + v) * N + x + u)) return false;
+  // The cell for his shard among the cells from (u0, v0) to (u1, v1): with `near`, one two to four cells from him,
+  // on the narrowest screen before one off it, the first from `from` (0 to 1) of the way through them; else the one
+  // on the narrowest screen nearest him, two cells or more from him. Never `not0` or `not1`. -1 where there is none.
+  // (The ground about them is peeked at once, with `peek`, into `room` from `o`.)
+  shardIn(game, b, u0, v0, u1, v1, near, o, peek, from, not0, not1) {
+    const d = game.drill, w = game.world, B = BOSS[b], x0 = this.x[b], y0 = this.y[b], room = this.room;
+    const cols = Math.min(u1 - u0 + 1, ROOM_W - 2), rows = Math.min(v1 - v0 + 1, ROOM_H - 2), rw = cols + 2, many = cols * rows;
+    if (many <= 0) return -1;
+    if (peek) {
+      for (let v = -1; v <= rows; v++) for (let u = -1; u <= cols; u++) {
+        const x = u0 + u, y = v0 + v;
+        this.work++;
+        room[o + (v + 1) * rw + u + 1] = w.peek(x, y) === K.EMPTY && !w.lava.has(y * N + x) ? 1 : 0;
+      }
+      this.banded(game, o, u0 - 1, v0 - 1, rw, rows + 2);
     }
-    return true;
+    let best = -1, score = Infinity;
+    for (let n = 0, start = (from * many) | 0; n < many; n++) {
+      const at = (start + n) % many, u = at % cols, v = (at / cols) | 0, x = u0 + u, y = v0 + v, c = y * N + x;
+      if (c === not0 || c === not1) continue;
+      const mx = x + 0.5, my = y + 0.5, far = Math.hypot(mx - x0, my - y0), seen = this.shardSeen(game, mx, my);
+      if (far < B.shard[0] || (near ? far > B.shard[1] : !seen) || Math.hypot(mx - d.x, my - d.y) < SHARD_KEEP || !game.within(mx, my)) continue;
+      const s = near ? (seen ? 0 : 1) : far;
+      if (s >= score) continue;
+      let open = room[o + (v + 1) * rw + u + 1] === 1;
+      for (let k = 0; k < 9 && open; k++) if (!room[o + (v + ((k / 3) | 0)) * rw + u + (k % 3)]) open = false;
+      if (!open) continue;
+      best = c; score = s;
+      if (near && s === 0) break;
+    }
+    return best;
   }
+  // The open cells of `room` (from `o`, `rw` by `rh` cells from (x0, y0)) the band runs through or near, marked (2):
+  // the deed lays no shard under the tether, and asked of one there it would refuse it. (Only what of the band
+  // crosses them is looked at, half a cell at a time, the cells within 0.3 of each point marked; the band is only
+  // read.)
+  banded(game, o, x0, y0, rw, rh) {
+    const P = game.band, room = this.room, x1 = x0 + rw, y1 = y0 + rh;
+    this.work += P.length;
+    for (let n = 1; n < P.length; n++) {
+      const ax = P[n - 1][0], ay = P[n - 1][1], dx = P[n][0] - ax, dy = P[n][1] - ay;
+      // (The span clipped to the cells, a little beyond them.)
+      let t0 = 0, t1 = 1;
+      for (let e = 0; e < 4 && t0 <= t1; e++) {
+        const p = e === 0 ? -dx : e === 1 ? dx : e === 2 ? -dy : dy, q = e === 0 ? ax - (x0 - 1) : e === 1 ? x1 + 1 - ax : e === 2 ? ay - (y0 - 1) : y1 + 1 - ay;
+        if (p === 0) { if (q < 0) t1 = -1; } else if (p < 0) t0 = Math.max(t0, q / p); else t1 = Math.min(t1, q / p);
+      }
+      if (t0 > t1) continue;
+      const steps = Math.ceil(Math.hypot(dx, dy) * (t1 - t0) * 2) + 1;
+      for (let k = 0; k <= steps; k++) {
+        const t = t0 + (t1 - t0) * k / steps, x = ax + dx * t, y = ay + dy * t;
+        this.work++;
+        for (let c = 0; c < 4; c++) {
+          const u = Math.floor(x + (c & 1 ? 0.3 : -0.3)) - x0, v = Math.floor(y + (c & 2 ? 0.3 : -0.3)) - y0;
+          if (u >= 0 && u < rw && v >= 0 && v < rh && room[o + v * rw + u] === 1) room[o + v * rw + u] = 2;
+        }
+      }
+    }
+  }
+  // Whether a point (cells) is where a shard of the east's may be laid on the narrowest screen: its middle SHARD_VIEW.w
+  // cells or nearer the camera across (the whole cell 4 pixels inside the screen's sides) and SHARD_VIEW.h up and
+  // down (as `inView` has it).
+  shardSeen(game, x, y) { return Math.abs(x - game.cam.x / T) <= SHARD_VIEW.w && Math.abs(y - game.cam.y / T) <= SHARD_VIEW.h; }
 
   // ---------------------------------------------------------------- the west: SPORE MOTHER
   // Sunk, she follows the drill through the rock and roots near it; rooted, she stays, telling a line through the

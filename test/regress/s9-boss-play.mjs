@@ -21,19 +21,25 @@
 //     after the first, and comes back while the first is anchored.
 //   - The east, CRYSTAL KING: as he rests a shard breaks from his crown, a loose piece of one cell of rich ore, two
 //     to four cells from him, open ground all round it, SHARD_KEEP or more from the drill and on the narrowest
-//     screen; hauled home it is a blow, and its ore is paid as a haul's, no specimens; flown round in a room at his
-//     lair, too; one standing hauled as he tells is a blow, as he is hurt or yields or once he is asleep is not.
+//     screen; in a bore three cells high cut along his axis, nothing else open, he risen three cells from the drill
+//     either side of it, it is laid in the bore all the same; hauled home it is a blow, and its ore is paid as a
+//     haul's, no specimens; flown round in a room at his lair, too; one standing hauled as he tells is a blow, as he is hurt or yields or once he is asleep is not.
 //     Cut, by the game's own cut or flown into, it is no blow, and he sheds another as he next rests. A ram is no
 //     blow while a shard stands; with his SHARDS spent, or where no shard can be laid (a corridor a cell high), his
 //     rest takes a ram, and a slow one is not. His pulse hits a drill inside his ring as the tell ends, once, and not
-//     one outside it.
+//     one outside it. And on the ground as the seed laid it on ten worlds, fought by a thumb that keeps out of his
+//     ring, flies round a shard standing and rams him only where his rest takes a ram, he is beaten each time, sheds
+//     a shard in every fight, and 24 and more of the 30 blows are hauls.
 //   - Every lord: three blows give exactly one beaten, which pays BOSS_LUMP seconds of what cutting at the lair
 //     earns with the refinery's share, BOSS_SPEC of its direction's specimens and its bit, and its banner; its
 //     direction's gems are paid BOSS_PERK times as many for good (1.1 cubed with both its shrines), the others not;
-//     it is never beaten twice and never woken again, a game saved and loaded keeps the bit and leaves it asleep.
+//     it is never beaten twice and never woken again; a game saved on the way home loads with it met, not beaten, and
+//     nothing it paid, and one saved once home keeps the bit and all of it and leaves it asleep.
 //   - Losing: a wreck mid-fight leaves the lord asleep and whole and the ground as it was at the docking, its ice
 //     gone; a wreck after the kill loses the bit and the pay; with the black box at its third level the lord is
-//     kept as met and not as beaten; and led away past its leash for HEAL seconds it is whole, and wakes whole.
+//     kept as met and not as beaten, and the box's share is of the trip's own grit, none of the lord's; and led
+//     away past its leash for HEAL seconds it is whole, and wakes whole.
+//   - A lord's name as it wakes: a place come into while it is up waits for it to go, and then comes up.
 //   - The tether: 600 seconds of a seeded thumb in each fight, blows landed along the way: no cell a lord lays is
 //     under the tether or within 1.5 of a drill flying free; no more than PLUGS of its ice a fight (the north lays
 //     some, the south, the west and the east none); the tether never goes wrong; every cell the west's tendril is
@@ -240,7 +246,7 @@ for (const [what, kind] of [['vault', K.VAULT], ['bedrock', K.BEDROCK], ['unseen
 }
 // From her second stage, a second tendril told 0.4 seconds after the first; one anchored, the other back.
 {
-  const { game, B, her } = await westRoom(), tells = [], T0 = B.tendril, TD = T0.length / 3;
+  const { game, B, her } = await westRoom(), tells = [], T0 = B.tendril, TD = T0.length / 2;
   dodge(game, 2);
   B.onTell = (lord, what) => tells.push({ what, at: game.time });
   B.stageAs(game, 2, 'tell', 2, her);
@@ -259,15 +265,16 @@ const eastRoom = async () => {
   return { game, B, him: (C - 3) * N + C + 2199 };
 };
 // A shard as it should be laid: a loose piece of one cell of rich ore, open ground all round it, two to four cells
-// from him, SHARD_KEEP or more from the drill, on the narrowest screen and inside the tether's reach.
-const shardFault = (game, B, c) => {
+// from him, SHARD_KEEP or more from the drill, on the narrowest screen (`shardSeen`) and inside the tether's reach.
+// (`anywhere`: two cells or more from him, and either four or nearer or on the narrowest screen.)
+const shardFault = (game, B, c, anywhere = false) => {
   const w = game.world, x = c % N + 0.5, y = Math.floor(c / N) + 0.5, far = Math.hypot(x - B.x[0], y - B.y[0]);
   if (c < 0) return 'none';
   if (w.k(c) !== K.ORE_B || game.pieceOf.get(c)?.length !== 1) return `kind ${w.k(c)}, piece of ${game.pieceOf.get(c)?.length}`;
   for (let v = -1; v <= 1; v++) for (let u = -1; u <= 1; u++) if ((u || v) && w.peek(c % N + u, Math.floor(c / N) + v) !== K.EMPTY) return `ground beside it at ${u},${v}`;
-  if (far < 2 - 1e-9 || far > 4 + 1e-9) return `${far.toFixed(2)} cells from him`;
+  if (far < 2 - 1e-9 || (far > 4 + 1e-9 && !(anywhere && B.shardSeen(game, x, y)))) return `${far.toFixed(2)} cells from him`;
   if (Math.hypot(x - game.drill.x, y - game.drill.y) < SHARD_KEEP) return 'by the drill';
-  if (!B.inView(game, x, y) || !game.within(x, y)) return 'off the screen or past the reach';
+  if ((!anywhere && !B.shardSeen(game, x, y)) || !game.within(x, y)) return 'off the screen or past the reach';
   return null;
 };
 {
@@ -341,6 +348,51 @@ const shardFault = (game, B, c) => {
   B.stageAs(game, 0, 'rest', 1, C * N + C + 2198);
   check(B.shard[0] === -1 && B.shards[0] === 0 && B.armed[0] === 1 && ramInto(game, 0) && B.blows[0] === 1, `the east's lord in a corridor with no shard to shed did not take a ram (shard ${B.shard[0]}, armed ${B.armed[0]}, blows ${B.blows[0]})`);
 }
+// A bore three cells high along his axis, as the drill cuts one, and nothing else open: risen three cells from the
+// drill on either side of it in the bore, he sheds his shard in it (on the narrowest screen there is no cell two to
+// four from him, and he had none: his rest took a ram).
+for (const side of [3, -3]) {
+  const game = await atLair(0, { hull: false, dug: 2 }), B = game.fauna.bosses;
+  rect(game, 2185, -9, 2216, -2, K.SOFT); rect(game, 2185, 2, 2216, 9, K.SOFT);
+  game.world.see(C + 2202, C, 14); game.changed(); game.pieces = [];
+  // (The view on the drill, as it is once the drill has stood a moment.)
+  game.cam.x = game.drill.x * 16; game.cam.y = game.drill.y * 16;
+  B.stageAs(game, 0, 'rest', 1, C * N + C + 2202 + side);
+  const fault = shardFault(game, B, B.shard[0], true);
+  check(!fault && B.shards[0] === 1 && B.armed[0] === 0 && Math.floor(B.shard[0] / N) === C, `the east's lord risen ${side} cells from the drill in a bore along his axis shed no shard in it as he rested (${fault}, armed ${B.armed[0]})`);
+}
+// On the ground as the seed laid it, fought by a thumb that keeps out of his ring as he tells, flies round a shard
+// standing to haul it home and flies into him only where his rest takes a ram: on each of ten worlds he is beaten,
+// and his blows are hauls, a ram now and then. (He had shed a shard in three fights of the ten, and 27 of the 30
+// blows were rams.)
+{
+  let hauls = 0, rams = 0, beaten = 0, shed = 0;
+  const lost = [];
+  for (const seed of [1, 2, 3, 5, 7, 11, 13, 23, 42, 99]) {
+    const game = await atLair(0, { seed, hull: false, levels: { momentum: 2 } }), B = game.fauna.bosses, d = game.drill;
+    let side = 1, n = 0, gone = false;
+    const go = (tx, ty, m = 1) => { const dx = tx - d.x, dy = ty - d.y, f = Math.hypot(dx, dy) || 1; return [dx / f, dy / f, f > 1 ? m : Math.max(0.4, f)]; };
+    for (; n < 120 * 60 && !gone; n++) {
+      const st = B.st[0], dx = d.x - B.x[0], dy = d.y - B.y[0], far = Math.hypot(dx, dy) || 1;
+      if (n % 90 === 0) side = -side;
+      let steer;
+      if (B.shard[0] >= 0 && st !== ST.TELL) { const c = B.shard[0], sx = c % N + 0.5, sy = Math.floor(c / N) + 0.5, a = Math.atan2(d.y - sy, d.x - sx) + 0.9; steer = go(sx + Math.cos(a) * 1.8, sy + Math.sin(a) * 1.8); }
+      else if (st === ST.TELL) steer = [dx / far, dy / far, 1];
+      else if (st === ST.REST && B.armed[0]) steer = go(B.x[0], B.y[0]);
+      else if (st === ST.SLEEP) steer = go(lairX(0), lairY(0));
+      else { const a = Math.atan2(dy, dx) + 0.3 * side; steer = go(B.x[0] + Math.cos(a) * 5, B.y[0] + Math.sin(a) * 5, 0.6); }
+      game.input.auto = steer;
+      const blows = B.blows[0], armed = B.st[0] === ST.REST && B.armed[0] === 1;
+      game.update(1 / 60);
+      if (B.blows[0] > blows) { if (armed) rams++; else hauls++; }
+      gone = B.st[0] === ST.GONE;
+    }
+    game.input.auto = null;
+    if (gone) beaten++; else lost.push(seed);
+    if (B.shards[0] > 0) shed++;
+  }
+  check(beaten === 10 && shed === 10 && hauls >= 24 && hauls + rams === 30, `the east's lord on the ground as laid, on ten worlds: beaten on ${beaten} (not on ${lost.join(', ') || 'none'}), a shard shed in ${shed} fights, ${hauls} of his blows hauls and ${rams} rams`);
+}
 // His pulse: a drill inside his ring as the tell ends is hit, once, at the tell's end; one outside it is not. (He
 // tells at stage 1 with a ring of 3.5 and at stage 3 with one of 4.5, the drill 4.24 cells from him.)
 {
@@ -371,11 +423,22 @@ for (const b of LORDS) {
   const steer = thumb(game, b, random(3), 12);
   run(game, 40 * 60, steer);
   check(beaten === 1 && (B.st[b] === ST.SLEEP || B.st[b] === ST.GONE), `the ${NAMES[b]}'s lord beaten woke again (state ${B.st[b]}, beaten ${beaten})`);
-  // Saved and loaded: the bit is kept, and it sleeps at its lair.
+  // Saved on the way home and loaded (the tab shut out at the lair): the lord met and not beaten, and nothing it
+  // paid kept, for a game loaded begins at the core with no trip home flown. (It had kept the kill and the lump.)
+  const docked = JSON.parse(game.docked), lump = game.fauna.paid.grit;
+  game.save();
+  const midway = await makeGame(7, {}, { fauna: true, hull: true });
+  await midway.restore();
+  const M = midway.S;
+  check((M.bosses ?? 0) === ((docked.bosses ?? 0) | 1 << b) && M.grit < S.grit - lump + 1 && M.spec[kin] === S.spec[kin] - BOSS_SPEC,
+    `the ${NAMES[b]}'s lord beaten and the game saved on the way home loaded with bits ${M.bosses}, ${M.grit} grit (${S.grit} with the lump of ${lump}) and ${M.spec[kin]} specimens (${S.spec[kin]} with the lord's)`);
+  // Home, it is kept: saved and loaded, the bit is kept, and it sleeps at its lair.
+  setDown(game, 0, 0); run(game, 2);
+  check(game.drill.home && game.spoils === null, `the drill set down at the core after the ${NAMES[b]}'s lord was beaten did not come home`);
   game.save();
   const again = await makeGame(7, {}, { fauna: true, hull: true });
   await again.restore();
-  check(((again.S.bosses ?? 0) >> (4 + b) & 1) === 1, `the ${NAMES[b]}'s lord beaten was not saved (${again.S.bosses})`);
+  check(((again.S.bosses ?? 0) >> (4 + b) & 1) === 1 && again.S.grit >= S.grit - 1 && again.S.spec[kin] === S.spec[kin], `the ${NAMES[b]}'s lord beaten was not saved once home (${again.S.bosses}, ${again.S.grit} grit of ${S.grit})`);
   again.S.lv.tether = 9;
   const r = LAIR - 8;
   tunnel(again, DX[b] * r, DY[b] * r); setDown(again, DX[b] * r, DY[b] * r); again.world.see(C + DX[b] * r, C + DY[b] * r, 12); again.changed();
@@ -423,7 +486,8 @@ for (const b of LORDS) {
       `a wreck mid-fight with the ${NAMES[b]}'s lord left it ${B.st[b]} with ${B.blows[b]} blows, bits ${game.S.bosses} (docked ${docked}), the ground ${same ? 'as' : 'not as'} it was`);
   }
   // A wreck after the kill: the bit and the pay are lost; with the black box at its third level the lord is kept as
-  // met, and not as beaten.
+  // met, and not as beaten, and the box keeps its share of the grit the trip earned but none of the lord's lump, so
+  // a lord beaten and lost to a wreck again and again pays nothing. (It kept three quarters of the lump each time.)
   for (const box of [0, 3]) {
     const game = await atLair(b, { short: 30, dug: 8, levels: { blackbox: box } }), B = game.fauna.bosses, kin = [4, 2, 3, 1][b];
     game.dockMark();
@@ -431,12 +495,12 @@ for (const b of LORDS) {
     game.shield = 999;
     until(game, () => B.st[b] !== ST.SLEEP, 60 * 10, [DX[b], DY[b], 1]);
     check(beat(game, b) && (game.S.bosses >> (4 + b) & 1), `the ${NAMES[b]}'s lord was not beaten before the wreck`);
-    let at = null;
-    const revert = game.revert.bind(game);
-    game.revert = () => { revert(); at = { grit: game.S.grit, spec: game.S.spec[kin], bosses: game.S.bosses ?? 0 }; };
+    let at = null, cut = 0;
+    const revert = game.revert.bind(game), lump = game.fauna.paid.grit;
+    game.revert = () => { cut = game.S.grit - S0.grit - lump; revert(); at = { grit: game.S.grit, spec: game.S.spec[kin], bosses: game.S.bosses ?? 0 }; };
     wreck(game); run(game, 120);
     check(at && at.spec === S0.spec[kin] && (at.bosses >> (4 + b) & 1) === 0, `a wreck after the ${NAMES[b]}'s lord was beaten kept ${JSON.stringify(at)} (docked ${S0.spec[kin]} specimens)`);
-    check(at && (box ? at.grit > S0.grit : at.grit === S0.grit), `a wreck after the ${NAMES[b]}'s lord was beaten, the black box at ${box}, left ${at?.grit} grit (docked ${S0.grit})`);
+    check(at && lump > 1e5 && cut >= 0 && at.grit === S0.grit + Math.round(cut * game.val('blackbox')) && (!box || game.val('blackbox') > 0), `a wreck after the ${NAMES[b]}'s lord was beaten, the black box at ${box}, left ${at?.grit} grit (docked ${S0.grit}, the trip's own ${cut}, the lump ${lump})`);
     check(at && at.bosses === (box >= 3 ? (S0.bosses ?? 0) | 1 << b : S0.bosses ?? 0), `a wreck after the ${NAMES[b]}'s lord was beaten, the black box at ${box}, left its bits ${at?.bosses}`);
   }
   // Led away: past its leash for HEAL seconds it is whole, and it wakes whole.
@@ -451,6 +515,21 @@ for (const b of LORDS) {
     check(B.st[b] === ST.SLEEP && B.blows[b] === 0 && B.stage[b] === 1, `led ${LEASH + 4} cells from its lair for ${HEAL + 1} seconds the ${NAMES[b]}'s lord is ${B.st[b]} with ${B.blows[b]} blows`);
     check(until(game, () => B.st[b] !== ST.SLEEP, 60 * 20, [DX[b], DY[b], 1]) >= 0 && B.blows[b] === 0 && B.stage[b] === 1, `the ${NAMES[b]}'s lord led away did not wake whole on the drill's return`);
   }
+}
+
+// ---- a lord's name as it wakes
+// The drill come into another place while a lord's name and title are up: the place waits for them to go, and comes up
+// then; with no lord's name up, it comes up at once. (It took their place at once, and they were not said again.)
+for (const b of LORDS) {
+  const game = await makeGame(7), row = game.placeAt(game.di).row;
+  game.lordMet(b);
+  const card = game.place;
+  game.placeKey = 'elsewhere'; game.arrive(game.di);
+  const kept = game.place === card;
+  run(game, Math.ceil(card.life * 60) + 2);
+  check(kept && game.place?.title === row.title && game.place !== card, `the ${NAMES[b]}'s lord's name, up as the drill came into another place, ${kept ? 'stayed' : 'gave way at once'}, and then ${game.place?.title ?? 'nothing'} came up`);
+  game.place = null; game.placeKey = 'elsewhere'; game.arrive(game.di);
+  check(game.place?.title === row.title, `with no lord's name up, the place the drill came into came up as ${game.place?.title}`);
 }
 
 // ---- the tether, 600 seconds of each fight
