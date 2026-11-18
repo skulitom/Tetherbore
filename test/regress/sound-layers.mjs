@@ -17,6 +17,9 @@
 //     they move enough to hear, and nothing at all with no context or muted; but what was asked for while muted or
 //     aside is what it blows at once the sound is back (the feel tells a level only as it moves, so a level dropped
 //     while muted left the wind blowing at the core).
+//   - The lords' voices are there by the names js/bosses.js asks (a rumble, a roar, a groan, a shard), for each lord
+//     and for what is no lord, and keep every rule above; the four sound apart; the rumble gives way when many
+//     layers sound and the rest do not; and a lord beaten (`slain`) steps the music well back, and it comes back.
 //   - While the page is aside (hidden, or another window has the focus) the context is suspended and no sound makes
 //     anything; a touch then does not wake it, and coming back resumes it.
 //   - The music is made once (26 nodes, eleven sources, one timer), makes no node however long it plays or however
@@ -119,9 +122,14 @@ const setWind = (...args) => windy && audio.setWind(...args), windNow = () => wi
 // (The voices of the creatures, js/fauna.js's: each with nothing, beside the drill, at the edge of hearing, and with
 // what is no number.)
 const VOICES = ['tick', 'yip', 'coo', 'tug', 'pop', 'flutter', 'wheeze', 'spit', 'splat', 'purr', 'chitter', 'screech', 'whoosh', 'croak', 'squeak', 'caught', 'poof', 'plip', 'slurp', 'skitter', 'trill',
-  'buzz', 'glass', 'meet', 'befriend', 'trophy'];
+  'buzz', 'glass', 'meet', 'befriend', 'trophy', 'rumble', 'roar', 'groan', 'shard'];
 for (const name of VOICES) { if (typeof audio.voices[name] !== 'function') fails.push(`the creatures ask for voices.${name}, and there is none`); else ASKS.push([`v:${name}`], [`v:${name}`, 1], [`v:${name}`, 0.01], [`v:${name}`, NaN]); }
 for (const name of Object.keys(audio.voices)) if (!VOICES.includes(name)) fails.push(`voices.${name} is not asked for here`);
+// (The lords' voices, js/bosses.js's, say which lord, its direction: each lord's, and what is no lord. Its sting,
+// js/game.js's, as a lord is beaten.)
+const LORDS = ['rumble', 'roar', 'groan', 'shard'];
+for (const name of LORDS) if (typeof audio.voices[name] === 'function') for (const lord of [0, 1, 2, 3, NaN, 9, -2]) ASKS.push([`v:${name}`, 1, lord], [`v:${name}`, 0.01, lord]);
+if (typeof sfx.slain !== 'function') fails.push('a lord beaten asks for sfx.slain, and there is none'); else ASKS.push(['slain'], ['slain', 2]);
 for (const name of ['tap', 'gem', 'relic', 'dig', 'tick', 'slide', 'hiss', 'dock', 'clink', 'zap', 'wreck', 'twang', 'thud', 'spot', 'puff', 'place', 'ping', 'mend', 'knock', 'grind', 'freeze', 'deny', 'crack', 'chime', 'buy', 'banked', 'arrive',
   'bellwake', 'toll', 'rumble', 'jet', 'wormwake', 'gnaw', 'bite', 'caught', 'hum', 'pull', 'gather']) {
   if (typeof sfx[name] !== 'function') fails.push(`the game asks for sfx.${name}, and there is none`);
@@ -218,9 +226,27 @@ for (let n = 0; n < 12; n++, clock += 0.3) sounding.push(...ask(['crack', 100, 0
 const crowd = { dig: ask(['dig', 3]).length, tick: ask(['tick', 2]).length, grind: ask(['grind']).length, crumble: ask(['crumble']).length, banked: ask(['banked', 100]).length };
 if (crowd.dig > 3 || crowd.tick || crowd.grind || crowd.crumble) fails.push(`with ${sounding.filter(node => node.onended).length} layers sounding, a cut made ${crowd.dig} nodes, a tick ${crowd.tick}, a grind ${crowd.grind}, a break ${crowd.crumble}`);
 if (!crowd.banked) fails.push('with many layers sounding, a haul is not banked aloud');
+// A lord's rumble is only the life of the place and gives way; its roar, its groan and its shard are warnings and
+// signs, and sound however many layers do.
+{
+  const lord = Object.fromEntries(LORDS.map(name => [name, typeof audio.voices[name] === 'function' ? ask([`v:${name}`, 1, 3]).length : 0]));
+  if (lord.rumble || !lord.roar || !lord.groan || !lord.shard) fails.push(`with many layers sounding, a lord's rumble made ${lord.rumble} nodes, its roar ${lord.roar}, its groan ${lord.groan}, its shard ${lord.shard} (the rumble none, the rest a sound, are meant)`);
+}
 for (const node of made) if (node.onended && !fixed.includes(node)) node.onended();
 clock += 10;
 if (ask(['tick', 2]).length !== 2) fails.push('when the layers have ended, a tick does not come back');
+
+// ---------------------------------------------------------------- each lord its own
+// The four lords sound apart: each one's rumble, roar and groan is made of layers of its own (their kinds, waves
+// and filters), and the shard, which only the King sheds, is at least at a pitch of each lord's own.
+{
+  const print = (name, nodes) => nodes.map(node => `${node.kind}:${node.worn ?? node.type ?? ''}`).join(' ') + (name === 'shard' ? ` ${nodes.find(node => node.kind === 'oscillator')?.frequency.events[0]?.value}` : '');
+  for (const name of LORDS) {
+    if (typeof audio.voices[name] !== 'function') continue;
+    const heard = [0, 1, 2, 3].map(lord => { clock += 10; const nodes = ask([`v:${name}`, 1, lord]); for (const node of nodes) node.onended?.(); return print(name, nodes); });
+    if (new Set(heard).size !== 4) fails.push(`the four lords' ${name}s are ${new Set(heard).size} sounds (four, one each, are meant)`);
+  }
+}
 
 // ---------------------------------------------------------------- rewards grow with what happened
 // The run of notes a reward plays is the one oscillator whose pitch is only ever set, never slid: its first note.
@@ -403,6 +429,15 @@ const inKey = (f, s, scale) => { const k = 12 * Math.log2(f / s.root), r = ((Mat
   if (!(ducked() === was + 1 && step.value >= 0.6 && step.value <= 0.85)) fails.push(`a quake steps the music back to ${step?.value} (a little, to about three quarters, is meant)`);
   runFor(3);
   if (duck.gain.events.at(-1).value !== 1) fails.push('after a quake the music does not come back');
+}
+// A lord beaten steps the music well back, further than a shrine does, and it comes back.
+if (typeof sfx.slain === 'function') {
+  clock += 5; runFor(1);
+  clock += 2; ask(['slain']);
+  const step = duck.gain.events.at(-1);
+  if (!(step.value <= 0.35)) fails.push(`a lord beaten steps the music back to ${step?.value} (well back, as far as a shrine and further, is meant)`);
+  runFor(5);
+  if (duck.gain.events.at(-1).value !== 1) fails.push('after a lord is beaten the music does not come back');
 }
 // Gone into a piece whose bars are short beside how slowly its pads fall, both pads wear its wave within a bar or
 // two: the pad held over the turn takes no chord before it has gone quiet and been dressed. (It used to take every

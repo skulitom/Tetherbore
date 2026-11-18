@@ -14,15 +14,24 @@
 //   3. Its places, on worlds 1 to 4 out to 1,200 cells, from the seed alone: no den within CALM cells of the core;
 //      no foe within FOE_FROM, in a pocket or in the home ground; each kind only in the grounds its roster gives it;
 //      and every ground made by hand that is not a pocket (the directions, their deep flanks, the strains, the
-//      seams and their deep, the deep strains) has a roster of its own.
+//      seams and their deep, the deep strains) has a roster of its own. And a second sweep along the four axes from
+//      1,500 cells to 2,300, the last reach: the broods, the lords' young, live only in dens of the kin's grid whose
+//      middle is BROOD.from cells out or more and within BROOD.side of an axis, each its own axis's, in none of a
+//      pocket, in about BROOD.share of those dens, and every other den there holds what its roster gives it; every
+//      brood is found on every world, and nothing nearer the core than BROOD.from is other than it was.
 //   4. Its art, as built: every frame it draws is in the atlas, ringed in its outline; only a foe's frames have the
 //      foe's eye colour in them, and only foes' eyes are written down as glowing; no colour of a creature is near a
-//      colour of what pays or hurts in any ground it lives in; and the foe's eye colour is kept well away from all
-//      of those, from every glow and mote of those grounds, and from every colour of the tether.
+//      colour of what pays or hurts in any ground it lives in (a brood's: every ground the second sweep found one
+//      in); and the foe's eye colour is kept well away from all of those, from every glow and mote of those
+//      grounds, and from every colour of the tether. The broods' frames are the sheet's last, sixteen of them, and
+//      the emberling's lit cracks are written down as its lamps.
+//   5. A brood heralds: set down in the tunnel along its axis four cells short of the drill, 1,800 cells out on
+//      worlds 1, 7 and 11, it scurries outward along the axis past the drill, five cells and more, and is gone into a
+//      crack, having done no deed but to be met, its den hushed, and the creatures' arrays the same ones.
 //   node test/regress/s8-fauna.mjs
 import { readFile } from 'node:fs/promises';
-import { makeGame, random, farStart, wander, C, N, K, world } from '../harness.mjs';
-import { Fauna, CREATURES, ROSTER, KIN_FAUNA, faunaOf, FAUNA, NAMED, POOL, CALM, FOE_FROM, FOE_EYE, DEN, KIN, WORK, P, frameName } from '../../js/fauna.js';
+import { makeGame, random, farStart, tunnel, setDown, wander, C, N, K, world } from '../harness.mjs';
+import { Fauna, CREATURES, ROSTER, KIN_FAUNA, faunaOf, FAUNA, NAMED, POOL, CALM, FOE_FROM, FOE_EYE, DEN, KIN, WORK, P, frameName, BROOD, BROODS, broodAt } from '../../js/fauna.js';
 import { FEELS } from '../../js/feel.js';
 import { TETHERS } from '../../js/fit.js';
 import { sheets } from '../../js/atlas.js';
@@ -44,7 +53,7 @@ Math.random = () => { draws++; return stream(); };
 // and a seam and a deep strain of a new game's, generation 2, each with its own roster.)
 const PLACES = [['frost', 60, -150], ['ember', 0, 150], ['mire', -150, 0], ['lode', 150, 0], ['buzzmire', -912, -304], ['cinderfen', -448, 432], ['glacier', -608, -832]];
 const STAGE = [['bat', 'fuse'], ['spitter', 'puff'], ['leech', 'latched'], ['puff', 'caught'], ['wren', 'peck'], ['pup', 'pal'], ['moth', ''], ['beetle', ''], ['salamander', ''], ['frog', ''],
-  ['skink', ''], ['bee', ''], ['jelly', ''], ['newt', '']];
+  ['skink', ''], ['bee', ''], ['jelly', ''], ['newt', ''], ['rimeling', ''], ['emberling', ''], ['mireling', ''], ['lodeling', '']];
 // (In four of the grounds the trophy line is bought, so that a foe at rest the tether goes round is caught, but
 // for its being tame; in the other three it is not, as in every game before it was in the shop.)
 const TROPHY = new Set(['frost', 'ember', 'buzzmire', 'cinderfen']);
@@ -134,6 +143,36 @@ for (let seed = 1; seed <= 4; seed++) {
   check(w.made === made, `world ${seed}: dens were laid by making ${w.made - made} pieces of the world`);
 }
 check(dens > 500 && foes > 20, `only ${dens} dens and ${foes} of foes on four worlds`);
+for (const k of BROODS) if (k) check(!kinds.has(k), `a ${CREATURES[k].key} lives within 1,200 cells of the core`);
+// The second sweep, along the axes out to the last reach (every sector of the kin's grid, every third of the named).
+const broodIn = BROODS.map(() => new Set()), OUT = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+let farDens = 0, axisDens = 0, broods = 0;
+for (let seed = 1; seed <= 4; seed++) {
+  const game = await makeGame(seed), f = new Fauna(), w = game.world, made = w.made, found = BROODS.map(() => 0);
+  f.reset(seed, null);
+  for (const [grid, side] of [[0, DEN], [1, KIN]]) for (const [ox, oy] of OUT) for (let a = Math.floor(1500 / side); a <= Math.ceil(2300 / side); a += grid ? 1 : 3) for (let b = -Math.ceil(340 / side); b <= Math.ceil(340 / side); b++) {
+    const sx = ox ? ox * a - (ox < 0 ? 1 : 0) : b, sy = oy ? oy * a - (oy < 0 ? 1 : 0) : b;
+    if (f.dens.size > 80) f.reset(seed, null);
+    const d = f.denOf(game, grid, sx, sy);
+    if (!d) continue;
+    farDens++;
+    const row = BIOMES[d.row], c = CREATURES[d.kind], along = broodAt(d.mx - C, d.my - C);
+    if (c.brood) {
+      broods++; found[c.brood]++; broodIn[c.brood].add(row.name); kinds.add(d.kind);
+      check(grid === 1 && along === d.kind && !row.pocket, `world ${seed}: a ${c.key} lives at ${d.mx - C},${d.my - C} in ${row.name} (grid ${grid})`);
+      continue;
+    }
+    if (grid === 1 && along && !row.pocket) axisDens++;
+    const own = row.pocket ? roster[row.name] : row.cross ? new Set([...roster[KIN_FAUNA[row.cross.host]], ...(grid ? roster[KIN_FAUNA[row.cross.donor]] : [])]) : roster[row.name] ?? roster[KIN_FAUNA[row.kin]];
+    check(own?.has(d.kind), `world ${seed}: a ${c.key} lives at ${d.mx - C},${d.my - C} in ${row.name}, which is not its ground`);
+    if (c.tier === 'foe') check(!row.pocket && row.id !== 0, `world ${seed}: a ${c.key} lives in ${row.name}`);
+  }
+  for (const k of [1, 2, 3, 4]) check(found[k] >= 10, `world ${seed}: only ${found[k]} dens of ${CREATURES[BROODS[k]].key}s out along its axis`);
+  check(w.made === made, `world ${seed}: the dens along the axes were laid by making ${w.made - made} pieces of the world`);
+}
+// (Of the kin's dens there that may hold a brood, about the share: the rest hold their ground's kin, where it has any.)
+const share = broods / (broods + axisDens);
+check(farDens > 2000 && share > BROOD.share * 0.8 && share < 1, `along the axes ${farDens} dens, ${broods} of them broods, a share of ${share.toFixed(2)} of those that may be`);
 check(kinds.size === CREATURES.length - 1, `the dens of four worlds hold only ${[...kinds].map(k => CREATURES[k].key).join(', ')}`);
 
 // ---- 4. the art
@@ -203,8 +242,60 @@ for (const [ground, list] of Object.entries(ROSTER)) {
     for (const gl of lights) if (far(eye, gl) < 72) { check(false, `the foe's eye is within ${far(eye, gl).toFixed(0)} of ${gl}, a glow or a mote of ${ground}`); break; }
   }
 }
+// A brood's colours, against every ground the second sweep found it in.
+for (const k of [1, 2, 3, 4]) {
+  const c = CREATURES[BROODS[k]], palette = CREATURES_ART[c.key].palette;
+  check(broodIn[k].size > 0, `no ground was found with a ${c.key} in it`);
+  for (const ground of broodIn[k]) {
+    const sig = await signals(BIOMES.find(r => r && r.name === ground));
+    for (const [key, colour] of Object.entries(palette)) {
+      const rgb = hex(colour);
+      if (Math.max(...rgb) - Math.min(...rgb) < 64 || key === 'e') continue;
+      for (const sg of sig) if (far(rgb, sg) < 48) { check(false, `the ${c.key}'s ${colour} is within ${far(rgb, sg).toFixed(0)} of ${sg}, a colour of what pays or hurts in ${ground}`); break; }
+    }
+  }
+}
+// (The broods' frames are the sheet's last: those before them are where they were. And the emberling's lit cracks are
+// its lamps, in both its drawings and both its facings.)
+const names = Object.keys(s.frames);
+check(names.length === 138 && names.slice(-16).every(n => /^(rime|ember|mire|lode)ling-/.test(n)), `the fauna sheet has ${names.length} frames, the last of them ${names.slice(-16).join(' ')}`);
+for (const pose of ['crawl-a', 'crawl-b']) for (const l of ['', '-l']) check(s.lamps?.[`emberling-${pose}${l}`]?.length >= 4, `emberling-${pose}${l} has no lamps`);
 for (const t of tether) check(far(eye, t) >= 72, `the foe's eye is within ${far(eye, t).toFixed(0)} of ${t}, a colour of the tether`);
 
+// ---- 5. a brood heralds
+const OUTWARD = [null, [0, -1], [0, 1], [-1, 0], [1, 0]];
+let heralds = 0, ran = 0;
+for (const seed of [1, 7, 11]) for (const k of [1, 2, 3, 4]) {
+  // (1,800 cells out, in the tunnel from the core cut on past the drill, so that there is ground outward for it to
+  // run along: on the tunnel's floor, or against its wall, four cells short of the drill.)
+  const kind = BROODS[k], key = CREATURES[kind].key, [ox, oy] = OUTWARD[k], out = 1800;
+  const game = await makeGame(seed, { tether: 9 }, { fauna: true }), f = game.fauna;
+  tunnel(game, ox * (out + 16), oy * (out + 16)); setDown(game, ox * out, oy * out);
+  for (let n = 0; n < 5; n++) game.update(1 / 60);
+  const i = f.stage(game, key, 8, (C + oy * (out - 4) + (oy ? 0 : 1)) * N + C + ox * (out - 4) + (ox ? 0 : 1));
+  const arrays = ['kind', 'x', 'y', 'st', 'px'].map(a => f[a]);
+  check(i >= 0, `world ${seed}: no ${key} could be set down at its axis`);
+  if (i < 0) continue;
+  const den = f.denAt(i), x0 = f.x[i], y0 = f.y[i];
+  let went = 0, act = false, deeds = 0, gone = -1;
+  const deed = f.deed.bind(f);
+  f.deed = (g, what, ...rest) => { if (what !== 'met') deeds++; return deed(g, what, ...rest); };
+  for (let n = 0; n < 600 && gone < 0; n++) {
+    game.input.auto = null; game.update(1 / 60); game.render();
+    if (f.kind[i] !== kind) { gone = n; break; }
+    if (f.st[i] === 5) act = true;
+    went = Math.max(went, (f.x[i] - x0) * OUTWARD[k][0] + (f.y[i] - y0) * OUTWARD[k][1]);
+  }
+  check(act, `world ${seed}: the ${key} beside the drill did not scurry`);
+  check(gone >= 0 && gone < 60 * (BROOD.time + 1), `world ${seed}: the ${key} was not gone into a crack in ${BROOD.time + 1} s`);
+  check(deeds === 0, `world ${seed}: the ${key} did ${deeds} deeds`);
+  check(den && f.resting(game, den), `world ${seed}: the ${key}'s den is not hushed after it`);
+  check(['kind', 'x', 'y', 'st', 'px'].every((a, n) => f[a] === arrays[n]), `world ${seed}: the creatures' arrays were made again for a ${key}`);
+  heralds++; if (went >= 5) ran++;
+}
+// (Each goes out past the drill, as far as the ground seen goes.)
+check(heralds === 12 && ran === 12, `only ${ran} of ${heralds} broods went five cells or more outward along their axes`);
+
 for (const f of fails) console.log(`FAIL ${f}`);
-console.log(fails.length ? `${fails.length} failures` : `the creatures change nothing but by their deeds (${staged} set down, ${looped} looped at rest, at most ${biggest} at once, ${worst} cells looked at in a frame at the most), keep to their places (${dens} dens on four worlds) and to their art`);
+console.log(fails.length ? `${fails.length} failures` : `the creatures change nothing but by their deeds (${staged} set down, ${looped} looped at rest, at most ${biggest} at once, ${worst} cells looked at in a frame at the most), keep to their places (${dens} dens on four worlds, ${broods} broods of ${farDens} dens along the axes) and to their art, and the broods herald (${ran} of ${heralds} ran outward)`);
 process.exit(fails.length ? 1 : 0);

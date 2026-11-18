@@ -18,11 +18,15 @@
 //   `labsel` chooses a thing and `scroll` scrolls the list, and `orebook` draws every ground's ores and no world;
 //   `fauna` sets a creature down
 //   beside the drill in the state it is asked for (a pal, a roost woken) and `faunabook` draws every creature and no
-//   world; and none of them sets anything
+//   world; `fauna=boss-e:tell` (any lord, in any of its states, at any stage) raises a lord at the ends where it
+//   rises, telling, with the drill short of its lair, and `met` with it takes the lords as met; `bossbook` draws every
+//   lord and no world; and none of them sets anything
 //   unasked; and stepped for three seconds, nothing has moved the drill, nothing is wrong with the tether, and the
 //   saved game is as it was.
 import { makeGame, tetherFaults, sight, world, C, N, K } from '../harness.mjs';
+const { BOSS, LAIR, NEAR, ST, lairX, lairY } = await import('../../js/bosses.js');
 const { LAB } = await import('../../js/shop.js');
+const { KINDS } = await import('../../js/fauna.js');
 
 const SAVE = 'tetherbore-save-v3', fails = [];
 const check = (ok, what) => { if (!ok) fails.push(what); };
@@ -301,7 +305,10 @@ check(await open('', 'example.org') === undefined, 'away from localhost an ordin
 {
   const pal = await open('?shot&seed=7&at=-60,0&fauna=pup:pal&met'), P = pal.game, facts = pal.shot.facts();
   check(P.fauna.pal >= 0 && P.S.fauna?.pal && facts.fauna?.kind === 'pup', `fauna=pup:pal: no pal (${JSON.stringify(facts.fauna)})`);
-  check(Object.keys(P.S.fauna?.met ?? {}).length === 14, 'with met not every creature is taken as met');
+  check(Object.keys(P.S.fauna?.met ?? {}).length === KINDS && KINDS === 18, `with met ${Object.keys(P.S.fauna?.met ?? {}).length} creatures are taken as met, not every one of the ${KINDS} (the broods among them)`);
+  // (A brood, the lords' young, set down as any creature is.)
+  const brood = await open('?shot&seed=7&at=-60,0&fauna=lodeling'), facts2 = brood.shot.facts();
+  check(facts2.fauna?.kind === 'lodeling' && brood.game.fauna.kind[facts2.fauna.slot] === 18, `fauna=lodeling: no lodeling set down (${JSON.stringify(facts2.fauna)})`);
   const bats = await open('?shot&seed=7&at=-300,0&fauna=bat:fuse'), B = bats.game, i = bats.shot.facts().fauna?.slot ?? -1;
   check(i >= 0 && B.fauna.denAt(i)?.st === 1, 'fauna=bat:fuse: no roost woken beside the drill');
   bats.advance(500);
@@ -313,6 +320,28 @@ check(await open('', 'example.org') === undefined, 'away from localhost an ordin
   try { book.advance(100); } catch (error) { threw = error.message; }
   check(!threw, `the book of creatures threw: ${threw}`);
   check(localStorage.getItem(SAVE) === saved, 'a view of the creatures wrote over the saved game');
+}
+
+// The lords at the ends: `fauna=boss-<d>:<state>[:<stage>]` raises one where it rises near the drill, which stands
+// short of its lair where no `at` is given, in the state and at the stage asked; `met` takes the lords as met, and
+// nothing else does; `bossbook` is a page of them all; none of it writes the saved game.
+{
+  const king = await open('?shot&seed=7&fauna=boss-e:tell'), G = king.game, L = G.fauna.bosses, facts = king.shot.facts();
+  check(facts.at[0] === LAIR - 8 && facts.at[1] === 0, `fauna=boss-e: the drill stands at ${facts.at}, not eight cells short of the east's lair`);
+  check(facts.boss?.lord === 'king' && L.st[0] === ST.TELL && L.stage[0] === 1, `fauna=boss-e:tell: the east's lord is ${JSON.stringify(facts.boss)}, not the king telling at his first stage`);
+  check(Math.hypot(L.x[0] - lairX(0), L.y[0] - lairY(0)) <= NEAR && L.inView(G, L.x[0], L.y[0]), `fauna=boss-e:tell: the king stands at ${facts.boss?.at}, not near his lair on the narrowest screen`);
+  check(!G.S.bosses && facts.fauna === null, `fauna=boss-e:tell: a lord was met (${G.S.bosses}) or a creature set down without being asked`);
+  king.advance(500);
+  check(L.st[0] === ST.TELL, `fauna=boss-e:tell: stepped half a second the king is in state ${L.st[0]}, not telling (his tell is ${BOSS[0].tell[0]} s)`);
+  check(tetherFaults(G).length === 0, `fauna=boss-e:tell: the tether is wrong: ${tetherFaults(G)[0]}`);
+  const wyrm = await open('?shot&seed=7&fauna=boss-n:rest:3&met'), W = wyrm.game, Y = W.fauna.bosses;
+  check(Y.st[3] === ST.REST && Y.stage[3] === 3 && W.S.bosses === 15, `fauna=boss-n:rest:3&met: the north's lord is in state ${Y.st[3]} at stage ${Y.stage[3]}, the lords met ${W.S.bosses}`);
+  check(wyrm.shot.facts().at[1] === -(LAIR - 8), 'fauna=boss-n: the drill does not stand short of the north\'s lair');
+  const book = await open('?shot&seed=7&bossbook');
+  let threw = null;
+  try { book.advance(100); } catch (error) { threw = error.message; }
+  check(!threw, `the book of lords threw: ${threw}`);
+  check(localStorage.getItem(SAVE) === saved, 'a view of the lords wrote over the saved game');
 }
 
 if (fails.length) { console.log(`FAIL: ${fails.join('\n      ')}`); process.exit(1); }

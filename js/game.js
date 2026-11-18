@@ -9,7 +9,10 @@ import { WORTH_AT, figOf } from './worth.js';
 import { Feel } from './feel.js';
 import { Fitter } from './fit.js';
 import { Fauna } from './fauna.js';
+import { winds } from './winds.js';
+import { LAIR, BOSS } from './bosses.js';
 import { pickGoal, goalHome } from './goal.js';
+import { fits } from './lang.js';
 export { richness, haulBonus, overload, income, UPGRADES, LAB, labLevel, labNext, WORKS, MAPS, CORE } from './shop.js';
 
 export { T };
@@ -219,6 +222,10 @@ export const ZIP = { rate: 25, most: 60, ring: 128 };
 // SHRINE_GEMS of its corner's gems (CORNER_GEM) besides, as they are, uncut, and held, it makes every one of them paid
 // after SHRINE_OWN times as many (its deep seam's rich ore is what pays them: js/world.js, `seam`).
 export const TWIN_LUMP = 16, BONE_LUMP = 4, SHRINE_LUMP = 30, TWIN_SPEC = 1, BONE_SPEC = 2, SHRINE_SPEC = 5, SHRINE_PERK = 1.1, SHRINE_GEMS = 10000, SHRINE_OWN = 1.25;
+// A lord at the end of an axis beaten (js/bosses.js): BOSS_LUMP seconds of what cutting at its lair earns, BOSS_SPEC
+// specimens of its direction's, banked at once, and for good every gem of its direction paid BOSS_PERK times as many
+// (with the direction's two shrines held, 1.1 cubed at the most).
+export const BOSS_LUMP = 240, BOSS_SPEC = 12, BOSS_PERK = 1.1;
 // The two directions whose ground each corner's seam is made of (its gems' and its rich ore's), north-east,
 // south-east, south-west, north-west.
 export const CORNER_KINS = SEAMS.map(([id]) => [rowOf(id).gemA, rowOf(id).gemB]);
@@ -386,7 +393,7 @@ export class Game {
     this.buttons = []; this.panels = [];    // what can be tapped this frame; and the small panels up this frame, each [x, y, w, h]
     this.chunks = new Map(); this.version = 0;
     this.daylight = false;                  // no dark is laid over the ground: only a staged view asks for it (js/shot.js)
-    this.place = null; this.placeKey = null; this.motifAt = -9;      // the name on show, the place the drill is in, when a place last sounded
+    this.place = null; this.placeNext = null; this.placeKey = null; this.motifAt = -9;      // the name on show, the place the drill is in, when a place last sounded
     this.called = new Set(); this.calledAt = {};                      // things called out since the game began, and when each kind last was
     this.rung = new Set();                                            // the geodes a druse's haul has just rung, by what each is called out as (`resonant`)
     this.tickIn = 0; this.ticks = 0;                                  // until a wreck's next tick, and how many there have been
@@ -420,6 +427,7 @@ export class Game {
     this.probe = {}; this.stalls = [];
     try { this.stalls = JSON.parse(localStorage.getItem('tetherbore-stalls') ?? '[]'); } catch { this.stalls = []; }
     this.docked = null;                                               // what was banked and bought at the last docking, to go back to (`dockMark`)
+    this.spoils = null;                                               // a lord beaten on this trip and what it paid, kept only once the drill is home (`lordBeaten`)
     this.knocked = 0; this.mended = 0; this.notice = null;            // a pip just lost and the hull just mended (seconds left to show it), and the word across the screen
     this.smokeIn = 0; this.wrecks = 0; this.knocks = 0;               // until a hull in trouble next smokes; wrecks and knocks since the game began (for tests and tools)
     this.feel = new Feel();                                           // the feel of the ground the drill is in: what only shows and sounds (js/feel.js)
@@ -453,7 +461,7 @@ export class Game {
   }
   begin() {
     const w = this.world;
-    this.pending = { grit: 0, gems: noGems() };
+    this.pending = { grit: 0, gems: noGems() }; this.spoils = null;
     this.parts.length = 0; this.rings.length = 0; this.effects.length = 0; this.popups.length = 0; this.hauls.length = 0; this.clouds.length = 0;
     this.sparks.clear(); this.lavaVol.clear(); this.quenched.clear(); this.frostOpen.length = 0; w.lava.clear(); w.dug.clear();
     this.bells.clear(); this.vents.clear(); this.worms.clear(); this.stones.clear(); this.jets.length = 0; this.flying.length = 0; this.flares.length = 0;
@@ -471,7 +479,7 @@ export class Game {
     w.see(C, C, this.val('scanner') + 4);
     // Where the game begins is where the player already is: its name does not come up, now or as a new place later.
     const here = this.placeAt(this.di);
-    this.place = null; this.placeKey = here.key; this.S.met[here.row.id] = 1;
+    this.place = null; this.placeNext = null; this.placeKey = here.key; this.S.met[here.row.id] = 1;
     this.called.clear(); this.calledAt = {}; this.tickIn = 0; this.rung.clear(); this.eye = null; this.eyeQueue.length = 0;
     // The first piece, beside the core, lies loose from the start: the open cell between them tells of it.
     this.changed([C * N + C + 3]);
@@ -514,7 +522,7 @@ export class Game {
       if (kept && kept.v === 3 && (kept.rev ?? 0) > this.rev) { this.adopt(); return; }
     }
     this.rev = (this.rev ?? latestRev()) + 1;
-    try { const text = JSON.stringify({ v: 3, rev: this.rev, ...this.S }); localStorage.setItem(SAVE_KEY, text); localStorage.setItem(LATEST, text); } catch { /* the game goes on without saving */ }
+    try { const text = JSON.stringify({ v: 3, rev: this.rev, ...this.kept() }); localStorage.setItem(SAVE_KEY, text); localStorage.setItem(LATEST, text); } catch { /* the game goes on without saving */ }
     // (The pieces are taken now, as this world's: by the time the database answers, the game may be in another.)
     const w = this.world, seed = this.S.seed, kept = [...w.touched].map(id => [id, w.chunks[id], w.genOf[id]]).filter(([, p]) => p);
     if (!kept.length) return;
@@ -525,6 +533,14 @@ export class Game {
       // one has not brought up is saved again with what it holds and is laid by the older rules still.)
       for (const [id, p, gen] of kept) pieces.put({ kind: p.kind, biome: p.biome, seen: p.seen, seed, gen }, id);
     }).catch(() => {});
+  }
+  // What is saved of what was bought and banked: all of it, but a lord beaten on this trip (`spoils`) and what it
+  // paid, which are the game's only once the drill is home. (The game saves every so often out in the ground, and a
+  // game loaded begins at the core: else a lord's kill saved on the way would be kept with no trip home flown.)
+  kept() {
+    const S = this.S, k = this.spoils;
+    if (!k) return S;
+    return { ...S, grit: Math.max(0, S.grit - k.grit), bosses: (S.bosses ?? 0) & ~k.bits, spec: (S.spec ?? [0, 0, 0, 0, 0]).map((v, n) => Math.max(0, v - (k.spec[n] ?? 0))) };
   }
   // The game saved elsewhere since this one last looked is loaded in place of this one, and the game says so.
   adopt() {
@@ -1198,17 +1214,9 @@ export class Game {
     const pts = this.band;
     // (The loops of a wreck's tether are dropped as it is wound in: nothing is hauled by a dead drill.)
     if (!this.pieces.length || pts.length < 3 || this.drill.mode === 'dead') return;
-    // How many times the tether, closed by the straight line from the core back to the drill, winds round a point.
-    const winds = (x, y) => {
-      let turns = 0;
-      for (let n = 0; n < pts.length; n++) {
-        const a = pts[n], b = pts[(n + 1) % pts.length];
-        if (a[1] <= y) { if (b[1] > y && (b[0] - a[0]) * (y - a[1]) - (x - a[0]) * (b[1] - a[1]) > 0) turns++; }
-        else if (b[1] <= y && (b[0] - a[0]) * (y - a[1]) - (x - a[0]) * (b[1] - a[1]) < 0) turns--;
-      }
-      return turns;
-    };
-    const inside = i => winds((i % N) + 0.5, Math.floor(i / N) + 0.5) !== 0;
+    // (How many times the tether, closed by the straight line from the core back to the drill, winds round a point:
+    // js/winds.js.)
+    const inside = i => winds(pts, (i % N) + 0.5, Math.floor(i / N) + 0.5) !== 0;
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, crossed = null;
     for (const p of pts) { if (p[0] < x0) x0 = p[0]; if (p[1] < y0) y0 = p[1]; if (p[0] > x1) x1 = p[0]; if (p[1] > y1) y1 = p[1]; }
     // Everything the tether is round goes in as one haul: every piece all of whose cells are wound.
@@ -1520,7 +1528,8 @@ export class Game {
     if (this.world.spotted.length) this.callOut();
     const home = this.atCore;
     // (And says so where what it was saving for can be paid for now, and chooses that again: js/goal.js.)
-    if (home && !d.home) { this.homecoming(); goalHome(this); this.save(); }
+    // (Home, a lord beaten on the way is the game's for good.)
+    if (home && !d.home) { this.spoils = null; this.homecoming(); goalHome(this); this.save(); }
     // Riding on to the core mends the hull.
     if (home && this.dents && d.mode !== 'dead') this.mend();
     // Leaving the core is the docking the game goes back to if the drill is lost: everything up to now is kept.
@@ -1571,7 +1580,9 @@ export class Game {
     // (In a drift everything lies loose already, and is in the books from the moment the drill comes in.)
     if (here.zone && row.pocket.twist === 'drift') this.driftIn(here.zone);
     // (A pocket's plate has its mineral on it, where the mineral has a picture; any other place its direction's gem.)
-    this.place = { title: row.title, icon: GEM_ICON[row.kin] ?? 'grit', mineral: this.mineralOf(row), also: row.gemB !== row.kin ? GEM_ICON[row.gemB] ?? null : null, colour: bright(row.map), t: 0, card, life: card ? CARD : PLATE };
+    const place = { title: row.title, icon: GEM_ICON[row.kin] ?? 'grit', mineral: this.mineralOf(row), also: row.gemB !== row.kin ? GEM_ICON[row.gemB] ?? null : null, colour: bright(row.map), t: 0, card, life: card ? CARD : PLATE };
+    // (A lord's name, up as it wakes, is said once a waking: the place waits for it to go, the last come into.)
+    if (this.place?.lord !== undefined) this.placeNext = place; else this.place = place;
     // (A border that wanders is crossed many times in a few cells: the name changes each time, the sound does not.)
     if (card) sfx.arrive(row); else if (this.time - this.motifAt > PLATE) sfx.place(row);
     this.motifAt = this.time;
@@ -2134,10 +2145,12 @@ export class Game {
     // (And each shrine held makes the gems of both its parents' directions SHRINE_PERK times as many, for good, and
     // its own corner's SHRINE_OWN times. The corners' gems are cut, shone and overloaded as the directions' are; a
     // shrine hauled pays its SHRINE_GEMS after, not cut.)
-    const holy = S.shrines;
+    // (And each lord beaten its direction's BOSS_PERK times.)
+    const holy = S.shrines, lords = (S.bosses ?? 0) >> 4 & 15;
     for (let b = 1; b < GEM_N; b++) {
       let perk = 1;
       if (holy) for (let d = 0; d < 4; d++) if (holy[d]) perk *= CORNER_KINS[d][0] === b || CORNER_KINS[d][1] === b ? SHRINE_PERK : CORNER_GEM[d] === b ? SHRINE_OWN : 1;
+      if (lords) for (let d = 0; d < 4; d++) if (lords >> d & 1 && BOSS[d].kin === b) perk *= BOSS_PERK;
       gems[b] = Math.round(gems[b] * shine * over * cut * perk);
     }
     for (const d of shrines) gems[CORNER_GEM[d]] += SHRINE_GEMS;
@@ -2917,12 +2930,13 @@ export class Game {
   // or specimens: the ground comes back with the docking, a pocket's mineral and a spent den with it, so a share of
   // them kept made every pocket pay three quarters of its specimens again on each trip lost, without end. Grit is
   // paid by any cell, and was never what a level waits on.)
+  // (Nor what a lord beaten on the trip paid: that goes back with its kill, as a relic's does, all of it.)
   revert() {
-    const lost = this.S, was = JSON.parse(this.docked), earned = Math.max(0, Math.round(lost.grit - was.grit));
+    const lost = this.S, was = JSON.parse(this.docked), lump = this.spoils?.grit ?? 0, earned = Math.max(0, Math.round(lost.grit - was.grit - lump));
     this.S = was;
     // (What was shown of a thing's worth was seen, whatever became of the trip: it is not shown again.)
     was.eyed ??= {}; for (const key in lost.eyed ?? {}) was.eyed[key] = 1;
-    const share = this.val('blackbox'), kept = Math.round(earned * share), gone = earned - kept;
+    const share = this.val('blackbox'), kept = Math.round(earned * share), gone = earned - kept + lump;
     this.S.grit += kept;
     if (lost.lv.blackbox >= LORE) this.keepLore(lost);
     this.world.back();
@@ -2945,6 +2959,38 @@ export class Game {
     for (const key in lost.rare ?? {}) S.rare[key] = 1;
     const met = lost.fauna?.met;
     if (met && Object.keys(met).length) { S.fauna ??= { pal: null, met: {}, spent: [] }; S.fauna.met ??= {}; for (const key in met) S.fauna.met[key] = 1; }
+    // (The lords met, and not a lord beaten: that is a relic's kind, kept only by getting home.)
+    if (lost.bosses & 15) S.bosses = (S.bosses ?? 0) | (lost.bosses & 15);
+  }
+  // A lord at the end of an axis woken (js/fauna.js: the deed 'boss-met'): its name across the screen, its title
+  // under it, as a ground met for the first time is named. (Only where the table has its name: js/lang.js.) A place
+  // come into while it is up waits for it to go (`arrive`).
+  lordMet(d) {
+    const B = BOSS[d];
+    if (!fits(B.name)) return;
+    this.place = { title: B.name, sub: fits(B.lord) ? B.lord : null, icon: GEM_ICON[B.kin] ?? 'grit', mineral: null, also: null, colour: GEM_COLOR[B.kin], t: 0, card: true, lord: d, life: CARD * 1.5 };
+  }
+  // A lord beaten (the deed 'beaten'), where it sank, (x, y) in cells: BOSS_LUMP seconds of what cutting at its lair
+  // earns, with the refinery's share, and BOSS_SPEC of its direction's specimens, banked at once; its bit set, which
+  // makes its direction's gems BOSS_PERK times as many for good (`payOf`); said across the screen, what it paid on
+  // its banner, with the grand show of the biggest haul. All four beaten, the game says so once the banner has gone.
+  // The kill and its pay are the game's only once the drill is home (`spoils`): a trip lost takes them back, all
+  // of them, and a game saved on the way saves it without them (`kept`). What it paid, for the creatures' books.
+  lordBeaten(d, x, y) {
+    const S = this.S, B = BOSS[d], kin = B.kin, grit = Math.round(round2(income(LAIR) * BOSS_LUMP) * this.val('refinery'));
+    S.grit += grit; (S.spec ??= [0, 0, 0, 0, 0])[kin] += BOSS_SPEC;
+    S.bosses = (S.bosses ?? 0) | (1 << d) | (1 << (4 + d));
+    const k = this.spoils ??= { bits: 0, grit: 0, spec: [0, 0, 0, 0, 0] };
+    k.bits |= 1 << (4 + d); k.grit += grit; k.spec[kin] += BOSS_SPEC;
+    this.banner = { title: fits(B.name) ? B.name : 'TROPHY', n: 1, mult: 1, over: 1, grit, gems: noGems(), light: false, shine: 0, spec: BOSS_SPEC, specOf: kin, giant: 0, colour: GEM_COLOR[kin],
+      sub: fits('BEATEN!') ? 'BEATEN!' : null, trophy: true, lord: d, t: 0, life: 3.5 };
+    this.specLine = { kin, t: 0, life: SPEC_LINE };
+    this.grand(x * T, y * T, GIANTS.length);
+    sfx.slain?.();
+    this.fitter.fire?.('trophy');
+    // (The word waits for the banner to go: both are set where a banner goes.)
+    if ((S.bosses >> 4 & 15) === 15 && fits('THE DEEP IS STILL')) this.notice = { title: 'THE DEEP IS STILL', colour: '#fff6c8', t: 0, life: 3, wait: this.banner.life };
+    return { grit, kin, spec: BOSS_SPEC };
   }
   // The hull is made whole, for nothing, whenever the drill rides on to the core.
   // Returns whether there was anything to mend.
@@ -3375,7 +3421,7 @@ export class Game {
       if (this.mendIn >= this.val('mender')) { this.mendIn = 0; this.dents--; this.mended = 0.5; this.sparkle(d.x * T, d.y * T, 5, '#8ce060'); sfx.tick(0); if (this.S.lv.mender > 0) this.fitter.fire('mender'); }
     } else this.mendIn = 0;
     this.shield = Math.max(0, this.shield - dt); this.knocked = Math.max(0, this.knocked - dt); this.mended = Math.max(0, this.mended - dt);
-    if (this.notice) { this.notice.t += dt; if (this.notice.t > this.notice.life) this.notice = null; }
+    if (this.notice) { if (this.notice.wait > 0) this.notice.wait -= dt; else { this.notice.t += dt; if (this.notice.t > this.notice.life) this.notice = null; } }
     // A hull with one knock left in it smokes and spits sparks, so the bar need not be read; a wreck trails smoke.
     if (d.mode === 'dead' || (this.dents > 0 && this.hull === 1)) {
       this.smokeIn -= dt;
@@ -3427,13 +3473,13 @@ export class Game {
     for (const p of this.popups) p.t += dt;
     this.popups = this.popups.filter(p => p.t < 0.9);
     if (this.banner) { this.banner.t += dt; if (this.banner.t > this.banner.life) this.banner = null; }
-    if (this.place) { this.place.t += dt; if (this.place.t > this.place.life) this.place = null; }
+    if (this.place) { this.place.t += dt; if (this.place.t > this.place.life) { this.place = this.placeNext; this.placeNext = null; } }
     if (this.specLine) { this.specLine.t += dt; if (this.specLine.t > this.specLine.life) this.specLine = null; }
     // (A thing's worth is up for its while out in the ground, not under a panel nor at the core, where the shop's
     // button is, nor while the drill lies dead: what waits then is not met, and is met again after the wreck; and the
-    // next waiting comes after it.)
+    // next waiting comes after it; nor while what is called out across the screen stands on its panel: `eyeHeld`.)
     if (!this.shop && !this.lab && !this.atCore && d.mode !== 'dead') {
-      if (this.eye) { this.eye.t += dt; if (this.eye.t > this.eye.life) this.eye = null; }
+      if (this.eye && !this.eyeHeld) { this.eye.t += dt; if (this.eye.t > this.eye.life) this.eye = null; }
       if (!this.eye && this.eyeQueue.length) this.showEye();
     }
     // The camera eases after the drill, a little ahead of the way it is flying.

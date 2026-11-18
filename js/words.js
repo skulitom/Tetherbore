@@ -229,6 +229,10 @@ export const WORDS = [
   ['#/# PIPS', '#/# ДЕЛ', '#/# 格'],
   ['MENDS', 'ЧИНИТ', '修复'],
   ['# PIP / # S', '# ДЕЛ / # С', '# 格 / # 秒'],
+  // (The hull's line with what the mender does, where the panel has no line to spare for it.)
+  ['* #/# PIPS, MEND # S', '* #/# ДЕЛ, ЧИНИТ # С', '* #/# 格，修复 # 秒'],
+  ['#/# PIPS, MEND # S', '#/# ДЕЛ, ЧИНИТ # С', '#/# 格，修复 # 秒'],
+  ['#/#, MEND # S', '#/# ЧИНИТ # С', '#/#，修复 # 秒'],
   ['LAVA', 'ЛАВА', '熔岩'],
   ['SWIMS, SMELTS', 'ПЛЫВЕТ, ПЛАВИТ', '能游，能熔'],
   ['SWIMS IN IT', 'ПЛЫВЕТ В НЕЙ', '能在其中游'],
@@ -527,12 +531,31 @@ export const WORDS = [
   ['NURSE BEES', 'ПЧЕЛЫ-НЯНЬКИ', '保育蜂'],
   ['STAR JELLIES', 'ЗВЕЗДНЫЕ МЕДУЗЫ', '星水母'],
   ['LANTERN NEWT', 'ФОНАРНЫЙ ТРИТОН', '灯笼蝾螈'],
+  // (The broods, the lords' young, far out on the axes.)
+  ['RIMELING', 'ИНЕЙНЫШ', '霜崽'],
+  ['EMBERLING', 'УГОЛЕНЫШ', '烬崽'],
+  ['MIRELING', 'ТИНЕНЫШ', '沼崽'],
+  ['LODELING', 'РУДЕНЫШ', '晶崽'],
   ['CAUGHT!', 'ПОЙМАН!', '捉到了！'],
   ['CAUGHT', 'ПОЙМАН', '捉到'],
   ['+# GRIT', '+# КРОШКИ', '+# 砂'],
   ['TROPHY!', 'ТРОФЕЙ!', '战利品！'],
   ['TROPHY', 'ТРОФЕЙ', '战利品'],
   ['PAL!', 'ДРУГ!', '伙伴！'],
+  // (The lords at the ends, js/bosses.js: each name, its title under it as it wakes, BEATEN! under it beaten (the
+  // Russian a victory, so that it agrees with no lord's gender), the line of STATS that counts them, and the word
+  // across the screen once all four are.)
+  ['FROST WYRM', 'ИНЕЙНЫЙ ЗМЕЙ', '霜龙'],
+  ['MAGMA BEHEMOTH', 'ИСПОЛИН МАГМЫ', '熔岩巨兽'],
+  ['SPORE MOTHER', 'ГРИБНАЯ МАТКА', '菌母'],
+  ['CRYSTAL KING', 'КРИСТАЛЬНЫЙ КОРОЛЬ', '晶王'],
+  ['LORD OF THE NORTH', 'ВЛАДЫКА СЕВЕРА', '北方之主'],
+  ['LORD OF THE SOUTH', 'ВЛАДЫКА ЮГА', '南方之主'],
+  ['LORD OF THE WEST', 'ВЛАДЫКА ЗАПАДА', '西方之主'],
+  ['LORD OF THE EAST', 'ВЛАДЫКА ВОСТОКА', '东方之主'],
+  ['BEATEN!', 'ПОБЕДА!', '击败！'],
+  ['LORDS', 'ВЛАДЫКИ', '霸主'],
+  ['THE DEEP IS STILL', 'ГЛУБИНА УТИХЛА', '深处已安静'],
 
   // ---- hauls: their banners
   ['HAUL', 'УЛОВ', '收获'],

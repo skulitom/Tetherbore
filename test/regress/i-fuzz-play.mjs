@@ -18,7 +18,10 @@
 // checks as everything else. What a caught puffling pays is banked with no haul, and is counted in the books from
 // what the creatures say they paid (`fauna.paid`). And so that the flight meets them doing what they do, wherever it
 // goes, every CROWD_EVERY seconds one more is set down beside the drill, a foe woken at once: bats, a leech, a
-// spitter, a puffling, a wren, moths and a pup, in turn.
+// spitter, a puffling, a wren, moths and a pup, in turn, and a lord at the ends (js/bosses.js), the four in turn and
+// each a stage further on: raised telling in open ground on the narrowest screen near the drill, it fights about the
+// drill there (its hits, its plugs of ice, its hold, its shard laid and hauled go through the same checks) until it
+// sinks for good and is leashed, being far from its lair. How many were raised is counted (`lords`).
 //
 // With `plough` the drill has the bit's last level (MK8) and the diamond tip, so that it ploughs through soft rock,
 // dense rock, slate and steel keeping its run (js/game.js: `ploughs`), and the tether is checked as it is in ash.
@@ -328,11 +331,23 @@ function rouse() {
 }
 
 // ---------------------------------------------------------------- the creatures, set down
-const CROWD_EVERY = 6, CROWD = [['bat', 'fuse'], ['leech', ''], ['spitter', 'puff'], ['puff', ''], ['wren', 'peck'], ['moth', ''], ['pup', '']];
-let crowdAt = 2, crowded = 0;
+const CROWD_EVERY = 6, CROWD = [['bat', 'fuse'], ['leech', ''], ['spitter', 'puff'], ['puff', ''], ['wren', 'peck'], ['moth', ''], ['lord', 'tell'], ['pup', '']];
+let crowdAt = 2, crowded = 0, lords = 0;
+// A lord raised: in an open cell seen three to six cells from the drill on the narrowest screen, if there is one.
+function lord() {
+  const B = game.fauna.bosses;
+  for (let r = 3; r <= 6; r++) for (let a = 0; a < 16; a++) {
+    const x = Math.floor(d.x + Math.cos(a * Math.PI / 8) * r), y = Math.floor(d.y + Math.sin(a * Math.PI / 8) * r);
+    if (w.peek(x, y) !== K.EMPTY || !B.inView(game, x + 0.5, y + 0.5)) continue;
+    B.stageAs(game, lords % 4, 'tell', 1 + Math.floor(lords / 4) % 3, y * N + x);
+    stats.lords = ++lords;
+    return;
+  }
+}
 function crowd() {
   if (clock < crowdAt) return;
   crowdAt = clock + CROWD_EVERY;
+  if (CROWD[crowded % CROWD.length][0] === 'lord') { crowded++; lord(); return; }
   const [kind, state] = CROWD[crowded++ % CROWD.length], i = game.fauna.stage(game, kind, 8);
   if (i >= 0 && state) game.fauna.stageAs(game, i, state);
   stats.staged = (stats.staged ?? 0) + (i >= 0 ? 1 : 0);

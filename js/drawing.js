@@ -19,6 +19,7 @@ import { TETHERS, BODY, BODY_A, HOT, HOT_A, RAM, PLATE, FLAME, FLAME_TIER, FITS,
 // that copies the methods from here before there are any: so nothing loads it but js/game.js.)
 import { HX, HY, BOOST, DEATH, BELL, VENT, WORM, STONE, GIANTS } from './game.js';
 import { KINDS } from './fauna.js';
+import { LAIR, EYE as FOE_EYE } from './bosses.js';
 
 export const T = 16;                            // pixels in a cell
 // How the interface is laid out, in the game's pixels: one set of figures for every panel and line of it, so that the
@@ -43,15 +44,24 @@ export const T = 16;                            // pixels in a cell
 //   TITLE, TITLE_GAP  a line under a title of size s stands TITLE * s + TITLE_GAP under it (`under`).
 //   HEAD, TAB_GAP    a panel's header, and between its tabs.
 //   STACK   rows between two chips stacked at the head of the screen.
-//   DRILL_CLEAR      rows between words called out over the view and the top of the drill.
+//   DRILL_CLEAR      rows between words called out over the view and the drill, over it or under it.
+//   CALL    rows between two things called out across the screen, one under the other (a banner, a notice...).
 //   MAP     the map in the corner, square.
+//   BAR     the rows the bar takes at the foot of the screen, its frame DOCK under their top.
 export const UI = Object.freeze({ EDGE: 4, DOCK: 2, INSET: 4, GAP: 2, ICON: 12, CHIP: 16, CHIP_GAP: 4, ICON_DY: 0, PIC_DY: -2, GROUP: 6, WORD: 8, FIG: 23,
-  LINE: 12, LINE_MIN: 10, TITLE: 11, TITLE_GAP: 2, HEAD: 20, TAB_GAP: 9, STACK: 2, DRILL_CLEAR: 4, MAP: 46 });
+  LINE: 12, LINE_MIN: 10, TITLE: 11, TITLE_GAP: 2, HEAD: 20, TAB_GAP: 9, STACK: 2, DRILL_CLEAR: 4, CALL: 6, MAP: 46, BAR: 44 });
 const under = s => UI.TITLE * s + UI.TITLE_GAP;
-// The shop: as many rows as its longest tab has, each SHOP_RH tall where the screen allows (every phone's does), and
-// a footer under them for a refused tap's note. SHOP_GROUP: from one of a price's icons to the next, past the
-// figure between them (an icon, UI.GROUP, and UI.GAP before the icon).
-const SHOP_MOST = Math.max(...TABS.map(t => t.rows.length)), SHOP_RH = 32, SHOP_FOOT = 14, SHOP_GROUP = 10 + UI.GROUP + UI.GAP;
+// The shop: as many rows as its longest tab has, each SHOP_RH tall where the screen allows (every phone's does, and
+// SHOP_RH_MIN at the least), and a footer under them for a refused tap's note. SHOP_GROUP: from one of a price's
+// icons, ICON_W wide, to the next, past the figure between them (an icon, UI.GROUP, and UI.GAP before the icon).
+const ICON_W = 10, SHOP_MOST = Math.max(...TABS.map(t => t.rows.length)), SHOP_RH = 32, SHOP_RH_MIN = 24, SHOP_FOOT = 14, SHOP_GROUP = ICON_W + UI.GROUP + UI.GAP;
+// The bar's panel (and the shop, which stands in its frame): LAB_W wide where the screen allows. STATS: no more than
+// STATS_MOST lines, STATS_PITCH apart where the panel allows, the last STATS_FOOT over the panel's foot, each line in
+// a column at least STATS_COL wide (the panel on the narrowest phone, which every line is said to fit), its words
+// in the middle of a stripe: LINE_INK, a line's ink and shadow, rows 0 to 8 of its cell.
+// The chart's two buttons, ZOOM_BUTTON square, and how much each looks closer or further.
+const ZOOM_BUTTON = 14, ZOOMS = [['-', 1 / 1.5], ['+', 1.5]];
+const LAB_W = 200, STATS_MOST = 20, STATS_PITCH = 11, STATS_FOOT = 6, STATS_COL = 152, LINE_INK = 9;
 // A price as the shop says it: as `compact` writes it with a tenth that is nought left out ('25M', '4K' where it
 // writes '25.0M', '4.0K'), made once a figure (the prices are few) and kept.
 const PRICES = new Map();
@@ -61,22 +71,37 @@ const price = n => {
   return s;
 };
 // A name said on two lines no wider than `room` at size `s`, broken where the longer of the two is shortest (so that
-// no short word hangs at the end of the first), or null where no two lines fit.
+// no short word hangs at the end of the first), or null where no two lines fit. Where no break between words will do,
+// a word joined by a hyphen is broken after it (КАМНИ- / БЛИЗНЕЦЫ!).
 const halves = (said, room, s) => {
-  const { parts, join } = words(tr(said));
+  const t = tr(said), { parts, join } = words(t);
   let best = null, most = Infinity;
-  for (let n = 1; n < parts.length; n++) {
-    const a = parts.slice(0, n).join(join), b = parts.slice(n).join(join), w = Math.max(textWidth(a, s), textWidth(b, s));
-    if (w <= room && w < most) { most = w; best = [a, b]; }
-  }
+  const take = (a, b) => { const w = Math.max(textWidth(a, s), textWidth(b, s)); if (w <= room && w < most) { most = w; best = [a, b]; } };
+  for (let n = 1; n < parts.length; n++) take(parts.slice(0, n).join(join), parts.slice(n).join(join));
+  if (!best && spaced) for (let i = t.indexOf('-'); i > 0 && i < t.length - 1; i = t.indexOf('-', i + 1)) if (t[i - 1] !== ' ' && t[i + 1] !== ' ') take(t.slice(0, i + 1), t.slice(i + 1));
   return best;
+};
+// A title said large across the screen (a place met first, a lord woken or beaten, a big haul or a find with a
+// name, a notice), set for a line `room` wide: at size 2 on one line where it fits, else on two at size 2 broken
+// where the longer is shortest (`halves`), else at size 1, on one line where it fits and else on two or as many as
+// it takes (`lines`, `big`); and a size larger as it pops up where it is one line at size 2 and that fits too
+// (`pop`). Worked out once a thing and a screen by what keeps it.
+const fitTitle = (title, room) => {
+  let big = 2, lines = [title];
+  if (textWidth(title, 2) > room) {
+    const two = halves(title, room, 2);
+    if (two) lines = two;
+    else { big = 1; if (textWidth(title, 1) > room) lines = halves(title, room, 1) ?? wrap(title, room); }
+  }
+  return { lines, big, pop: lines.length === 1 && big === 2 && textWidth(title, 3) <= room ? 1 : 0 };
 };
 // The map's frame in the corner: three pixels of frame round the map, and four under it, as the panel's foot is a row
 // deeper than its head, so that the map has a pixel of fill clear of the rim all round; EDGE from the top and the
 // right. And the room left for the place's plate beside it, EDGE clear of it.
 const MAP_FRAME = UI.MAP + 6, MAP_FRAME_H = UI.MAP + 7, MAP_X = W => W - UI.EDGE - MAP_FRAME + 3, MAP_Y = UI.EDGE + 3, BESIDE_MAP = W => W - UI.EDGE - MAP_FRAME - UI.EDGE;
-// Where the drill's picture begins, from the top of the screen (its middle at the middle of the view, above the bar).
-const drillTop = H => Math.round((H - 44) / 2) - 8;
+// Where the drill's picture begins, from the top of the screen (its middle at the middle of the view, above the
+// bar), and how tall it is.
+const DRILL_H = 16, drillTop = H => Math.round((H - UI.BAR) / 2) - DRILL_H / 2;
 const VOLUME_BAR = 49;                          // the menu's bar of ten steps of loudness, in pixels
 // The menu's rows: 20 tall, UI.INSET apart (MENU_ROW from one to the next); the list of languages a LANG_ROW each, 2
 // apart, and all it adds to the menu, UI.INSET over and under it.
@@ -105,6 +130,11 @@ const GEM_ORDER = [1, 2, 3, 4, 5, 6, 7, 8];
 // GAP clear of that), and the room that line takes, TOP_AT, to the next line's top as a line of LINE would. A title
 // popped up a size larger is set POP_UP higher, half what it grew, so it grows about its middle.
 const TOP_Y = 9 + UI.GAP, TOP_AT = TOP_Y + 3, POP_UP = (UI.TITLE / 2) | 0;
+// Where a banner may stand, in the order it is tried (`bannerSplit`): [under the drill, with the line of what paid
+// most, with the word more], over the drill first; and where it stands on a screen too short for it either way.
+const BANNER_TRIES = [[0, 1, 1], [0, 0, 1], [1, 1, 1], [1, 0, 1], [0, 0, 0], [1, 0, 0]], BANNER_SHORT = [0, 0, 1];
+// The shop's button at the core: its top SHOP_BUTTON over the foot of the screen.
+const SHOP_BUTTON = 82;
 const BAR_DIRS = [1, 2, 3, 4], BAR_CORNERS = [8, 6, 7, 5], BAR_ALL = GEM_ORDER, BAR_ALL_W = 330, BAR_COL = UI.ICON + UI.FIG, PLATE_H = 14, EYE_H = 32;
 // How long, in seconds, the goal's line blinks green as what it asks for is all banked.
 export const GOAL_BLINK = 3;
@@ -122,7 +152,7 @@ export const CORNER_BAR = 840, CORNER_LANE = 0.3;
 // up to NOTE_LINES lines of its note (test/regress/l-analysis.mjs holds every note to them on the narrowest panel).
 // A part's head is as tall as a line, its rule on its last row but one, so that the part's first chip is a row under
 // the rule as every chip is a row under the one before.
-export const LAB_RH = 13, LAB_SEC = 13, LAB_HEAD = 20, NOTE_LINES = 4, LAB_NOTE = 22 + NOTE_LINES * 10 + 4;
+export const LAB_RH = 13, LAB_SEC = 13, NOTE_LINES = 4, LAB_NOTE = 22 + NOTE_LINES * 10 + 4;
 export const LAB_LIST = (() => {
   const lines = [], line = [], at = [], head = [];
   let y = 0;
@@ -385,7 +415,7 @@ export class Drawing {
     const shook = this.shake + this.feel.quake;
     const sx = shook ? (cellHash((now / 16) | 0, 1, 5) - 0.5) * shook : 0, sy = shook ? (cellHash((now / 16) | 0, 2, 5) - 0.5) * shook : 0;
     // (The drill is kept in the middle of the screen above the bar, not of the whole screen.)
-    const ox = Math.round(this.cam.x - W / 2 + sx), oy = Math.round(this.cam.y - (H - 44) / 2 + sy);
+    const ox = Math.round(this.cam.x - W / 2 + sx), oy = Math.round(this.cam.y - (H - UI.BAR) / 2 + sy);
     ctx.fillStyle = '#07060b';
     ctx.fillRect(0, 0, W, H);
     this.ropes.length = 0; this.drillDrawn = null;
@@ -848,7 +878,7 @@ export class Drawing {
     // Never over the interface: the bar at the foot, the map, the buttons, and the small panels that come and go under the
     // top bar (a place's plate, the count of specimens) and over the bar (a thing's worth first seen), which the frame's
     // own drawing of the interface listed.
-    o.clearRect(0, H - 44, W, 44);
+    o.clearRect(0, H - UI.BAR, W, UI.BAR);
     if (this.mapRect) o.clearRect(...this.mapRect);
     for (const b of this.buttons) o.clearRect(b.x, b.y, b.w, b.h);
     for (const p of this.panels) o.clearRect(...p);
@@ -1320,28 +1350,58 @@ export class Drawing {
   // multiplied by, and that the piece was over the winch's load where it was (a keystone slab is the haul the winch
   // is for); and, where a prism came with it, what the prism multiplied the gems by (null: no prism).
   // And third, where the haul held a pocket's mineral that raised a count of specimens: by how many. (A foe caught
-  // as a trophy, js/fauna.js, is no haul: its banner has the specimens it paid and nothing else.)
+  // as a trophy, js/fauna.js, is no haul: its banner has the specimens it paid and nothing else; a lord beaten,
+  // js/game.js, the grit and the specimens it paid, and nothing else.)
   bannerSays(b) { if (b.trophy) return ['', null, `+${b.spec}`]; return [`${compact(b.n)} x${b.mult.toFixed(1)}${b.over < 1 ? ' WINCH OVER LOAD' : ''}`, b.shine > 1 ? `PRISM x${b.shine}` : null, b.spec > 0 ? `+${b.spec}` : null]; }
-  // How a haul's banner is laid out for a screen `W` wide under a head `head` down it: worked out once a banner
-  // (and again only if the screen or the head changes), so that drawing it every frame measures and makes nothing.
-  // Its title at size 2 where the haul is of ten cells or more or is a find with a name (`loud`: a relic, a shrine,
-  // a cache, a rare hazard, a fossil...), else 1, a size smaller where it would not fit (`big`), and a size larger as
-  // it pops up where that fits too (`pop`); every line under it stands where the title at `big` puts it, so the
-  // popped title grows about its own middle and nothing under it moves. What it says (`says`: `bannerSays`).
-  // What it paid (`items`: the grit, each gem it paid any of in their order, the specimens), each figure with its
-  // icon before it and GROUP clear of the one before, on as many lines as it takes, at most three (`breaks`: where
-  // each line begins; `lws`: how wide each is), each line filled as far as the screen allows, the first broken
-  // before the first of the corners' gems where the grit and the directions' fit on it. And the line of what paid
-  // most in the haul (js/game.js: `topPayer`), its picture and its words `topW` wide, under them (`topAt`: the room
-  // it takes) where it fits the screen and the banner's foot still stands DRILL_CLEAR over the drill. `foot`: how
-  // far under the title's top the last line's foot is, for what stands under the banner.
-  bannerSplit(b, head = this.bannerHead()) {
-    const W = this.W, room = W - 2 * UI.EDGE, title = b.title ?? '';
-    let big = b.n >= 10 || b.loud ? 2 : 1;
-    while (big > 1 && textWidth(title, big) > room) big--;
-    b.big = big; b.pop = textWidth(title, big + 1) <= room ? 1 : 0;
+  // How a title said large across the screen (a place met for the first time, a lord woken or beaten, a big haul or
+  // a find with a name, a notice, CORE RESTORED) is set for a screen `W` wide, in the language spoken: `fitTitle`,
+  // worked out once for the thing and the screen and kept on it (`lines`, `big`, `pop`), so nothing is measured or
+  // made in a frame.
+  fitLarge(o, W) {
+    if (o.fitW === W) return o;
+    const room = W - 2 * UI.EDGE, title = o.title ?? '', f = fitTitle(title, room);
+    o.fitW = W; o.lines = f.lines; o.big = f.big; o.pop = f.pop;
+    o.small = f.big === 1 ? f.lines : textWidth(title, 1) <= room ? [title] : halves(title, room, 1) ?? wrap(title, room);
+    o.said = o.lines; o.size = o.big; o.at = 0;
+    return o;
+  }
+  // Where a title said large (`fitLarge`), with `subs` small lines under it, stands (`standAt`), its top as near
+  // `pref` as it may be: at its size, else at the font's own where only that fits, so that it stands clear of the
+  // drill and what is called out before it. `said` and `size`: the lines it is drawn on and their size; `at`: where.
+  standLarge(o, pref, subs) {
+    o.said = o.lines; o.size = o.big;
+    o.at = this.standAt(pref, UI.TITLE * o.big * (o.lines.length - 1) + (subs ? under(o.big) + UI.LINE * (subs - 1) + UI.LINE_MIN : UI.LINE_MIN * o.big));
+    if (this.hudWent === 2 && o.big > 1) {
+      const y = this.standAt(pref, UI.TITLE * (o.small.length - 1) + (subs ? under(1) + UI.LINE * (subs - 1) + UI.LINE_MIN : UI.LINE_MIN));
+      if (this.hudWent !== 2) { o.at = y; o.said = o.small; o.size = 1; }
+    }
+    return o.at;
+  }
+  // How a haul's banner is laid out for a screen `W` wide under a head `head` down it and over a floor `floor`:
+  // worked out once a banner (and again only if the screen, the head or the floor changes), so that drawing it every
+  // frame measures and makes nothing. Its title large (`fitLarge`: at size 2, on two lines where one will not hold
+  // it, and a size larger as it pops up where that fits too) where the haul is of ten cells or more, is a find with
+  // a name (`loud`: a relic, a shrine, a cache, a rare hazard, a fossil...) or is a lord's, else at size 1 (`big`,
+  // `lines`, `pop`); every line under it stands where the title at `big` puts it, so the popped title grows about its
+  // own middle and nothing under it moves. What it says (`says`: `bannerSays`). What it paid (`items`: the grit,
+  // each gem it paid any of in their order, the specimens), each figure with its icon before it and GROUP clear of
+  // the one before, on as many lines as it takes, at most three (`breaks`: where each line begins; `lws`: how wide
+  // each is), each line filled as far as the screen allows, the first broken before the first of the corners' gems
+  // where the grit and the directions' fit on it. And the line of what paid most in the haul (js/game.js:
+  // `topPayer`), its picture and its words `topW` wide, under them (`topAt`: the room it takes) where it fits the
+  // screen. `foot`: how far under the title's top the last line's foot is, for what stands under the banner.
+  // Where it stands (`y`, the title's top): at the head where the whole of it then ends DRILL_CLEAR over the drill,
+  // else under the drill (`below`) where it ends over the floor, the line of what paid most left out where that is
+  // what takes it over, and then the word more under the rest (`subOn`); a screen too short for it either way has
+  // it at the head all the same.
+  bannerSplit(b, head = this.bannerHead(), floor = this.hudFloor()) {
+    const W = this.W, H = this.H, room = W - 2 * UI.EDGE, title = b.title ?? '';
+    if (b.lord !== undefined || b.n >= 10 || b.loud) this.fitLarge(b, W);
+    else { b.lines = [title]; b.big = 1; b.pop = textWidth(title, 2) <= room ? 1 : 0; }
+    const big = b.big;
+    b.tall = UI.TITLE * big * (b.lines.length - 1);
     const says = b.says = this.bannerSays(b), items = b.items = [];
-    if (!b.trophy) { const said = `+${compact(b.grit)}`; items.push({ icon: 'grit', mineral: null, said, colour: '#ffe14a', w: textWidth(said) + UI.ICON }); }
+    if (!b.trophy || b.grit) { const said = `+${compact(b.grit)}`; items.push({ icon: 'grit', mineral: null, said, colour: '#ffe14a', w: textWidth(said) + UI.ICON }); }
     for (const g of GEM_ORDER) if (b.gems[g] > 0) { const said = `+${compact(b.gems[g])}`; items.push({ icon: GEM_ICON[g], mineral: null, said, colour: GEM_COLOR[g], w: textWidth(said) + UI.ICON, corner: g >= 5 }); }
     if (says[2]) items.push({ icon: `spec-${GEM_ICON[b.specOf]}`, mineral: b.mineral ?? null, said: says[2], colour: GEM_COLOR[b.specOf], w: textWidth(says[2]) + UI.ICON + (b.mineral ? 1 : 0) });
     // (Lines filled as far as `room` allows, from `from` on; the first broken at `at` where that is given.)
@@ -1356,20 +1416,29 @@ export class Drawing {
     };
     const corner = items.findIndex(it => it.corner), plain = fill(-1);
     let laid = plain;
-    if (plain[0].length > 1 && corner > (b.trophy ? 0 : 1) && items.slice(0, corner).reduce((w, it) => w + it.w + UI.GROUP, -UI.GROUP) <= room) {
+    if (plain[0].length > 1 && corner > (b.trophy && !b.grit ? 0 : 1) && items.slice(0, corner).reduce((w, it) => w + it.w + UI.GROUP, -UI.GROUP) <= room) {
       const split = fill(corner);
       if (split[0].length <= Math.max(3, plain[0].length)) laid = split;
     }
     [b.breaks, b.lws] = laid;
     b.down = UI.LINE * (b.breaks.length - 1);
-    // (Down from the title's top: the line of its size, the gems, what paid most, a prism's line, a word more.)
-    const ly = under(big) + (says[0] ? UI.LINE : 0), rest = (b.shine > 1 ? UI.LINE : 0) + (b.sub ? UI.LINE : 0);
+    // (Down from the title's top: its lines, the line of its size, the gems, what paid most, a prism's line, a word
+    // more.)
+    const ly = b.tall + under(big) + (says[0] ? UI.LINE : 0), prism = b.shine > 1 ? UI.LINE : 0;
     b.topW = b.top ? textWidth(b.top.said) + UI.CHIP : 0;
     // (The line of what paid most is the row over its room's foot, a line's height, LINE_MIN, under its top.)
-    const footOf = t => ly + b.down + (rest ? t + rest : t ? t - 1 : 0) + UI.LINE_MIN;
-    b.topAt = b.top && b.topW <= room && Math.round(head) + footOf(TOP_AT) <= drillTop(this.H) - UI.DRILL_CLEAR ? TOP_AT : 0;
-    b.ly = ly; b.foot = footOf(b.topAt);
-    b.splitW = W; b.splitHead = head;
+    const footOf = (t, sub) => { const rest = prism + (sub ? UI.LINE : 0); return ly + b.down + (rest ? t + rest : t ? t - 1 : 0) + UI.LINE_MIN; };
+    const top = b.top && b.topW <= room ? TOP_AT : 0, over = drillTop(H) - UI.DRILL_CLEAR, low = drillTop(H) + DRILL_H + UI.DRILL_CLEAR;
+    // (Where nothing fits over the floor, over the bar: the worth's panel or the shop's button under it may be
+    // covered a moment, the drill never.)
+    const tries = BANNER_TRIES, sub = !!b.sub, bar = H - UI.BAR - UI.EDGE, fits = ([down, t, s], f) => (down ? low : head) + footOf(t ? top : 0, s && sub) <= (down ? f : over);
+    let k = 0;
+    while (k < tries.length && !fits(tries[k], floor)) k++;
+    if (k === tries.length && floor < bar) { k = 0; while (k < tries.length && !fits(tries[k], bar)) k++; }
+    const [down, t, s] = k < tries.length ? tries[k] : BANNER_SHORT;
+    b.below = !!down; b.y = down ? low : head; b.topAt = t ? top : 0; b.subOn = !!s && sub;
+    b.ly = ly; b.foot = footOf(b.topAt, b.subOn);
+    b.splitW = W; b.splitHead = head; b.splitFloor = floor;
   }
   // How far down the screen a haul's banner, a notice and the rest across the head of the screen stand: under the
   // map on a phone held upright (a fifth of the way down it on a tall one), and on a screen wider than it is tall,
@@ -1378,6 +1447,29 @@ export class Drawing {
   bannerHead() {
     const { W, H } = this, place = this.place, lay = place && !place.card ? (place.lay?.W === W ? place.lay : this.plateFit(place)) : null;
     return Math.round(Math.max(W > H ? 40 : Math.max(60, H * 0.2), lay && lay.ty > UI.EDGE ? lay.ty + lay.h + 6 : 0));
+  }
+  // How far down the screen what is called out across it may reach under the drill: EDGE over the bar, or over the
+  // worth of a thing first seen where that is up over the bar (`drawEye`), or over the shop's button at the core.
+  hudFloor() {
+    const { W, H } = this, e = this.eye && !this.atCore && this.drill.mode !== 'dead' ? this.eye : null;
+    if (e && e.W !== W) this.eyeFit(e);
+    let floor = e ? H - UI.BAR + UI.DOCK - UI.EDGE - e.h - UI.EDGE : H - UI.BAR - UI.EDGE;
+    if (this.atCore && this.drill.mode === 'free') floor = Math.min(floor, H - SHOP_BUTTON - UI.EDGE);
+    return floor;
+  }
+  // Where a thing `tall` rows tall called out across the screen stands, its top as near `pref` as it may be: over the
+  // drill, under what stands there already (`hudAbove`) and ending DRILL_CLEAR over the drill; else under the drill,
+  // under what stands there already (`hudBelow`) and EDGE over the bar (the worth's panel or the shop's button there
+  // may be covered a moment, the drill never); else (a screen too short for it either way) under what stands over
+  // the drill all the same. What is taken is marked taken, CALL clear of the next. `hudWent`: 0 over the drill, 1
+  // under it, 2 neither.
+  standAt(pref, tall) {
+    const over = drillTop(this.H) - UI.DRILL_CLEAR, y = Math.min(Math.max(this.hudAbove, pref), over - tall);
+    if (y >= this.hudAbove) { this.hudAbove = y + tall + UI.CALL; this.hudWent = 0; return y; }
+    const b = this.hudBelow;
+    if (b + tall <= this.H - UI.BAR - UI.EDGE) { this.hudBelow = b + tall + UI.CALL; this.hudWent = 1; return b; }
+    this.hudWent = 2;
+    return this.hudAbove;
   }
   // A thing of the lab's seen for the first time: its picture on a chip rimmed by its tier, its name (or what the lab
   // says of it before it is known) and what it is worth as the lab says it (js/worth.js), on a panel just over the
@@ -1400,7 +1492,7 @@ export class Drawing {
     const slide = Math.min(1, e.t / 0.15);
     // (On a screen wider than it is tall the drill may come further down it: the panel stands at the left. It stands
     // EDGE over the bar's frame.)
-    const x = W > H ? UI.EDGE : Math.round(W / 2 - e.w / 2), y = H - 42 - UI.EDGE - e.h + Math.round((1 - slide) * (1 - slide) * 8);
+    const x = W > H ? UI.EDGE : Math.round(W / 2 - e.w / 2), y = H - UI.BAR + UI.DOCK - UI.EDGE - e.h + Math.round((1 - slide) * (1 - slide) * 8);
     ctx.globalAlpha = Math.min(1, slide, (e.life - e.t) / 0.3);
     slice9(ctx, 'ui', 'panel', x, y, e.w, e.h);
     e.rect[0] = x; e.rect[1] = y; e.rect[2] = e.w; e.rect[3] = e.h;
@@ -1422,36 +1514,39 @@ export class Drawing {
   // plate that has gone under the map. On its plate (`lay`): its gem's icon (or its pocket's mineral), the second
   // gem where it pays two, and its name after them, the whole no wider than the screen less EDGE each side: the
   // second gem dropped first where it is too wide, and then the name set on two lines (`lines`, `h` tall). Beside the
-  // map where it fits there (`ty`), else under it. And as a card across the screen (`card`), at size 2 (`big`) on one
-  // line or two, else at size 1.
+  // map where it fits there, on two lines where one is too wide for it there and two are not (`ty`), else under it,
+  // where it pushes down all that stands under the head of the screen. And as a card across the screen (`card`):
+  // `fitTitle`, at size 2 (`big`) on one line or two, else at size 1.
   plateFit(place) {
-    const W = this.W, room = W - 2 * UI.EDGE, L = place.lay ?? (place.lay = { W: 0, pw: 0, h: 0, ty: 0, tx: 0, also: false, lines: null, card: null, big: 2, cardW: 0, pop: 0 });
+    const W = this.W, room = W - 2 * UI.EDGE, beside = BESIDE_MAP(W) - UI.EDGE, L = place.lay ?? (place.lay = { W: 0, pw: 0, h: 0, ty: 0, tx: 0, also: false, lines: null, card: null, big: 2, cardW: 0, pop: 0 });
     const pic = UI.INSET + UI.ICON + (place.mineral ? 1 : 0), widest = lines => lines.reduce((m, l) => Math.max(m, textWidth(l)), 0);
     L.W = W; L.also = !!place.also; L.lines = [place.title];
     let pw = pic + (L.also ? UI.ICON : 0) + textWidth(place.title) + UI.INSET;
+    if (pw > beside) {
+      // (Two lines beside the map, with the second gem or without it, before one under it.)
+      for (const also of L.also ? [true, false] : [false]) {
+        const two = halves(place.title, beside - pic - (also ? UI.ICON : 0) - UI.INSET, 1);
+        if (two) { L.also = also; L.lines = two; pw = pic + (also ? UI.ICON : 0) + widest(two) + UI.INSET; break; }
+      }
+    }
     if (pw > room && L.also) { L.also = false; pw -= UI.ICON; }
     if (pw > room) {
       L.lines = halves(place.title, room - pic - UI.INSET, 1) ?? wrap(place.title, room - pic - UI.INSET);
       pw = pic + widest(L.lines) + UI.INSET;
     }
     L.pw = Math.min(room, pw); L.tx = pic + (L.also ? UI.ICON : 0); L.h = PLATE_H + UI.TITLE * (L.lines.length - 1);
-    L.ty = UI.EDGE + L.pw > BESIDE_MAP(W) ? MAP_Y - 3 + MAP_FRAME_H + UI.STACK : UI.EDGE;
-    L.big = 2; L.card = [place.title];
-    if (textWidth(place.title, 2) > room) {
-      const two = halves(place.title, room, 2);
-      if (two) L.card = two; else { L.big = 1; L.card = halves(place.title, room, 1) ?? wrap(place.title, room); }
-    }
+    L.ty = L.pw > beside ? MAP_Y - 3 + MAP_FRAME_H + UI.STACK : UI.EDGE;
+    this.fitLarge(place, W);
+    L.big = place.big; L.card = place.lines; L.pop = place.pop;
     L.cardW = L.card.reduce((m, l) => Math.max(m, textWidth(l, L.big)), 0);
-    L.pop = L.card.length === 1 && L.big === 2 && textWidth(place.title, 3) <= room ? 1 : 0;
     return L;
   }
-  // A notice laid out for a screen `W` wide, once: its title at size 2 where it fits (3 as it pops up, where that
-  // fits too), else at 1; and what it says under that on as many lines as it takes.
+  // A notice laid out for a screen `W` wide, once: its title large (`fitLarge`: at size 2 on one line or two, 3 as
+  // it pops up where that fits too, else at 1), and what it says under that on as many lines as it takes.
   noticeFit(note) {
     const room = this.W - 2 * UI.EDGE;
-    let big = 2;
-    while (big > 1 && textWidth(note.title, big) > room) big--;
-    note.lay = { W: this.W, big, pop: big === 2 && textWidth(note.title, 3) <= room ? 1 : 0, subs: !note.sub ? null : textWidth(note.sub) <= room ? [note.sub] : halves(note.sub, room, 1) ?? wrap(note.sub, room) };
+    this.fitLarge(note, this.W);
+    note.lay = { W: this.W, subs: !note.sub ? null : textWidth(note.sub) <= room ? [note.sub] : halves(note.sub, room, 1) ?? wrap(note.sub, room) };
     return note.lay;
   }
   drawHud(ox, oy) {
@@ -1460,12 +1555,19 @@ export class Drawing {
     // The place the drill has come into, laid out before anything that stands clear of it.
     const place = this.place, lay = place ? (place.lay?.W === W ? place.lay : this.plateFit(place)) : null, low = place && !place.card && lay.ty > UI.EDGE;
     this.plateLow = !!low;
-    // Banner of the last haul. (It, the word across the screen and a new place's name stand clear of the map, and of
-    // a place's plate where that has had to go under the map: `plateLow`.)
+    // What is called out across the screen (the banner of the last haul, the word across the screen, CORE RESTORED
+    // and a new place's name) stands clear of the map, and of a place's plate where that has had to go under the
+    // map (`bannerHead`), and clear of the drill: over it from the head down where it fits there, else under it
+    // (`standAt`), each a line clear of the one before.
     const head = this.bannerHead(), bn = this.banner;
+    this.hudAbove = head; this.hudBelow = drillTop(H) + DRILL_H + UI.DRILL_CLEAR;
     if (bn) {
-      const b = bn, pop = Math.min(1, b.t / 0.12), y = Math.round(head - (1 - pop) * 8);
-      if (b.splitW !== W || b.splitHead !== head) this.bannerSplit(b, head);
+      const b = bn, pop = Math.min(1, b.t / 0.12);
+      const floor = this.hudFloor();
+      if (b.splitW !== W || b.splitHead !== head || b.splitFloor !== floor) this.bannerSplit(b, head, floor);
+      if (b.below) this.hudBelow = b.y + b.foot + UI.CALL; else this.hudAbove = b.y + b.foot + UI.CALL;
+      // (It comes in from the side away from the drill.)
+      const y = Math.round(b.y + (b.below ? 1 : -1) * (1 - pop) * 8);
       ctx.globalAlpha = Math.min(1, (b.life - b.t) * 3);
       // (Laid out once a banner: `bannerSplit`. A haul named by its place is in its colour; a giant's title is gold
       // and white by turns, faster the bigger it is, and HALF's runs through the gems'. Popped, a size larger, it is
@@ -1473,9 +1575,9 @@ export class Drawing {
       const up = b.pop && (b.t < 0.07 || (b.giant > 3 && b.t < 0.3)) ? 1 : 0, big = b.big;
       const giant = b.giant ?? 0, beat = (now / Math.max(60, 260 - giant * 30)) | 0;
       const colour = giant > GIANTS.length ? GEM_COLOR[1 + beat % 4] : giant ? (beat % 2 ? '#ffffff' : '#ffe14a') : b.colour ?? (b.n >= 30 ? '#ffe14a' : '#ffffff');
-      text(ctx, b.title, W / 2, y - up * POP_UP, colour, 0.5, big + up);
+      for (let n = 0; n < b.lines.length; n++) text(ctx, b.lines[n], W / 2, y + n * UI.TITLE * big - up * POP_UP, colour, 0.5, big + up);
       const size = b.says[0], prism = b.says[1];
-      if (size) text(ctx, size, W / 2, y + under(big), b.over < 1 ? '#ffb060' : '#bfe6ff', 0.5);
+      if (size) text(ctx, size, W / 2, y + b.tall + under(big), b.over < 1 ? '#ffb060' : '#bfe6ff', 0.5);
       // (What it paid, in its order, line by line from where each of `breaks` begins, each line centred. Each
       // figure has its icon before it, at its own height; a pocket's mineral, 12 rows, is set 2 higher.)
       const ly = y + b.ly, down = b.down, items = b.items, breaks = b.breaks;
@@ -1498,53 +1600,56 @@ export class Drawing {
       // A prism among the cells: what it multiplied the gems by, in the gems' colours by turns.
       const more = down + b.topAt;
       if (prism) text(ctx, prism, W / 2, ly + more + UI.LINE, GEM_COLOR[1 + ((now / 240) | 0) % 4], 0.5);
-      // A word more under the rest, where the haul has one (HALF's).
-      if (b.sub) text(ctx, b.sub, W / 2, ly + more + (prism ? 2 : 1) * UI.LINE, '#fff6c8', 0.5);
+      // A word more under the rest, where the haul has one (HALF's; a lord's BEATEN!), where there is room for it.
+      if (b.subOn) text(ctx, b.sub, W / 2, ly + more + (prism ? 2 : 1) * UI.LINE, '#fff6c8', 0.5);
       ctx.globalAlpha = 1;
     }
-    // (What else stands across the head of the screen stands under a banner that is up, a line clear of its foot.)
-    const clear = bn ? head + bn.foot + 6 : 0;
     // Over a dead drill the screen goes dark.
     if (d.mode === 'dead' && this.tow) { ctx.globalAlpha = Math.min(0.85, this.tow.t / DEATH); ctx.fillStyle = '#07060b'; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1; }
-    if (this.notice) {
+    // (A word that waits for the banner to go is not yet shown: `wait`.)
+    if (this.notice && !(this.notice.wait > 0)) {
       // (Laid out once a notice: `noticeFit`.)
       const note = this.notice, pop = Math.min(1, note.t / 0.12), nl = note.lay?.W === W ? note.lay : this.noticeFit(note);
       ctx.globalAlpha = Math.min(1, (note.life - note.t) * 3);
-      const ny = Math.max(head, clear), up = note.t < 0.07 ? nl.pop : 0;
-      text(ctx, note.title, W / 2, Math.round(ny - (1 - pop) * 8) - up * POP_UP, note.colour, 0.5, nl.big + up);
-      if (nl.subs) for (let n = 0; n < nl.subs.length; n++) text(ctx, nl.subs[n], W / 2, ny + under(nl.big) + n * UI.LINE, '#ffe14a', 0.5);
+      const ny = this.standLarge(note, head, nl.subs ? nl.subs.length : 0), big = note.size, said = note.said, up = note.t < 0.07 && big === note.big ? note.pop : 0, last = UI.TITLE * big * (said.length - 1);
+      const y = Math.round(ny + (this.hudWent === 1 ? 1 : -1) * (1 - pop) * 8);
+      for (let n = 0; n < said.length; n++) text(ctx, said[n], W / 2, y + n * UI.TITLE * big - up * POP_UP, note.colour, 0.5, big + up);
+      if (nl.subs) for (let n = 0; n < nl.subs.length; n++) text(ctx, nl.subs[n], W / 2, ny + last + under(big) + n * UI.LINE, '#ffe14a', 0.5);
       ctx.globalAlpha = 1;
     }
     // The names of parts as they are fitted, a milestone's banner (under the core, clear of all of the above).
     this.fitter.hud(this, ctx, head, UI);
     if (S.won && this.wonAt !== undefined && this.time - this.wonAt < 6) {
-      if (this.wonW !== W) { this.wonW = W; this.wonBig = textWidth('CORE RESTORED', 2) <= W - 2 * UI.EDGE ? 2 : 1; }
-      text(ctx, 'CORE RESTORED', W / 2, Math.max(Math.round(H * 0.36), clear), '#ffe14a', 0.5, this.wonBig);
+      const won = this.fitLarge(this.wonCard ??= { title: 'CORE RESTORED' }, W), wy = this.standLarge(won, Math.round(H * 0.36), 0);
+      for (let n = 0; n < won.said.length; n++) text(ctx, won.said[n], W / 2, wy + n * UI.TITLE * won.size, '#ffe14a', 0.5, won.size);
     }
     // A ground met for the first time: its name alone, large, a little under where a haul's banner goes (and under
-    // the banner itself, if one is up), and clear of the drill. A name too long for the screen is set on two lines,
-    // or small (`plateFit`). On a screen wider than it is tall, where the banner leaves no room over the drill, it
-    // goes up at the head of the screen, in the room left of the map; on one taller than it is wide, under the drill.
+    // the banner itself, if one is up), and clear of the drill (`standLarge`). A name too long for the screen is set on
+    // two lines, or small (`plateFit`). A lord woken is named so too, with its title under its name (`sub`: LORD OF
+    // THE NORTH). On a screen wider than it is tall, where what stands over the drill leaves no room for it there, it
+    // goes up at the head of the screen, in the room left of the map; else under the drill.
     if (place && place.card) {
-      const pop = Math.min(1, place.t / 0.12), lines = lay.card, big = lay.big, tall = lines.length * UI.TITLE * big;
-      const below = clear;
-      let y = Math.min(Math.round(Math.max(head + 14, H * 0.3)), drillTop(H) - UI.DRILL_CLEAR - tall), cx = W / 2;
-      if (y < below) {
-        const left = W - UI.EDGE - MAP_FRAME;
-        const past = Math.max(below, drillTop(H) + 16 + UI.DRILL_CLEAR);
-        if (W > H && lay.cardW <= left - 2 * UI.EDGE) { y = UI.EDGE + 2; cx = left / 2; } else y = past + tall <= H - 44 - UI.EDGE ? past : below;
-      }
-      y = Math.round(y - (1 - pop) * 8);
+      const pop = Math.min(1, place.t / 0.12);
+      let y = this.standLarge(place, Math.round(Math.max(head + 14, H * 0.3)), place.sub ? 1 : 0), cx = W / 2, from = this.hudWent === 1 ? 1 : -1;
+      const left = W - UI.EDGE - MAP_FRAME;
+      if ((this.hudWent || place.size < place.big) && W > H && lay.cardW <= left - 2 * UI.EDGE && !place.sub) { y = UI.EDGE + 2; cx = left / 2; from = -1; place.size = place.big; place.said = place.lines; }
+      const big = place.size, lines = place.said, last = UI.TITLE * big * (lines.length - 1), ty = Math.round(y + from * (1 - pop) * 8);
       ctx.globalAlpha = Math.min(1, (place.life - place.t) * 3);
-      const up = place.t < 0.07 ? lay.pop : 0;
-      for (let n = 0; n < lines.length; n++) text(ctx, lines[n], cx, y + n * UI.TITLE * big - up * POP_UP, place.colour, 0.5, big + up);
+      const up = place.t < 0.07 && big === place.big ? place.pop : 0;
+      for (let n = 0; n < lines.length; n++) text(ctx, lines[n], cx, ty + n * UI.TITLE * big - up * POP_UP, place.colour, 0.5, big + up);
+      if (place.sub) text(ctx, place.sub, cx, ty + last + under(big), '#fff6c8', 0.5);
       ctx.globalAlpha = 1;
     }
+    // (The worth of a thing first seen waits, neither shown nor going, while what is called out under the drill
+    // reaches down onto its panel: `eyeHeld`, read by js/game.js.)
+    const e = this.eye;
+    if (e && e.W !== W) this.eyeFit(e);
+    this.eyeHeld = !!e && this.hudBelow - UI.CALL > H - UI.BAR + UI.DOCK - UI.EDGE - e.h - UI.EDGE;
     // The bar, at the foot of the screen: what has been banked, the hull, what the lab knows, and how much of its
     // reach the tether has left. A tap on it opens the panel (what the drill is, the lab's notes, the chart, the
     // menu), and another shuts it. It is docked DOCK from the sides and the foot; what is in it stands INSET in from
     // its frame (`left` and `right`), three rows of an icon with its figure at the icon's own height.
-    const B = H - 44, left = UI.DOCK + UI.INSET, right = W - UI.DOCK - UI.INSET, row1 = B + 5, row2 = row1 + 12, row3 = row2 + 12;
+    const B = H - UI.BAR, left = UI.DOCK + UI.INSET, right = W - UI.DOCK - UI.INSET, row1 = B + 5, row2 = row1 + 12, row3 = row2 + 12;
     slice9(ctx, 'ui', 'panel', UI.DOCK, B + UI.DOCK, W - 2 * UI.DOCK, 40);
     // What the player is saving for (js/goal.js): a line along the bar's top edge, its light rim from end to end, as
     // far across as what is banked has come towards its price (the least of its grit, gems and specimens), in yellow,
@@ -1605,7 +1710,7 @@ export class Drawing {
       text(ctx, this.knownSaid, right, row1, lit ? '#ffffff' : '#8cf2c4', 1);
       draw(ctx, 'icons', 'lab', right - this.knownW - UI.ICON, row1);
     }
-    this.button(0, B, W, 44, () => { this.goalBlink = 0; this.openLab(!this.lab); });
+    this.button(0, B, W, UI.BAR, () => { this.goalBlink = 0; this.openLab(!this.lab); });
     // The place the drill has come into: its name on a plate, with its direction's gem (and a second gem, where
     // the place pays two), laid out once a place (`plateFit`): at the head of the screen, EDGE in, or under the map
     // where its name is too long to stand beside it.
@@ -1636,11 +1741,11 @@ export class Drawing {
       ctx.globalAlpha = 1;
     }
     // A thing of the lab's seen for the first time (js/game.js: `showEye`), out in the ground, and not over a wreck.
-    if (this.eye && !this.shop && !this.lab && !this.atCore && this.drill.mode !== 'dead') this.drawEye();
+    if (this.eye && !this.eyeHeld && !this.shop && !this.lab && !this.atCore && this.drill.mode !== 'dead') this.drawEye();
     // The map, in the top right corner.
     this.drawMap(MAP_X(W), MAP_Y);
     // The shop's button, over the bar, when the drill is home.
-    const by = H - 88;
+    const by = H - SHOP_BUTTON - 6;
     if (this.atCore && !this.shop && !this.lab && d.mode === 'free') {
       // (Whether anything can be bought is asked only here, where the button shows it: out in the ground it would
       // count what is left of the reach again after every cut, for nothing.)
@@ -1654,9 +1759,9 @@ export class Drawing {
     }
     // The idea, shown and not told: a hand draws a loop, as the tether must be drawn round the loose piece.
     if (S.stats.hauls === 0 && !this.shop && !this.lab && this.input.id === null) {
-      const u = (now % 2200) / 2200, turn = u * 6.2832 - 1.5708, cx = W / 2 - 20, hx = cx - 6 + Math.cos(turn) * 20, hy = (H - 44) * 0.72 + Math.sin(turn) * 14;
+      const u = (now % 2200) / 2200, turn = u * 6.2832 - 1.5708, cx = W / 2 - 20, hx = cx - 6 + Math.cos(turn) * 20, hy = (H - UI.BAR) * 0.72 + Math.sin(turn) * 14;
       ctx.fillStyle = '#ffffff';
-      for (let n = 1; n < 14; n++) { const a = turn - n * 0.22; ctx.globalAlpha = 1 - n / 14; ctx.fillRect(Math.round(cx + Math.cos(a) * 20), Math.round((H - 44) * 0.72 + Math.sin(a) * 14) - 2, 2, 2); }
+      for (let n = 1; n < 14; n++) { const a = turn - n * 0.22; ctx.globalAlpha = 1 - n / 14; ctx.fillRect(Math.round(cx + Math.cos(a) * 20), Math.round((H - UI.BAR) * 0.72 + Math.sin(a) * 14) - 2, 2, 2); }
       ctx.globalAlpha = 1;
       draw(ctx, 'ui', 'hand', hx, hy);
       if (S.stats.moves < 1.5) draw(ctx, 'logo', 'logo', W / 2 - 66, 62);
@@ -1757,6 +1862,15 @@ export class Drawing {
       if (this.S.relics[dir]) continue;
       const [mx, my] = at(HX + DX[dir] * RELIC_R, HY + DY[dir] * RELIC_R);
       ctx.fillStyle = GEM_COLOR[DIR_BIOME[dir]]; ctx.fillRect(Math.round(mx) - 1, Math.round(my) - 1, 3, 3);
+    }
+    // The lords at the ends (js/bosses.js), each once it has been met: a diamond in the foe's eye at its lair, until
+    // it is beaten.
+    const lords = this.S.bosses ?? 0;
+    for (let dir = 0; dir < 4; dir++) {
+      if (!(lords >> dir & 1) || lords >> (4 + dir) & 1) continue;
+      const [mx, my] = at(HX + DX[dir] * LAIR, HY + DY[dir] * LAIR), ax = Math.round(mx), ay = Math.round(my);
+      ctx.fillStyle = FOE_EYE; ctx.fillRect(ax - 1, ay, 3, 1); ctx.fillRect(ax, ay - 1, 1, 3);
+      ctx.fillRect(ax - 2, ay, 1, 1); ctx.fillRect(ax + 2, ay, 1, 1); ctx.fillRect(ax, ay - 2, 1, 1); ctx.fillRect(ax, ay + 2, 1, 1);
     }
     // And what each corner hides, a shrine (where it is laid: js/world.js, `shrine`), from the start as a relic is:
     // a cross in its two parents' colours, until it is hauled.
@@ -2024,7 +2138,7 @@ export class Drawing {
     // not lie on the next, and every line one line: what a later row adds is said on a line there already, and where
     // two ways of saying a line are given the first that fits is said, its name and its value UI.WORD apart at the
     // least, two spaces, so that they never read as one phrase.
-    const room = this.labGeom().pw - 4 * UI.INSET - UI.WORD, first = (...ways) => ways.find(([name, value]) => textWidth(name) + textWidth(value) <= room) ?? ways[ways.length - 1];
+    const room = this.labGeom().cw - 4 * UI.INSET - UI.WORD, first = (...ways) => ways.find(([name, value]) => textWidth(name) + textWidth(value) <= room) ?? ways[ways.length - 1];
     const tierOf = id => TIERED[id][Math.min(TIERED[id].length - 1, lv[id])];
     const out = Math.floor(S.out ?? 0), load = WINCH_LOAD[lv.winch], live = this.val('livecatch'), spin = this.val('flywheel'), foe = this.val('trophy');
     const beasts = S.fauna?.met ? Object.keys(S.fauna.met).length : 0, places = Object.keys(S.met).length, chart = this.val('chart') > 0, finder = this.val('mapfinder');
@@ -2035,6 +2149,10 @@ export class Drawing {
     // (A rare hazard alive in a loop pays more with the live catch, said on its own line.)
     const rare = (name, does) => live > 1 ? [...first([name, `${does}, x${live} LIVE`], [name, `${does} x${live} LIVE`], [name, `x${live} LIVE`]), true] : [name, does, false];
     const rares = RARE_LINES.filter(([type]) => S.rare?.[type]);
+    // (The lords at the ends, once one has been met: how many of the four are beaten, lit once one is. That is a line
+    // more, and with a rare hazard met as well the panel has none to spare: what the mender does is then said on the
+    // hull's line.)
+    const lords = S.bosses ?? 0, beaten = [0, 1, 2, 3].filter(n => lords >> (4 + n) & 1).length, mends = !(lords & 15 && rares.length);
     return [
       // (How far out the drill has been, of how far the tether goes.)
       first(['REACH', `${tierOf('tether')} ${out > 0 ? `${Math.min(out, this.val('tether'))}/${this.val('tether')}` : this.val('tether')} CELLS`],
@@ -2047,8 +2165,8 @@ export class Drawing {
       // (Once there is a shrine or a fossil the lamp is said on the scanner's line: see `deep`.)
       deep ? [...first(['SCAN', `${tierOf('scanner')} ${this.val('scanner')} CELLS, LAMP ${this.val('lamp')}`], ['SCAN', `${this.val('scanner')} CELLS, LAMP ${this.val('lamp')}`], ['SCAN', `${this.val('scanner')}, LAMP ${this.val('lamp')}`]), S.lv.lamp > 0 || undefined]
         : first(['SCAN', `${tierOf('scanner')} ${this.val('scanner')} CELLS`], ['SCAN', `${this.val('scanner')} CELLS`]),
-      first(['HULL', `${tierOf('hull')} ${this.hull}/${this.val('hull')} PIPS`], ['HULL', `${this.hull}/${this.val('hull')} PIPS`]),
-      ['MENDS', `1 PIP / ${mender} S`, this.S.lv.mender > 0],
+      ...(mends ? [first(['HULL', `${tierOf('hull')} ${this.hull}/${this.val('hull')} PIPS`], ['HULL', `${this.hull}/${this.val('hull')} PIPS`]), ['MENDS', `1 PIP / ${mender} S`, this.S.lv.mender > 0]]
+        : [[...first(['HULL', `${tierOf('hull')} ${this.hull}/${this.val('hull')} PIPS, MEND ${mender} S`], ['HULL', `${this.hull}/${this.val('hull')} PIPS, MEND ${mender} S`], ['HULL', `${this.hull}/${this.val('hull')}, MEND ${mender} S`]), this.S.lv.mender > 0]]),
       ['LAVA', this.swims ? lv.lavaskin >= 2 ? 'SWIMS, SMELTS' : 'SWIMS IN IT' : 'BURNS', this.swims],
       ['SPORES', this.val('sporedrive') ? `SPEED x${BOOST.by}${lv.sporedrive >= 2 ? ', GRAFT' : ''}` : 'KNOCK', this.val('sporedrive') > 0],
       ['ARCS', this.val('arccoil') ? lv.arccoil >= 2 ? 'MEND, CHARGE BIT' : 'MEND A PIP' : 'KNOCK', this.val('arccoil') > 0],
@@ -2063,6 +2181,7 @@ export class Drawing {
       // (What the refinery and the gem cutter multiply: on the narrowest phone the refinery's own is plainly grit.)
       [...first(['REFINERY', `GRIT x${refine}, GEMS x${cut}`], ['REFINERY', `GRIT x${refine} GEMS x${cut}`], ['REFINERY', `x${refine}, GEMS x${cut}`]), S.lv.refinery + S.lv.cutter > 0],
       ...(deep ? [first(['CORNERS', `${shrines}/4, FOSSILS ${fossils}/4`], ['CORNERS', `${shrines}/4 FOSSILS ${fossils}/4`], ['SHRINES', `${shrines}/4 BONES ${fossils}/4`])] : [['LAMP', `${this.val('lamp')} CELLS`, S.lv.lamp > 0]]),
+      ...(lords & 15 ? [['LORDS', `${beaten}/4`, beaten > 0]] : []),
       // (From its third level the black box keeps what a lost trip learnt as well: js/game.js, `keepLore`.)
       lv.blackbox >= 3 ? [...first(['BLACK BOX', `KEEPS ${keeps}% +LORE`], ['BLACK BOX', `${keeps}% +LORE`]), true] : ['BLACK BOX', keeps ? `KEEPS ${keeps}%` : 'NONE', S.lv.blackbox > 0],
       known ? [...first(['ANALYSED', `${known}/${LAB.length}, UP TO +${best}%`], ['ANALYSED', `${known}/${LAB.length}, +${best}%`]), true] : ['ANALYSED', `0/${LAB.length}`, false],
@@ -2132,34 +2251,43 @@ export class Drawing {
       text(ctx, `${(s.gap / 1000).toFixed(1)}S ${where} ${s.update}+${s.render} AT ${s.out}`, px + 8, y0 + 11 + n * 10, '#bcb4cc');
     });
   }
-  // How far apart the lines of STATS are: 11 pixels, or fewer where that many would not fit the panel, its foot a
-  // row clear of the last; as few as UI.LINE_MIN in Mandarin, whose characters fill their cell, and 9 in a language
-  // whose capitals leave it two rows.
-  statsPitch(rows) { return Math.max(spaced ? 9 : UI.LINE_MIN, Math.min(11, Math.floor((this.labGeom().ph - UI.HEAD - 6) / rows))); }
+  // How far apart the lines of STATS are: STATS_PITCH, or fewer where that many would not fit a column of the panel,
+  // its foot a row clear of the last; UI.LINE_MIN at the least, so that a Mandarin line, whose characters fill their
+  // cell, never lies on the next (the panel's frame has two columns where one would need fewer: `labGeom`).
+  statsPitch(rows) { const g = this.labGeom(); return Math.max(UI.LINE_MIN, Math.min(STATS_PITCH, Math.floor((g.ph - UI.HEAD - STATS_FOOT) / Math.ceil(rows / g.cols)))); }
   // Its lines from the header's foot, every other on a stripe as wide as the panel's boxes, each line's words in the
-  // middle of its stripe: its names in the panel's left column, its values ending on its right.
+  // middle of its stripe: its names in the panel's left column, its values ending on its right; in two columns where
+  // the frame has them, the first half of the lines in the left and the rest in the right, each a box INSET from the
+  // panel's side and INSET from the other.
   drawStats(px, y0, pw) {
-    const { ctx } = this, rows = this.stats(), pitch = this.statsPitch(rows.length), dy = (pitch - 9) >> 1;
-    rows.forEach(([name, value, lit], n) => {
-      const s = y0 + n * pitch, y = s + dy;
-      if (n % 2 === 0) { ctx.fillStyle = '#241f38'; ctx.fillRect(px + UI.INSET, s, pw - 2 * UI.INSET, pitch); }
-      text(ctx, name, px + 2 * UI.INSET, y, '#bcb4cc');
-      text(ctx, value, px + pw - 2 * UI.INSET, y, lit === undefined ? '#ffffff' : lit ? '#8cf2c4' : '#8a84a0', 1);
-    });
+    const { ctx } = this, g = this.labGeom(), rows = this.stats(), pitch = this.statsPitch(rows.length), dy = (pitch - LINE_INK) >> 1, per = Math.ceil(rows.length / g.cols);
+    for (let n = 0; n < rows.length; n++) {
+      const row = rows[n], name = row[0], value = row[1], lit = row[2], col = n >= per ? 1 : 0, k = n - col * per, cx = col ? px + pw - g.cw : px, s = y0 + k * pitch, y = s + dy;
+      if (k % 2 === 0) { ctx.fillStyle = '#241f38'; ctx.fillRect(cx + UI.INSET, s, g.cw - 2 * UI.INSET, pitch); }
+      text(ctx, name, cx + 2 * UI.INSET, y, '#bcb4cc');
+      text(ctx, value, cx + g.cw - 2 * UI.INSET, y, lit === undefined ? '#ffffff' : lit ? '#8cf2c4' : '#8a84a0', 1);
+    }
   }
-  // Where the lab's notes lie on the screen, worked out from the screen's size and how far the panel has risen, as
-  // they are drawn, so that a touch is read against the lines it falls on: the panel (px, py, pw, ph), the window
-  // the list is seen through (vx, vy, vw, view), and how far it can be scrolled (`most`). One object, filled again.
+  // Where the bar's panel and the shop stand on the screen, worked out from the screen's size and how far the panel
+  // has risen, as they are drawn, so that a touch is read against the lines it falls on: one frame for both and for
+  // every tab of the bar's panel (px, py, pw, ph; `top`, where it stands risen), the window the lab's list is seen
+  // through (vx, vy, vw, view), and how far it can be scrolled (`most`). LAB_W wide where the screen allows, EDGE from
+  // its sides where it does not; as tall as the lab's list and its note, in the middle of the room over the bar. On a
+  // screen too short for STATS at its fullest in one column, UI.LINE_MIN apart, and wide enough for two, twice as
+  // wide, STATS in two columns `cw` wide (`cols`). One object, filled again.
   labGeom() {
-    const g = this.labG ??= { px: 0, py: 0, pw: 0, ph: 0, vx: 0, vy: 0, vw: 0, view: 0, most: 0 }, { W, H } = this, rise = 1 - this.labRise;
-    g.pw = Math.min(W - 2 * UI.EDGE, 200); g.px = Math.round((W - g.pw) / 2);
+    const g = this.labG ??= { px: 0, py: 0, pw: 0, ph: 0, top: 0, cols: 1, cw: 0, vx: 0, vy: 0, vw: 0, view: 0, most: 0 }, { W, H } = this, rise = 1 - this.labRise, B = H - UI.BAR;
     // (The window a whole number of lines and the chip of one more, so that wherever the list rests on the lines'
     // pitch, as it opens and as a line is shown, no line is cut at its foot, nor at its head under the part's.)
-    const room = H - 44 - 2 * UI.EDGE - LAB_HEAD - LAB_NOTE - 4;
+    const room = B - 2 * UI.EDGE - UI.HEAD - LAB_NOTE - UI.INSET;
     g.view = Math.min(LAB_LIST.content, Math.max(3 * LAB_RH, LAB_RH * Math.floor((room + 1) / LAB_RH) - 1));
-    g.ph = LAB_HEAD + g.view + LAB_NOTE + 4;
-    g.py = Math.max(UI.EDGE, Math.round((H - 44 - g.ph) / 2)) + Math.round(rise * rise * 60);
-    g.vx = g.px + 4; g.vy = g.py + LAB_HEAD; g.vw = g.pw - 8;
+    g.ph = UI.HEAD + g.view + LAB_NOTE + UI.INSET;
+    g.cols = UI.HEAD + STATS_MOST * UI.LINE_MIN + STATS_FOOT > g.ph && W - 2 * UI.EDGE >= 2 * STATS_COL - UI.INSET ? 2 : 1;
+    g.pw = Math.min(W - 2 * UI.EDGE, g.cols * LAB_W); g.px = Math.round((W - g.pw) / 2);
+    g.cw = g.cols === 2 ? (g.pw + UI.INSET) >> 1 : g.pw;
+    g.top = Math.max(UI.EDGE, Math.round((B - g.ph) / 2));
+    g.py = g.top + Math.round(rise * rise * 60);
+    g.vx = g.px + UI.INSET; g.vy = g.py + UI.HEAD; g.vw = g.pw - 2 * UI.INSET;
     g.most = LAB_LIST.content - g.view;
     return g;
   }
@@ -2180,13 +2308,14 @@ export class Drawing {
   // its window, the head of the part at the top held there until the next pushes it up; a bar at its edge says how
   // far down it is and marks the line chosen, and under it the lab says what it knows of the line chosen.
   drawLab() {
-    const { ctx, W, H, S } = this, HEAD = LAB_HEAD;
+    const { ctx, W, H, S } = this, HEAD = UI.HEAD;
     ctx.globalAlpha = 0.6 * this.labRise; ctx.fillStyle = '#07060b'; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1;
     if (this.labTab === 'chart' && !this.charted) this.labTab = 'stats';
     // (One frame for every tab, the lab's, so that the header does not move under the thumb from tab to tab: each
-    // tab's content from the header's foot. Only the menu with the long frames under it may run longer.)
-    const g = this.labGeom(), { pw, px, py } = g, chart = Math.min(pw - 12, g.ph - HEAD - 10);
-    const ph = this.labTab === 'menu' && this.stalls.length ? Math.max(g.ph, HEAD + this.menuRows() + 6 + 14 + this.stalls.length * 10) : g.ph;
+    // tab's content from the header's foot. Only the menu, with the languages listed or the long frames under it, may
+    // run longer on a screen too short for it, downward.)
+    const g = this.labGeom(), { pw, px, py } = g;
+    const ph = this.labTab === 'menu' ? Math.max(g.ph, HEAD + this.menuRows() + UI.INSET + (this.stalls.length ? 6 + 14 + this.stalls.length * 10 : 0)) : g.ph;
     slice9(ctx, 'ui', 'panel', px, py, pw, ph);
     this.button(px, py, pw, ph, () => {});
     this.buttons.at(-1).swallow = true;
@@ -2196,19 +2325,32 @@ export class Drawing {
     if (this.labTab === 'menu') { this.drawMenu(px, py + HEAD, pw); if (this.stalls.length) this.drawStalls(px, py + HEAD + this.menuRows() + 6, pw); return; }
     if (this.labTab === 'chart') {
       // The chart is dragged to look about it and pinched (or wheeled, or stepped by its two buttons) to look closer:
-      // from the whole reach down to four pixels a cell, never past the edge of the whole reach's own view.
-      // (In the middle of the panel under the header, as far from its sides as from its foot where it can be.)
-      const cx0 = Math.round(px + (pw - chart) / 2), cy0 = py + HEAD + 2 + ((ph - HEAD - 6 - chart) >> 1);
+      // from the whole reach down to four pixels a cell, never past the edge of the whole reach's own view. It is
+      // framed as the map in the corner is, the frame UI.INSET in from the panel's sides as the shop's rows are, and
+      // its two buttons, and how far it is looked into, stand in a row under it, UI.INSET clear of it (else beside it,
+      // else on its corner where there is no room for them): the frame and the row in the middle of the panel under
+      // the header.
+      const fill = ph - HEAD - UI.INSET, side = pw - 2 * UI.INSET - (MAP_FRAME - UI.MAP), zoomRow = ZOOM_BUTTON + UI.INSET;
+      let chart = Math.min(side, fill - (MAP_FRAME_H - UI.MAP)), at = 2;
+      if (fill - (MAP_FRAME_H - UI.MAP) - chart >= zoomRow + UI.INSET) at = 0;
+      else if (side - chart >= 2 * zoomRow) at = 1;
+      const block = chart + (MAP_FRAME_H - UI.MAP) + (at === 0 ? zoomRow : 0);
+      const cx0 = Math.round(px + (pw - chart) / 2) - (at === 1 ? zoomRow >> 1 : 0), cy0 = py + HEAD + ((fill - block) >> 1) + 3;
       this.chartRect = [cx0, cy0, chart, chart]; this.chartBase = Math.max(0.3, this.val('tether') * 2.25 / chart);
       const view = this.chartView();
+      slice9(ctx, 'ui', 'panel', cx0 - 3, cy0 - 3, chart + MAP_FRAME - UI.MAP, chart + MAP_FRAME_H - UI.MAP);
       this.drawMap(cx0, cy0, { size: chart, per: this.chartBase / view.zoom, cx: view.x, cy: view.y });
-      [['+', 1.5], ['-', 1 / 1.5]].forEach(([sign, by], n) => {
-        const bx = cx0 + chart - 16, by0 = cy0 + chart - 32 + n * 16, can = by > 1 ? view.zoom < this.chartMost() - 1e-9 : view.zoom > 1 + 1e-9;
-        slice9(ctx, 'ui', can ? 'button' : 'button-off', bx, by0, 14, 14);
-        text(ctx, sign, bx + 7, by0 + 2, can ? '#ffffff' : '#6a6478', 0.5);
-        this.buttons.unshift({ x: bx - 1, y: by0 - 1, w: 16, h: 16, act: () => { this.chartZoom(by, cx0 + chart / 2, cy0 + chart / 2); sfx.tap(); } });
-      });
-      if (view.zoom > 1.01) text(ctx, `x${view.zoom.toFixed(1)}`, cx0 + 3, cy0 + chart - 12, '#f4ecd8');
+      // (The buttons: under the frame at its right, '-' then '+'; beside it at its foot, '+' over '-'; or on it.)
+      const frameFoot = cy0 + chart + (MAP_FRAME_H - UI.MAP) - 3, frameRight = cx0 + chart + 3;
+      for (let n = 0; n < 2; n++) {
+        const sign = ZOOMS[n][0], by = ZOOMS[n][1], can = by > 1 ? view.zoom < this.chartMost() - 1e-9 : view.zoom > 1 + 1e-9;
+        const bx = at === 0 ? frameRight - ZOOM_BUTTON - (1 - n) * zoomRow : at === 1 ? frameRight + UI.INSET : cx0 + chart - 16;
+        const by0 = at === 0 ? frameFoot + UI.INSET : at === 1 ? frameFoot - (1 + n) * ZOOM_BUTTON - n * UI.INSET : cy0 + chart - 32 + (1 - n) * 16;
+        slice9(ctx, 'ui', can ? 'button' : 'button-off', bx, by0, ZOOM_BUTTON, ZOOM_BUTTON);
+        text(ctx, sign, bx + ZOOM_BUTTON / 2, by0 + 2, can ? '#ffffff' : '#6a6478', 0.5);
+        this.buttons.unshift({ x: bx - 1, y: by0 - 1, w: ZOOM_BUTTON + 2, h: ZOOM_BUTTON + 2, act: () => { this.chartZoom(by, cx0 + chart / 2, cy0 + chart / 2); sfx.tap(); } });
+      }
+      if (view.zoom > 1.01) text(ctx, `x${view.zoom.toFixed(1)}`, at === 0 ? cx0 - 3 + UI.INSET : cx0 + 3, at === 0 ? frameFoot + UI.INSET + 2 : cy0 + chart - 12, '#f4ecd8');
       return;
     }
     const sel = LAB_OF[this.labSel] ?? LAB[0], chosen = LAB.indexOf(sel), { vx, vy, vw, view, most } = g;
@@ -2341,15 +2483,25 @@ export class Drawing {
     } else if (u.pic) draw(ctx, 'icons', u.pic, vx + 3, vy + 3);
     else { draw(ctx, 'upgrades', u.icon, vx + 2, vy + 2); text(ctx, `${u.values[next]}`, vx + 15, vy + 7, '#ffffff', 1); }
   }
+  // Where the shop stands: in the bar's panel's frame (`labGeom`), its header where that panel's is; its rows from
+  // the header's foot, as many as its longest tab has, each as tall as the frame allows up to SHOP_RH (SHOP_RH_MIN at
+  // the least), and the footer for a refused tap's note under them. Taller than the frame only on a screen too short
+  // for it, and then in the middle of the room over the bar. One object, filled again.
+  shopGeom() {
+    const g = this.labGeom(), s = this.shopG ??= { px: 0, py: 0, pw: 0, ph: 0, rh: 0 }, rise = 1 - this.shopRise;
+    s.px = g.px; s.pw = g.pw;
+    s.rh = Math.max(SHOP_RH_MIN, Math.min(SHOP_RH, Math.floor((g.ph - UI.HEAD - SHOP_FOOT) / SHOP_MOST)));
+    s.ph = Math.max(g.ph, UI.HEAD + s.rh * SHOP_MOST + SHOP_FOOT);
+    s.py = (s.ph > g.ph ? Math.max(UI.EDGE, Math.round((this.H - UI.BAR - s.ph) / 2)) : g.top) + Math.round(rise * rise * 60);
+    return s;
+  }
   drawShop() {
     const { ctx, W, H, S } = this, goal = this.saving();
     ctx.globalAlpha = 0.6 * this.shopRise; ctx.fillStyle = '#07060b'; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1;
-    // (The panel is as tall as its longest tab, so it does not jump when the tab is changed: its header, its rows
-    // and the footer where a refused tap is said. A row is as tall as the screen allows up to SHOP_RH, which every
-    // screen the game is played on allows.)
-    const tab = TABS.find(t => t.id === this.shopTab) ?? TABS[0];
-    const pw = Math.min(W - 2 * UI.EDGE, 200), px = Math.round((W - pw) / 2), rh = Math.max(24, Math.min(SHOP_RH, Math.floor((H - 92) / SHOP_MOST)));
-    const rise = 1 - this.shopRise, ph = UI.HEAD + rh * SHOP_MOST + SHOP_FOOT, py = Math.max(UI.EDGE, Math.round((H - 44 - ph) / 2)) + Math.round(rise * rise * 60);
+    // (The panel is the bar's panel's frame, so the two, which share a header, stand alike, and it does not jump when
+    // the tab is changed: its header, its rows as many as its longest tab has, and under them the footer where a
+    // refused tap is said: `shopGeom`.)
+    const tab = TABS.find(t => t.id === this.shopTab) ?? TABS[0], { px, py, pw, ph, rh } = this.shopGeom();
     slice9(ctx, 'ui', 'panel', px, py, pw, ph);
     this.button(px, py, pw, ph, () => {});
     // The tabs: the one that is open in yellow, and a dot on one that has something to buy.
@@ -2361,17 +2513,17 @@ export class Drawing {
     // Its lines: a Latin row tall enough has three, evenly spaced (`p`), its first and last a row clear of the
     // box's rim; Mandarin, whose characters fill their whole cell, has two, a row further in, and says NEEDS in
     // place of what the thing does, and leaves out where gems are had where the price is on its second line (the
-    // footer says it on a tap).
-    const left = px + 2 * UI.INSET, edge = px + pw - 2 * UI.INSET, nx = left + 16 + UI.GAP, lead = spaced ? 0 : 1;
+    // footer says it on a tap); its two lines a row in where the row is tall enough that they stay LINE_MIN apart.
+    const left = px + 2 * UI.INSET, edge = px + pw - 2 * UI.INSET, nx = left + 16 + UI.GAP, lead = spaced ? 0 : Math.min(1, Math.max(0, (rh - SHOP_RH_MIN) >> 1));
     const p = (rh - 14) >> 1, tall = rh >= 30 && spaced, mid = y => y + 2 + p, bottom = y => y + rh - 12 - lead;
     // (Whether NEEDS is said is one answer for every row on this screen: `needsSaid`.)
     const needs = this.needsSaid(edge - nx), rows = this.shopRows ??= Array.from({ length: SHOP_MOST }, () => ({ y: 0, top: 0, vx: 0, vy: 0, sx: 0, c: null, steps: '', lack: null, wide: false }));
     // Each row's words first, to know whether any row of the tab has a third line: where none has, what the
     // others say is on their last line and not their middle one, so that no row is heavy at its head.
-    let third = false;
+    let third = false, low = false;
     for (let n = 0; n < tab.rows.length; n++) {
       const u = tab.rows[n], r = rows[n], l = S.lv[u.id], c = this.cost(u);
-      r.y = py + UI.HEAD + n * rh; r.top = r.y + 2 + lead; r.vx = left; r.vy = r.y + ((rh - 16) >> 1); r.sx = nx + textWidth(u.name) + 6; r.c = c;
+      r.y = py + UI.HEAD + n * rh; r.top = r.y + 2 + lead; r.vx = left; r.vy = r.y + ((rh - 16) >> 1); r.sx = nx + textWidth(u.name) + UI.GROUP; r.c = c;
       // (A thing fitted once has no levels to show: it is FITTED or it is not. Where the two values are too wide
       // for the line, a word they share is said once, and failing that the next is said alone: `fewer`.)
       let steps = u.values.length === 2 ? (c ? '' : 'FITTED') : c ? `${u.show(u.values[l])}>${u.show(u.values[l + 1])}` : `${u.show(u.values[l])} MAX`;
@@ -2385,12 +2537,17 @@ export class Drawing {
       r.wide = false;
       if (c && !r.lack) {
         const costs = textWidth(price(c.grit)) + (c.gems > 0 ? SHOP_GROUP + textWidth(price(c.gems)) : 0) + (c.spec ? SHOP_GROUP + textWidth(`${this.specs(u.kin)}/${c.spec}`) : 0);
-        r.wide = r.sx + textWidth(steps) + UI.WORD > edge - 9 - UI.GAP - costs;
+        r.wide = r.sx + textWidth(steps) + UI.WORD > edge - ICON_W + 1 - UI.GAP - costs;
       }
       if (r.lack || r.wide) third = true;
+      if (r.wide) low = true;
     }
-    // (What a row says goes on its middle line where any row has three, and else on its last.)
-    const says = y => tall && third ? mid(y) : bottom(y);
+    // (Where any row of a Latin tab has three lines, what each says goes on its middle one, and where any has its
+    // price on its last, every row's price goes there, so that the figures stand in one column at one height; where
+    // none has three, the two lines a row has stand in its middle, a line's pitch apart.)
+    const two = tall && !third, pair = y => y + 1 + ((rh - p - 13) >> 1), says = y => tall && third ? mid(y) : two ? pair(y) + p : bottom(y);
+    if (two) for (let n = 0; n < tab.rows.length; n++) rows[n].top = pair(rows[n].y);
+    if (tall && low) for (let n = 0; n < tab.rows.length; n++) if (rows[n].c && !rows[n].lack) rows[n].wide = true;
     for (let n = 0; n < tab.rows.length; n++) {
       const u = tab.rows[n], r = rows[n], { y, c, top } = r, can = this.canBuy(u), lit = this.bought?.id === u.id, l = S.lv[u.id];
       slice9(ctx, 'ui', lit ? 'button-down' : !c ? 'button-max' : can ? 'button' : 'button-off', px + UI.INSET, y, pw - 2 * UI.INSET, rh - 1);
@@ -2412,7 +2569,7 @@ export class Drawing {
         // enough while the tap would be refused. Each icon at its figure's height (UI.ICON_DY), the grit's ink
         // ending on the column the words end on.
         const cy = r.wide ? bottom(y) : top, grit = price(c.grit);
-        let cx = edge - 9, last = grit;
+        let cx = edge - ICON_W + 1, last = grit;
         draw(ctx, 'icons', 'grit', cx, cy + UI.ICON_DY);
         text(ctx, grit, cx - UI.GAP, cy, this.banked() >= c.grit ? '#ffe14a' : '#ff7a5a', 1);
         if (c.gems > 0) {
@@ -2442,7 +2599,7 @@ export class Drawing {
     const note = this.shopNote && this.shopNote.t > 0 ? this.shopNote : null;
     if (note) note.t -= 1 / 60;
     // (A corner's gems said short where the whole will not fit: js/game.js, `buy`.)
-    if (note) text(ctx, note.short && textWidth(note.text) > pw - 2 * UI.INSET ? note.short : note.text, px + pw / 2, py + ph - SHOP_FOOT + 1, note.color, 0.5);
+    if (note) text(ctx, note.short && textWidth(note.text) > pw - 2 * UI.INSET ? note.short : note.text, px + pw / 2, py + UI.HEAD + rh * SHOP_MOST + 1, note.color, 0.5);
   }
   // Whether the shop's rows say NEEDS before what is still to be found, the same in every row: where the longest
   // that could ever be said fits `room` (each figure at its most and in the widest digit). Worked out once a

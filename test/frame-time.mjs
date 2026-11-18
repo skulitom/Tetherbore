@@ -14,15 +14,28 @@
 //            here swallows every call, so this is the work of the drawing and not what the browser does with it.
 //   --fauna  the game with its creatures (js/fauna.js), and as many as there may be (FAUNA) kept about the drill,
 //            one of every kind set down beside it in turn: what they do is timed with the frame, and what is drawn
-//            of them is the part `fauna`.
-import { makeGame, random, rubbleHash, farStart, wander, UPGRADES, WORKS, MAPS, CORE } from './harness.mjs';
+//            of them is the part `fauna`. And a lord at the ends (js/bosses.js) at its last stage kept up beside the
+//            drill, the four in turn, each raised telling in open ground on the narrowest screen whenever none is up:
+//            it fights about the drill there until it sinks, is leashed (it is far from its lair) and is raised again.
+//            What it does is timed with the frame, and what is drawn of it is in the part `fauna` too (`lords`: how
+//            many were raised; `lordUp`: in what share of the frames one was up).
+import { makeGame, random, rubbleHash, farStart, wander, UPGRADES, WORKS, MAPS, CORE, N, K } from './harness.mjs';
 
 const args = process.argv.slice(2), digest = args.includes('--hash') ? rubbleHash() : null, drawn = args.includes('--draw'), crowd = args.includes('--fauna');
 const [seed = 11, turns = 600, reach = 5, sx = 0, sy = 0] = args.filter(a => !a.startsWith('--')).map(Number);
 Math.random = random(seed + 5);
 const game = await makeGame(seed, { tether: reach, drill: 4 }, { fauna: crowd });
-const KINDS = ['bat', 'moth', 'bee', 'leech', 'spitter', 'puff', 'skink', 'frog', 'beetle', 'jelly', 'salamander', 'wren', 'newt', 'pup'];
-let most = 0;
+const KINDS = ['bat', 'moth', 'bee', 'leech', 'spitter', 'puff', 'skink', 'frog', 'beetle', 'jelly', 'salamander', 'wren', 'newt', 'pup', 'rimeling', 'emberling', 'mireling', 'lodeling'];
+let most = 0, lord = 0, lords = 0, lordUp = 0;
+// An open cell seen three to six cells from the drill, on the narrowest screen, for a lord to be raised in (or -1).
+const lordCell = () => {
+  const B = game.fauna.bosses, d = game.drill, w = game.world;
+  for (let r = 3; r <= 6; r++) for (let a = 0; a < 16; a++) {
+    const x = Math.floor(d.x + Math.cos(a * Math.PI / 8) * r), y = Math.floor(d.y + Math.sin(a * Math.PI / 8) * r);
+    if (w.peek(x, y) === K.EMPTY && B.inView(game, x + 0.5, y + 0.5)) return y * N + x;
+  }
+  return -1;
+};
 if (drawn) {
   for (const u of [...UPGRADES, ...WORKS, ...MAPS, ...CORE]) if (u.id !== 'tether') game.S.lv[u.id] = u.values.length - 1;
   game.over = document.createElement('canvas'); game.overCtx = game.over.getContext('2d'); game.resize(360, 640, 1);
@@ -36,6 +49,12 @@ for (const auto of wander(random(seed), turns)) {
   game.input.auto = auto;
   if (crowd && frames % 20 === 0 && game.fauna.alive < 16) game.fauna.stage(game, KINDS[(frames / 20) % KINDS.length], 8);
   if (crowd) most = Math.max(most, game.fauna.alive);
+  const up = crowd && [0, 1, 2, 3].some(b => game.fauna.bosses.up(b));
+  if (up) lordUp++;
+  if (crowd && frames % 30 === 0 && !up) {
+    const c = lordCell();
+    if (c >= 0) { game.fauna.bosses.stageAs(game, lord, 'tell', 3, c); lord = (lord + 1) % 4; lords++; }
+  }
   rubble = 0;
   const t = performance.now();
   game.update(1 / 60);
@@ -56,5 +75,5 @@ for (const auto of wander(random(seed), turns)) {
 }
 console.log(JSON.stringify({ seed, reach, start: [sx, sy], frames, meanMs: +(total / frames).toFixed(4), worstMs: +worst.toFixed(2), worstAt, over16: over,
   withoutRubble: { meanMs: +(bare / frames).toFixed(4), worstMs: +bareWorst.toFixed(2), worstAt: bareWorstAt, over16: bareOver }, hauls: game.S.stats.hauls, bends: game.band.length, ...digest && { hash: digest.hex },
-  ...crowd && { creatures: most },
+  ...crowd && { creatures: most, lords, lordUp: +(lordUp / frames).toFixed(2) },
   ...drawn && { drawMs: +(draw / frames).toFixed(4), drawParts: Object.fromEntries(Object.entries(parts).map(([name, ms]) => [name, +(ms / frames).toFixed(4)])) } }));

@@ -69,6 +69,8 @@ const one = (name, seconds, sound, ...args) => ({ name, seconds, events: [[0, so
 // (A creature's voice is asked for as `v:` and its name: the module's `voices`, which js/fauna.js asks.)
 const VOICES = ['tick', 'yip', 'coo', 'tug', 'pop', 'flutter', 'wheeze', 'spit', 'splat', 'purr', 'chitter', 'screech', 'whoosh', 'croak', 'squeak', 'caught', 'poof', 'plip', 'slurp', 'skitter', 'trill',
   'buzz', 'glass', 'meet', 'befriend', 'trophy'];
+// (A lord's voice, and how long its row is.)
+const LORDS = [['rumble', 2], ['roar', 1.5], ['groan', 2], ['shard', 1]];
 const every = (gap, count, sound, args = () => [], from = 0) => Array.from({ length: count }, (_, n) => [from + n * gap, sound, ...args(n)]);
 // Three crosses, as rows of the world are (the host's piece with the donor's voice and a structure's change).
 const CROSSES = [{ name: 'hollow thaw', kin: 1, cross: { host: 1, donor: 2, structure: 1 } }, { name: 'banded buzzmire', kin: 3, cross: { host: 3, donor: 4, structure: 4 } },
@@ -111,6 +113,13 @@ const rows = [
   // The voices of the creatures (js/fauna.js): each near the drill and at the edge of hearing.
   ...VOICES.flatMap(v => [one(`voice ${v}`, 1.5, `v:${v}`, 1), one(`voice ${v} far`, 1.5, `v:${v}`, 0.02)]),
   { name: 'burst: a roost of bats woken over a pal', seconds: 3, events: [[0, 'v:chitter', 1], [0.3, 'v:screech', 1], [0.31, 'v:yip', 1], [1, 'v:whoosh', 1], [1.25, 'v:whoosh', 1], [1.5, 'v:whoosh', 1], [1.6, 'knock']] },
+  // The lords (js/bosses.js): each voice of each, the east's, south's, west's and north's, near and at the edge of
+  // hearing; the sting of one beaten; and a fight at a lair, under its ground's music.
+  ...LORDS.flatMap(([v, seconds]) => ['east', 'south', 'west', 'north'].flatMap((lord, d) => [one(`lord ${v} ${lord}`, seconds, `v:${v}`, 1, d), one(`lord ${v} ${lord} far`, seconds, `v:${v}`, 0.02, d)])),
+  one('slain', 4.5, 'slain'),
+  { name: "burst: the north's lord fought, under its music", seconds: 14, music: true, bed: ['glacier', false, 2210], events: [[0, 'v:rumble', 1, 3], [1.5, 'v:roar', 1, 3], [1.52, 'v:yip', 1], [2.6, 'knock'],
+    [4, 'v:groan', 1, 3], [6.5, 'v:roar', 1, 3], [7.5, 'v:roar', 1, 3], [9.5, 'v:groan', 1, 3], [11, 'v:groan', 1, 3], [11.2, 'slain']] },
+  { name: "burst: the east's lord sheds a shard and is hauled", seconds: 6, music: true, bed: ['druse', false, 2210], events: [[0, 'v:roar', 1, 0], [1.2, 'knock'], [1.25, 'v:shard', 1, 0], [3, 'crack', 1, 0], [3.4, 'v:groan', 1, 0]] },
   one('spot bell', 2, 'spot', 'bell'), one('spot vent', 2, 'spot', 'vent'), one('spot worm', 2, 'spot', 'worm'), one('spot lodestone', 2, 'spot', 'lodestone'),
   { name: 'burst: 20 digs in a second', seconds: 2, events: every(0.05, 20, 'dig', n => [1 + (n % 3 === 2)]) },
   { name: 'burst: 60 digs asked in a second', seconds: 2, events: every(1 / 60, 60, 'dig', n => [2, n % 4 ? '' : 'ore']) },

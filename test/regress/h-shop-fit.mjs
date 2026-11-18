@@ -6,8 +6,9 @@
 // fits the line), the prices and their icons, measured as the glyphs and icons are drawn, each line ending on the
 // rows' right column (UI.INSET in from the row's box) and lying inside its row's fill, its lines clear of one
 // another (Mandarin's two a row, a row in from the rim). The reach's row says GROUND SPENT within its line. And
-// STATS, with every row at its last level, every rare hazard and creature met, every shrine and fossil, and
-// thousands of everything, fits above the bar a line a line, and says what the bit and the winch are.
+// STATS, with every row at its last level, every rare hazard and creature met (the four broods, the lords' young,
+// among them: 18 kinds), every lord met and three beaten, every shrine and fossil, and thousands of everything, fits
+// its panel a line a line, and says what the bit and the winch are.
 // The eight levels paid in a corner's gems (js/shop.js: LATE) are among them, short of their gems and not: where
 // they are had is said whole where it fits the line and short where it does not (GEM_SHORT: the Russian of the north
 // east is too wide for the narrowest phone), and the footer's note of a tap refused for want of them too. And the
@@ -67,24 +68,21 @@ const clashes = (gs = glyphs, cs = icons) => {
   return n;
 };
 
-// Where the shop's panel and rows are on a screen H tall (js/drawing.js, `drawShop`, risen): six rows of 32, the
-// header over them and the footer under them, 4 from the top at the least.
-const shopAt = H => {
-  const most = Math.max(...TABS.map(t => t.rows.length)), rh = Math.max(24, Math.min(32, Math.floor((H - 92) / most))), ph = 20 + rh * most + 14;
-  return { most, rh, ph, py: Math.max(4, Math.round((H - 44 - ph) / 2)) };
-};
+// Where the shop's panel and rows are on the screen (js/drawing.js, `shopGeom`, risen): in the frame of the bar's
+// panel, its rows from the header's foot and the footer under them.
+const shopAt = () => { game.shopRise = 1; const { rh, ph, py } = game.shopGeom(); return { rh, ph, py }; };
 // Each row's lines as its glyphs lie, in the language spoken: every glyph's ink and shadow inside the row box's
 // fill, clear of its rim (a capital's ink from its cell's row 1 and its shadow on row 8; a Mandarin character's
 // from row 0, its shadow on row 9), and so every icon's (ink rows 0 to 8); and no two lines of a row that share a
 // column so near that one's ink touches the other's shadow (9 rows apart, and 10 for Mandarin, whose lines then
-// abut).
+// abut). (On a screen too short for rows of SHOP_RH, `rims` false, only that.)
 const zh = lang === 'zh', inkTop = zh ? 0 : 1, inkFoot = zh ? 9 : 8, pitch = zh ? 10 : 9;
-const rowLines = (at, H, n) => {
-  const { rh, py } = shopAt(H);
+const rowLines = (at, H, n, rims = true) => {
+  const { rh, py } = shopAt();
   for (let k = 0; k < n; k++) {
     const y0 = py + 20 + k * rh, own = glyphs.filter(g => g.y >= y0 - 2 && g.y < y0 + rh - 2 && g.w <= 12), marks = icons.filter(c => c.y >= y0 && c.y < y0 + rh);
-    for (const g of own) check(g.y + inkTop >= y0 + 2 && g.y + inkFoot <= y0 + rh - 4, `${at}: row ${k + 1} has a glyph at y ${g.y}, on its rim (its fill ${y0 + 2} to ${y0 + rh - 4})`);
-    for (const c of marks) check(c.y >= y0 + 2 && c.y + 8 <= y0 + rh - 4, `${at}: row ${k + 1} has an icon at y ${c.y}, on its rim (its fill ${y0 + 2} to ${y0 + rh - 4})`);
+    if (rims) for (const g of own) check(g.y + inkTop >= y0 + 2 && g.y + inkFoot <= y0 + rh - 4, `${at}: row ${k + 1} has a glyph at y ${g.y}, on its rim (its fill ${y0 + 2} to ${y0 + rh - 4})`);
+    if (rims) for (const c of marks) check(c.y >= y0 + 2 && c.y + 8 <= y0 + rh - 4, `${at}: row ${k + 1} has an icon at y ${c.y}, on its rim (its fill ${y0 + 2} to ${y0 + rh - 4})`);
     for (const a of own) for (const b of own) if (a.y < b.y && a.x < b.x + b.w && b.x < a.x + a.w) check(b.y - a.y >= pitch, `${at}: row ${k + 1} has lines at y ${a.y} and ${b.y}, ${b.y - a.y} apart where they share columns (${pitch} at the least)`);
   }
 };
@@ -96,6 +94,8 @@ const found = all => {
   S.relics = [all, all, all, all].map(Boolean);
   // (Every corner's shrine and every fossil: STATS says them on a line of its own, and the lamp on the scanner's.)
   S.shrines = [all, all, all, all].map(Number); S.fossils = all ? 15 : 0;
+  // (And every lord at the ends met, three of them beaten: STATS counts them on a line of its own.)
+  S.bosses = all ? 0x7f : 0;
   S.wrecks = all ? new Array(8).fill(1) : [];
   S.met = all ? Object.fromEntries(Array.from({ length: 40 }, (_, n) => [`place${n}`, 1])) : { crust: 1 };
   S.fauna = all ? { met: Object.fromEntries(Array.from({ length: KINDS }, (_, n) => [`kind${n}`, 1])), pal: { fed: 3 } } : undefined;
@@ -123,28 +123,59 @@ for (const [cssW, cssH] of [[320, 568], [360, 640]]) {
       const n = clashes();
       check(n === 0, `${at}: ${n} glyphs run into another glyph or an icon`);
       rowLines(at, H, tab.rows.length);
+      // (A Latin row's price on its first line or its last, the same in every row of the tab that shows one, so that
+      // the figures stand in one column at one height.)
+      const priced = tab.rows.map((u, n) => game.shopRows[n]).filter(r => r.c && !r.lack);
+      if (!zh) check(new Set(priced.map(r => r.wide)).size <= 1, `${at}: the tab's prices stand on two lines, ${priced.map(r => r.wide ? 'last' : 'first')}`);
     }
   }
-  // STATS, with everything there is.
+  stats(W, H);
+}
+// STATS, with everything there is, on a screen W x H.
+function stats(W, H) {
   for (const u of TABS.flatMap(t => t.rows)) S.lv[u.id] = u.values.length - 1;
   // (And specimens by the hundred thousand, each said as the bar says it.)
   found(true); hold(true); S.out = 2300; S.rare = { bell: 1, vent: 1, worm: 1, lodestone: 1 }; S.spec = [0, 123456, 98765, 4567, 890123];
   game.shop = false; game.openLab(true, 'stats'); game.labRise = 1;
   glyphs.length = 0; icons.length = 0; game.render();
   // (Its frame the lab's, as every tab's is: its lines from the header's foot to a row over the frame's, no more
-  // than 20 of them so that they are UI.LINE_MIN apart at the least, a Mandarin line clear of the next; each line in
-  // the panel's columns, 8 in from its sides, and inside its fill.)
-  const rows = game.stats(), pitch = game.statsPitch(rows.length), g = game.labGeom(), sw = g.pw, sx = g.px;
-  check(rows.length <= 20 && UI.HEAD + rows.length * pitch + 6 <= g.ph && g.py >= UI.EDGE && g.py + g.ph <= H - 44 - UI.EDGE, `${W}x${H}: STATS has ${rows.length} lines at ${pitch} pixels, which do not fit its panel (${g.ph} tall at y ${g.py}) above the bar`);
+  // than 20 of them so that they are UI.LINE_MIN apart at the least, a Mandarin line clear of the next, in two
+  // columns where the frame has them; each line in its column, 8 in from its sides, and inside the panel's fill.)
+  const rows = game.stats(), pitch = game.statsPitch(rows.length), g = game.labGeom(), sw = g.cw, per = Math.ceil(rows.length / g.cols);
+  check(rows.length <= 20 && UI.HEAD + per * pitch + 6 <= g.ph && g.py >= UI.EDGE && g.py + g.ph <= H - UI.BAR - UI.EDGE, `${W}x${H}: STATS has ${rows.length} lines at ${pitch} pixels in ${g.cols} columns, which do not fit its panel (${g.ph} tall at y ${g.py}) above the bar`);
   check(pitch >= UI.LINE_MIN, `${W}x${H}: STATS's lines are ${pitch} apart, fewer than ${UI.LINE_MIN}`);
-  for (const r of runs()) check(r.x >= sx + 8 && r.x + r.w <= sx + sw - 8, `${W}x${H}: STATS has a line at y ${r.y} from x ${r.x} to ${r.x + r.w}, past the panel's columns (${sx + 8} to ${sx + sw - 8})`);
+  const cols = g.cols === 2 ? [g.px, g.px + g.pw - g.cw] : [g.px];
+  for (const r of runs()) check(cols.some(sx => r.x >= sx + 8 && r.x + r.w <= sx + sw - 8), `${W}x${H}: STATS has a line at y ${r.y} from x ${r.x} to ${r.x + r.w}, past the panel's columns (${cols.map(sx => `${sx + 8} to ${sx + sw - 8}`)})`);
   for (const r of runs()) check(r.y >= g.py + UI.HEAD && r.y + 10 <= g.py + g.ph - 3, `${W}x${H}: STATS has a line at y ${r.y}, outside the panel's fill under its header (${g.py + UI.HEAD} to ${g.py + g.ph - 3})`);
   check(clashes() === 0, `${W}x${H}: in STATS a name runs into its value`);
   for (const [name, value] of rows) check(textWidth(name) + UI.WORD + textWidth(value) <= sw - 16, `${W}x${H}: STATS's ${name} and '${value}' come within ${UI.WORD} pixels of each other`);
+  check(rows.some(([name, value]) => name === 'LORDS' && value === '3/4') && rows.some(([name, value]) => name === 'HULL' && / MEND [0-9]/.test(value)) && !rows.some(([name]) => name === 'MENDS'), `${W}x${H}: with the lords met and a rare hazard, STATS does not count the lords and say the mender on the hull's line: ${JSON.stringify(rows.filter(([name]) => /^(LORDS|HULL|MENDS)/.test(name)))}`);
   check(rows.some(([name, value]) => name === 'RARES' && ['KNOCK/BITE, x4 LIVE', 'KNOCK/BITE x4 LIVE', 'x4 LIVE'].includes(value)) && rows.some(([name, value]) => name.startsWith('SPEC') && value.startsWith('123K/98K/4.5K/890K')), `${W}x${H}: STATS says the rare hazards and the specimens as ${JSON.stringify(rows.filter(([name]) => /^(RARES|SPEC)/.test(name)))}`);
   check(new Set(rows.map(([name]) => name)).size === rows.length, `${W}x${H}: STATS names a line twice: ${rows.map(([name]) => name)}`);
+  check(KINDS === 18 && rows.some(([name, value]) => name === 'MET' && (value.endsWith(` ${KINDS}/${KINDS} BEASTS`) || value.endsWith(` ${KINDS} BEASTS`))), `${W}x${H}: STATS does not count every creature met, the broods among them (${KINDS} kinds, said whole or short as the line allows): ${rows.find(([name]) => name === 'MET')}`);
   game.openLab(false);
-  console.log(`${W}x${H}: STATS at its fullest is ${rows.length} lines of ${pitch} pixels: ${rows.map(([name, value]) => `${name} ${value}`).join(' | ')}`);
+  console.log(`${W}x${H}: STATS at its fullest is ${rows.length} lines of ${pitch} pixels in ${g.cols} column${g.cols > 1 ? 's' : ''}: ${rows.map(([name, value]) => `${name} ${value}`).join(' | ')}`);
+}
+// And on a screen held sideways too short for STATS in one column (a laptop's window, 1366 x 768 at one pixel to
+// the game's, and shorter): in two, inside the panel. And there the shop's rows, as short as they go, their two
+// Mandarin lines LINE_MIN apart; and on every screen the shop in the frame of the bar's panel, its header where that
+// panel's is.
+for (const [cssW, cssH] of [[912, 512], [740, 460]]) {
+  game.resize(cssW, cssH, 1);
+  stats(game.W, game.H);
+  for (const tab of TABS) for (const l of [0, 9]) {
+    for (const u of tab.rows) S.lv[u.id] = Math.min(l, u.values.length - 1);
+    found(false); hold(false);
+    game.shop = true; game.shopRise = 1; game.shopTab = tab.id; game.lab = false;
+    glyphs.length = 0; icons.length = 0; game.render();
+    rowLines(`${game.W}x${game.H}, ${tab.name} at level ${l}`, game.H, tab.rows.length, false);
+  }
+}
+for (const [cssW, cssH] of [[320, 568], [360, 640], [1280, 720], [412, 915], [912, 512]]) {
+  game.resize(cssW, cssH, 1);
+  game.shopRise = 1; game.labRise = 1;
+  const s = game.shopGeom(), g = game.labGeom();
+  check(s.px === g.px && s.pw === g.pw && s.py === g.py && s.ph >= g.ph, `${game.W}x${game.H}: the shop stands at (${s.px}, ${s.py}) ${s.pw} wide, the bar's panel at (${g.px}, ${g.py}) ${g.pw} wide`);
 }
 
 // The moment a level is bought, its new value stamped twice the size for the first frames: within the line, or
@@ -192,7 +223,7 @@ for (const [cssW, cssH] of [[320, 568], [360, 640]]) {
     check(game.cost(reach)?.grit === 1, `${at}: the next reach costs ${game.cost(reach)?.grit}, not next to nothing`);
     // (Said on the row's second or third line; in Mandarin, which has two, NEEDS takes its place where more must be
     // found first.)
-    const said = [...tr('GROUND SPENT: CHEAPER')].filter(ch => ch !== ' ').length, { rh, py } = shopAt(H), y0 = py + 20 + TABS[0].rows.indexOf(reach) * rh;
+    const said = [...tr('GROUND SPENT: CHEAPER')].filter(ch => ch !== ' ').length, { rh, py } = shopAt(), y0 = py + 20 + TABS[0].rows.indexOf(reach) * rh;
     const lines = [...new Set(glyphs.filter(g => g.y > y0 + 4 && g.y < y0 + rh).map(g => g.y))];
     if (!zh || !game.lacks(reach)) check(lines.some(y => glyphs.filter(g => g.y === y).length === said), `${at}: GROUND SPENT was not said on the reach's row`);
     for (const r of runs()) check(r.x >= px + 4 && r.x + r.w <= px + pw - 8, `${at}: a line of ${r.n} letters at y ${r.y} runs from x ${r.x} to ${r.x + r.w}, past the rows' column (${px + 4} to ${px + pw - 8})`);
@@ -222,7 +253,7 @@ for (const [cssW, cssH] of [[320, 568], [360, 640]]) {
   game.resize(cssW, cssH, 1);
   const { W, H } = game, pw = Math.min(W - 8, 200), px = Math.round((W - pw) / 2);
   // (Where the footer's line is: js/drawing.js, `drawShop`, risen.)
-  const { rh, ph, py } = shopAt(H), foot = py + ph - 13;
+  const { rh, py } = shopAt(), foot = py + UI.HEAD + rh * Math.max(...TABS.map(t => t.rows.length)) + 1;
   for (const [u, l, gem] of moved) {
     for (const v of TABS.flatMap(t => t.rows)) S.lv[v.id] = 0;
     S.lv[u.id] = l; found(true); hold(true);

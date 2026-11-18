@@ -637,8 +637,19 @@ const stings = {
     line([5, 7, 8, 10, 12].map(note), 0.12, { gain: 0.07, ring: 1, delay: 0.3 });
     noise(1.4, { type: 'highpass', freq: 6500, gain: 0.014, attack: 0.3, delay: 0.4, out: space });
   },
+  // A lord beaten (js/game.js: `lordBeaten`): it falls (a heavy blow and its rubble running down), and over the
+  // music stepped well back a shrine's chord swells and the scale runs up two octaves to ring at the top, longer
+  // and higher than a shrine's.
+  slain() {
+    hush(0.3, 3.5);
+    tone(vary(160, 0.03), 0.5, { gain: 0.24, to: 55, kick: 440, out: room });
+    noise(1.1, { type: 'lowpass', freq: 1000, to: 110, q: 0.6, gain: 0.2, out: room });
+    for (const [n, step] of [5, 7, 8].entries()) tone(note(step), 3 - 0.2 * n, { type: 'choir', gain: 0.032, attack: 0.3 + 0.08 * n, delay: 0.35 + 0.06 * n, out: space });
+    line([5, 7, 8, 10, 12, 13, 15].map(note), 0.11, { gain: 0.075, ring: 1.3, delay: 0.45 });
+    tone(note(0), 3, { type: 'keys', gain: 0.05, attack: 0.3, delay: 0.35, out: space });
+  },
 };
-Object.assign(GAP, { thaw: 0.15, glass: 0.1, burn: 0.2, rime: 0.15, zip: 0.06, resonate: 0.5, shrine: 1 });
+Object.assign(GAP, { thaw: 0.15, glass: 0.1, burn: 0.2, rime: 0.15, zip: 0.06, resonate: 0.5, shrine: 1, slain: 2 });
 for (const name of Object.keys(stings)) sfx[name] = sound(name, stings[name]);
 // The wind of the deep's halls, and the heat of a caldera's thermals: one layer that sounds for as long as the game
 // does, once it has been asked for, its loudness and its colour following the flow of the air where the drill is
@@ -688,7 +699,15 @@ export const windNow = () => gale ? { level: gale.level, heat: gale.heat } : nul
 // edge of hearing and 1 beside the drill, and whatever a voice is asked with it makes its sound. None but a warning
 // is made when many layers are sounding already.
 const VOICE_GAP = { tick: 0.4, yip: 0.25, coo: 0.15, tug: 0.3, pop: 0.2, flutter: 3, wheeze: 0.6, spit: 0.3, splat: 0.2, purr: 3, chitter: 2, screech: 0.4,
-  whoosh: 0.15, croak: 2, squeak: 0.5, caught: 0.5, poof: 0.3, plip: 0.12, slurp: 1.5, skitter: 1, trill: 0.8, buzz: 3, glass: 4, meet: 1.5, befriend: 1, trophy: 0.5 };
+  whoosh: 0.15, croak: 2, squeak: 0.5, caught: 0.5, poof: 0.3, plip: 0.12, slurp: 1.5, skitter: 1, trill: 0.8, buzz: 3, glass: 4, meet: 1.5, befriend: 1, trophy: 0.5,
+  rumble: 2, roar: 0.35, groan: 0.5, shard: 0.5 };
+// The lords at the ends of the axes (js/bosses.js asks for them as it asks the creatures', and says which lord:
+// `lord` its direction, 0 east, 1 south, 2 west, 3 north, and the north's for what is no number). Each stands on
+// its direction's own root, the root of the lode's, the ember's, the mire's and the frost's pieces, so it is heard
+// in its own key whatever ground it is met in, and each has a grain of its own: the Crystal King hums as glass
+// does, the Magma Behemoth grinds, the Spore Mother creaks wetly, the Frost Wyrm cracks.
+const LORD_ROOT = [220, 147, 196, 330];
+const lordOf = lord => Math.round(figure(lord, 3, 0, 3));
 const calls = {
   // A beetle tucking in: two dry ticks.
   tick(near) { if (crowded()) return; const a = loud(near); grains(2, 0.08, { first: 0.03 * a, gain: 0.025 * a, freq: 3800 }); },
@@ -744,6 +763,83 @@ const calls = {
     noise(0.04, { type: 'highpass', freq: 3200, gain: 0.03 });
     tone(f * 1.5, 0.14, { type: 'triangle', gain: 0.04, delay: 0.03 });
     tone(f, 0.3, { type: 'sine', gain: 0.045, delay: 0.15, out: space });
+  },
+  // A lord asleep near, or swimming under the rock: a rumble, the life of the place (it gives way when many layers
+  // sound). The King's is two glass notes over his root, an octave and a twelfth up, the first beating against a
+  // note a shade off it; the Behemoth's a low saw grinding under rubble; the Mother's a slow creak that ends in a
+  // wet blub; the Wyrm's the ground's own rumble with ice cracking in it.
+  rumble(near, lord) {
+    if (crowded()) return;
+    const a = loud(near), b = lordOf(lord), r = LORD_ROOT[b];
+    if (b === 0) {
+      tone(r * 2, 1.4, { type: 'glass', gain: 0.04 * a, attack: 0.5, out: room });
+      tone(r * 2 * 1.006, 1.4, { type: 'sine', gain: 0.03 * a, attack: 0.6, out: room });
+      tone(r * 3, 1, { type: 'sine', gain: 0.015 * a, attack: 0.5, delay: 0.2, out: space });
+    } else if (b === 1) {
+      tone(vary(r / 2, 0.05), 1.3, { type: 'sawtooth', gain: 0.07 * a, to: r * 0.45, lp: 400, lpTo: 220, attack: 0.5, out: room });
+      noise(1.2, { type: 'lowpass', freq: 180, to: 320, q: 0.8, gain: 0.12 * a, attack: 0.6, out: room });
+      grains(10, 1.1, { gain: 0.035 * a, freq: 650, q: 2, type: 'bandpass', out: room });
+    } else if (b === 2) {
+      tone(vary(r * 0.75, 0.08), 0.9, { type: 'sawtooth', gain: 0.055 * a, to: r * 0.6, lp: 800, lpTo: 380, attack: 0.25, out: room });
+      noise(1, { type: 'lowpass', freq: 260, to: 480, q: 1.2, gain: 0.11 * a, attack: 0.45, out: room });
+      tone(vary(r * 1.25, 0.06), 0.22, { type: 'sine', gain: 0.04 * a, to: r * 0.6, delay: 0.75 });
+    } else {
+      noise(1.2, { type: 'lowpass', freq: 140, to: 280, q: 0.8, gain: 0.13 * a, attack: 0.6, out: room });
+      tone(r / 3, 1.2, { type: 'sine', gain: 0.06 * a, to: r * 0.3, attack: 0.6, out: room });
+      grains(6, 0.9, { first: 0.035 * a, gain: 0.045 * a, freq: 3000, q: 1.5, type: 'bandpass', delay: 0.25, out: room });
+    }
+  },
+  // A lord's tell begins (a warning: it always sounds, with the pal's yip). The King: his glass note and the
+  // tritone over it, a saw on his root under them and a shimmer rising; the Behemoth: a deep roar that grinds; the
+  // Mother: a creaking moan, a gurgle opening and a blub; the Wyrm: a roar with a crack in it and a cold whistle.
+  roar(near, lord) {
+    const a = loud(near), b = lordOf(lord), r = LORD_ROOT[b];
+    if (b === 0) {
+      tone(r * 2, 0.75, { type: 'glass', gain: 0.07 * a, attack: 0.12, out: space });
+      tone(r * 2 * 1.414, 0.65, { type: 'sine', gain: 0.035 * a, attack: 0.15, delay: 0.03, out: room });
+      tone(r, 0.7, { type: 'sawtooth', gain: 0.05 * a, to: r * 0.94, lp: 900, lpTo: 400, attack: 0.1 });
+      noise(0.6, { type: 'highpass', freq: 3500, to: 6500, q: 0.7, gain: 0.025 * a, attack: 0.3 });
+    } else if (b === 1) {
+      tone(vary(r * 0.75, 0.04), 0.8, { type: 'sawtooth', gain: 0.12 * a, to: r * 0.55, lp: 1100, lpTo: 300, attack: 0.08, out: room });
+      noise(0.7, { type: 'lowpass', freq: 700, to: 200, q: 0.8, gain: 0.14 * a, attack: 0.06, out: room });
+      grains(8, 0.6, { first: 0.08 * a, gain: 0.06 * a, freq: 900, q: 2, type: 'bandpass', out: room });
+    } else if (b === 2) {
+      tone(vary(r * 1.1, 0.04), 0.75, { type: 'sawtooth', gain: 0.1 * a, to: r * 0.75, lp: 1200, lpTo: 500, attack: 0.1, out: room });
+      noise(0.55, { freq: 450, to: 1300, q: 4, gain: 0.08 * a, attack: 0.12 });
+      tone(r * 1.6, 0.2, { type: 'sine', gain: 0.05 * a, to: r * 0.8, delay: 0.45 });
+    } else {
+      tone(vary(r / 2, 0.04), 0.8, { type: 'sawtooth', gain: 0.1 * a, to: r * 0.36, lp: 1400, lpTo: 450, attack: 0.07, out: room });
+      noise(0.7, { freq: 900, to: 380, q: 1.2, gain: 0.1 * a, attack: 0.06, out: room });
+      grains(5, 0.4, { first: 0.09 * a, gain: 0.06 * a, freq: 3200, q: 1.2, type: 'bandpass' });
+      tone(r * 4, 0.5, { type: 'sine', gain: 0.02 * a, to: r * 3, attack: 0.1, out: space });
+    }
+  },
+  // A blow lands on a lord: a thump, and a groan falling an octave from under its root; then the King's glass
+  // breaking, the Behemoth's slag sliding, the Mother's blub and gurgle, the Wyrm's ice cracking.
+  groan(near, lord) {
+    const a = loud(near), b = lordOf(lord), r = LORD_ROOT[b];
+    tone(vary(150, 0.05), 0.18, { gain: 0.2 * a, to: 60, kick: 380, out: room });
+    tone(vary(r * 0.9, 0.04), 1, { type: 'sawtooth', gain: 0.09 * a, to: r * 0.45, lp: 1000, lpTo: 260, attack: 0.05, out: room });
+    if (b === 0) {
+      grains(8, 0.5, { first: 0.06 * a, gain: 0.05 * a, freq: 6000, out: space });
+      tone(r * 4, 0.6, { type: 'glass', gain: 0.03 * a, to: r * 3.8, delay: 0.05, out: space });
+    } else if (b === 1) {
+      noise(0.7, { type: 'lowpass', freq: 500, to: 120, q: 0.7, gain: 0.15 * a, delay: 0.05, out: room });
+    } else if (b === 2) {
+      tone(r * 1.4, 0.3, { type: 'sine', gain: 0.045 * a, to: r * 0.5, delay: 0.3 });
+      noise(0.5, { freq: 300, to: 900, q: 4, gain: 0.05 * a, attack: 0.1, delay: 0.1 });
+    } else {
+      grains(7, 0.5, { first: 0.1 * a, gain: 0.06 * a, freq: 3000, q: 1.2, type: 'bandpass', out: room });
+    }
+  },
+  // A shard breaks from the King's crown: a glass tick, a bell's two partials high over his root, and the clack of
+  // it landing.
+  shard(near, lord) {
+    const a = loud(near), f = LORD_ROOT[lordOf(lord)] * 8;
+    noise(0.02, { type: 'highpass', freq: 5000, gain: 0.05 * a, attack: 0.001 });
+    tone(f, 0.35, { type: 'sine', gain: 0.04 * a, attack: 0.002, out: space });
+    tone(f * 2.76, 0.15, { type: 'sine', gain: 0.018 * a, attack: 0.002, delay: 0.005, out: space });
+    tone(f / 2, 0.05, { type: 'triangle', gain: 0.03 * a, to: f * 0.35, delay: 0.07 });
   },
 };
 // (Their least gaps are kept apart from the game's own, under names of their own.)

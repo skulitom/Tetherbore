@@ -288,7 +288,8 @@ const drawn = (game, what) => { try { game.render(); } catch (error) { fails.pus
   const all = says(game.S.rare), one = says({ worm: 1 }), knocks = says({ bell: 1, lodestone: 1 });
   check(all.RARES === 'KNOCK/BITE' && one.WORMS === 'BITE' && !one.RARES && knocks.RARES === 'KNOCK' && !knocks.BELLS, `the panel says ${JSON.stringify([all.RARES, one.WORMS, knocks.RARES])}`);
   game.resize(360, 640, 1); game.openLab(true, 'stats'); drawn(game, 'the panel'); game.openLab(false);
-  check(20 + game.stats().length * game.statsPitch(game.stats().length) + 8 <= game.H - 48, `${game.stats().length} lines of the panel do not fit above the bar`);
+  // (Its lines, in as many columns as the panel's frame has, from the header's foot to a row over the frame's own.)
+  { game.labRise = 1; const g = game.labGeom(), n = game.stats().length, pitch = game.statsPitch(n); check(20 + Math.ceil(n / g.cols) * pitch + 6 <= g.ph && g.py + g.ph <= game.H - 48 && pitch >= 10, `${n} lines of the panel ${pitch} apart do not fit its frame, ${g.ph} tall at y ${g.py}`); }
   game.mapFor = null; game.drawMap(0, 0);
   // (The pixel of the map that shows each heart, asked as the map asks it.)
   const per = game.val('maprange'), size = 46, px = game.mapData.data, mx0 = Math.floor(d.x) + 0.5, my0 = Math.floor(d.y) + 0.5;

@@ -712,7 +712,7 @@ export class Fitter {
     }
     const b = this.banner;
     if (b.t > 0 && !game.shop && !game.lab) {
-      const age = b.life - b.t, pop = Math.min(1, age / 0.12), y = Math.round((H - 44) / 2 + 30 + (1 - pop) * 6);
+      const age = b.life - b.t, pop = Math.min(1, age / 0.12), y = Math.round((H - UI.BAR) / 2 + 30 + (1 - pop) * 6);
       // (Its title at size 2 where that fits the screen, else 1, and what it says under that on as many lines as it
       // takes: laid out once a banner, and again only if the screen changes.)
       if (b.W !== W) { const room = W - 2 * UI.EDGE; b.W = W; b.big = textWidth(b.title, 2) > room ? 1 : 2; b.subs = b.sub ? wrap(b.sub, room) : null; }

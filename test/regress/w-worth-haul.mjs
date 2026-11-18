@@ -98,18 +98,20 @@ check(b.topAt === 14 && b.topW <= game.W - 8 && b.topW > 40 && game.bannerHead()
 const room = { ...b, splitW: 0 };
 game.bannerSplit(room);
 check(room.topAt === 14, 'a plain banner has no room for what paid most');
-// (Three lines of gems, a prism's line and a word more: it would reach the drill; two lines and a prism's: room.)
+// (Three lines of gems, a prism's line and a word more: over the drill it would reach it, and it stands under it
+// with all of that; two lines and a prism's: room over it.)
 const every = { ...b, gems: [0, 9e5, 9e5, 9e5, 9e5, 9e5, 9e5, 9e5, 9e5], shine: 2, sub: 'THE WINCH IS CRYING', splitW: 0 };
 game.bannerSplit(every);
-check(every.breaks.length === 3 && every.topAt === 0, `a banner of three lines of gems, a prism and a word more still says what paid most: ${every.breaks}, ${every.topAt}`);
+check(every.breaks.length === 3 && every.below && every.topAt === 14 && every.y >= drillTop(400) + 16 + UI.DRILL_CLEAR && every.y + every.foot <= 400 - 44 - UI.EDGE, `a banner of three lines of gems, a prism and a word more does not stand under the drill saying what paid most: ${every.breaks}, ${every.below}, ${every.topAt} at ${every.y}`);
 const two = { ...every, gems: [0, 9e5, 9e5, 9e5, 9e5, 9e5, 0, 0, 0], sub: null, splitW: 0 };
 game.bannerSplit(two);
-check(two.breaks.length === 2 && two.topAt === 14, `a banner of two lines of gems and a prism has no room for what paid most: ${two.breaks}, ${two.topAt}`);
+check(two.breaks.length === 2 && !two.below && two.topAt === 14 && two.y + two.foot <= drillTop(400) - UI.DRILL_CLEAR, `a banner of two lines of gems and a prism has no room for what paid most: ${two.breaks}, ${two.topAt}`);
 
 // ---- the gems on the narrowest phones: every gem at 900K, grit at 9.9B and 30 specimens, with and without a pocket's
 // mineral, laid within the screen less EDGE each side on every line, a line GROUP between groups, on no more than
 // three lines (four at 160 with the specimens: no line there holds more than three of those groups); and the
-// banner's foot, which what stands under it is set by, the foot of what is drawn
+// banner's foot, which what stands under it is set by, the foot of what is drawn under its title's top (`y`: under the
+// map, or under the drill where it does not fit over it)
 {
   // (Each glyph's shadow, a row and a column down from it, left out: a line's foot is its cell's, LINE_MIN under it.)
   const { sheets, tinted } = await import('../../js/atlas.js'), SHADOW = tinted('font', '#0c0a12');
@@ -134,9 +136,9 @@ check(two.breaks.length === 2 && two.topAt === 14, `a banner of two lines of gem
       check(bn.breaks.length <= most && bn.lws.length === bn.breaks.length, `${what}: the gems take ${bn.breaks.length} lines`);
       for (const lw of bn.lws) check(lw <= cw - 2 * UI.EDGE, `${what}: a line of gems ${lw} wide on a screen ${cw} wide`);
       // (What was drawn of them: within the screen, EDGE in.)
-      const y0 = game.bannerHead() - 8, left = Math.min(...items.map(i => i.x)), right = Math.max(...items.map(i => i.x + i.w)), foot = Math.max(...items.map(i => i.y + i.h));
+      const y0 = bn.y - 8, left = Math.min(...items.map(i => i.x)), right = Math.max(...items.map(i => i.x + i.w)), foot = Math.max(...items.map(i => i.y + i.h));
       check(left >= UI.EDGE - 1 && right <= cw - UI.EDGE, `${what}: the banner is drawn from ${left} to ${right}`);
-      check(foot - game.bannerHead() === bn.foot, `${what}: the banner's foot is ${bn.foot} under its head, and what is drawn of it ends ${foot - game.bannerHead()} under`);
+      check(foot - bn.y === bn.foot, `${what}: the banner's foot is ${bn.foot} under its title's top, and what is drawn of it ends ${foot - bn.y} under`);
       check(items.every(i => i.y >= y0), `${what}: something of the banner is drawn over it`);
     }
   }

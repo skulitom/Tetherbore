@@ -54,8 +54,10 @@ export const worthSaid = ({ x, gems, spec, lump, home }) => {
 // its type's first ground's; steel the south's; a key's iron an ordinary ground's; a pocket's mineral its pocket's.
 // A cross's rich ore, which is no other ground's, is its pair's first cross's (a quarter more than its host, as every
 // cross of the pair pays). A shrine's stone, vault, is said for the deep seam the shrine lies in, and the builders'
-// stone for an ordinary ground, as a key's iron is (their halls lie in whatever ground is there, most of it the
-// deep flanks, which pay twice that; the line does not say).
+// stone for an ordinary ground, as a key's iron is (their halls lie in whatever ground is there: on world 7 about
+// two fifths of their walls in grounds paying 1.8 to 2, a fifth in ground paying 1, a quarter in 1.2 to 1.25, and
+// one in twenty or so in the strains under 1, loess, firn and scoria, where a wall pays x8.5 to 9.5 and not the x10
+// said; the line does not say).
 const ORDINARY = () => BIOMES.filter(r => r && !r.cross && !r.pocket && r.lay !== undefined);
 const placeOf = key => {
   const rows = ORDINARY(), found = rows.filter(r => r.oreKeys?.includes(key));
