@@ -1948,14 +1948,15 @@ export class Game {
   }
   // The panel is opened and shut by a tap on the bar: at the tab it was left at, or at the lab's notes just after
   // something was analysed (at the thing last learnt about); a tap on the map names the chart's tab itself. The
-  // lab's list opens with the thing chosen in the middle of its window, as near as the ends allow.
+  // lab's list opens with the thing chosen in the middle of its window, as near as the ends allow and on the lines'
+  // pitch, so that no line is cut under the head held at its top.
   openLab(open, tab) {
     this.lab = open; this.shop = false; this.chartTouch.clear(); this.langOpen = false;
     this.labTouch = null; this.labVel = 0; this.labAim = null; this.labHeld = null;
     if (open) {
       this.labSel ??= (LAB.find(e => this.S.lab[e.key]) ?? LAB[0]).key; this.labTab = tab ?? (this.labFlash > 0 ? 'lab' : this.labTab);
       const g = this.labGeom(), i = Math.max(0, LAB.findIndex(e => e.key === this.labSel));
-      this.labScroll = this.labPrev = Math.max(0, Math.min(g.most, LAB_LIST.at[i] + LAB_RH / 2 - g.view / 2));
+      this.labScroll = this.labPrev = Math.max(0, Math.min(g.most, LAB_RH * Math.round((LAB_LIST.at[i] + LAB_RH / 2 - g.view / 2) / LAB_RH)));
     }
     sfx.tap();
   }
@@ -1965,11 +1966,12 @@ export class Game {
     return -1;
   }
   // The list eases to show thing i's line whole, below the head held at the top of the window (and with its part's
-  // head too, where it is the first of its part): it does not move where the line is in view already.
+  // head too, where it is the first of its part), on the lines' pitch where the end allows: it does not move where the
+  // line is in view already.
   labReveal(i) {
     const g = this.labGeom(), y = LAB_LIST.at[i], top = y - LAB_SEC, from = this.labAim ?? this.labScroll;
     let aim = from;
-    if (top < from) aim = top; else if (y + LAB_RH > from + g.view) aim = y + LAB_RH - g.view;
+    if (top < from) aim = top; else if (y + LAB_RH > from + g.view) aim = LAB_RH * Math.ceil((y + LAB_RH - g.view) / LAB_RH);
     aim = Math.max(0, Math.min(g.most, aim));
     this.labAim = aim === this.labScroll ? null : aim; this.labVel = 0;
   }

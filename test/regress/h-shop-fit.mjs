@@ -24,7 +24,7 @@ const make = document.createElement;
 document.createElement = () => { const c = make(); const ctx = c.getContext('2d'); c.getContext = () => new Proxy(ctx, { set: (t, k, v) => { if (k === 'fillStyle') c.tint = v; t[k] = v; return true; } }); return c; };
 const { makeGame, B } = await import('../harness.mjs');
 const { TABS, LAB, CORE, ROWS } = await import('../../js/shop.js');
-const { GEM_ICON, GEM_SHORT, compact } = await import('../../js/drawing.js');
+const { GEM_ICON, GEM_SHORT, compact, UI } = await import('../../js/drawing.js');
 const { KINDS } = await import('../../js/fauna.js');
 const { sheets, textWidth } = await import('../../js/atlas.js');
 const { lang, tr } = await import('../../js/lang.js');
@@ -127,14 +127,21 @@ for (const [cssW, cssH] of [[320, 568], [360, 640]]) {
   }
   // STATS, with everything there is.
   for (const u of TABS.flatMap(t => t.rows)) S.lv[u.id] = u.values.length - 1;
-  found(true); hold(true); S.out = 2300; S.rare = { bell: 1, vent: 1, worm: 1, lodestone: 1 };
+  // (And specimens by the hundred thousand, each said as the bar says it.)
+  found(true); hold(true); S.out = 2300; S.rare = { bell: 1, vent: 1, worm: 1, lodestone: 1 }; S.spec = [0, 123456, 98765, 4567, 890123];
   game.shop = false; game.openLab(true, 'stats'); game.labRise = 1;
   glyphs.length = 0; icons.length = 0; game.render();
-  const rows = game.stats(), pitch = game.statsPitch(rows.length), sw = Math.min(W - 8, 200), sx = Math.round((W - sw) / 2);
-  check(rows.length <= 23 && 20 + rows.length * pitch + 8 <= H - 48, `${W}x${H}: STATS has ${rows.length} lines at ${pitch} pixels, which do not fit above the bar`);
-  for (const r of runs()) check(r.x >= sx + 4 && r.x + r.w <= sx + sw - 4, `${W}x${H}: STATS has a line at y ${r.y} from x ${r.x} to ${r.x + r.w}, past the panel (${sx + 4} to ${sx + sw - 4})`);
+  // (Its frame the lab's, as every tab's is: its lines from the header's foot to a row over the frame's, no more
+  // than 20 of them so that they are UI.LINE_MIN apart at the least, a Mandarin line clear of the next; each line in
+  // the panel's columns, 8 in from its sides, and inside its fill.)
+  const rows = game.stats(), pitch = game.statsPitch(rows.length), g = game.labGeom(), sw = g.pw, sx = g.px;
+  check(rows.length <= 20 && UI.HEAD + rows.length * pitch + 6 <= g.ph && g.py >= UI.EDGE && g.py + g.ph <= H - 44 - UI.EDGE, `${W}x${H}: STATS has ${rows.length} lines at ${pitch} pixels, which do not fit its panel (${g.ph} tall at y ${g.py}) above the bar`);
+  check(pitch >= UI.LINE_MIN, `${W}x${H}: STATS's lines are ${pitch} apart, fewer than ${UI.LINE_MIN}`);
+  for (const r of runs()) check(r.x >= sx + 8 && r.x + r.w <= sx + sw - 8, `${W}x${H}: STATS has a line at y ${r.y} from x ${r.x} to ${r.x + r.w}, past the panel's columns (${sx + 8} to ${sx + sw - 8})`);
+  for (const r of runs()) check(r.y >= g.py + UI.HEAD && r.y + 10 <= g.py + g.ph - 3, `${W}x${H}: STATS has a line at y ${r.y}, outside the panel's fill under its header (${g.py + UI.HEAD} to ${g.py + g.ph - 3})`);
   check(clashes() === 0, `${W}x${H}: in STATS a name runs into its value`);
-  for (const [name, value] of rows) check(textWidth(name) + 4 + textWidth(value) <= sw - 16, `${W}x${H}: STATS's ${name} and '${value}' come within four pixels of each other`);
+  for (const [name, value] of rows) check(textWidth(name) + UI.WORD + textWidth(value) <= sw - 16, `${W}x${H}: STATS's ${name} and '${value}' come within ${UI.WORD} pixels of each other`);
+  check(rows.some(([name, value]) => name === 'RARES' && ['KNOCK/BITE, x4 LIVE', 'KNOCK/BITE x4 LIVE', 'x4 LIVE'].includes(value)) && rows.some(([name, value]) => name.startsWith('SPEC') && value.startsWith('123K/98K/4.5K/890K')), `${W}x${H}: STATS says the rare hazards and the specimens as ${JSON.stringify(rows.filter(([name]) => /^(RARES|SPEC)/.test(name)))}`);
   check(new Set(rows.map(([name]) => name)).size === rows.length, `${W}x${H}: STATS names a line twice: ${rows.map(([name]) => name)}`);
   game.openLab(false);
   console.log(`${W}x${H}: STATS at its fullest is ${rows.length} lines of ${pitch} pixels: ${rows.map(([name, value]) => `${name} ${value}`).join(' | ')}`);
@@ -163,7 +170,7 @@ for (const [cssW, cssH] of [[320, 568], [360, 640]]) {
   for (let a = 0; a < CORE[0].values.length; a++) for (let b = 0; b < CORE[1].values.length; b++) {
     S.lv.refinery = a; S.lv.cutter = b;
     const [name, value] = game.stats().find(([name]) => name === 'REFINERY');
-    check(textWidth(name) + 4 + textWidth(value) <= sw - 16, `${W}x${H}: STATS's ${name} and '${value}' come within four pixels of each other`);
+    check(textWidth(name) + UI.WORD + textWidth(value) <= sw - 16, `${W}x${H}: STATS's ${name} and '${value}' come within ${UI.WORD} pixels of each other`);
   }
 }
 

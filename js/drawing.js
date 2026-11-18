@@ -78,7 +78,12 @@ const MAP_FRAME = UI.MAP + 6, MAP_FRAME_H = UI.MAP + 7, MAP_X = W => W - UI.EDGE
 // Where the drill's picture begins, from the top of the screen (its middle at the middle of the view, above the bar).
 const drillTop = H => Math.round((H - 44) / 2) - 8;
 const VOLUME_BAR = 49;                          // the menu's bar of ten steps of loudness, in pixels
-const LANG_ROW = 18, LANG_ROWS = 3 * LANG_ROW + 2; // the menu's list of languages: a row each, and all it adds to the menu
+// The menu's rows: 20 tall, UI.INSET apart (MENU_ROW from one to the next); the list of languages a LANG_ROW each, 2
+// apart, and all it adds to the menu, UI.INSET over and under it.
+const MENU_ROW = 20 + UI.INSET, LANG_ROW = 18, LANG_ROWS = 3 * LANG_ROW + 2;
+// The rare hazards STATS tells of once met: each its name there and what it does to the drill.
+const LAB_FADE = [1, 1, 0.6, 0.3];
+const RARE_LINES = [['bell', 'BELLS', 'KNOCK'], ['vent', 'JETS', 'KNOCK'], ['worm', 'WORMS', 'BITE'], ['lodestone', 'LODESTONES', 'KNOCK']];
 // A heart of the hull, 9 pixels by 8, two round lobes over a point: each row's runs of pixels, first and last column.
 // Its left half is columns 0 to 4 (the middle with it) and its right 5 to 8. HEART_PITCH: from one heart to the next.
 const HEART = ['.##...##.', '####.####', '#########', '#########', '.#######.', '..#####..', '...###...', '....#....']
@@ -111,7 +116,9 @@ export const CORNER_BAR = 840, CORNER_LANE = 0.3;
 // one) are told apart there and in what is said of them by which they are. NOTE is the room under
 // the list for what is said of the thing chosen: a line of its count, a line of what it is worth (js/worth.js), and
 // up to NOTE_LINES lines of its note (test/regress/l-analysis.mjs holds every note to them on the narrowest panel).
-export const LAB_RH = 13, LAB_SEC = 12, LAB_HEAD = 20, NOTE_LINES = 4, LAB_NOTE = 22 + NOTE_LINES * 10 + 4;
+// A part's head is as tall as a line, its rule on its last row but one, so that the part's first chip is a row under
+// the rule as every chip is a row under the one before.
+export const LAB_RH = 13, LAB_SEC = 13, LAB_HEAD = 20, NOTE_LINES = 4, LAB_NOTE = 22 + NOTE_LINES * 10 + 4;
 export const LAB_LIST = (() => {
   const lines = [], line = [], at = [], head = [];
   let y = 0;
@@ -1999,18 +2006,21 @@ export class Drawing {
     // (Counted from the lab's own book, not the game's running count, so a book filled by hand is read as it is.)
     let known = 0, best = 0;
     for (const e of LAB) { const n = S.lab[e.key]; if (n) { known++; best = Math.max(best, labLevel(n)); } }
-    // The panel is no more than 23 lines on the narrowest phone, and every line one line: what a later row adds is
-    // said on a line there already, and where two ways of saying a line are given the first that fits is said.
-    const room = Math.min(this.W - 8, 200) - 20, first = (...ways) => ways.find(([name, value]) => textWidth(name) + textWidth(value) <= room) ?? ways[ways.length - 1];
+    // The panel is no more than 20 lines, so that on the narrowest phone they are 10 apart and a Mandarin line does
+    // not lie on the next, and every line one line: what a later row adds is said on a line there already, and where
+    // two ways of saying a line are given the first that fits is said, its name and its value UI.WORD apart at the
+    // least, two spaces, so that they never read as one phrase.
+    const room = this.labGeom().pw - 4 * UI.INSET - UI.WORD, first = (...ways) => ways.find(([name, value]) => textWidth(name) + textWidth(value) <= room) ?? ways[ways.length - 1];
     const tierOf = id => TIERED[id][Math.min(TIERED[id].length - 1, lv[id])];
     const out = Math.floor(S.out ?? 0), load = WINCH_LOAD[lv.winch], live = this.val('livecatch'), spin = this.val('flywheel'), foe = this.val('trophy');
     const beasts = S.fauna?.met ? Object.keys(S.fauna.met).length : 0, places = Object.keys(S.met).length, chart = this.val('chart') > 0, finder = this.val('mapfinder');
-    const refine = this.val('refinery'), cut = this.val('cutter'), specs = [1, 2, 3, 4].map(k => this.specs(k)), keeps = Math.round(this.val('blackbox') * 100), PLACES = places === 1 ? 'PLACE' : 'PLACES';
+    const refine = this.val('refinery'), cut = this.val('cutter'), held = [1, 2, 3, 4].map(k => compact(this.specs(k))).join('/'), keeps = Math.round(this.val('blackbox') * 100), PLACES = places === 1 ? 'PLACE' : 'PLACES';
     // (The corners' shrines held and the fossils found whole, once there is one: on a line of its own, and the lamp
     // said on the scanner's line then, so the panel is no longer for it.)
     const shrines = (S.shrines ?? []).filter(Boolean).length, fossils = [0, 1, 2, 3].filter(n => (S.fossils ?? 0) & (1 << n)).length, deep = shrines + fossils > 0;
     // (A rare hazard alive in a loop pays more with the live catch, said on its own line.)
     const rare = (name, does) => live > 1 ? [...first([name, `${does}, x${live} LIVE`], [name, `${does} x${live} LIVE`], [name, `x${live} LIVE`]), true] : [name, does, false];
+    const rares = RARE_LINES.filter(([type]) => S.rare?.[type]);
     return [
       // (How far out the drill has been, of how far the tether goes.)
       first(['REACH', `${tierOf('tether')} ${out > 0 ? `${Math.min(out, this.val('tether'))}/${this.val('tether')}` : this.val('tether')} CELLS`],
@@ -2028,8 +2038,9 @@ export class Drawing {
       ['LAVA', this.swims ? lv.lavaskin >= 2 ? 'SWIMS, SMELTS' : 'SWIMS IN IT' : 'BURNS', this.swims],
       ['SPORES', this.val('sporedrive') ? `SPEED x${BOOST.by}${lv.sporedrive >= 2 ? ', GRAFT' : ''}` : 'KNOCK', this.val('sporedrive') > 0],
       ['ARCS', this.val('arccoil') ? lv.arccoil >= 2 ? 'MEND, CHARGE BIT' : 'MEND A PIP' : 'KNOCK', this.val('arccoil') > 0],
-      // (A rare hazard has its line once it has been met: there would be no room on a phone for all of them.)
-      ...[['bell', 'BELLS', 'KNOCK'], ['vent', 'JETS', 'KNOCK'], ['worm', 'WORMS', 'BITE'], ['lodestone', 'LODESTONES', 'KNOCK']].filter(([type]) => S.rare?.[type]).map(([, name, does]) => rare(name, does)),
+      // (A rare hazard has its line once it has been met; two or more met are said on one, RARES, with what they do
+      // to the drill, which is all the lines would say: there is no room on a phone for a line each.)
+      ...(rares.length === 1 ? [rare(rares[0][1], rares[0][2])] : rares.length ? [rare('RARES', rares.every(r => r[2] === 'KNOCK') ? 'KNOCK' : 'KNOCK/BITE')] : []),
       // (The wrecks' parts, and the flywheel's run.)
       spin ? [...first(['HAUL PAY', `+${parts * 10}% ${parts}/8, SPIN +${Math.round(spin * 100)}%`], ['HAUL PAY', `+${parts * 10}%, SPIN +${Math.round(spin * 100)}%`]), true]
         : ['HAUL PAY', `+${parts * 10}% (${parts}/8 PARTS)`, parts > 0],
@@ -2042,36 +2053,42 @@ export class Drawing {
       lv.blackbox >= 3 ? [...first(['BLACK BOX', `KEEPS ${keeps}% +LORE`], ['BLACK BOX', `${keeps}% +LORE`]), true] : ['BLACK BOX', keeps ? `KEEPS ${keeps}%` : 'NONE', S.lv.blackbox > 0],
       known ? [...first(['ANALYSED', `${known}/${LAB.length}, UP TO +${best}%`], ['ANALYSED', `${known}/${LAB.length}, +${best}%`]), true] : ['ANALYSED', `0/${LAB.length}`, false],
       // (The specimens of each direction, north, south, west and east; and what a foe at rest pays in a loop.)
-      foe ? [...first(['SPECIMENS', `${specs.join('/')}, FOE +${foe}`], ['SPEC', `${specs.join('/')}, FOE +${foe}`], ['SPEC', `${specs.join('/')}`]), true]
-        : first(['SPECIMENS', specs.join(' / ')], ['SPECIMENS', specs.join('/')], ['SPEC', specs.join('/')]),
+      // (Each count as the bar writes it, so that four of them fit whatever they come to, and the slashes unspaced as
+      // the hull's and the lab's are.)
+      foe ? [...first(['SPECIMENS', `${held}, FOE +${foe}`], ['SPEC', `${held}, FOE +${foe}`], ['SPEC', held]), true]
+        : first(['SPECIMENS', held], ['SPEC', held]),
       ['MAP', chart ? `${Math.round(this.val('maprange') * 46)}, ${MAPS[1].show(this.val('maplens'))}, CHART` : `${Math.round(this.val('maprange') * 46)} CELLS, ${MAPS[1].show(this.val('maplens'))}`, this.S.lv.maprange + this.S.lv.maplens + this.S.lv.chart > 0],
       ['FINDER', finder ? `${['', 'CACHES', '+GEODES', 'ALL'][finder]}, ${FINDER[finder]} CELLS` : 'NONE', finder > 0],
     ];
   }
   // The menu: how loud the sounds are and how loud the music, the language, and a new world (two taps, so a slip of
-  // the thumb does not cost a world).
+  // the thumb does not cost a world). Its rows are the panel's boxes, as the shop's are, from the header's foot and
+  // UI.INSET apart, their words in the panel's columns; the list of languages, open, UI.INSET under its row and over
+  // the next, each of it a box set in by twice UI.INSET with its words UI.INSET in from it. (`menuRows`: how tall it is.)
+  menuRows() { return 3 * MENU_ROW + 20 + (this.langOpen ? LANG_ROWS : 0); }
   drawMenu(px, y0, pw) {
-    const { ctx } = this, sure = this.confirmReset > 0;
-    this.volumeRow('SOUND', soundVolume, setSoundVolume, 'sound', px, y0 + 4, pw);
-    this.volumeRow('MUSIC', musicVolume, setMusicVolume, 'music', px, y0 + 28, pw);
+    const { ctx } = this, sure = this.confirmReset > 0, bx = px + UI.INSET, bw = pw - 2 * UI.INSET, left = px + 2 * UI.INSET, right = px + pw - 2 * UI.INSET;
+    this.volumeRow('SOUND', soundVolume, setSoundVolume, 'sound', px, y0, pw);
+    this.volumeRow('MUSIC', musicVolume, setMusicVolume, 'music', px, y0 + MENU_ROW, pw);
     // The language: a tap opens the list of the three under it (and shuts it again), and one chosen from the list
     // that is not the one spoken now is the language: the game is saved and the page loaded again in it
     // (js/lang.js). (Each name is in its own tongue, which no table turns.)
     const speaks = LANGS.findIndex(l => l.id === lang), open = !!this.langOpen, below = open ? LANG_ROWS : 0;
-    slice9(ctx, 'ui', open ? 'button-down' : 'button', px + 6, y0 + 52, pw - 12, 20);
-    text(ctx, 'LANGUAGE', px + 14, y0 + 58, '#ffffff');
-    text(ctx, `${LANGS[speaks].name} ${open ? '^' : 'v'}`, px + pw - 14, y0 + 58, '#8cf2c4', 1);
-    this.buttons.unshift({ x: px + 6, y: y0 + 52, w: pw - 12, h: 20, act: () => { this.langOpen = !this.langOpen; sfx.tap(); } });
+    const ly = y0 + 2 * MENU_ROW, ny = y0 + 3 * MENU_ROW + below;
+    slice9(ctx, 'ui', open ? 'button-down' : 'button', bx, ly, bw, 20);
+    text(ctx, 'LANGUAGE', left, ly + 6, '#ffffff');
+    text(ctx, `${LANGS[speaks].name} ${open ? '^' : 'v'}`, right, ly + 6, '#8cf2c4', 1);
+    this.buttons.unshift({ x: bx, y: ly, w: bw, h: 20, act: () => { this.langOpen = !this.langOpen; sfx.tap(); } });
     if (open) LANGS.forEach((l, n) => {
-      const y = y0 + 74 + n * LANG_ROW, on = n === speaks;
-      slice9(ctx, 'ui', on ? 'button-down' : 'button', px + 14, y, pw - 28, LANG_ROW - 2);
-      text(ctx, l.name, px + 22, y + 4, on ? '#8cf2c4' : '#ffffff');
-      if (on) text(ctx, '<', px + pw - 22, y + 4, '#8cf2c4', 1);
-      this.buttons.unshift({ x: px + 14, y, w: pw - 28, h: LANG_ROW - 2, act: () => { this.langOpen = false; sfx.tap(); if (!on) { this.save(); chooseLang(l.id); } } });
+      const y = y0 + 3 * MENU_ROW + n * LANG_ROW, on = n === speaks, lx = bx + 2 * UI.INSET, lw = bw - 4 * UI.INSET;
+      slice9(ctx, 'ui', on ? 'button-down' : 'button', lx, y, lw, LANG_ROW - 2);
+      text(ctx, l.name, lx + UI.INSET, y + 4, on ? '#8cf2c4' : '#ffffff');
+      if (on) text(ctx, '<', lx + lw - UI.INSET, y + 4, '#8cf2c4', 1);
+      this.buttons.unshift({ x: lx, y, w: lw, h: LANG_ROW - 2, act: () => { this.langOpen = false; sfx.tap(); if (!on) { this.save(); chooseLang(l.id); } } });
     });
-    slice9(ctx, 'ui', sure ? 'button-off' : 'button', px + 6, y0 + 76 + below, pw - 12, 20);
-    text(ctx, sure ? 'TAP AGAIN: NEW WORLD' : 'NEW WORLD', px + pw / 2, y0 + 82 + below, sure ? '#ff7a5a' : '#ffffff', 0.5);
-    this.buttons.unshift({ x: px + 6, y: y0 + 76 + below, w: pw - 12, h: 20, act: () => {
+    slice9(ctx, 'ui', sure ? 'button-off' : 'button', bx, ny, bw, 20);
+    text(ctx, sure ? 'TAP AGAIN: NEW WORLD' : 'NEW WORLD', px + pw / 2, ny + 6, sure ? '#ff7a5a' : '#ffffff', 0.5);
+    this.buttons.unshift({ x: bx, y: ny, w: bw, h: 20, act: () => {
       if (this.confirmReset > 0) { this.confirmReset = 0; this.fresh((Math.random() * 1e9) | 0); this.save(); sfx.relic(); } else { this.confirmReset = 2.5; sfx.tap(); }
     } });
   }
@@ -2079,11 +2096,11 @@ export class Drawing {
   // many lit as it is loud. A tap on the bar sets the step under it (just left of the first, nothing), and a tap on
   // the name turns it off, or back on at the step it was at; a tap that sounds is heard at the new step.
   volumeRow(name, get, set, which, px, y, pw) {
-    const { ctx } = this, step = get(), bx = px + pw - 14 - VOLUME_BAR, was = this.volumeWas ??= { sound: STEPS_OF_VOLUME, music: STEPS_OF_VOLUME };
-    slice9(ctx, 'ui', 'button', px + 6, y, pw - 12, 20);
-    text(ctx, name, px + 14, y + 6, step ? '#ffffff' : '#8a84a0');
+    const { ctx } = this, step = get(), bx = px + pw - 2 * UI.INSET - VOLUME_BAR, was = this.volumeWas ??= { sound: STEPS_OF_VOLUME, music: STEPS_OF_VOLUME };
+    slice9(ctx, 'ui', 'button', px + UI.INSET, y, pw - 2 * UI.INSET, 20);
+    text(ctx, name, px + 2 * UI.INSET, y + 6, step ? '#ffffff' : '#8a84a0');
     for (let n = 0; n < STEPS_OF_VOLUME; n++) { ctx.fillStyle = n < step ? '#8cf2c4' : '#3a3450'; ctx.fillRect(bx + n * 5, y + 7, 4, 6); }
-    this.buttons.unshift({ x: px + 6, y, w: pw - 12, h: 20, act: x => {
+    this.buttons.unshift({ x: px + UI.INSET, y, w: pw - 2 * UI.INSET, h: 20, act: x => {
       const step = get(), to = x === undefined || x < bx - 3 ? (step ? 0 : was[which] || STEPS_OF_VOLUME) : Math.max(0, Math.min(STEPS_OF_VOLUME, Math.ceil((x - bx + 1) / 5)));
       if (step) was[which] = step;
       set(to); sfx.tap();
@@ -2101,15 +2118,19 @@ export class Drawing {
       text(ctx, `${(s.gap / 1000).toFixed(1)}S ${where} ${s.update}+${s.render} AT ${s.out}`, px + 8, y0 + 11 + n * 10, '#bcb4cc');
     });
   }
-  // How far apart the lines of STATS are: 11 pixels, or as little as 9 where that many would not fit above the bar.
-  statsPitch(rows) { return Math.max(9, Math.min(11, Math.floor((this.H - 48 - 20 - 8) / rows))); }
+  // How far apart the lines of STATS are: 11 pixels, or fewer where that many would not fit the panel, its foot a
+  // row clear of the last; as few as UI.LINE_MIN in Mandarin, whose characters fill their cell, and 9 in a language
+  // whose capitals leave it two rows.
+  statsPitch(rows) { return Math.max(spaced ? 9 : UI.LINE_MIN, Math.min(11, Math.floor((this.labGeom().ph - UI.HEAD - 6) / rows))); }
+  // Its lines from the header's foot, every other on a stripe as wide as the panel's boxes, each line's words in the
+  // middle of its stripe: its names in the panel's left column, its values ending on its right.
   drawStats(px, y0, pw) {
-    const { ctx } = this, rows = this.stats(), pitch = this.statsPitch(rows.length);
+    const { ctx } = this, rows = this.stats(), pitch = this.statsPitch(rows.length), dy = (pitch - 9) >> 1;
     rows.forEach(([name, value, lit], n) => {
-      const y = y0 + 2 + n * pitch;
-      if (n % 2 === 0) { ctx.fillStyle = '#241f38'; ctx.fillRect(px + 4, y - 1, pw - 8, pitch); }
-      text(ctx, name, px + 8, y, '#bcb4cc');
-      text(ctx, value, px + pw - 8, y, lit === undefined ? '#ffffff' : lit ? '#8cf2c4' : '#8a84a0', 1);
+      const s = y0 + n * pitch, y = s + dy;
+      if (n % 2 === 0) { ctx.fillStyle = '#241f38'; ctx.fillRect(px + UI.INSET, s, pw - 2 * UI.INSET, pitch); }
+      text(ctx, name, px + 2 * UI.INSET, y, '#bcb4cc');
+      text(ctx, value, px + pw - 2 * UI.INSET, y, lit === undefined ? '#ffffff' : lit ? '#8cf2c4' : '#8a84a0', 1);
     });
   }
   // Where the lab's notes lie on the screen, worked out from the screen's size and how far the panel has risen, as
@@ -2117,10 +2138,13 @@ export class Drawing {
   // the list is seen through (vx, vy, vw, view), and how far it can be scrolled (`most`). One object, filled again.
   labGeom() {
     const g = this.labG ??= { px: 0, py: 0, pw: 0, ph: 0, vx: 0, vy: 0, vw: 0, view: 0, most: 0 }, { W, H } = this, rise = 1 - this.labRise;
-    g.pw = Math.min(W - 8, 200); g.px = Math.round((W - g.pw) / 2);
-    g.view = Math.min(LAB_LIST.content, Math.max(3 * LAB_RH, H - 48 - LAB_HEAD - LAB_NOTE - 4));
+    g.pw = Math.min(W - 2 * UI.EDGE, 200); g.px = Math.round((W - g.pw) / 2);
+    // (The window a whole number of lines and the chip of one more, so that wherever the list rests on the lines'
+    // pitch, as it opens and as a line is shown, no line is cut at its foot, nor at its head under the part's.)
+    const room = H - 44 - 2 * UI.EDGE - LAB_HEAD - LAB_NOTE - 4;
+    g.view = Math.min(LAB_LIST.content, Math.max(3 * LAB_RH, LAB_RH * Math.floor((room + 1) / LAB_RH) - 1));
     g.ph = LAB_HEAD + g.view + LAB_NOTE + 4;
-    g.py = Math.max(2, Math.round((H - 44 - g.ph) / 2)) + Math.round(rise * rise * 60);
+    g.py = Math.max(UI.EDGE, Math.round((H - 44 - g.ph) / 2)) + Math.round(rise * rise * 60);
     g.vx = g.px + 4; g.vy = g.py + LAB_HEAD; g.vw = g.pw - 8;
     g.most = LAB_LIST.content - g.view;
     return g;
@@ -2130,10 +2154,11 @@ export class Drawing {
   labHead(line, x, y, w, known) {
     const { ctx } = this, { title, icon, colour } = LAB_PARTS[line.part], f = sheets.icons.frames[icon];
     ctx.fillStyle = '#1c1a28'; ctx.fillRect(x, y, w, LAB_SEC);
-    ctx.drawImage(sheets.icons.image, f[0], f[1], f[2], f[3], x + 2, y + 1, f[2], f[3]);
-    text(ctx, title, x + 16, y + 1, colour);
+    // (Its icon in the middle of the chips' column under it, its title in their names'.)
+    ctx.drawImage(sheets.icons.image, f[0], f[1], f[2], f[3], x + 3, y + 1, f[2], f[3]);
+    text(ctx, title, x + 18, y + 1, colour);
     text(ctx, `${known[line.part]}/${line.total}`, x + w - 5, y + 1, '#8a84a0', 1);
-    ctx.fillStyle = '#4a4468'; ctx.fillRect(x + 2, y + LAB_SEC - 1, w - 8, 1);
+    ctx.fillStyle = '#4a4468'; ctx.fillRect(x + 2, y + LAB_SEC - 2, w - 8, 1);
   }
   // The panel the bar opens: STATS, the lab's notes (LAB), the chart (MAP) and MENU. The lab's notes are everything
   // the lab can know, in parts by where it lies, a line each: what is analysed with its picture and its worth, what is not with
@@ -2144,21 +2169,22 @@ export class Drawing {
     const { ctx, W, H, S } = this, HEAD = LAB_HEAD;
     ctx.globalAlpha = 0.6 * this.labRise; ctx.fillStyle = '#07060b'; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1;
     if (this.labTab === 'chart' && !this.charted) this.labTab = 'stats';
-    const g = this.labGeom(), { pw, px } = g;
-    const chart = Math.min(pw - 12, H - 52 - HEAD - 10);
-    const rise = 1 - this.labRise, ph = this.labTab === 'menu' ? HEAD + 104 + (this.langOpen ? LANG_ROWS : 0) + (this.stalls.length ? 14 + this.stalls.length * 10 : 0) : this.labTab === 'chart' ? HEAD + chart + 10 : this.labTab === 'stats' ? HEAD + this.stats().length * this.statsPitch(this.stats().length) + 8 : g.ph;
-    const py = this.labTab === 'lab' ? g.py : Math.max(2, Math.round((H - 44 - ph) / 2)) + Math.round(rise * rise * 60);
+    // (One frame for every tab, the lab's, so that the header does not move under the thumb from tab to tab: each
+    // tab's content from the header's foot. Only the menu with the long frames under it may run longer.)
+    const g = this.labGeom(), { pw, px, py } = g, chart = Math.min(pw - 12, g.ph - HEAD - 10);
+    const ph = this.labTab === 'menu' && this.stalls.length ? Math.max(g.ph, HEAD + this.menuRows() + 6 + 14 + this.stalls.length * 10) : g.ph;
     slice9(ctx, 'ui', 'panel', px, py, pw, ph);
     this.button(px, py, pw, ph, () => {});
     this.buttons.at(-1).swallow = true;
     this.chartRect = null;
     this.panelTabs(px, py, pw);
     if (this.labTab === 'stats') { this.drawStats(px, py + HEAD, pw); return; }
-    if (this.labTab === 'menu') { this.drawMenu(px, py + HEAD, pw); if (this.stalls.length) this.drawStalls(px, py + HEAD + 102 + (this.langOpen ? LANG_ROWS : 0), pw); return; }
+    if (this.labTab === 'menu') { this.drawMenu(px, py + HEAD, pw); if (this.stalls.length) this.drawStalls(px, py + HEAD + this.menuRows() + 6, pw); return; }
     if (this.labTab === 'chart') {
       // The chart is dragged to look about it and pinched (or wheeled, or stepped by its two buttons) to look closer:
       // from the whole reach down to four pixels a cell, never past the edge of the whole reach's own view.
-      const cx0 = Math.round(px + (pw - chart) / 2), cy0 = py + HEAD + 3;
+      // (In the middle of the panel under the header, as far from its sides as from its foot where it can be.)
+      const cx0 = Math.round(px + (pw - chart) / 2), cy0 = py + HEAD + 2 + ((ph - HEAD - 6 - chart) >> 1);
       this.chartRect = [cx0, cy0, chart, chart]; this.chartBase = Math.max(0.3, this.val('tether') * 2.25 / chart);
       const view = this.chartView();
       this.drawMap(cx0, cy0, { size: chart, per: this.chartBase / view.zoom, cx: view.x, cy: view.y });
@@ -2209,12 +2235,16 @@ export class Drawing {
     let held = null, next = Infinity;
     for (const line of LAB_LIST.lines) if (!line.entry) { if (line.y <= top) held = line; else { next = line.y; break; } }
     if (held && held.y < top) this.labHead(held, vx, vy + Math.min(0, next - top - LAB_SEC), vw, known);
-    // A fade at either edge while there is more beyond it (at the top, under the head held there).
+    // A fade at either edge where a line is cut there (at the top, under the head held there), whole on its first two
+    // rows, so that a line cut shows no sliver of its words. (Every line is LAB_RH tall, a head as a thing, so a line
+    // is cut at the top where more than its first row is under the head, and at the foot where less than its chip
+    // shows: the list at rest on the lines' pitch, or at its end, cuts none.)
+    const cutTop = top > 0 && top % LAB_RH > 1, cutFoot = top < most && (top + view) % LAB_RH !== 0 && (top + view) % LAB_RH < LAB_RH - 1;
     ctx.fillStyle = '#1c1a28';
     for (let r = 0; r < 4; r++) {
-      ctx.globalAlpha = 0.8 - r * 0.2;
-      if (top < most) ctx.fillRect(vx, vy + view - 1 - r, vw - 4, 1);
-      if (top > 0) ctx.fillRect(vx, vy + LAB_SEC + r, vw - 4, 1);
+      ctx.globalAlpha = LAB_FADE[r];
+      if (cutFoot) ctx.fillRect(vx, vy + view - 1 - r, vw - 4, 1);
+      if (cutTop) ctx.fillRect(vx, vy + LAB_SEC + r, vw - 4, 1);
     }
     ctx.globalAlpha = 1;
     ctx.restore();

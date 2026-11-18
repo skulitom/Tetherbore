@@ -282,9 +282,11 @@ const drawn = (game, what) => { try { game.render(); } catch (error) { fails.pus
   w.spotted.length = 0;
   for (const [x, y] of Object.values(hearts)) { w.setK(at(x, y + 1), K.SOFT); w.chunks[((C + y) >> 6 << 8) | ((C + x) >> 6)].seen[(((C + y) & 63) << 6) | ((C + x) & 63)] = 0; w.see(C + x, C + y, 0); }
   game.update(1 / 60);
-  check(['bell', 'vent', 'worm', 'lodestone'].every(t => game.S.rare[t] === 1) && game.stats().length === plain + 4, `called out, the rare hazards met are ${JSON.stringify(game.S.rare)} and the panel has ${game.stats().length - plain} lines more`);
-  const said = Object.fromEntries(game.stats().map(([name, value]) => [name, value]));
-  check(said.BELLS === 'KNOCK' && said.JETS === 'KNOCK' && said.WORMS === 'BITE' && said.LODESTONES === 'KNOCK', `the panel says ${JSON.stringify(said)}`);
+  // (One met has a line of its own, by its name; two or more met are said on one line, RARES, with what they do.)
+  check(['bell', 'vent', 'worm', 'lodestone'].every(t => game.S.rare[t] === 1) && game.stats().length === plain + 1, `called out, the rare hazards met are ${JSON.stringify(game.S.rare)} and the panel has ${game.stats().length - plain} lines more`);
+  const says = rare => { const was = game.S.rare; game.S.rare = rare; const said = Object.fromEntries(game.stats().map(([name, value]) => [name, value])); game.S.rare = was; return said; };
+  const all = says(game.S.rare), one = says({ worm: 1 }), knocks = says({ bell: 1, lodestone: 1 });
+  check(all.RARES === 'KNOCK/BITE' && one.WORMS === 'BITE' && !one.RARES && knocks.RARES === 'KNOCK' && !knocks.BELLS, `the panel says ${JSON.stringify([all.RARES, one.WORMS, knocks.RARES])}`);
   game.resize(360, 640, 1); game.openLab(true, 'stats'); drawn(game, 'the panel'); game.openLab(false);
   check(20 + game.stats().length * game.statsPitch(game.stats().length) + 8 <= game.H - 48, `${game.stats().length} lines of the panel do not fit above the bar`);
   game.mapFor = null; game.drawMap(0, 0);

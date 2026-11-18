@@ -245,7 +245,7 @@ export const LAB = [
 // directions meet (js/world.js: the seams, the deep seams beyond them and the shrines in those), and a part with
 // nothing in it is not shown. LAB is put in the parts' order here, each part's things in the order written.
 export const LAB_PARTS = [
-  { id: 'home', title: 'HOME AND ALL ROUND', icon: 'home', colour: '#f4ecd8' },
+  { id: 'home', title: 'HOME, ALL ROUND', icon: 'home', colour: '#f4ecd8' },
   { id: 'n', title: 'NORTH', icon: 'frost', colour: '#bfe6ff' },
   { id: 'ne', title: 'NORTH EAST', icon: 'corner-ne', colour: '#cccfff' },
   { id: 'e', title: 'EAST', icon: 'lode', colour: '#d8b8ff' },

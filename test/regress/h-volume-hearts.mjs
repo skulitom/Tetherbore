@@ -25,7 +25,7 @@ check(load({ 'tetherbore-sound': 'loud' }).startsWith('10 '), 'a step kept that 
 const game = await makeGame(7);
 game.resize(320, 568, 1); game.openLab(true, 'menu'); game.render();
 const rows = game.buttons.filter(b => b.h === 20 && b.w > 100).sort((a, b) => a.y - b.y), [sound, music] = rows;
-const bar = r => r.x + r.w - 8 - 49;          // where a row's bar of steps begins (its right edge 14 in from the panel's)
+const bar = r => r.x + r.w - 4 - 49;          // where a row's bar of steps begins (its right edge 8 in from the panel's, 4 in from its box's)
 const tap = (r, x) => { r.act(x, r.y + 10); game.render(); };
 tap(sound, bar(sound) + 2);
 check(audio.soundVolume() === 1 && localStorage.getItem('tetherbore-sound') === '1', `a tap on the sound's first step set it to ${audio.soundVolume()}`);

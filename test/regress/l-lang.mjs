@@ -151,7 +151,7 @@ check(!missing.length, `${missing.length} lines have no turn in ${lang}: ${missi
       check(l.length <= NOTE_LINES && l.every(x => textWidth(x) <= wide), `${e.name}: '${tr(said)}' takes ${l.length} lines, of ${NOTE_LINES}`);
     }
   });
-  LAB_PARTS.forEach(({ id, title }) => { const all = LAB.filter(e => e.part === id).length || 19; check(16 + textWidth(title) + 4 + textWidth(`${all}/${all}`) <= right, `the head '${tr(title)}' is too long for its line`); });
+  LAB_PARTS.forEach(({ id, title }) => { const all = LAB.filter(e => e.part === id).length || 19; check(18 + textWidth(title) + 4 + textWidth(`${all}/${all}`) <= right, `the head '${tr(title)}' is too long for its line`); });
   check(textWidth(labCount(99999)) <= wide, `'${tr(labCount(99999))}' is wider than the notes`);
 }
 
