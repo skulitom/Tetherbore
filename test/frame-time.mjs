@@ -25,7 +25,7 @@ const args = process.argv.slice(2), digest = args.includes('--hash') ? rubbleHas
 const [seed = 11, turns = 600, reach = 5, sx = 0, sy = 0] = args.filter(a => !a.startsWith('--')).map(Number);
 Math.random = random(seed + 5);
 const game = await makeGame(seed, { tether: reach, drill: 4 }, { fauna: crowd });
-const KINDS = ['bat', 'moth', 'bee', 'leech', 'spitter', 'puff', 'skink', 'frog', 'beetle', 'jelly', 'salamander', 'wren', 'newt', 'pup'];
+const KINDS = ['bat', 'moth', 'bee', 'leech', 'spitter', 'puff', 'skink', 'frog', 'beetle', 'jelly', 'salamander', 'wren', 'newt', 'pup', 'rimeling', 'emberling', 'mireling', 'lodeling'];
 let most = 0, lord = 0, lords = 0, lordUp = 0;
 // An open cell seen three to six cells from the drill, on the narrowest screen, for a lord to be raised in (or -1).
 const lordCell = () => {

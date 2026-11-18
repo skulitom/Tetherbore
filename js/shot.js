@@ -436,7 +436,8 @@ function faunabook(game) {
   ctx.globalAlpha = 1; ctx.fillStyle = '#100e18'; ctx.fillRect(0, 0, game.W, game.H);
   game.overCtx?.clearRect(0, 0, game.over.width, game.over.height);
   const s = sheets.fauna, homeOf = key => {
-    const name = Object.keys(ROSTER).find(g => [...(ROSTER[g].kin ?? []), ...(ROSTER[g].named ?? [])].some(([id]) => CREATURES[id].key === key));
+    // (A brood, which no roster names, on its direction's own rock.)
+    const brood = CREATURES.find(c => c?.key === key)?.brood, name = brood ? KIN_FAUNA[brood] : Object.keys(ROSTER).find(g => [...(ROSTER[g].kin ?? []), ...(ROSTER[g].named ?? [])].some(([id]) => CREATURES[id].key === key));
     return world.BIOMES.find(r => r && r.name === name) ?? world.BIOMES[0];
   };
   CREATURES.slice(1).forEach((c, n) => {

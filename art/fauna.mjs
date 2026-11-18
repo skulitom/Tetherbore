@@ -170,6 +170,42 @@ export const CREATURES_ART = {
       lick: [['.bbsbbsbbaw.', 'cbbbbbbbbbps', '.d...d..d...'], 'floor'],
     },
   },
+  // THE BROODS, the young of the lords at the ends of the axes (js/bosses.js), each in its direction's outline and
+  // in colours as quiet as the creatures' kin, so that none is near what pays or hurts far out on its axis; each
+  // scurries in its two drawings. NORTH. The rimeling: a fist-sized wyrm of the frost wyrm's blue-grey plates, its
+  // little crest glinting, its head reared.
+  rimeling: {
+    outline: 'north', palette: { a: '#c8d2e2', b: '#8e9cb8', c: '#5c6a88', s: '#eef4fc', w: '#ffffff', p: '#22395a' },
+    poses: {
+      'crawl-a': [['.......aab..', '......abbwp.', '.s.s.abbbbb.', 'abbbbbbbc...', 'bcbcbcbc....', '.c..c..c....'], 'floor'],
+      'crawl-b': [['.......aab..', '......abbwp.', 's.s..abbbbb.', '.abbbbbbc...', 'bcbcbcbc....', 'c..c..c.....'], 'floor'],
+    },
+  },
+  // SOUTH. The emberling: a hatchling of the behemoth's slag crust, its cracks alight (`lamps`), on stubby legs.
+  emberling: {
+    outline: 'south', lamps: 'g', palette: { a: '#8c7a80', b: '#64525a', c: '#3e3038', g: '#f4dcbc', w: '#ffffff', p: '#160c12' },
+    poses: {
+      'crawl-a': [['....aaa.....', '..aabbba.aa.', '.abbgbbbabwp', 'abgbbbgbbbbb', 'bbbbgbbbbbc.', '.cccccccc...', '..c.c..c.c..'], 'floor'],
+      'crawl-b': [['....aaa.....', '..aabbba.aa.', '.abbgbbbabwp', 'abgbbbgbbbbb', 'bbbbgbbbbbc.', '.cccccccc...', '.c.c..c.c...'], 'floor'],
+    },
+  },
+  // WEST. The mireling: a spore-slug of the mother's mauve, pale spores on its back and its eyes on stalks; it inches.
+  mireling: {
+    outline: 'west', palette: { a: '#c0a8b4', b: '#94788a', c: '#64505e', s: '#e4dcc4', w: '#ffffff', p: '#1c1426' },
+    poses: {
+      'crawl-a': [['...s...s..w.w', '..sas.sas.b.b', '.abbbbbbbbbbp', 'abbbbbbbbbbbb', 'ccccccccccccc'], 'floor'],
+      'crawl-b': [['....s...s.w.w', '...sas.sas.bb', '..abbbbbbbbbp', '.abbbbbbbbbbb', 'ccccccccccccc'], 'floor'],
+    },
+  },
+  // EAST. The lodeling: a burr of the king's pale crystal, spiked all round; it rolls (its second drawing its first
+  // turned a quarter).
+  lodeling: {
+    outline: 'east', palette: { a: '#e8e0f0', b: '#b8acc8', c: '#867a98', s: '#f8f4ff', w: '#ffffff', p: '#3a2414' },
+    poses: {
+      'crawl-a': [['...s..s...', '..sab.as..', '.sabbbbbs.', '..bwpbwpc.', '.sbbbbbcs.', '..sccccs..', '...s..s...'], 'floor'],
+      'crawl-b': [['...s..s...', '..sab.as..', '.sabbbbbs.', '..bwpbwpc.', '.sbbbbbcs.', '..sccccs..', '...s..s...'], 'floor', { rotate: 90 }],
+    },
+  },
 };
 
 // The frames of the sheet, and where each frame's foe eyes lie in it.

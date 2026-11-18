@@ -4,8 +4,9 @@
 // at that level or its last), with what the levels ask not yet found and found, and with nothing in hand and with
 // everything: the words, the steps, what must be found (`lacks`, without its NEEDS where the line is too narrow
 // for it), the prices and their icons, measured as the glyphs and icons are drawn. And STATS, with every row at its
-// last level, every rare hazard and creature met, every shrine and fossil, and thousands of everything, fits above
-// the bar a line a line, and says what the bit and the winch are.
+// last level, every rare hazard and creature met (the four broods, the lords' young, among them: 18 kinds), every
+// shrine and fossil, and thousands of everything, fits above the bar a line a line, and says what the bit and the
+// winch are.
 // The eight levels paid in a corner's gems (js/shop.js: LATE) are among them, short of their gems and not: where
 // they are had is said whole where it fits the line and short where it does not (GEM_SHORT: the Russian of the north
 // east is too wide for the narrowest phone), and the footer's note of a tap refused for want of them too. And the
@@ -111,6 +112,7 @@ for (const [cssW, cssH] of [[320, 568], [360, 640]]) {
   check(clashes() === 0, `${W}x${H}: in STATS a name runs into its value`);
   for (const [name, value] of rows) check(textWidth(name) + 4 + textWidth(value) <= sw - 16, `${W}x${H}: STATS's ${name} and '${value}' come within four pixels of each other`);
   check(new Set(rows.map(([name]) => name)).size === rows.length, `${W}x${H}: STATS names a line twice: ${rows.map(([name]) => name)}`);
+  check(KINDS === 18 && rows.some(([name, value]) => name === 'MET' && (value.endsWith(` ${KINDS}/${KINDS} BEASTS`) || value.endsWith(` ${KINDS} BEASTS`))), `${W}x${H}: STATS does not count every creature met, the broods among them (${KINDS} kinds, said whole or short as the line allows): ${rows.find(([name]) => name === 'MET')}`);
   game.openLab(false);
   console.log(`${W}x${H}: STATS at its fullest is ${rows.length} lines of ${pitch} pixels: ${rows.map(([name, value]) => `${name} ${value}`).join(' | ')}`);
 }

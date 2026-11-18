@@ -149,7 +149,7 @@ if (options.scroll && !Number.isFinite(Number(options.scroll))) wrong(`--scroll 
 const FIRES = ['mender', 'arccoil', 'sporedrive', 'lavaskin', 'diamond', 'blackbox', 'flywheel', 'livecatch', 'trophy'];
 if (options.fire && !FIRES.includes(options.fire)) wrong(`--fire is one of ${FIRES.join(', ')}, not ${options.fire}.`);
 if (options.grit && !(Number(options.grit) >= 0)) wrong(`--grit is how much grit is banked, not ${options.grit}.`);
-const KINDS = ['beetle', 'pup', 'moth', 'spitter', 'salamander', 'bat', 'frog', 'puff', 'leech', 'skink', 'wren', 'bee', 'jelly', 'newt'];
+const KINDS = ['beetle', 'pup', 'moth', 'spitter', 'salamander', 'bat', 'frog', 'puff', 'leech', 'skink', 'wren', 'bee', 'jelly', 'newt', 'rimeling', 'emberling', 'mireling', 'lodeling'];
 const LORDS = ['boss-e', 'boss-s', 'boss-w', 'boss-n'];
 if (options.fauna && !KINDS.includes(options.fauna.split(':')[0]) && !LORDS.includes(options.fauna.split(':')[0])) wrong(`--fauna is one of ${KINDS.join(', ')} (with :state if it has one), or a lord, ${LORDS.join(', ')} (with :state and :stage), not ${options.fauna}.`);
 if (options.lang && !['en', 'ru', 'zh'].includes(options.lang)) wrong(`--lang is en, ru or zh, not ${options.lang}.`);

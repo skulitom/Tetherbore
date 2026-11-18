@@ -26,6 +26,7 @@
 import { makeGame, tetherFaults, sight, world, C, N, K } from '../harness.mjs';
 const { BOSS, LAIR, NEAR, ST, lairX, lairY } = await import('../../js/bosses.js');
 const { LAB } = await import('../../js/shop.js');
+const { KINDS } = await import('../../js/fauna.js');
 
 const SAVE = 'tetherbore-save-v3', fails = [];
 const check = (ok, what) => { if (!ok) fails.push(what); };
@@ -304,7 +305,10 @@ check(await open('', 'example.org') === undefined, 'away from localhost an ordin
 {
   const pal = await open('?shot&seed=7&at=-60,0&fauna=pup:pal&met'), P = pal.game, facts = pal.shot.facts();
   check(P.fauna.pal >= 0 && P.S.fauna?.pal && facts.fauna?.kind === 'pup', `fauna=pup:pal: no pal (${JSON.stringify(facts.fauna)})`);
-  check(Object.keys(P.S.fauna?.met ?? {}).length === 14, 'with met not every creature is taken as met');
+  check(Object.keys(P.S.fauna?.met ?? {}).length === KINDS && KINDS === 18, `with met ${Object.keys(P.S.fauna?.met ?? {}).length} creatures are taken as met, not every one of the ${KINDS} (the broods among them)`);
+  // (A brood, the lords' young, set down as any creature is.)
+  const brood = await open('?shot&seed=7&at=-60,0&fauna=lodeling'), facts2 = brood.shot.facts();
+  check(facts2.fauna?.kind === 'lodeling' && brood.game.fauna.kind[facts2.fauna.slot] === 18, `fauna=lodeling: no lodeling set down (${JSON.stringify(facts2.fauna)})`);
   const bats = await open('?shot&seed=7&at=-300,0&fauna=bat:fuse'), B = bats.game, i = bats.shot.facts().fauna?.slot ?? -1;
   check(i >= 0 && B.fauna.denAt(i)?.st === 1, 'fauna=bat:fuse: no roost woken beside the drill');
   bats.advance(500);

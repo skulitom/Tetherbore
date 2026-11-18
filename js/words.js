@@ -526,6 +526,11 @@ export const WORDS = [
   ['NURSE BEES', 'ПЧЕЛЫ-НЯНЬКИ', '保育蜂'],
   ['STAR JELLIES', 'ЗВЕЗДНЫЕ МЕДУЗЫ', '星水母'],
   ['LANTERN NEWT', 'ФОНАРНЫЙ ТРИТОН', '灯笼蝾螈'],
+  // (The broods, the lords' young, far out on the axes.)
+  ['RIMELING', 'ИНЕЙНЫШ', '霜崽'],
+  ['EMBERLING', 'УГОЛЕНЫШ', '烬崽'],
+  ['MIRELING', 'ТИНЕНЫШ', '沼崽'],
+  ['LODELING', 'РУДЕНЫШ', '晶崽'],
   ['CAUGHT!', 'ПОЙМАН!', '捉到了！'],
   ['CAUGHT', 'ПОЙМАН', '捉到'],
   ['+# GRIT', '+# КРОШКИ', '+# 砂'],
