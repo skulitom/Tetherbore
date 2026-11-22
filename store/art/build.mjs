@@ -13,7 +13,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { encodePNG } from '../../tools/png.mjs';
 import { logoWide, logoStacked } from './src/logo.mjs';
-import { haul, eclipse, cut, strata, icon, label } from './src/scenes.mjs';
+import { haul, eclipse, cut, strata, label } from './src/scenes.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
@@ -119,8 +119,8 @@ if (wanted('background')) {
   const art = plate(strata('art-background', W, H, { focus: [W * 0.5, H * 0.3], rx: 330, ry: 190, cell: 6, ramp: '432211100000', loop: 0 }));
   keep(compose('background', 1438, 810, [{ plate: art, k, x: SHIFT(1438, k, W), y: SHIFT(810, k, H) }]), 'page_background.png');
 }
-if (wanted('shortcut')) keep(compose('shortcut', 256, 256, [{ plate: plate(icon('art-shortcut', 64)), k: 4 }]), 'shortcut_icon.png');
-if (wanted('app')) keep(compose('app', 184, 184, [{ plate: plate(icon('art-app', 46)), k: 4 }], { file: "out-app.jpg" }), 'app_icon.jpg');
+if (wanted('shortcut')) keep(compose('shortcut', 256, 256, [{ plate: plate(strata('art-shortcut', 64, 64, { focus: [32, 31], rx: 46, ry: 46, cell: 2, seed: 41, warp: 0.2, loop: 6.5, width: 1.5, aura: 1.2 })), k: 4 }]), 'shortcut_icon.png');
+if (wanted('app')) keep(compose('app', 184, 184, [{ plate: plate(strata('art-app', 46, 46, { focus: [23, 22], rx: 33, ry: 33, cell: 2, seed: 41, warp: 0.2, loop: 6.5, width: 1.2, aura: 1 })), k: 4 }], { file: "out-app.jpg" }), 'app_icon.jpg');
 if (wanted('logo')) {
   const k = 8, W = 1280, H = 8 * LOGO.wide.h;
   keep(compose('library-logo', W, H, [{ plate: LOGO.wide, k, x: Math.floor((W - LOGO.wide.w * k) / 2) }]), 'library_logo.png');
