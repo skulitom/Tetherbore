@@ -20,7 +20,8 @@ const game = new Game(canvas, document.getElementById('rope'), { blank: !query.h
 if (query.has('shot')) game.ach.off = true;   // (a staged view earns nothing and keeps nothing)
 const shot = query.has('shot') ? (await import('./shot.js')).stage(game, query) : null;
 // (With no saved game to go on with, the game begun is a new one, and the saved ground is made its own.)
-if (!shot && !(await game.restore())) game.claim();
+const returning = !shot && await game.restore();
+if (!shot && !returning) game.claim();
 if (desktop) {
   game.desktop = { fullscreen: await desktop.window.isFullscreen(), toggle: desktop.window.toggleFullscreen, quit: desktop.window.quit };
   desktop.window.onFullscreen(on => { game.desktop.fullscreen = on; });
@@ -35,6 +36,12 @@ function resize() {
   if (shot) { shot.fit(); game.render(); }
 }
 resize();
+// What only the desktop has: the larger show of a haul, and the title screen (fetched only there).
+if (desktop && !shot) {
+  const [{ Payoff }, { Title }] = await Promise.all([import('./payoff.js'), import('./title.js')]);
+  game.payoff = new Payoff(game);
+  new Title(game, returning);
+}
 window.addEventListener('resize', resize);
 window.addEventListener('orientationchange', resize);
 

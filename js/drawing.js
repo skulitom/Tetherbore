@@ -157,7 +157,7 @@ const TOP_Y = 9 + UI.GAP, TOP_AT = TOP_Y + 3, POP_UP = (UI.TITLE / 2) | 0;
 // most, with the word more], over the drill first; and where it stands on a screen too short for it either way.
 const BANNER_TRIES = [[0, 1, 1], [0, 0, 1], [1, 1, 1], [1, 0, 1], [0, 0, 0], [1, 0, 0]], BANNER_SHORT = [0, 0, 1];
 // The shop's button at the core: its top SHOP_BUTTON over the foot of the screen.
-const SHOP_BUTTON = 82;
+const SHOP_BUTTON = 82, WIDE_BAR = 20;
 const BAR_DIRS = [1, 2, 3, 4], BAR_CORNERS = [8, 6, 7, 5], BAR_ALL = GEM_ORDER, BAR_ALL_W = 330, BAR_COL = UI.ICON + UI.FIG, PLATE_H = 14, EYE_H = 32;
 // How long, in seconds, the goal's line blinks green as what it asks for is all banked.
 export const GOAL_BLINK = 3;
@@ -503,12 +503,15 @@ export class Drawing {
   }
 
   render() {
+    // (The desktop's title screen draws itself: js/title.js.)
+    if (this.front?.over && !this.lab) { this.front.render(this); return; }
     const { ctx, W, H, world: w } = this, d = this.drill, now = this.time * 1000;
     // (The ground's own quake shakes the view too, and nothing else: js/feel.js.)
     const shook = this.shake + this.feel.quake;
     const sx = shook ? (cellHash((now / 16) | 0, 1, 5) - 0.5) * shook : 0, sy = shook ? (cellHash((now / 16) | 0, 2, 5) - 0.5) * shook : 0;
     // (The drill is kept in the middle of the screen above the bar, not of the whole screen.)
-    const ox = Math.round(this.cam.x - W / 2 + sx), oy = Math.round(this.cam.y - (H - UI.BAR) / 2 + sy);
+    // (`payoff`, the desktop's: the view kicked by a haul, in what is drawn alone.)
+    const pay = this.payoff, ox = Math.round(this.cam.x - W / 2 + sx + (pay ? pay.dx : 0)), oy = Math.round(this.cam.y - (H - UI.BAR) / 2 + sy + (pay ? pay.dy : 0));
     ctx.fillStyle = '#07060b';
     ctx.fillRect(0, 0, W, H);
     this.ropes.length = 0; this.drillDrawn = null;
@@ -605,7 +608,7 @@ export class Drawing {
     const alpha = d.mode === 'dead' ? 0.5 : this.shield > 0 && ((now / 70) | 0) % 2 === 0 ? 0.35 : 1, hurt = this.hurt > 0 && ((now / 50) | 0) % 2 === 1;
     const fine = this.fineAt ??= { wake, alpha: 1, hurt: false };
     fine.alpha = alpha; fine.hurt = hurt;
-    this.drillFine = this.over && this.shopRise <= 0.02 && this.labRise <= 0.02 ? fine : null;
+    this.drillFine = this.over && !this.front && this.shopRise <= 0.02 && this.labRise <= 0.02 ? fine : null;
     if (!this.drillFine) {
       // Speed leaves a wake: fading copies of the drill back along the way it came.
       for (let k = 0; k < wake.n; k++) { ctx.globalAlpha = wake.a[k]; this.drawDrill(wake.x[k], wake.y[k], d.ang, this.S.lv.drill, this.S.lv.momentum, -1, along, across); }
@@ -681,6 +684,7 @@ export class Drawing {
     }
     ctx.globalAlpha = 1;
     if (this.flash > 0) { ctx.globalAlpha = Math.min(0.45, this.flash * 1.4); ctx.fillStyle = '#fff6c8'; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1; }
+    pay?.draw(ctx, ox, oy);
     for (const p of this.popups) {
       const py = p.y - oy - p.t * 18, px = p.x - ox;
       ctx.globalAlpha = Math.min(1, (0.9 - p.t) * 4);
@@ -884,7 +888,7 @@ export class Drawing {
     if (this.ropeDirty) { const box = this.ropeDirty, x0 = box[0], y0 = box[1], x1 = box[2], y1 = box[3]; o.clearRect(x0 * k, y0 * k, (x1 - x0) * k, (y1 - y0) * k); }
     this.ropeDirty = null;
     const fine = this.drillFine && this.drillDrawn ? this.drillFine : null;
-    if ((!this.ropes.length && !fine) || this.shopRise > 0.02 || this.labRise > 0.02) return;
+    if ((!this.ropes.length && !fine) || this.front || this.shopRise > 0.02 || this.labRise > 0.02) return;
     o.setTransform(k, 0, 0, k, 0, 0);
     o.lineJoin = 'round';
     let bx0 = Infinity, by0 = Infinity, bx1 = -Infinity, by1 = -Infinity;
@@ -985,7 +989,7 @@ export class Drawing {
     // Never over the interface: the bar at the foot, the map, the buttons, and the small panels that come and go under the
     // top bar (a place's plate, the count of specimens) and over the bar (a thing's worth first seen), which the frame's
     // own drawing of the interface listed.
-    o.clearRect(0, H - UI.BAR, W, UI.BAR);
+    { const foot = this.wideBar ? WIDE_BAR : UI.BAR; o.clearRect(0, H - foot, W, foot); }
     const m = this.mapRect;
     if (m) o.clearRect(m[0], m[1], m[2], m[3]);
     for (const b of this.buttons) o.clearRect(b.x, b.y, b.w, b.h);
@@ -1759,6 +1763,9 @@ export class Drawing {
   drawHud(ox, oy) {
     const { ctx, W, H, S } = this, now = this.time * 1000, d = this.drill;
     this.buttons.length = 0; this.panels.length = 0; this.callN = 0;
+    // (A view with no interface: the title screen's. And what stands in front of the game draws in its place.)
+    if (this.bare) return;
+    if (this.front && !this.front.over) { this.front.draw(this, ctx); return; }
     // The place the drill has come into, laid out before anything that stands clear of it.
     const place = this.place, lay = place ? (place.lay?.W === W ? place.lay : this.plateFit(place)) : null, low = place && !place.card && lay.ty > UI.EDGE;
     this.plateLow = !!low;
@@ -1858,6 +1865,9 @@ export class Drawing {
     // reach the tether has left. A tap on it opens the panel (what the drill is, the lab's notes, the chart, the
     // menu), and another shuts it. It is docked DOCK from the sides and the foot; what is in it stands INSET in from
     // its frame (`left` and `right`), three rows of an icon with its figure at the icon's own height.
+    // (On the desktop's wider screen all of it on one row: `drawWideBar`.)
+    bar: {
+    if (this.wideBar) { this.drawWideBar(now); break bar; }
     const B = H - UI.BAR, left = UI.DOCK + UI.INSET, right = W - UI.DOCK - UI.INSET, row1 = B + 5, row2 = row1 + 12, row3 = row2 + 12;
     slice9(ctx, 'ui', 'panel', UI.DOCK, B + UI.DOCK, W - 2 * UI.DOCK, 40);
     // What the player is saving for (js/goal.js): a line along the bar's top edge, its light rim from end to end, as
@@ -1912,6 +1922,7 @@ export class Drawing {
       draw(ctx, 'icons', 'lab', right - this.knownW - UI.ICON, row1);
     }
     this.button(0, B, W, UI.BAR, () => { this.goalBlink = 0; this.openLab(!this.lab); });
+    }
     // The place the drill has come into: its name on a plate, with its direction's gem (and a second gem, where
     // the place pays two), laid out once a place (`plateFit`): at the head of the screen, EDGE in, or under the map
     // where its name is too long to stand beside it.
@@ -1966,7 +1977,7 @@ export class Drawing {
       for (let n = 1; n < 14; n++) { const a = turn - n * 0.22; ctx.globalAlpha = 1 - n / 14; ctx.fillRect(Math.round(cx + Math.cos(a) * 20), Math.round((H - UI.BAR) * 0.72 + Math.sin(a) * 14) - 2, 2, 2); }
       ctx.globalAlpha = 1;
       draw(ctx, 'ui', 'hand', hx, hy);
-      if (S.stats.moves < 1.5) draw(ctx, 'logo', 'logo', W / 2 - 66, 62);
+      if (S.stats.moves < 1.5 && !this.desktop) draw(ctx, 'logo', 'logo', W / 2 - 66, 62);   // (the desktop has just shown its title screen)
     }
     // Where the thumb is steering from, and which way.
     if (this.input.id !== null && !this.shop && !this.lab) {
@@ -1982,6 +1993,56 @@ export class Drawing {
     if (this.lab) this.drawLab();
     // (The controller's focus and prompts, once one is in use: js/pad.js.)
     this.pad?.draw(ctx);
+  }
+  // The bar on the desktop, where the screen is wide and a row of it is a row of the ground seen: grit and the hull at
+  // the left, the gems between (all eight where they fit, else the four as on a phone), what the lab knows, and the
+  // reach left at the right, on one row of WIDE_BAR. What it says and how it blinks are the bar's own; only the layout
+  // differs. (Everything else that stands clear of the bar stands clear of the taller one, so nothing moves.)
+  drawWideBar(now) {
+    const { ctx, W, H, S } = this, top = H - WIDE_BAR, y = top + 6, left = UI.DOCK + UI.INSET, right = W - UI.DOCK - UI.INSET;
+    slice9(ctx, 'ui', 'panel', UI.DOCK, top + UI.DOCK, W - 2 * UI.DOCK, WIDE_BAR - UI.DOCK);
+    const goal = this.saving();
+    if (goal.id !== null) {
+      const share = goalShare(this), full = share >= 1, of = `${goal.id} ${goal.level}`, rim = UI.DOCK + 1;
+      if (!full) this.goalLitFor = null;
+      else if (this.goalLitFor !== of) { this.goalLitFor = of; this.goalBlink = GOAL_BLINK; }
+      if (!full || !(this.goalBlink > 0) || ((now / 250) | 0) % 2 === 0) { ctx.fillStyle = full ? '#8ce060' : '#ffe14a'; ctx.fillRect(rim, top + 3, Math.round((W - 2 * rim) * share), 1); }
+    }
+    // Grit, and the hull's hearts after it.
+    const said = compact(S.grit - this.pending.grit);
+    draw(ctx, 'icons', 'grit', left, y);
+    text(ctx, said, left + UI.ICON, y - (this.counted > 0 ? 1 : 0), this.counted > 0 ? '#ffffff' : '#ffe14a');
+    const pips = this.val('hull'), sound = this.hull, hx = left + UI.ICON + Math.max(textWidth(said), UI.FIG) + UI.GROUP + 1, hearts = Math.ceil(pips / 2);
+    const blink = ((now / 150) | 0) % 2 === 0, pics = this.heartPics ??= [];
+    for (let n = 0; n < pips; n += 2) {
+      const last = n + 1 >= pips, a = this.heartInk(n, sound, blink), b = last ? HEART_INK.length : this.heartInk(n + 1, sound, blink);
+      const glint = a === HEART_LIT && !(n === sound && this.knocked > 0) && sound > 1, key = (a * (HEART_INK.length + 1) + b) * 2 + (glint ? 1 : 0);
+      ctx.drawImage(pics[key] ??= heartPic(a, b, glint), hx + (n >> 1) * HEART_PITCH - 1, y);
+    }
+    // The reach left, at the right: a short track and its figure in a slot of its own, as on the taller bar.
+    const R = this.val('tether'), far = this.far, rest = Math.max(0, R - far), track = Math.min(120, Math.round(W * 0.16)), tx = right - UI.FIG - UI.INSET - track;
+    this.bar(tx, y, track, 'tether', rest / R, far / R > 0.93 ? '#ff7a5a' : '#f4ecd8', this.twang > 0);
+    text(ctx, compact(rest), right, y, this.twang > 0 ? '#ff7a5a' : '#f4ecd8', 1);
+    // What the lab knows, before the reach.
+    const known = this.known;
+    if (this.knownFor !== known) { this.knownFor = known; this.knownSaid = `${known}/${LAB.length}`; this.knownW = textWidth(this.knownSaid); }
+    let end = tx - UI.GROUP;
+    if (known) {
+      const lit = this.labFlash > 0 && ((now / 120) | 0) % 2 === 0;
+      text(ctx, this.knownSaid, end, y, lit ? '#ffffff' : '#8cf2c4', 1);
+      draw(ctx, 'icons', 'lab', end - this.knownW - UI.ICON, y);
+      end -= this.knownW + UI.ICON + UI.GROUP;
+    }
+    // The gems, spread evenly over what is left between the hearts and that.
+    const from = hx + hearts * HEART_PITCH + UI.GROUP, room = end - from, gems = room >= BAR_ALL.length * BAR_COL ? BAR_ALL : this.cornerBar() ? BAR_CORNERS : BAR_DIRS, pitch = Math.min(BAR_COL + 14, room / gems.length);
+    if (room >= gems.length * (UI.ICON + 12)) for (let n = 0; n < gems.length; n++) {
+      const g = gems[n], gx = Math.round(from + n * pitch), have = (S.gems[g] ?? 0) - (this.pending.gems[g] ?? 0);
+      ctx.globalAlpha = S.gems[g] > 0 ? 1 : 0.35;
+      draw(ctx, 'icons', GEM_ICON[g], gx, y);
+      text(ctx, compact(have), gx + UI.ICON, y, GEM_COLOR[g]);
+      ctx.globalAlpha = 1;
+    }
+    this.button(0, top, W, WIDE_BAR, () => { this.goalBlink = 0; this.openLab(!this.lab); });
   }
   // The map: everything within the tether's reach, the core in the middle. Ground that has been seen shows as
   // rock or open; the rest only as whose ground it is, so there is always somewhere to choose to go. Whose it is
@@ -2442,7 +2503,7 @@ export class Drawing {
   // the thumb does not cost a world). Its rows are the panel's boxes, as the shop's are, from the header's foot and
   // UI.INSET apart, their words in the panel's columns; the list of languages, open, UI.INSET under its row and over
   // the next, each of it a box set in by twice UI.INSET with its words UI.INSET in from it. (`menuRows`: how tall it is.)
-  menuRows() { return (this.desktop ? 6 : 4) * MENU_ROW + 20 + (this.langOpen ? LANG_ROWS : 0); }
+  menuRows() { return (this.desktop ? 7 : this.finale.seen ? 5 : 4) * MENU_ROW + 20 + (this.langOpen ? LANG_ROWS : 0); }
   drawMenu(px, y0, pw) {
     const { ctx } = this, sure = this.confirmReset > 0, bx = px + UI.INSET, bw = pw - 2 * UI.INSET, left = px + 2 * UI.INSET, right = px + pw - 2 * UI.INSET;
     this.volumeRow('SOUND', soundVolume, setSoundVolume, 'sound', px, y0, pw);
@@ -2473,9 +2534,17 @@ export class Drawing {
     this.buttons.unshift({ x: bx, y: ny, w: bw, h: 20, act: () => {
       if (this.confirmReset > 0) { this.confirmReset = 0; this.fresh((Math.random() * 1e9) | 0); this.save(); sfx.relic(); } else { this.confirmReset = 2.5; sfx.tap(); }
     } });
+    // The close of the game seen again, and the credits (js/finale.js): on the web once it has been earned; on the
+    // desktop always, where they carry the licences' notices.
+    const credits = !!this.desktop || this.finale.seen, cy = ay + MENU_ROW;
+    if (credits) {
+      slice9(ctx, 'ui', 'button', bx, cy, bw, 20);
+      text(ctx, 'CREDITS', left, cy + 6, '#ffffff');
+      this.buttons.unshift({ x: bx, y: cy, w: bw, h: 20, act: () => { sfx.tap(); this.finale.begin(this, true); } });
+    }
     // On the desktop, two rows more: fullscreen or a window, and leaving (the shell saves the game before it goes).
     if (!this.desktop) return;
-    const fy = ay + MENU_ROW, qy = fy + MENU_ROW;
+    const fy = cy + MENU_ROW, qy = fy + MENU_ROW;
     slice9(ctx, 'ui', 'button', bx, fy, bw, 20);
     text(ctx, 'FULLSCREEN', left, fy + 6, '#ffffff');
     text(ctx, this.desktop.fullscreen ? 'ON' : 'OFF', right, fy + 6, '#8cf2c4', 1);

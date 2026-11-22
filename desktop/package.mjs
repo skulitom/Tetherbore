@@ -3,7 +3,7 @@
 //   node desktop/package.mjs [--esbuild <esbuild's folder>]
 // Writes desktop/out/Tetherbore-win32-x64, the folder a Steam depot is made from.
 import { spawnSync } from 'node:child_process';
-import { cpSync, existsSync, mkdtempSync, readdirSync, rmSync, statSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
@@ -22,6 +22,11 @@ try {
   run(process.execPath, ['tools/build-dist.mjs', site, '--esbuild', esbuild]);
   const icon = path.join(work, 'icon.ico'), art = [path.join(repo, 'store', 'art', 'shortcut_icon.png'), path.join(repo, 'media', 'icon-512.png')].find(existsSync);
   run('ffmpeg', ['-v', 'error', '-y', '-i', art, '-vf', 'scale=256:256:flags=neighbor', icon]);
+  // The licences of what ships, as files beside the game (`resources/licenses`, which the credits point to): Electron's
+  // own and Chromium's also stand at the top of the app's folder.
+  const notices = path.join(work, 'licenses');
+  mkdirSync(notices);
+  for (const [from, name] of [[path.join(here, 'node_modules', 'electron', 'LICENSE'), 'electron.txt'], [path.join(here, 'node_modules', 'steamworks.js', 'LICENSE'), 'steamworks.js.txt'], [path.join(repo, 'art', 'OFL-fusion-pixel.txt'), 'fusion-pixel-font-OFL.txt']]) cpSync(from, path.join(notices, name));
   const out = path.join(here, 'out');
   rmSync(out, { recursive: true, force: true });
   const keep = new Set(['package.json', 'main.cjs', 'preload.cjs', 'saves.cjs', 'steam.cjs', 'achievements.json', 'app-id.json', 'node_modules']);
@@ -29,7 +34,7 @@ try {
     dir: here, out, name: 'Tetherbore', executableName: 'Tetherbore', platform: 'win32', arch: 'x64', overwrite: true, icon,
     appVersion: require('./package.json').version,
     asar: { unpack: '**/*.{node,dll}' },
-    extraResource: [site],
+    extraResource: [site, notices],
     win32metadata: { ProductName: 'Tetherbore', FileDescription: 'Tetherbore' },
     // Only the shell and what it needs at run time, and of the Steam library only its Windows files.
     ignore: file => {

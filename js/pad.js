@@ -133,6 +133,15 @@ export class Pad {
       if (pressed || !this.shown) unlock();
       this.shown = true;
     }
+    // What stands in front of the game (the close, the title screen) has the pad: A and Start press, B goes back, and
+    // the stick or the d-pad moves through what it shows. (With the panel open over it, the panel has it, below.)
+    if (game.front && !game.lab) {
+      game.input.pad = null; this.hard = 0; this.at = ''; this.drawn = '';
+      if (this.hit(A) || this.hit(START)) game.front.press();
+      else if (this.hit(B)) game.front.back();
+      else this.walk(dt, w, 'front', this.rows);
+      return;
+    }
     const id = this.screen();
     if (id !== this.at) {
       // A panel opened with the stick held does not walk its list until the stick has come back.
@@ -223,6 +232,7 @@ export class Pad {
   }
   step(dir, repeat, tab, rows) {
     const { game } = this;
+    if (tab === 'front') { if (dir <= 2) game.front.move?.(dir === 1 ? -1 : 1); return; }
     if (tab === 'lab') { if (dir <= 2) game.labKey(dir === 1 ? 'ArrowUp' : 'ArrowDown', repeat); return; }
     if (tab === 'ach') { if (dir <= 2) game.key(dir === 1 ? 'ArrowUp' : 'ArrowDown', true); return; }
     if (!rows.length) return;
