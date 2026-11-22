@@ -13,7 +13,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { encodePNG } from '../../tools/png.mjs';
 import { logoWide, logoStacked } from './src/logo.mjs';
-import { haul, eclipse, cut, backdrop, icon, label } from './src/scenes.mjs';
+import { haul, eclipse, cut, strata, icon, label } from './src/scenes.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
@@ -85,11 +85,11 @@ for (const [name, make] of Object.entries({ wide: logoWide, compact: () => logoW
 // of a capsule and says not how it is measured, so these hold it to the strictest reading, the logo's box by area.
 const SHIFT = (size, k, n) => -Math.floor((n * k - size) / 2);
 const CAPSULES = {
-  header: { out: [920, 430], k: 4, W: 230, H: 108, paint: (n, W, H) => haul(n, W, H, { block: 'big', cell: 6, at: [136, -2], core: [12, 24, 14], drill: [0.74, 34, 8.5] }), logo: 'compact', at: [36, 74], lk: 6, lp: [22, 234] },
-  small: { out: [462, 174], k: 3, W: 154, H: 58, paint: (n, W, H) => haul(n, W, H, { block: 'big', cell: 5, at: [84, -6], core: [6, 8, 8], drill: [0.7, 22, 5.6], tw: 0.9, loop: 1.6, aura: 1.6 }), logo: 'compact', at: [2, 27] },
-  main: { out: [1232, 706], k: 5, W: 247, H: 142, paint: (n, W, H) => haul(n, W, H, { block: 'big', cell: 8, at: [140, 0], core: [15, 24, 15], drill: [0.7, 42, 10.5] }), logo: 'stacked', at: [44, 108], lk: 9, lp: [14, 245] },
-  vertical: { out: [748, 896], k: 6, W: 125, H: 150, paint: (n, W, H) => haul(n, W, H, { block: 'big', cell: 6, at: [46, 12], core: [10, 8, 9], drill: [0.62, 20, 5.2] }), logo: 'stacked', at: [18, 97], lk: 8, lp: [18, 482] },
-  'library-capsule': { out: [600, 900], k: 5, W: 120, H: 180, paint: (n, W, H) => haul(n, W, H, { block: 'big', cell: 6, at: [42, 26], core: [12, 12, 10], drill: [0.6, 22, 5.6] }), logo: 'stacked', at: [15, 127], lk: 7, lp: [-8, 539] },
+  header: { out: [920, 430], k: 4, W: 230, H: 108, paint: (n, W, H) => strata(n, W, H, { focus: [166, 34], rx: 150, ry: 104 }), logo: 'compact', at: [36, 74], lk: 6, lp: [22, 234] },
+  small: { out: [462, 174], k: 3, W: 154, H: 58, paint: (n, W, H) => strata(n, W, H, { focus: [116, 6], rx: 112, ry: 64, cell: 3, width: 1.3, aura: 1.6 }), logo: 'compact', at: [2, 27] },
+  main: { out: [1232, 706], k: 5, W: 247, H: 142, paint: (n, W, H) => strata(n, W, H, { focus: [184, 40], rx: 168, ry: 128 }), logo: 'stacked', at: [44, 108], lk: 9, lp: [14, 245] },
+  vertical: { out: [748, 896], k: 6, W: 125, H: 150, paint: (n, W, H) => strata(n, W, H, { focus: [84, 36], rx: 112, ry: 112 }), logo: 'stacked', at: [18, 97], lk: 8, lp: [18, 482] },
+  'library-capsule': { out: [600, 900], k: 5, W: 120, H: 180, paint: (n, W, H) => strata(n, W, H, { focus: [78, 46], rx: 106, ry: 118 }), logo: 'stacked', at: [15, 127], lk: 7, lp: [-8, 539] },
 };
 CAPSULES['library-header'] = CAPSULES.header;
 const FILES = { header: 'header_capsule.png', small: 'small_capsule.png', main: 'main_capsule.png', vertical: 'vertical_capsule.png', 'library-capsule': 'library_capsule.png', 'library-header': 'library_header.png' };
@@ -110,13 +110,13 @@ for (const [id, c] of Object.entries(CAPSULES)) {
 // ---- no title: the library hero, the page background and the two icons
 if (wanted('hero')) {
   const k = 6, W = 640, H = 207;
-  // the subject stands inside the middle 860 x 380 of the 3840 x 1240, which every window keeps
-  const art = plate(haul('art-hero', W, H, { block: 'big', cell: 6, at: [315, 77], core: [64, 56, 26], drill: [0.87, 28, 7], tw: 1.05, loop: 1.7, aura: 2.2, motes: 150 }));
+  // the heart of the bands stands inside the middle 860 x 380 of the 3840 x 1240, which every window keeps
+  const art = plate(strata('art-hero', W, H, { focus: [420, 58], rx: 500, ry: 245, cell: 5, warp: 0.46, seed: 34, width: 1.5, aura: 2.2 }));
   keep(compose('hero', 3840, 1240, [{ plate: art, k, y: SHIFT(1240, k, H) }]), 'library_hero.png');
 }
 if (wanted('background')) {
   const k = 4, W = 360, H = 203;
-  const art = plate(backdrop('art-background', W, H));
+  const art = plate(strata('art-background', W, H, { focus: [W * 0.5, H * 0.3], rx: 330, ry: 190, cell: 6, ramp: '432211100000', loop: 0 }));
   keep(compose('background', 1438, 810, [{ plate: art, k, x: SHIFT(1438, k, W), y: SHIFT(810, k, H) }]), 'page_background.png');
 }
 if (wanted('shortcut')) keep(compose('shortcut', 256, 256, [{ plate: plate(icon('art-shortcut', 64)), k: 4 }]), 'shortcut_icon.png');
@@ -129,6 +129,10 @@ if (wanted('logo')) {
 
 // ---- the three concepts, at the store's sizes
 const OTHERS = {
+  haul: {
+    header: (n, W, H) => haul(n, W, H, { block: 'big', cell: 6, at: [136, -2], core: [12, 24, 14], drill: [0.74, 34, 8.5] }),
+    small: (n, W, H) => haul(n, W, H, { block: 'big', cell: 5, at: [84, -6], core: [6, 8, 8], drill: [0.7, 22, 5.6], tw: 0.9, loop: 1.6, aura: 1.6 }),
+  },
   eclipse: {
     header: (n, W, H) => eclipse(n, W, H, { block: 'big', cell: 6, at: [80, 12], disc: [116, 42, 58], drill: [196, 18, -0.4, 34, 8.5], tail: [[150, 34], [181, 24]] }),
     small: (n, W, H) => eclipse(n, W, H, { block: 'big', cell: 3, at: [60, 2], disc: [78, 16, 34], drill: [128, 12, -0.3, 20, 5], tail: [[96, 14], [118, 13]] }),
@@ -140,16 +144,17 @@ const OTHERS = {
 };
 if (wanted('concepts')) {
   const sets = [
-    { name: 'haul', title: '1  THE HAUL  (PICKED)', note: 'THE BLOCK IN FLIGHT, LOOPED AND REELED TO THE CORE', header: finals.header, small: finals.small },
-    { name: 'eclipse', title: '2  ECLIPSE', note: 'THE BLOCK BLACK AGAINST THE MOLTEN CORE', header: capsule('eclipse-header', CAPSULES.header, OTHERS.eclipse.header), small: capsule('eclipse-small', CAPSULES.small, OTHERS.eclipse.small) },
-    { name: 'cut', title: '3  THE CUT', note: 'THE DRILL IN CLOSE, A LINE OF FIRE ROUND A BLOCK', header: capsule('cut-header', CAPSULES.header, OTHERS.cut.header), small: capsule('cut-small', CAPSULES.small, OTHERS.cut.small) },
+    { name: 'strata', title: '1  STRATA  (PICKED)', note: 'ABSTRACT BANDS OF HEAT, THE TETHER ROUND THEM', header: finals.header, small: finals.small },
+    { name: 'haul', title: '2  THE HAUL', note: 'THE BLOCK IN FLIGHT, LOOPED AND REELED TO THE CORE', header: capsule('haul-header', CAPSULES.header, OTHERS.haul.header), small: capsule('haul-small', CAPSULES.small, OTHERS.haul.small) },
+    { name: 'eclipse', title: '3  ECLIPSE', note: 'THE BLOCK BLACK AGAINST THE MOLTEN CORE', header: capsule('eclipse-header', CAPSULES.header, OTHERS.eclipse.header), small: capsule('eclipse-small', CAPSULES.small, OTHERS.eclipse.small) },
+    { name: 'cut', title: '4  THE CUT', note: 'THE DRILL IN CLOSE, A LINE OF FIRE ROUND A BLOCK', header: capsule('cut-header', CAPSULES.header, OTHERS.cut.header), small: capsule('cut-small', CAPSULES.small, OTHERS.cut.small) },
   ];
   const SW = 1464, ROW = 484, SH = 28 + ROW * sets.length;
   const page = plate(label('sheet-page', 8, 8));
   const layers = [{ plate: page, k: 1, w: SW, h: SH }];
   sets.forEach((set, n) => {
     const y = 20 + n * ROW;
-    if (set.name !== 'haul') { keep(set.header, `concepts/${set.name}_header.png`); keep(set.small, `concepts/${set.name}_small.png`); }
+    if (set.name !== 'strata') { keep(set.header, `concepts/${set.name}_header.png`); keep(set.small, `concepts/${set.name}_small.png`); }
     const head = { asset: ink({ command: 'asset.import', source_path: basename(set.header.file), color_policy: 'assume_srgb' }).asset, w: 920, h: 430 };
     const small = { asset: ink({ command: 'asset.import', source_path: basename(set.small.file), color_policy: 'assume_srgb' }).asset, w: 462, h: 174 };
     layers.push({ plate: plate(label(`title-${set.name}`, 700, 16, set.title, 'w')), k: 2, x: 20, y });

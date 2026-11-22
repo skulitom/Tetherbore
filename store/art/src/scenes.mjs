@@ -2,7 +2,7 @@
 //   haul     the block in flight, lit by the core, the tether drawn round it
 //   eclipse  the block black against the molten core, one silhouette
 //   cut      the drill in close, a line of fire round a block in a wall
-import { PALETTE, Plate, clamp, fbm, hash, lerp, tone, cellMask, paintRock, scatterOre, paintDrill, paintTether, paintLoop, paintSparks } from './kit.mjs';
+import { PALETTE, Plate, Mask, clamp, fbm, hash, lerp, tone, cellMask, paintRock, scatterOre, paintDrill, paintTether, paintLoop, paintSparks } from './kit.mjs';
 
 export const BLOCKS = {
   big: [
@@ -263,6 +263,36 @@ export function cut(name, W, H, o) {
     bit.layer('drill', [{ op: 'outline', color: 'Z', position: 'outside', diagonal: true }]),
     sparks.layer('sparks'),
   ]);
+}
+
+// ---------------------------------------------------------------- 4. STRATA, the one picked
+// No scene: nothing here stands for a moment of play, so the art promises nothing the game does not look like. Bands of
+// heat fall away from a point through the violets to black, stepped on a grid as the game's ground is, and one closed
+// line of the tether's pink runs round them, as the O of the logotype is drawn.
+export const STRATA = 'onmlkji5432100';
+export function strata(name, W, H, o) {
+  const { focus, rx, ry = rx, cell = 4, seed = 21, warp = 0.32, ramp = STRATA, loop = 6.5, width = 1.7, aura = 2.6 } = o;
+  const cols = Math.ceil(W / cell) + 1, rows = Math.ceil(H / cell) + 1, at = new Float32Array(cols * rows), f = 1.7 / rx, top = ramp.length - 1;
+  for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
+    const cx = (i + 0.5) * cell, cy = (j + 0.5) * cell, u = fbm(cx * f, cy * f, seed, 3) - 0.5, v = fbm(cx * f, cy * f, seed + 9, 3) - 0.5;
+    at[j * cols + i] = Math.hypot((cx - focus[0]) / rx + u * warp * 2, (cy - focus[1]) / ry + v * warp * 2) * top;
+  }
+  const level = (x, y) => at[Math.floor(y / cell) * cols + Math.floor(x / cell)], band = l => Math.min(top, Math.round(l));
+  const p = new Plate(W, H);
+  p.fill((x, y) => {
+    const l = level(x, y), b = band(l);
+    // A band's edge is a line of its own: darker within the heat, a little lighter out in the dark.
+    if ((x % cell === cell - 1 && x + 1 < W && band(level(x + 1, y)) !== b) || (y % cell === cell - 1 && y + 1 < H && band(level(x, y + 1)) !== b)) return b < 7 ? ramp[Math.min(top, b + 2)] : ramp[Math.max(0, b - 1)];
+    return tone(ramp, l / top, x, y, 0.22);
+  });
+  const layers = [p.layer('strata')];
+  if (loop) {
+    const m = new Mask(W, H), line = new Plate(W, H);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (level(x, y) < loop) m.add(x, y);
+    paintLoop(line, m, { width, aura });
+    layers.push(line.layer('tether'));
+  }
+  return recipe(name, W, H, layers);
 }
 
 // ---------------------------------------------------------------- what carries no title
