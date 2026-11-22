@@ -39,7 +39,7 @@ if (!quit) problems.push('a controller did not reach SAVE AND QUIT');
 {
   const { game, tap } = await menu({ fullscreen: true, toggle() {}, quit() {} });
   const frame = game.buttons.find(b => b.swallow), rows = game.buttons.slice(0, game.buttons.indexOf(frame)).filter(b => b.y > frame.y && b.w > 100 && b.w < game.W).sort((a, b) => a.y - b.y);
-  if (rows.length !== 7) problems.push(`the desktop menu has ${rows.length} rows, not 7`);
+  if (rows.length !== 8) problems.push(`the desktop menu has ${rows.length} rows, not 8`);
   for (let n = 1; n < rows.length; n++) if (rows[n].y < rows[n - 1].y + rows[n - 1].h) problems.push(`two rows of the menu overlap at y ${rows[n].y}`);
   for (let n = 0; n < 4; n++) tap(DOWN);
   tap(A);

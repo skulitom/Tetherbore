@@ -29,7 +29,8 @@ const demo = DEMO ? await import('./demo.js') : null;
 if (demo) demo.fit(game, desktop?.wishlist ? { wishlist: desktop.wishlist } : {});
 const shot = query.has('shot') ? (await import('./shot.js')).stage(game, query) : null;
 // (With no saved game to go on with, the game begun is a new one, and the saved ground is made its own.)
-if (!shot && !(await game.restore())) {
+const returning = !shot && await game.restore();
+if (!shot && !returning) {
   game.claim();
   // (A demo begun on a device with a full game's save says that save is safe: it is neither read nor written.)
   if (demo && (demo.fullSaveHere() || await desktop?.saves.hasFull?.())) demo.sayFullSafe(game);
@@ -48,6 +49,12 @@ function resize() {
   if (shot) { shot.fit(); game.render(); }
 }
 resize();
+// What only the desktop has: the larger show of a haul, and the title screen (fetched only there).
+if (desktop && !shot) {
+  const [{ Payoff }, { Title }] = await Promise.all([import('./payoff.js'), import('./title.js')]);
+  game.payoff = new Payoff(game);
+  new Title(game, returning);
+}
 window.addEventListener('resize', resize);
 window.addEventListener('orientationchange', resize);
 

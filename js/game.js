@@ -15,6 +15,7 @@ import { pickGoal, goalHome } from './goal.js';
 import { fits } from './lang.js';
 import { Achievements } from './achievements.js';
 import { SAVE_KEY, DB_NAME } from './edition.js';
+import { Finale } from './finale.js';
 export { richness, haulBonus, overload, income, UPGRADES, LAB, labLevel, labNext, WORKS, MAPS, CORE } from './shop.js';
 
 export { T };
@@ -521,6 +522,10 @@ export class Game {
     this.fitter = new Fitter(FLY, BOOST.by);                          // what the upgrades show, and the moment of buying (js/fit.js)
     this.fauna = new Fauna(FLY, JOLT.bat);                            // the creatures of the ground (js/fauna.js)
     this.ach = new Achievements();                                    // what the player has earned, kept beside the game and not in it (js/achievements.js)
+    // What stands in front of the game and takes every press: the close once the lords are beaten (js/finale.js), or on
+    // the desktop the title screen (js/title.js), which is `over`: it does the step and the drawing itself. With the
+    // panel open over one, the panel has the presses. `payoff`: the desktop's larger show of a haul (js/payoff.js).
+    this.front = null; this.finale = new Finale(); this.payoff = null;
     // (The parts of a frame whose time is added up by name, for `frameTook`: each wrapped by a function taking as
     // many arguments as the part does (`TIMED`), so that a call makes no list of them.)
     for (const name in TIMED) {
@@ -611,7 +616,7 @@ export class Game {
       if (kept && kept.v === 3 && (kept.rev ?? 0) > this.rev) { this.adopt(); return; }
     }
     this.rev = (this.rev ?? latestRev()) + 1;
-    try { const text = JSON.stringify({ v: 3, rev: this.rev, ...this.kept(), ...this.ach.saved() }); localStorage.setItem(SAVE_KEY, text); localStorage.setItem(LATEST, text); } catch { /* the game goes on without saving */ }
+    try { const text = JSON.stringify({ v: 3, rev: this.rev, ...this.kept(), ...this.ach.saved(), ...this.finale.saved() }); localStorage.setItem(SAVE_KEY, text); localStorage.setItem(LATEST, text); } catch { /* the game goes on without saving */ }
     // (The pieces are taken now, as this world's: by the time the database answers, the game may be in another.)
     const w = this.world, seed = this.S.seed, kept = [...w.touched].map(id => [id, w.chunks[id], w.genOf[id]]).filter(([, p]) => p);
     if (!kept.length) return;
@@ -657,7 +662,7 @@ export class Game {
       const sound = d => !!d && d.v === 3;
       if (sound(latest) && (!sound(data) || (data.rev !== undefined ? (latest.rev ?? 0) > data.rev : data.seed === latest.seed && (data.stats?.time ?? 0) < (latest.stats?.time ?? 0)))) data = latest;
       if (!data || data.v !== 3) { this.unblank(); this.rev = 0; return false; }
-      const { v, rev, ach, ...S } = data;
+      const { v, rev, ach, closed, ...S } = data;
       // (A copy with no number, taken for the later one, is saved next as later than the numbered copy it passed.)
       this.rev = rev ?? latest?.rev ?? 0;
       // What was bought and banked does not wait on the database: where that cannot be opened or read (a private
@@ -730,6 +735,7 @@ export class Game {
       else if (newer && S.gen < GEN) this.notice = { title: 'NEW GROUND', sub: 'THE DEEP HAS CHANGED', colour: '#8ce060', t: 0, life: 5 };
       S.gen = GEN;
       this.ach.load(ach, S);
+      this.finale.load(closed);
       return true;
     } catch (error) {
       // A save that is there and cannot be begun is kept aside before a new game is written over it, and the
@@ -750,7 +756,7 @@ export class Game {
     this.W = Math.ceil(cssW * dpr / scale); this.H = Math.ceil(cssH * dpr / scale);
     this.canvas.width = this.W; this.canvas.height = this.H;
     this.ctx.imageSmoothingEnabled = false;
-    this.scale = scale;
+    this.scale = scale; this.wideBar = !!wide;
     if (this.over) { this.over.width = this.W * scale; this.over.height = this.H * scale; this.ropeDirty = null; }
   }
 
@@ -759,6 +765,7 @@ export class Game {
   // faster the further it is dragged. The origin trails the thumb, so a change of mind is a short stroke.
   pointerDown(id, x, y) {
     unlock();
+    if (this.front && !this.lab) { this.front.pointer(x, y); return; }
     const hit = this.buttons.find(b => x >= b.x && y >= b.y && x < b.x + b.w && y < b.y + b.h);
     // A finger on the chart (not on one of its buttons) takes hold of it: any number of fingers, for a pinch.
     if (this.lab && this.labTab === 'chart' && this.chartRect && (!hit || hit.swallow)) {
@@ -783,6 +790,7 @@ export class Game {
     this.drill.armed = true;
   }
   pointerMove(id, x, y) {
+    if (this.front && !this.lab) { this.front.hover?.(x, y); return; }
     if (this.chartTouch.has(id)) { if (this.lab && this.chartRect) this.chartMove(id, x, y); return; }
     const t = this.labTouch;
     if (t && t.id === id) {
@@ -824,6 +832,7 @@ export class Game {
   // shuts it, and Escape shuts whatever is open. With a panel open, Tab (Shift+Tab back) steps through its tabs and
   // 1 to 4 choose one.
   key(code, down, repeat = false, shift = false) {
+    if (this.front && !this.lab) return this.front.key(code, down, repeat);
     if (!down && code === this.labHeld) this.labHeld = null;
     if (down && this.lab && this.labTab === 'ach' && this.ach.key(code)) return true;
     if (down && this.lab && this.labTab === 'lab' && (!repeat || code === this.labHeld) && this.labKey(code, repeat)) { this.labHeld = code; return true; }
@@ -2443,6 +2452,8 @@ export class Game {
     else if (pay.fossil || pay.twins) sfx.relic();
     if (rang) { sfx.resonate?.(rang); this.ring(cx, cy, '#fff0a0', 200, 0.08, 1.2); if (light) this.popup(mx, my - 1.2, `${rang} RING`, '#fff0a0'); }
     this.ach.hauled(this, pay, n, half);
+    // (The desktop's show of it, told last: nothing it does can come between a haul and what the haul pays.)
+    if (!light) this.payoff?.haul(h, this.hauled, cx, cy);
   }
   // What a haul's banner says of the thing of the lab's that paid most in it (`payOf`: `top`), where that is a thing of
   // the second tier or the third with the winch as it is: how many of its cells came, its name (a '?' until the lab
@@ -2582,11 +2593,13 @@ export class Game {
         const left = Math.round(h.grit * (1 - h.paid / h.total));
         this.pending.grit = Math.max(0, this.pending.grit - (h.left - left)); h.left = left;
         this.coreFlash = 0.12; this.counted = 0.12;
+        this.payoff?.land(h, arrived);
         if (this.time - (this.lastRing ?? 0) > 0.11) { this.lastRing = this.time; this.ring(HX * T, HY * T, '#ffe14a', 30); this.sparkle(HX * T, HY * T, 3, '#ffe14a'); }
         if (this.time - (this.lastTick ?? 0) > 0.045) { this.lastTick = this.time; sfx.tick(Math.floor(h.paid / Math.max(1, h.total / 14))); }
         if (h.paid >= h.total && h.doneAt === undefined) {
           h.doneAt = h.t;
           sfx.banked(h.n);
+          this.payoff?.banked(h);
           if (!h.light) this.effect('bank', 'area', HX * T, HY * T);
           this.save();
         }
@@ -3586,6 +3599,7 @@ export class Game {
 
   // ------------------------------------------------------------ update
   update(dt) {
+    if (this.front?.over && !this.lab) { this.front.step(this, dt); return; }
     if (this.hitstop > 0) { this.hitstop -= dt; dt *= 0.15; }
     this.time += dt; this.S.stats.time += dt;
     const d = this.drill;
@@ -3617,7 +3631,7 @@ export class Game {
     if (this.labFlash > 0) this.labFlash -= dt;
     if (this.goalBlink > 0) this.goalBlink -= dt;
     this.stepLab(dt);
-    if (!this.shop && !this.lab) {
+    if (!this.shop && !this.lab && !this.front) {
       // The clock the ground's own changes are timed by (a cut in the north icing over) stands still with the shop
       // or the lab's notes open, as the lava, the spores and the sparks do: nothing comes due behind them.
       this.clock += dt;
@@ -3669,6 +3683,9 @@ export class Game {
     const lag = Math.hypot(d.x * T - this.cam.x, d.y * T - this.cam.y), most = Math.min(this.W, this.H) * 0.3;
     if (lag > most) { this.cam.x += (d.x * T - this.cam.x) * (1 - most / lag); this.cam.y += (d.y * T - this.cam.y) * (1 - most / lag); }
     this.ach.step(this, dt);
+    // (The close of the game, once it is due or while it plays; the desktop's show of a haul.)
+    if (!this.front) this.finale.watch(this, dt); else if (!this.front.over) this.front.step(this, dt);
+    this.payoff?.step(dt);
   }
 }
 // The game is drawn by the methods of js/drawing.js, which are copied onto it here as they are: a getter stays a

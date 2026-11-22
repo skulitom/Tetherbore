@@ -5,7 +5,7 @@
 // with --demo and its own App ID (desktop/app-id-demo.json, null until the demo's app exists), to
 // desktop/out-demo/Tetherbore Demo-win32-x64.
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, cpSync, existsSync, mkdtempSync, readdirSync, rmSync, statSync } from 'node:fs';
+import { copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
@@ -25,6 +25,11 @@ try {
   run(process.execPath, ['tools/build-dist.mjs', site, '--esbuild', esbuild, ...(demo ? ['--demo'] : [])]);
   const icon = path.join(work, 'icon.ico'), art = [path.join(repo, 'store', 'art', 'shortcut_icon.png'), path.join(repo, 'media', 'icon-512.png')].find(existsSync);
   run('ffmpeg', ['-v', 'error', '-y', '-i', art, '-vf', 'scale=256:256:flags=neighbor', icon]);
+  // The licences of what ships, as files beside the game (`resources/licenses`, which the credits point to): Electron's
+  // own and Chromium's also stand at the top of the app's folder.
+  const notices = path.join(work, 'licenses');
+  mkdirSync(notices);
+  for (const [from, name] of [[path.join(here, 'node_modules', 'electron', 'LICENSE'), 'electron.txt'], [path.join(here, 'node_modules', 'steamworks.js', 'LICENSE'), 'steamworks.js.txt'], [path.join(repo, 'art', 'OFL-fusion-pixel.txt'), 'fusion-pixel-font-OFL.txt']]) cpSync(from, path.join(notices, name));
   const out = path.join(here, demo ? 'out-demo' : 'out');
   rmSync(out, { recursive: true, force: true });
   const keep = new Set(['package.json', 'main.cjs', 'preload.cjs', 'saves.cjs', 'steam.cjs', 'achievements.json', 'app-id.json', 'node_modules']);
@@ -32,7 +37,7 @@ try {
     dir: here, out, name: title, executableName: demo ? 'TetherboreDemo' : 'Tetherbore', platform: 'win32', arch: 'x64', overwrite: true, icon,
     appVersion: require('./package.json').version,
     asar: { unpack: '**/*.{node,dll}' },
-    extraResource: [site],
+    extraResource: [site, notices],
     win32metadata: { ProductName: title, FileDescription: title },
     // (The demo's own App ID, and the word that it is the demo, in place of the game's.)
     afterCopy: demo ? [({ buildPath }) => copyFileSync(path.join(here, 'app-id-demo.json'), path.join(buildPath, 'app-id.json'))] : [],

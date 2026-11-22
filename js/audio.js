@@ -483,11 +483,13 @@ const make = {
 const GAP = { dig: 0.04, crumble: 0.055, grind: 0.095, tick: 0.04, gem: 0.05, slide: 0.05, thud: 0.05, clink: 0.08, hiss: 0.1, puff: 0.08, freeze: 0.06, zap: 0.06, knock: 0.1, banked: 0.08, relic: 0.25, ping: 0.05,
   toll: 0.25, rumble: 0.3, jet: 0.3, gnaw: 0.15, bite: 0.2, hum: 0.5, pull: 0.12, gather: 0.3 };
 const played = Object.create(null);
-let told = false;
+let told = false, stilled = false;
+// (While the desktop's title screen steps the game behind it, nothing that game does is heard: js/title.js.)
+export const holdSounds = on => { stilled = !!on; };
 // A sound by name: `sfx.dig(2)`. Nothing happens with no context, when muted, while the page is aside (`setAside`),
 // or sooner than its gap after the last.
 const sound = (name, build) => (...args) => {
-  if (!ctx || muted || aside || !soundStep) return;
+  if (!ctx || muted || aside || stilled || !soundStep) return;
   const t = ctx.currentTime, was = played[name];
   if (was !== undefined && t >= was && t - was < (GAP[name] ?? 0.02)) return;
   played[name] = t;
@@ -655,8 +657,39 @@ const stings = {
     line([5, 7, 8, 10, 12, 13, 15].map(note), 0.11, { gain: 0.075, ring: 1.3, delay: 0.45 });
     tone(note(0), 3, { type: 'keys', gain: 0.05, attack: 0.3, delay: 0.35, out: space });
   },
+  // The close of the game (js/finale.js): a low bell for each lord as it is called, a step higher each, and when the
+  // four have come home the ground falls silent under a chord held a long while, the scale run up over it.
+  knell(step) {
+    const s = Math.round(figure(step, 0, 0, 3));
+    hush(0.2, 2);
+    tone(note(s * 2) / 2, 1.6, { type: 'keys', gain: 0.12, out: space });
+    tone(note(s * 2) / 4, 1.2, { gain: 0.1, to: note(s * 2) / 4.4, out: room });
+    noise(0.5, { type: 'lowpass', freq: 500, to: 120, q: 0.6, gain: 0.05, out: room });
+  },
+  stillness() {
+    hush(0.12, 7);
+    tone(vary(90, 0.02), 1.2, { gain: 0.22, to: 36, kick: 300, out: room });
+    noise(1.8, { type: 'lowpass', freq: 800, to: 90, q: 0.6, gain: 0.14, out: room });
+    for (const [n, step] of [0, 5, 7, 8, 10].entries()) tone(note(step), 5.5 - 0.3 * n, { type: 'choir', gain: 0.034, attack: 0.5 + 0.1 * n, delay: 0.2 + 0.08 * n, out: space });
+    line([5, 7, 8, 10, 12, 13, 15, 17].map(note), 0.14, { gain: 0.07, ring: 1.6, delay: 0.6 });
+    noise(2.4, { type: 'highpass', freq: 6500, gain: 0.014, attack: 0.5, delay: 0.6, out: space });
+  },
+  // The haul on the desktop (js/payoff.js), under what the game already plays: a blow you feel at the ground's letting
+  // go, as deep as the haul is big; and the count stamped when the last of it is home.
+  thump(size) {
+    const k = Math.min(1, Math.log2(1 + figure(size, 12, 1, 4096)) / 11);
+    tone(vary(74 - k * 22, 0.03), 0.28 + k * 0.45, { gain: 0.2 + k * 0.1, to: 30, kick: 180 + k * 160, out: room });
+    noise(0.22 + k * 0.5, { type: 'lowpass', freq: 420 + k * 260, to: 70, q: 0.7, gain: 0.07 + k * 0.09, out: room });
+  },
+  stamp(size) {
+    const k = Math.min(1, Math.log2(1 + figure(size, 12, 1, 4096)) / 11), top = fold(note(10 + Math.round(k * 5)));
+    tone(150, 0.1, { gain: 0.16, to: 60 });
+    noise(0.05, { freq: 2200, to: 1200, q: 1.5, gain: 0.07 });
+    tone(top, 0.5 + k * 0.5, { type: 'keys', gain: 0.1, delay: 0.03, out: space });
+    tone(fold(top * 1.5), 0.4 + k * 0.5, { type: 'keys', gain: 0.06, delay: 0.09, out: space });
+  },
 };
-Object.assign(GAP, { thaw: 0.15, glass: 0.1, burn: 0.2, rime: 0.15, zip: 0.06, resonate: 0.5, shrine: 1, slain: 2 });
+Object.assign(GAP, { knell: 0.4, stillness: 3, thump: 0.08, stamp: 0.12, thaw: 0.15, glass: 0.1, burn: 0.2, rime: 0.15, zip: 0.06, resonate: 0.5, shrine: 1, slain: 2 });
 for (const name of Object.keys(stings)) sfx[name] = sound(name, stings[name]);
 // The wind of the deep's halls, and the heat of a caldera's thermals: one layer that sounds for as long as the game
 // does, once it has been asked for, its loudness and its colour following the flow of the air where the drill is
