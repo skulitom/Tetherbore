@@ -89,7 +89,7 @@ const CAPSULES = {
   small: { out: [462, 174], k: 3, W: 154, H: 58, paint: (n, W, H) => haul(n, W, H, { block: 'big', cell: 5, at: [84, -6], core: [6, 8, 8], drill: [0.7, 22, 5.6], tw: 0.9, loop: 1.6, aura: 1.6 }), logo: 'compact', at: [2, 27] },
   main: { out: [1232, 706], k: 5, W: 247, H: 142, paint: (n, W, H) => haul(n, W, H, { block: 'big', cell: 8, at: [140, 0], core: [15, 24, 15], drill: [0.7, 42, 10.5] }), logo: 'stacked', at: [44, 108], lk: 9, lp: [14, 245] },
   vertical: { out: [748, 896], k: 6, W: 125, H: 150, paint: (n, W, H) => haul(n, W, H, { block: 'big', cell: 6, at: [46, 12], core: [10, 8, 9], drill: [0.62, 20, 5.2] }), logo: 'stacked', at: [18, 97], lk: 8, lp: [18, 482] },
-  'library-capsule': { out: [600, 900], k: 5, W: 120, H: 180, paint: (n, W, H) => haul(n, W, H, { block: 'big', cell: 7, at: [33, 62], core: [12, 20, 12], drill: [0.6, 22, 5.6] }), logo: 'stacked', at: [15, 127] },
+  'library-capsule': { out: [600, 900], k: 5, W: 120, H: 180, paint: (n, W, H) => haul(n, W, H, { block: 'big', cell: 6, at: [42, 26], core: [12, 12, 10], drill: [0.6, 22, 5.6] }), logo: 'stacked', at: [15, 127], lk: 7, lp: [-8, 539] },
 };
 CAPSULES['library-header'] = CAPSULES.header;
 const FILES = { header: 'header_capsule.png', small: 'small_capsule.png', main: 'main_capsule.png', vertical: 'vertical_capsule.png', 'library-capsule': 'library_capsule.png', 'library-header': 'library_header.png' };
