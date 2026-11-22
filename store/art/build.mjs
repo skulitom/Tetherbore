@@ -80,13 +80,15 @@ for (const [name, make] of Object.entries({ wide: logoWide, compact: () => logoW
 }
 
 // Everything the store takes that carries the title, as the picked concept: the picture, its scale k, and where the
-// logo stands, in the picture's own pixels, at the same scale so the two share one pixel grid.
+// logo stands, in the picture's own pixels, at the same scale so the two share one pixel grid; or, with `lk`, the logo
+// at a scale of its own and `lp` where it stands in the output. Steam's upload asks that the logo fill at least a third
+// of a capsule and says not how it is measured, so these hold it to the strictest reading, the logo's box by area.
 const SHIFT = (size, k, n) => -Math.floor((n * k - size) / 2);
 const CAPSULES = {
-  header: { out: [920, 430], k: 4, W: 230, H: 108, paint: (n, W, H) => haul(n, W, H, { block: 'big', cell: 8, at: [120, 3], core: [12, 30, 15], drill: [0.74, 34, 8.5] }), logo: 'wide', at: [36, 74] },
+  header: { out: [920, 430], k: 4, W: 230, H: 108, paint: (n, W, H) => haul(n, W, H, { block: 'big', cell: 6, at: [136, -2], core: [12, 24, 14], drill: [0.74, 34, 8.5] }), logo: 'compact', at: [36, 74], lk: 6, lp: [22, 234] },
   small: { out: [462, 174], k: 3, W: 154, H: 58, paint: (n, W, H) => haul(n, W, H, { block: 'big', cell: 5, at: [84, -6], core: [6, 8, 8], drill: [0.7, 22, 5.6], tw: 0.9, loop: 1.6, aura: 1.6 }), logo: 'compact', at: [2, 27] },
-  main: { out: [1232, 706], k: 5, W: 247, H: 142, paint: (n, W, H) => haul(n, W, H, { block: 'big', cell: 11, at: [106, 3], core: [15, 44, 19], drill: [0.7, 42, 10.5] }), logo: 'wide', at: [44, 108] },
-  vertical: { out: [748, 896], k: 6, W: 125, H: 150, paint: (n, W, H) => haul(n, W, H, { block: 'big', cell: 7, at: [34, 38], core: [10, 10, 11], drill: [0.62, 20, 5.2] }), logo: 'stacked', at: [18, 97] },
+  main: { out: [1232, 706], k: 5, W: 247, H: 142, paint: (n, W, H) => haul(n, W, H, { block: 'big', cell: 8, at: [140, 0], core: [15, 24, 15], drill: [0.7, 42, 10.5] }), logo: 'stacked', at: [44, 108], lk: 9, lp: [14, 245] },
+  vertical: { out: [748, 896], k: 6, W: 125, H: 150, paint: (n, W, H) => haul(n, W, H, { block: 'big', cell: 6, at: [46, 12], core: [10, 8, 9], drill: [0.62, 20, 5.2] }), logo: 'stacked', at: [18, 97], lk: 8, lp: [18, 482] },
   'library-capsule': { out: [600, 900], k: 5, W: 120, H: 180, paint: (n, W, H) => haul(n, W, H, { block: 'big', cell: 7, at: [33, 62], core: [12, 20, 12], drill: [0.6, 22, 5.6] }), logo: 'stacked', at: [15, 127] },
 };
 CAPSULES['library-header'] = CAPSULES.header;
@@ -96,7 +98,8 @@ function capsule(id, c, paint = c.paint) {
   const art = plate(paint(`art-${id}`, c.W, c.H));
   const [W, H] = c.out, x = SHIFT(W, c.k, c.W), y = SHIFT(H, c.k, c.H);
   const logo = LOGO[c.logo];
-  return compose(id, W, H, [{ plate: art, k: c.k, x, y }, { plate: logo, k: c.k, x: x + c.at[0] * c.k, y: y + c.at[1] * c.k }], { file: `out-${id}.png` });
+  const [lx, ly] = c.lp ?? [x + c.at[0] * c.k, y + c.at[1] * c.k];
+  return compose(id, W, H, [{ plate: art, k: c.k, x, y }, { plate: logo, k: c.lk ?? c.k, x: lx, y: ly }], { file: `out-${id}.png` });
 }
 const finals = {};
 for (const [id, c] of Object.entries(CAPSULES)) {
