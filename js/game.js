@@ -13,6 +13,7 @@ import { winds } from './winds.js';
 import { LAIR, BOSS } from './bosses.js';
 import { pickGoal, goalHome } from './goal.js';
 import { fits } from './lang.js';
+import { Achievements } from './achievements.js';
 export { richness, haulBonus, overload, income, UPGRADES, LAB, labLevel, labNext, WORKS, MAPS, CORE } from './shop.js';
 
 export { T };
@@ -518,6 +519,7 @@ export class Game {
     this.fallen = this.feel.fallen;                                   // the cells whose icicle has fallen: the feel's, which it keeps and gives back
     this.fitter = new Fitter(FLY, BOOST.by);                          // what the upgrades show, and the moment of buying (js/fit.js)
     this.fauna = new Fauna(FLY, JOLT.bat);                            // the creatures of the ground (js/fauna.js)
+    this.ach = new Achievements();                                    // what the player has earned, kept beside the game and not in it (js/achievements.js)
     // (The parts of a frame whose time is added up by name, for `frameTook`: each wrapped by a function taking as
     // many arguments as the part does (`TIMED`), so that a call makes no list of them.)
     for (const name in TIMED) {
@@ -608,7 +610,7 @@ export class Game {
       if (kept && kept.v === 3 && (kept.rev ?? 0) > this.rev) { this.adopt(); return; }
     }
     this.rev = (this.rev ?? latestRev()) + 1;
-    try { const text = JSON.stringify({ v: 3, rev: this.rev, ...this.kept() }); localStorage.setItem(SAVE_KEY, text); localStorage.setItem(LATEST, text); } catch { /* the game goes on without saving */ }
+    try { const text = JSON.stringify({ v: 3, rev: this.rev, ...this.kept(), ...this.ach.saved() }); localStorage.setItem(SAVE_KEY, text); localStorage.setItem(LATEST, text); } catch { /* the game goes on without saving */ }
     // (The pieces are taken now, as this world's: by the time the database answers, the game may be in another.)
     const w = this.world, seed = this.S.seed, kept = [...w.touched].map(id => [id, w.chunks[id], w.genOf[id]]).filter(([, p]) => p);
     if (!kept.length) return;
@@ -654,7 +656,7 @@ export class Game {
       const sound = d => !!d && d.v === 3;
       if (sound(latest) && (!sound(data) || (data.rev !== undefined ? (latest.rev ?? 0) > data.rev : data.seed === latest.seed && (data.stats?.time ?? 0) < (latest.stats?.time ?? 0)))) data = latest;
       if (!data || data.v !== 3) { this.unblank(); this.rev = 0; return false; }
-      const { v, rev, ...S } = data;
+      const { v, rev, ach, ...S } = data;
       // (A copy with no number, taken for the later one, is saved next as later than the numbered copy it passed.)
       this.rev = rev ?? latest?.rev ?? 0;
       // What was bought and banked does not wait on the database: where that cannot be opened or read (a private
@@ -726,6 +728,7 @@ export class Game {
       // (Said once, to a game saved before the deep changed whose unseen ground was laid anew: it is today's from then.)
       else if (newer && S.gen < GEN) this.notice = { title: 'NEW GROUND', sub: 'THE DEEP HAS CHANGED', colour: '#8ce060', t: 0, life: 5 };
       S.gen = GEN;
+      this.ach.load(ach, S);
       return true;
     } catch (error) {
       // A save that is there and cannot be begun is kept aside before a new game is written over it, and the
@@ -819,6 +822,7 @@ export class Game {
   // 1 to 4 choose one.
   key(code, down, repeat = false, shift = false) {
     if (!down && code === this.labHeld) this.labHeld = null;
+    if (down && this.lab && this.labTab === 'ach' && this.ach.key(code)) return true;
     if (down && this.lab && this.labTab === 'lab' && (!repeat || code === this.labHeld) && this.labKey(code, repeat)) { this.labHeld = code; return true; }
     if (repeat) return false;
     const dir = { ArrowRight: 0, KeyD: 0, ArrowDown: 1, KeyS: 1, ArrowLeft: 2, KeyA: 2, ArrowUp: 3, KeyW: 3 }[code];
@@ -2434,6 +2438,7 @@ export class Game {
     }
     else if (pay.fossil || pay.twins) sfx.relic();
     if (rang) { sfx.resonate?.(rang); this.ring(cx, cy, '#fff0a0', 200, 0.08, 1.2); if (light) this.popup(mx, my - 1.2, `${rang} RING`, '#fff0a0'); }
+    this.ach.hauled(this, pay, n, half);
   }
   // What a haul's banner says of the thing of the lab's that paid most in it (`payOf`: `top`), where that is a thing of
   // the second tier or the third with the winch as it is: how many of its cells came, its name (a '?' until the lab
@@ -3149,6 +3154,7 @@ export class Game {
     this.fitter.fire?.('trophy');
     // (The word waits for the banner to go: both are set where a banner goes.)
     if ((S.bosses >> 4 & 15) === 15 && fits('THE DEEP IS STILL')) this.notice = { title: 'THE DEEP IS STILL', colour: '#fff6c8', t: 0, life: 3, wait: this.banner.life };
+    this.ach.check(this);
     return { grit, kin, spec: BOSS_SPEC };
   }
   // The hull is made whole, for nothing, whenever the drill rides on to the core.
@@ -3474,6 +3480,7 @@ export class Game {
     this.bought = { id: u.id, t: 0.5 };
     this.fitter.bought(this, u, this.S.lv[u.id]);
     pickGoal(this);
+    this.ach.check(this);
     this.save();
   }
 
@@ -3649,7 +3656,7 @@ export class Game {
     // next waiting comes after it; nor while what is called out across the screen stands on its panel: `eyeHeld`.)
     if (!this.shop && !this.lab && !this.atCore && d.mode !== 'dead') {
       if (this.eye && !this.eyeHeld) { this.eye.t += dt; if (this.eye.t > this.eye.life) this.eye = null; }
-      if (!this.eye && this.eyeQueue.length) this.showEye();
+      if (!this.eye && this.eyeQueue.length && !this.ach.up) this.showEye();
     }
     // The camera eases after the drill, a little ahead of the way it is flying.
     const k = 1 - Math.exp(-dt * 8), lead = Math.min(3, Math.hypot(d.vx, d.vy) * 0.1), speed = Math.hypot(d.vx, d.vy) || 1;
@@ -3657,6 +3664,7 @@ export class Game {
     // Flying very fast, the view must not fall behind what is being flown through.
     const lag = Math.hypot(d.x * T - this.cam.x, d.y * T - this.cam.y), most = Math.min(this.W, this.H) * 0.3;
     if (lag > most) { this.cam.x += (d.x * T - this.cam.x) * (1 - most / lag); this.cam.y += (d.y * T - this.cam.y) * (1 - most / lag); }
+    this.ach.step(this, dt);
   }
 }
 // The game is drawn by the methods of js/drawing.js, which are copied onto it here as they are: a getter stays a

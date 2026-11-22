@@ -4,7 +4,8 @@
 //   npm run spike -- --out f.json check the window, storage and Steam, write what was found, and quit
 //
 // TETHERBORE_STEAM_APP names the Steam app. Until the game has its own App ID it is Valve's test app, 480.
-const { app, BrowserWindow, protocol } = require('electron');
+const { app, BrowserWindow, ipcMain, protocol } = require('electron');
+const { attachSteam } = require('./steam.cjs');
 const { execFileSync } = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -96,9 +97,10 @@ const errors = [];
 app.whenReady().then(() => {
   protocol.handle('tetherbore', serve);
   startSteam();
+  attachSteam(ipcMain, () => steam, APP_ID);
   const window = new BrowserWindow({
     width: 1280, height: 720, useContentSize: true, autoHideMenuBar: true, backgroundColor: '#07060b', title: 'Tetherbore',
-    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, backgroundThrottling: false },
+    webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true, backgroundThrottling: false },
   });
   window.webContents.on('console-message', event => { if (event.level === 'error') errors.push(String(event.message).slice(0, 300)); });
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
