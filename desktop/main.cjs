@@ -78,13 +78,16 @@ function startSteam() {
   try { steam = steamworks.init(APP_ID); } catch (error) { steamError = String(error.message ?? error); }
 }
 
-// One of Spacewar's (app 480) achievements is set and read back, and taken off again unless the account already had it.
-function checkAchievement() {
-  if (!steam || APP_ID !== 480) return null;
-  const name = 'ACH_WIN_ONE_GAME', had = steam.achievement.isActivated(name);
-  const set = steam.achievement.activate(name), read = steam.achievement.isActivated(name);
+// An achievement set and read back, and taken off again unless the account already had it: one of Spacewar's on the
+// test app, or on the game's own app the one `--ach` names, set as the game sets it, through the page's bridge.
+async function checkAchievement(window) {
+  const name = APP_ID === 480 ? 'ACH_WIN_ONE_GAME' : option('--ach');
+  if (!steam || !name) return null;
+  const had = steam.achievement.isActivated(name);
+  const set = APP_ID === 480 ? steam.achievement.activate(name) : (await window.webContents.executeJavaScript(`window.tetherboreDesktop.achievements.unlock(${JSON.stringify(name)})`)).set?.includes(name);
+  const read = steam.achievement.isActivated(name);
   const cleared = had ? 'already held, left' : steam.achievement.clear(name) && !steam.achievement.isActivated(name);
-  return { set, read, cleared };
+  return { name, had, set: had || !!set, read, cleared };
 }
 
 function overlayLoaded() {
@@ -109,7 +112,7 @@ async function spike(window) {
   const shot = option('--shot');
   if (shot) fs.writeFileSync(shot, image.toPNG());
   found.painted = !image.isEmpty();
-  found.achievement = checkAchievement();
+  found.achievement = await checkAchievement(window);
   found.cloud = steam ? { account: steam.cloud.isEnabledForAccount(), app: steam.cloud.isEnabledForApp() } : null;
   found.deck = steam?.utils.isSteamRunningOnSteamDeck() ?? null;
   found.overlayModule = overlayLoaded();
