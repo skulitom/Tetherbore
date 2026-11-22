@@ -1,0 +1,17 @@
+{
+  "name": "tetherbore-desktop",
+  "version": "0.1.0",
+  "description": "Tetherbore for Windows and Steam Deck: the web game in an Electron window, with Steam",
+  "private": true,
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "spike": "electron . --spike"
+  },
+  "dependencies": {
+    "steamworks.js": "0.4.0"
+  },
+  "devDependencies": {
+    "electron": "45.4.1"
+  }
+}
