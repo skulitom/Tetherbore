@@ -4,7 +4,7 @@
 //   npm run spike -- --out f.json check the window, storage and Steam, write what was found, and quit
 //
 // TETHERBORE_STEAM_APP names the Steam app. Until the game has its own App ID it is Valve's test app, 480.
-const { app, BrowserWindow, Menu, ipcMain, protocol } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, protocol, shell } = require('electron');
 const { attachSteam } = require('./steam.cjs');
 const { execFileSync } = require('node:child_process');
 const fs = require('node:fs');
@@ -12,13 +12,20 @@ const os = require('node:os');
 const path = require('node:path');
 const saveFile = require('./saves.cjs');
 
-app.setName('Tetherbore');
+// Whether this package is the demo (desktop/package.mjs --demo puts desktop/app-id-demo.json in place of app-id.json).
+// The demo keeps everything in a folder of its own, so that a full game's save is never touched by it.
+const IDS = require('./app-id.json'), DEMO = IDS.demo === true, NAMES = ['Tetherbore', 'Tetherbore Demo'];
+const STORE = 'https://store.steampowered.com/app/5681650';
+app.setName(NAMES[DEMO ? 1 : 0]);
 const SPIKE = process.argv.includes('--spike');
-// (TETHERBORE_DATA puts everything the game keeps in another folder, for tests. --no-steam leaves Steam alone.)
+// (TETHERBORE_DATA puts everything the game keeps in another folder, for tests, and TETHERBORE_OTHER_DATA says where the
+// other edition's is. --no-steam leaves Steam alone.)
 if (process.env.TETHERBORE_DATA) app.setPath('userData', path.resolve(process.env.TETHERBORE_DATA));
+else if (DEMO) app.setPath('userData', path.join(app.getPath('appData'), NAMES[1]));
+const otherData = () => process.env.TETHERBORE_OTHER_DATA ? path.resolve(process.env.TETHERBORE_OTHER_DATA) : path.join(app.getPath('appData'), NAMES[DEMO ? 0 : 1]);
 const option = name => { const at = process.argv.indexOf(name); return at < 0 ? null : process.argv[at + 1]; };
 // The game's App ID (app-id.json). A build with none runs without Steam; from source it is Valve's test app.
-const APP_ID = Number(process.env.TETHERBORE_STEAM_APP) || require('./app-id.json').appId || (app.isPackaged ? null : 480);
+const APP_ID = Number(process.env.TETHERBORE_STEAM_APP) || IDS.appId || (app.isPackaged ? null : 480);
 const NO_STEAM = process.argv.includes('--no-steam') || !APP_ID;
 const ROOT = app.isPackaged ? path.join(process.resourcesPath, 'game') : path.resolve(__dirname, '..');
 // What a browser loads (tools/build-dist.mjs, SHIPPED), and so all this origin will serve.
@@ -90,6 +97,15 @@ async function checkAchievement(window) {
   return { name, had, set: had || !!set, read, cleared };
 }
 
+// The demo's wishlist: the store's page in Steam's overlay where Steam is running, and in the browser where it is not.
+// (The address is this file's: the page cannot name another. TETHERBORE_NO_OPEN, for tests, opens nothing.)
+async function wishlist() {
+  if (process.env.TETHERBORE_NO_OPEN) return 'held';
+  if (steam) { try { steam.overlay.activateToWebPage(STORE); return 'overlay'; } catch { /* the browser, then */ } }
+  await shell.openExternal(STORE);
+  return 'browser';
+}
+
 function overlayLoaded() {
   if (process.platform !== 'win32') return null;
   try {
@@ -101,7 +117,7 @@ function overlayLoaded() {
 async function spike(window) {
   const found = { electron: process.versions.electron, appId: steam?.utils.getAppId() ?? null, steamError };
   await new Promise(done => setTimeout(done, 5000));
-  if (option('--run')) { await window.webContents.executeJavaScript(option('--run')); await new Promise(done => setTimeout(done, 700)); }
+  if (option('--run')) { found.ran = await window.webContents.executeJavaScript(option('--run')); await new Promise(done => setTimeout(done, 700)); }
   found.page = await window.webContents.executeJavaScript(`(async () => {
     localStorage.setItem('tetherbore-spike', '1');
     const db = await new Promise(done => { const r = indexedDB.open('tetherbore-spike', 1); r.onsuccess = () => done(true); r.onerror = () => done(false); });
@@ -128,7 +144,7 @@ app.whenReady().then(() => {
   protocol.handle('tetherbore', serve);
   Menu.setApplicationMenu(null);
   if (!NO_STEAM) startSteam();
-  attachSteam(ipcMain, () => steam, APP_ID);
+  attachSteam(ipcMain, () => steam, APP_ID, { demo: DEMO });
   const saves = saveFile.open(path.join(app.getPath('userData'), 'saves'));
   const start = SPIKE ? { fullscreen: false } : prefs(), [width, height] = (option('--size') ?? '1280x720').split('x').map(Number);
   const window = new BrowserWindow({
@@ -137,6 +153,10 @@ app.whenReady().then(() => {
   });
   ipcMain.handle('saves:read', () => saves.read());
   ipcMain.handle('saves:write', (_, data) => saves.write(data));
+  // A full game with no save of its own may take up the demo's (js/carry.js); a demo only says a full game's is safe.
+  ipcMain.handle('saves:read-demo', () => DEMO ? null : saveFile.open(path.join(otherData(), 'saves')).read());
+  ipcMain.handle('saves:has-full', () => DEMO && fs.existsSync(path.join(otherData(), 'saves', saveFile.NAME)));
+  ipcMain.handle('tetherbore:wishlist', wishlist);
   ipcMain.handle('window:is-fullscreen', () => window.isFullScreen());
   ipcMain.handle('window:toggle-fullscreen', () => window.setFullScreen(!window.isFullScreen()));
   ipcMain.handle('window:quit', () => window.close());

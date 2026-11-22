@@ -30,10 +30,11 @@ import { N, C, K, DX, DY } from './world.js';
 import { sheets, tinted } from './atlas.js';
 import { voices } from './audio.js';
 import { winds } from './winds.js';
+import { DEMO, DEMO_LAIR, DEMO_LORD } from './edition.js';
 
 const T = 16;                                    // pixels in a cell, as js/drawing.js has it
 export const EYE = '#ff2bd6';                    // js/fauna.js's FOE_EYE (not imported: js/fauna.js imports this file)
-export const LAIR = 2210;                        // how far out on its axis a lord's lair lies
+export const LAIR = DEMO ? DEMO_LAIR : 2210;     // how far out on its axis a lord's lair lies (the demo has one lord, nearer: js/edition.js)
 export const WAKE = 20, NEAR = 30, LEASH = 36, HEAL = 8, HUSK = 40;
 export const GRACE = 1.5, RISE = 0.4, SINK = 0.5, WAIT = 2, HURT = 1.2, YIELD = 1.5, LOCK = 0.3, LEAST_TELL = 0.7, BLOWS = 3, RUMBLE = 2.5;
 // The narrowest screen a lord must be wholly seen on (js/fauna.js: `inView`, at 160 by 284 with the bar's 44 under
@@ -107,6 +108,7 @@ export const BOSS = [
   { key: 'wyrm', name: 'FROST WYRM', lord: 'LORD OF THE NORTH', kin: 1, look: 'frost', fossil: 'FROZEN BEAST', verb: 'loop', ready: true, attack: 'breath',
     poses: POSES, tell: [1.1, 0.95, 0.8], act: 0.4, rest: [3.4, 2.9, 2.5], near: [3.5, 6], perch: true, reach: 9, swim: 7, arc: 6, breath: 0.8, stun: 0.5 },
 ];
+if (DEMO) BOSS.forEach((B, b) => { B.ready = b === DEMO_LORD; });
 // Its lair's middle, in cells.
 export const lairX = b => C + DX[b] * LAIR + 0.5, lairY = b => C + DY[b] * LAIR + 0.5;
 // The name of a frame on the `bosses` sheet.

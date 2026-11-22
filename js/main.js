@@ -4,12 +4,18 @@ import { Game, hasSave } from './game.js';
 import { setAside } from './audio.js';
 import { AHEAD_ROWS, AHEAD_UNDER } from './world.js';
 import { Pad } from './pad.js';
+import { DEMO, demoSaved } from './edition.js';
 
 const canvas = document.getElementById('game');
 // The desktop build (desktop/preload.cjs): the game on disk, if it is newer than what this browser's storage holds, is
 // laid over it before anything reads it, and the page begins again so that the language and the sound are its too.
 const desktop = window.tetherboreDesktop ?? null, disk = desktop ? await import('./disk.js') : null;
 if (disk && await disk.pull(desktop.saves)) { location.reload(); await new Promise(() => {}); }
+// A full game with no save of its own takes up the demo's, where there is one (js/carry.js, fetched only then).
+if (!DEMO && !hasSave()) {
+  const file = demoSaved() ? null : await desktop?.saves.readDemo?.();
+  if (demoSaved() || file) { const { carry } = await import('./carry.js'); if (await carry(file)) { location.reload(); await new Promise(() => {}); } }
+}
 await loadAtlas();
 // `?shot` in the address stages a view of a far place for tools/shot.mjs to photograph, in place of the saved game,
 // which is then neither read nor written (js/shot.js, fetched only then). Without it none of this runs.
@@ -18,9 +24,16 @@ const query = new URLSearchParams(location.search);
 // own laid first to be thrown away, and nothing asks it anything before restore has begun it.)
 const game = new Game(canvas, document.getElementById('rope'), { blank: !query.has('shot') && hasSave() });
 if (query.has('shot')) game.ach.off = true;   // (a staged view earns nothing and keeps nothing)
+// (The demo fits itself to the game before anything is loaded: js/demo.js, which no other build has.)
+const demo = DEMO ? await import('./demo.js') : null;
+if (demo) demo.fit(game, desktop?.wishlist ? { wishlist: desktop.wishlist } : {});
 const shot = query.has('shot') ? (await import('./shot.js')).stage(game, query) : null;
 // (With no saved game to go on with, the game begun is a new one, and the saved ground is made its own.)
-if (!shot && !(await game.restore())) game.claim();
+if (!shot && !(await game.restore())) {
+  game.claim();
+  // (A demo begun on a device with a full game's save says that save is safe: it is neither read nor written.)
+  if (demo && (demo.fullSaveHere() || await desktop?.saves.hasFull?.())) demo.sayFullSafe(game);
+}
 if (desktop) {
   game.desktop = { fullscreen: await desktop.window.isFullscreen(), toggle: desktop.window.toggleFullscreen, quit: desktop.window.quit };
   desktop.window.onFullscreen(on => { game.desktop.fullscreen = on; });

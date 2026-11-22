@@ -2,3 +2,4 @@ art/.tmp/
 node_modules/
 dist/
 desktop/out/
+desktop/out-demo/

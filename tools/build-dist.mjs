@@ -1,7 +1,10 @@
 // The site as it is deployed: the files a browser loads, made smaller and asked for sooner, in a folder of their own
 // (GitHub Pages and itch.io are given that folder, .github/workflows/static.yml and itch.yml). Nothing the game does
 // or draws changes: every module is the same module, the atlas the same object once read.
-//   node tools/build-dist.mjs <outdir> [--esbuild <esbuild's folder>] [--check]
+//   node tools/build-dist.mjs <outdir> [--demo] [--esbuild <esbuild's folder>] [--check]
+//
+// With --demo the build is the demo (js/edition.js, js/demo.js): the one line that says so is written `true` in the
+// copy shipped, js/demo.js ships and js/carry.js does not. Without it js/demo.js is left out and nothing of it can run.
 //
 // What it writes:
 //   - index.html, manifest.webmanifest, css/, js/, assets/ and media/, the files a browser loads. (Nothing anyone
@@ -77,6 +80,13 @@ export function withPreloads(html, atlas) {
   return html.replace(anchor, m => `${m}<!-- (Every sheet's image the atlas names, asked for at once: written by tools/build-dist.mjs.) -->\n${links}`);
 }
 
+// The one line a demo build changes (js/edition.js).
+export const DEMO_LINE = 'export const DEMO = false;';
+export function editionFor(source, demo) {
+  if (!demo) return source;
+  if (source.split(DEMO_LINE).length !== 2) throw new Error(`js/edition.js does not say ${DEMO_LINE} once`);
+  return source.replace(DEMO_LINE, 'export const DEMO = true;');
+}
 const lf = text => text.replace(/\r\n/g, '\n');
 function esbuildAt(given) {
   const where = given ?? process.env.TB_ESBUILD;
@@ -98,14 +108,14 @@ function fresh(out) {
   return resolved;
 }
 
-export function build(out, esbuild) {
+export function build(out, esbuild, { demo = false } = {}) {
   const dir = fresh(out), counts = { files: 0, jsIn: 0, jsOut: 0, atlasIn: 0, atlasOut: 0, images: 0 };
   for (const part of ['css', 'media', 'assets']) cpSync(path.join(REPO, part), path.join(dir, part), { recursive: true });
   for (const file of ['manifest.webmanifest']) writeFileSync(path.join(dir, file), lf(readFileSync(path.join(REPO, file), 'utf8')));
   for (const file of readdirSync(path.join(dir, 'css'))) writeFileSync(path.join(dir, 'css', file), lf(readFileSync(path.join(dir, 'css', file), 'utf8')));
   mkdirSync(path.join(dir, 'js'));
-  for (const file of readdirSync(path.join(REPO, 'js')).filter(f => f.endsWith('.js')).sort()) {
-    const source = readFileSync(path.join(REPO, 'js', file), 'utf8');
+  for (const file of readdirSync(path.join(REPO, 'js')).filter(f => f.endsWith('.js') && f !== (demo ? 'carry.js' : 'demo.js')).sort()) {
+    const read = readFileSync(path.join(REPO, 'js', file), 'utf8'), source = file === 'edition.js' ? editionFor(read, demo) : read;
     const { code, warnings } = esbuild.transformSync(source, { ...TRANSFORM, sourcefile: `js/${file}` });
     for (const w of warnings) console.warn(`js/${file}: ${w.text}`);
     writeFileSync(path.join(dir, 'js', file), code);
@@ -114,7 +124,8 @@ export function build(out, esbuild) {
   const atlasText = readFileSync(path.join(REPO, 'assets', 'atlas.json'), 'utf8'), atlas = JSON.parse(atlasText), compact = JSON.stringify(compactAtlas(atlas));
   writeFileSync(path.join(dir, 'assets', 'atlas.json'), compact);
   counts.atlasIn = Buffer.byteLength(atlasText); counts.atlasOut = Buffer.byteLength(compact);
-  const html = withPreloads(lf(readFileSync(path.join(REPO, 'index.html'), 'utf8')), atlas);
+  const page = lf(readFileSync(path.join(REPO, 'index.html'), 'utf8'));
+  const html = withPreloads(demo ? page.replace('<title>Tetherbore</title>', '<title>Tetherbore Demo</title>') : page, atlas);
   writeFileSync(path.join(dir, 'index.html'), html);
   counts.images = new Set(Object.values(atlas).map(s => s.image)).size;
   const walk = d => readdirSync(d).reduce((n, f) => n + (statSync(path.join(d, f)).isDirectory() ? walk(path.join(d, f)) : 1), 0);
@@ -123,7 +134,7 @@ export function build(out, esbuild) {
 }
 
 // --check: see the head.
-export async function check(dir) {
+export async function check(dir, { demo = false } = {}) {
   const problems = [];
   // Every file index.html asks for is there.
   const html = readFileSync(path.join(dir, 'index.html'), 'utf8');
@@ -137,11 +148,14 @@ export async function check(dir) {
     cpSync(path.join(REPO, 'test'), path.join(tree, 'test'), { recursive: true });
     cpSync(path.join(REPO, 'tools'), path.join(tree, 'tools'), { recursive: true });
     writeFileSync(path.join(tree, 'package.json'), '{ "type": "module" }\n');
+    // (The demo's test holds the Steam bridge too.)
+    if (demo) for (const file of ['steam.cjs', 'achievements.json']) cpSync(path.join(REPO, 'desktop', file), path.join(tree, 'desktop', file));
     // The compact atlas is read by the built js/atlas.js as the repository's is.
     const { expandAtlas } = await import(pathToFileURL(path.join(tree, 'js', 'atlas.js')).href);
     const built = expandAtlas(JSON.parse(readFileSync(path.join(tree, 'assets', 'atlas.json'), 'utf8')));
     if (JSON.stringify(built) !== JSON.stringify(JSON.parse(readFileSync(path.join(REPO, 'assets', 'atlas.json'), 'utf8')))) problems.push('the built atlas is not read as the repository\'s is');
-    for (const test of ['test/smoke.mjs', 'test/regress/s6-feel.mjs', 'test/regress/s7-fit.mjs']) {
+    // (A demo is flown by what holds the demo: the other flights go past its limit.)
+    for (const test of demo ? ['test/regress/y-demo-play.mjs'] : ['test/smoke.mjs', 'test/regress/s6-feel.mjs', 'test/regress/s7-fit.mjs']) {
       const t0 = Date.now(), run = spawnSync(process.execPath, [test], { cwd: tree, encoding: 'utf8', maxBuffer: 1 << 28 });
       const last = (run.status === 0 ? run.stdout ?? '' : `${run.stdout ?? ''}${run.stderr ?? ''}`).trim().split('\n').slice(-1)[0] ?? '';
       console.log(`${run.status === 0 ? 'ok  ' : 'FAIL'} ${test} with the built modules (${((Date.now() - t0) / 1000).toFixed(0)} s): ${last.slice(0, 160)}`);
@@ -152,20 +166,21 @@ export async function check(dir) {
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const args = process.argv.slice(2), opts = { check: false, esbuild: null, out: null };
+  const args = process.argv.slice(2), opts = { check: false, demo: false, esbuild: null, out: null };
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--check') opts.check = true;
+    else if (args[i] === '--demo') opts.demo = true;
     else if (args[i] === '--esbuild') opts.esbuild = args[++i];
     else if (!args[i].startsWith('--') && !opts.out) opts.out = args[i];
-    else { console.error(`What is ${args[i]}?\n  node tools/build-dist.mjs <outdir> [--esbuild <esbuild's folder>] [--check]`); process.exit(2); }
+    else { console.error(`What is ${args[i]}?\n  node tools/build-dist.mjs <outdir> [--demo] [--esbuild <esbuild's folder>] [--check]`); process.exit(2); }
   }
-  if (!opts.out) { console.error('  node tools/build-dist.mjs <outdir> [--esbuild <esbuild\'s folder>] [--check]'); process.exit(2); }
+  if (!opts.out) { console.error('  node tools/build-dist.mjs <outdir> [--demo] [--esbuild <esbuild\'s folder>] [--check]'); process.exit(2); }
   const esbuild = esbuildAt(opts.esbuild);
-  const { dir, counts: c } = build(opts.out, esbuild);
+  const { dir, counts: c } = build(opts.out, esbuild, { demo: opts.demo });
   const kb = n => `${(n / 1024).toFixed(0)} KB`;
-  console.log(`${dir}: ${c.files} files with esbuild ${esbuild.version}; js ${kb(c.jsIn)} -> ${kb(c.jsOut)}, atlas.json ${kb(c.atlasIn)} -> ${kb(c.atlasOut)}, ${c.images} images preloaded`);
+  console.log(`${dir}${opts.demo ? ' (the demo)' : ''}: ${c.files} files with esbuild ${esbuild.version}; js ${kb(c.jsIn)} -> ${kb(c.jsOut)}, atlas.json ${kb(c.atlasIn)} -> ${kb(c.atlasOut)}, ${c.images} images preloaded`);
   if (opts.check) {
-    const problems = await check(dir);
+    const problems = await check(dir, { demo: opts.demo });
     if (problems.length) { console.log(`FAIL ${problems.join('; ')}`); process.exit(1); }
     console.log('ok: the built site plays as the repository does');
   }
