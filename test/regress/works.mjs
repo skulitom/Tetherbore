@@ -140,7 +140,7 @@ for (const coil of [0, 1]) {
   // three kept, and the page loaded again in it: there is no page here), and a new world on the second tap.
   heads[2].act(); game.render();
   const rows = game.buttons.filter(b => b.h === 20 && b.w > 100).sort((a, b) => a.y - b.y), seed = game.S.seed;
-  check(game.labTab === 'menu' && rows.length === 4, `the menu has ${rows.length} rows`);
+  check(game.labTab === 'menu' && rows.length === 5, `the menu has ${rows.length} rows`);
   const audio = await import('../../js/audio.js'), music = audio.isMusic();
   rows[1].act(); game.render();
   check(audio.isMusic() === !music && localStorage.getItem('tetherbore-music') === (music ? '0' : '1'), `a tap on MUSIC left the music ${audio.isMusic() ? 'on' : 'off'}, kept as '${localStorage.getItem('tetherbore-music')}'`);
@@ -163,6 +163,11 @@ for (const coil of [0, 1]) {
   check(game.S.seed === seed && game.confirmReset > 0, 'one tap on NEW WORLD made a new world');
   rows[3].act(); game.render();
   check(game.S.seed !== seed, 'two taps on NEW WORLD made no new world');
+  // (A new world shuts the panel. The row under NEW WORLD opens the list of achievements, in the same panel, and the MENU tab brings the menu back.)
+  game.openLab(true, 'menu'); game.render();
+  game.buttons.filter(b => b.h === 20 && b.w > 100).sort((p, q) => p.y - q.y)[4].act(); game.render();
+  check(game.lab && game.labTab === 'ach', 'the ACHIEVEMENTS row did not open the list');
+  game.labTab = 'menu'; game.render();
   game.openLab(false);
 }
 

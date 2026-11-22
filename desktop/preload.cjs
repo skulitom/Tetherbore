@@ -1,4 +1,5 @@
-// What the page may ask of the desktop shell, and nothing else.
+// What the desktop shell puts in the page, and all it puts there: `window.tetherboreDesktop`. (The window is sandboxed,
+// so this file can require only electron, and the channels are written out here rather than taken from steam.cjs.)
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('tetherboreDesktop', {
@@ -14,5 +15,9 @@ contextBridge.exposeInMainWorld('tetherboreDesktop', {
     onFlush: flush => ipcRenderer.on('window:flush', async () => {
       try { await flush(); } finally { ipcRenderer.send('window:flushed'); }
     }),
+  },
+  achievements: {
+    sync: ids => ipcRenderer.invoke('tetherbore:achievements-sync', ids),
+    unlock: id => ipcRenderer.invoke('tetherbore:achievements-unlock', id),
   },
 });

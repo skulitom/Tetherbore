@@ -1,0 +1,583 @@
+{
+  "note": "For the Steamworks achievements page, once the game has its App ID. Made by tools/achievements.mjs; do not edit by hand. Language keys are Steam's API language codes. \"hidden\" is Steam's Spoiler visibility.",
+  "iconSize": 256,
+  "iconFolder": "store/achievements",
+  "achievements": [
+    {
+      "apiName": "ACH_FIRST_HAUL",
+      "hidden": false,
+      "icon": "ACH_FIRST_HAUL_ACHIEVED.png",
+      "iconLocked": "ACH_FIRST_HAUL_UNACHIEVED.png",
+      "name": {
+        "english": "FIRST HAUL",
+        "russian": "ПЕРВЫЙ УЛОВ",
+        "schinese": "第一次收获"
+      },
+      "description": {
+        "english": "REEL A PIECE OF GROUND HOME",
+        "russian": "ПРИТЯНИ КУСОК ЗЕМЛИ ДОМОЙ",
+        "schinese": "把一块地拉回家"
+      }
+    },
+    {
+      "apiName": "ACH_BIG_HAUL",
+      "hidden": false,
+      "icon": "ACH_BIG_HAUL_ACHIEVED.png",
+      "iconLocked": "ACH_BIG_HAUL_UNACHIEVED.png",
+      "name": {
+        "english": "CHUNKY",
+        "russian": "УВЕСИСТО",
+        "schinese": "大块头"
+      },
+      "description": {
+        "english": "HAUL 30 CELLS AT ONCE",
+        "russian": "ПРИТЯНИ 30 КЛЕТОК ЗА РАЗ",
+        "schinese": "一次拉回 30 格"
+      }
+    },
+    {
+      "apiName": "ACH_HUGE_HAUL",
+      "hidden": false,
+      "icon": "ACH_HUGE_HAUL_ACHIEVED.png",
+      "iconLocked": "ACH_HUGE_HAUL_UNACHIEVED.png",
+      "name": {
+        "english": "WHOPPER",
+        "russian": "ГРОМАДИНА",
+        "schinese": "庞然大物"
+      },
+      "description": {
+        "english": "HAUL 150 CELLS AT ONCE",
+        "russian": "ПРИТЯНИ 150 КЛЕТОК ЗА РАЗ",
+        "schinese": "一次拉回 150 格"
+      }
+    },
+    {
+      "apiName": "ACH_COLOSSAL_HAUL",
+      "hidden": false,
+      "icon": "ACH_COLOSSAL_HAUL_ACHIEVED.png",
+      "iconLocked": "ACH_COLOSSAL_HAUL_UNACHIEVED.png",
+      "name": {
+        "english": "GEOLOGY HAPPENED",
+        "russian": "СЛУЧИЛАСЬ ГЕОЛОГИЯ",
+        "schinese": "地质事件"
+      },
+      "description": {
+        "english": "HAUL 550 CELLS AT ONCE",
+        "russian": "ПРИТЯНИ 550 КЛЕТОК ЗА РАЗ",
+        "schinese": "一次拉回 550 格"
+      }
+    },
+    {
+      "apiName": "ACH_MOUNTAINOUS",
+      "hidden": false,
+      "icon": "ACH_MOUNTAINOUS_ACHIEVED.png",
+      "iconLocked": "ACH_MOUNTAINOUS_UNACHIEVED.png",
+      "name": {
+        "english": "MOUNTAIN MOVER",
+        "russian": "ДВИГАЮЩИЙ ГОРЫ",
+        "schinese": "移山者"
+      },
+      "description": {
+        "english": "HAUL 1000 CELLS AT ONCE",
+        "russian": "ПРИТЯНИ 1000 КЛЕТОК ЗА РАЗ",
+        "schinese": "一次拉回 1000 格"
+      }
+    },
+    {
+      "apiName": "ACH_HALF_WORLD",
+      "hidden": true,
+      "icon": "ACH_HALF_WORLD_ACHIEVED.png",
+      "iconLocked": "ACH_HALF_WORLD_UNACHIEVED.png",
+      "name": {
+        "english": "HALF THE WORLD",
+        "russian": "ПОЛМИРА",
+        "schinese": "半个世界"
+      },
+      "description": {
+        "english": "TAKE HALF THE LONGEST REACH IN ONE HAUL",
+        "russian": "ЗАБЕРИ ПОЛОВИНУ ВСЕЙ ДАЛЬНОСТИ ЗА РАЗ",
+        "schinese": "一次拉回最长范围的一半"
+      }
+    },
+    {
+      "apiName": "ACH_CLUTCH",
+      "hidden": false,
+      "icon": "ACH_CLUTCH_ACHIEVED.png",
+      "iconLocked": "ACH_CLUTCH_UNACHIEVED.png",
+      "name": {
+        "english": "NERVES OF STEEL",
+        "russian": "СТАЛЬНЫЕ НЕРВЫ",
+        "schinese": "钢铁神经"
+      },
+      "description": {
+        "english": "HAUL 80 CELLS ON YOUR LAST HALF HEART",
+        "russian": "ПРИТЯНИ 80 КЛЕТОК НА ПОСЛЕДНЕМ ПОЛУСЕРДЦЕ",
+        "schinese": "只剩半颗心时拉回 80 格"
+      }
+    },
+    {
+      "apiName": "ACH_MOTHER_LODE",
+      "hidden": false,
+      "icon": "ACH_MOTHER_LODE_ACHIEVED.png",
+      "iconLocked": "ACH_MOTHER_LODE_UNACHIEVED.png",
+      "name": {
+        "english": "MOTHER LODE",
+        "russian": "ЗОЛОТАЯ ЖИЛА",
+        "schinese": "主矿脉"
+      },
+      "description": {
+        "english": "HAUL 30 CELLS OR MORE, HALF OF THEM ORE",
+        "russian": "ОТ 30 КЛЕТОК ЗА РАЗ, ИЗ НИХ ПОЛОВИНА РУДЫ",
+        "schinese": "一次拉回 30 格以上，一半是矿"
+      }
+    },
+    {
+      "apiName": "ACH_HOT_POTATO",
+      "hidden": false,
+      "icon": "ACH_HOT_POTATO_ACHIEVED.png",
+      "iconLocked": "ACH_HOT_POTATO_UNACHIEVED.png",
+      "name": {
+        "english": "HOT POTATO",
+        "russian": "ГОРЯЧАЯ КАРТОШКА",
+        "schinese": "烫手山芋"
+      },
+      "description": {
+        "english": "HAUL THREE SLEEPING HAZARDS AT ONCE",
+        "russian": "ПРИТЯНИ ТРИ СПЯЩИЕ УГРОЗЫ ЗА РАЗ",
+        "schinese": "一次拉回 3 个沉睡的危险物"
+      }
+    },
+    {
+      "apiName": "ACH_WINCH_CRYING",
+      "hidden": false,
+      "icon": "ACH_WINCH_CRYING_ACHIEVED.png",
+      "iconLocked": "ACH_WINCH_CRYING_UNACHIEVED.png",
+      "name": {
+        "english": "THE WINCH IS CRYING",
+        "russian": "ЛЕБЕДКА ПЛАЧЕТ",
+        "schinese": "绞盘在哭泣"
+      },
+      "description": {
+        "english": "HAUL MORE THAN THE WINCH CAN LOAD",
+        "russian": "ПРИТЯНИ БОЛЬШЕ, ЧЕМ ВЫДЕРЖИТ ЛЕБЕДКА",
+        "schinese": "拉回的比绞盘能载的更多"
+      }
+    },
+    {
+      "apiName": "ACH_HULL_GONE",
+      "hidden": false,
+      "icon": "ACH_HULL_GONE_ACHIEVED.png",
+      "iconLocked": "ACH_HULL_GONE_UNACHIEVED.png",
+      "name": {
+        "english": "INSURANCE CLAIM",
+        "russian": "СТРАХОВОЙ СЛУЧАЙ",
+        "schinese": "走保险"
+      },
+      "description": {
+        "english": "LOSE THE DRILL AND DIG AGAIN",
+        "russian": "ПОТЕРЯЙ БУР И КОПАЙ СНОВА",
+        "schinese": "失去钻头，再来一次"
+      }
+    },
+    {
+      "apiName": "ACH_NORTH",
+      "hidden": false,
+      "icon": "ACH_NORTH_ACHIEVED.png",
+      "iconLocked": "ACH_NORTH_UNACHIEVED.png",
+      "name": {
+        "english": "INTO THE ICE",
+        "russian": "ВО ЛЬДЫ",
+        "schinese": "走进冰中"
+      },
+      "description": {
+        "english": "REACH THE GROUND OF THE NORTH",
+        "russian": "ДОБЕРИСЬ ДО ЗЕМЕЛЬ СЕВЕРА",
+        "schinese": "到达北方的地层"
+      }
+    },
+    {
+      "apiName": "ACH_SOUTH",
+      "hidden": false,
+      "icon": "ACH_SOUTH_ACHIEVED.png",
+      "iconLocked": "ACH_SOUTH_UNACHIEVED.png",
+      "name": {
+        "english": "INTO THE FIRE",
+        "russian": "В ОГОНЬ",
+        "schinese": "走进火中"
+      },
+      "description": {
+        "english": "REACH THE GROUND OF THE SOUTH",
+        "russian": "ДОБЕРИСЬ ДО ЗЕМЕЛЬ ЮГА",
+        "schinese": "到达南方的地层"
+      }
+    },
+    {
+      "apiName": "ACH_WEST",
+      "hidden": false,
+      "icon": "ACH_WEST_ACHIEVED.png",
+      "iconLocked": "ACH_WEST_UNACHIEVED.png",
+      "name": {
+        "english": "INTO THE MIRE",
+        "russian": "В ТРЯСИНУ",
+        "schinese": "走进沼泽"
+      },
+      "description": {
+        "english": "REACH THE GROUND OF THE WEST",
+        "russian": "ДОБЕРИСЬ ДО ЗЕМЕЛЬ ЗАПАДА",
+        "schinese": "到达西方的地层"
+      }
+    },
+    {
+      "apiName": "ACH_EAST",
+      "hidden": false,
+      "icon": "ACH_EAST_ACHIEVED.png",
+      "iconLocked": "ACH_EAST_UNACHIEVED.png",
+      "name": {
+        "english": "INTO THE SANDS",
+        "russian": "В ПЕСКИ",
+        "schinese": "走进沙海"
+      },
+      "description": {
+        "english": "REACH THE GROUND OF THE EAST",
+        "russian": "ДОБЕРИСЬ ДО ЗЕМЕЛЬ ВОСТОКА",
+        "schinese": "到达东方的地层"
+      }
+    },
+    {
+      "apiName": "ACH_LONG_WAY",
+      "hidden": false,
+      "icon": "ACH_LONG_WAY_ACHIEVED.png",
+      "iconLocked": "ACH_LONG_WAY_UNACHIEVED.png",
+      "name": {
+        "english": "THE LONG WAY OUT",
+        "russian": "ДАЛЬНИЙ ПУТЬ",
+        "schinese": "远行"
+      },
+      "description": {
+        "english": "TAKE THE DRILL 1000 CELLS FROM THE CORE",
+        "russian": "УВЕДИ БУР НА 1000 КЛЕТОК ОТ ЯДРА",
+        "schinese": "让钻头离核心 1000 格"
+      }
+    },
+    {
+      "apiName": "ACH_FIRST_POCKET",
+      "hidden": false,
+      "icon": "ACH_FIRST_POCKET_ACHIEVED.png",
+      "iconLocked": "ACH_FIRST_POCKET_UNACHIEVED.png",
+      "name": {
+        "english": "A PLACE OF ITS OWN",
+        "russian": "ОСОБОЕ МЕСТО",
+        "schinese": "别有洞天"
+      },
+      "description": {
+        "english": "FLY INTO A POCKET",
+        "russian": "ЗАЛЕТИ В КАРМАН",
+        "schinese": "飞进一个囊穴"
+      }
+    },
+    {
+      "apiName": "ACH_ALL_POCKETS",
+      "hidden": false,
+      "icon": "ACH_ALL_POCKETS_ACHIEVED.png",
+      "iconLocked": "ACH_ALL_POCKETS_UNACHIEVED.png",
+      "name": {
+        "english": "POCKET COLLECTOR",
+        "russian": "СОБИРАТЕЛЬ КАРМАНОВ",
+        "schinese": "囊穴收藏家"
+      },
+      "description": {
+        "english": "VISIT ALL SEVEN KINDS OF POCKET",
+        "russian": "ПОБЫВАЙ ВО ВСЕХ СЕМИ ВИДАХ КАРМАНОВ",
+        "schinese": "到过全部 7 种囊穴"
+      }
+    },
+    {
+      "apiName": "ACH_FOUR_SEAMS",
+      "hidden": false,
+      "icon": "ACH_FOUR_SEAMS_ACHIEVED.png",
+      "iconLocked": "ACH_FOUR_SEAMS_UNACHIEVED.png",
+      "name": {
+        "english": "WHERE GROUNDS MEET",
+        "russian": "ГДЕ СХОДЯТСЯ ЗЕМЛИ",
+        "schinese": "地层相遇"
+      },
+      "description": {
+        "english": "FIND ALL FOUR SEAMS ON THE DIAGONALS",
+        "russian": "НАЙДИ ВСЕ ЧЕТЫРЕ ШВА НА ДИАГОНАЛЯХ",
+        "schinese": "找到对角线上的全部 4 条接缝"
+      }
+    },
+    {
+      "apiName": "ACH_WRECK_PART",
+      "hidden": false,
+      "icon": "ACH_WRECK_PART_ACHIEVED.png",
+      "iconLocked": "ACH_WRECK_PART_UNACHIEVED.png",
+      "name": {
+        "english": "SALVAGE",
+        "russian": "СПАСЕННОЕ",
+        "schinese": "回收"
+      },
+      "description": {
+        "english": "HAUL A PART FROM A WRECK",
+        "russian": "ПРИТЯНИ ДЕТАЛЬ С ОБЛОМКОВ",
+        "schinese": "拉回残骸上的零件"
+      }
+    },
+    {
+      "apiName": "ACH_FIRST_RELIC",
+      "hidden": false,
+      "icon": "ACH_FIRST_RELIC_ACHIEVED.png",
+      "iconLocked": "ACH_FIRST_RELIC_UNACHIEVED.png",
+      "name": {
+        "english": "SOMETHING SEALED",
+        "russian": "НЕЧТО ЗАПЕЧАТАННОЕ",
+        "schinese": "封存之物"
+      },
+      "description": {
+        "english": "BRING A RELIC HOME",
+        "russian": "ПРИНЕСИ РЕЛИКВИЮ ДОМОЙ",
+        "schinese": "把一件遗物带回家"
+      }
+    },
+    {
+      "apiName": "ACH_ALL_RELICS",
+      "hidden": false,
+      "icon": "ACH_ALL_RELICS_ACHIEVED.png",
+      "iconLocked": "ACH_ALL_RELICS_UNACHIEVED.png",
+      "name": {
+        "english": "ALL FOUR HOME",
+        "russian": "ВСЕ ЧЕТЫРЕ ДОМА",
+        "schinese": "四件到家"
+      },
+      "description": {
+        "english": "BRING ALL FOUR RELICS HOME",
+        "russian": "ПРИНЕСИ ДОМОЙ ВСЕ ЧЕТЫРЕ РЕЛИКВИИ",
+        "schinese": "把 4 件遗物全带回家"
+      }
+    },
+    {
+      "apiName": "ACH_FIRST_SHRINE",
+      "hidden": false,
+      "icon": "ACH_FIRST_SHRINE_ACHIEVED.png",
+      "iconLocked": "ACH_FIRST_SHRINE_UNACHIEVED.png",
+      "name": {
+        "english": "CORNERSTONE",
+        "russian": "КРАЕУГОЛЬНЫЙ КАМЕНЬ",
+        "schinese": "神龛"
+      },
+      "description": {
+        "english": "HAUL A SHRINE WHOLE",
+        "russian": "ПРИТЯНИ СВЯТЫНЮ ЦЕЛИКОМ",
+        "schinese": "把神龛完整拉回"
+      }
+    },
+    {
+      "apiName": "ACH_FOSSIL",
+      "hidden": false,
+      "icon": "ACH_FOSSIL_ACHIEVED.png",
+      "iconLocked": "ACH_FOSSIL_UNACHIEVED.png",
+      "name": {
+        "english": "WHOLE BONES",
+        "russian": "ЦЕЛЫЙ СКЕЛЕТ",
+        "schinese": "完整骨骸"
+      },
+      "description": {
+        "english": "HAUL A FOSSIL WHOLE",
+        "russian": "ПРИТЯНИ ОКАМЕНЕЛОСТЬ ЦЕЛИКОМ",
+        "schinese": "把化石完整拉回"
+      }
+    },
+    {
+      "apiName": "ACH_CAUGHT_LIVE",
+      "hidden": false,
+      "icon": "ACH_CAUGHT_LIVE_ACHIEVED.png",
+      "iconLocked": "ACH_CAUGHT_LIVE_UNACHIEVED.png",
+      "name": {
+        "english": "CAUGHT LIVE",
+        "russian": "ПОЙМАН ЖИВЬЕМ",
+        "schinese": "活捉"
+      },
+      "description": {
+        "english": "HAUL A RARE HAZARD WHILE IT IS AWAKE",
+        "russian": "ПРИТЯНИ РЕДКУЮ УГРОЗУ, ПОКА ОНА НЕ СПИТ",
+        "schinese": "在稀有危险物醒着时拉回"
+      }
+    },
+    {
+      "apiName": "ACH_ALL_RARES",
+      "hidden": false,
+      "icon": "ACH_ALL_RARES_ACHIEVED.png",
+      "iconLocked": "ACH_ALL_RARES_UNACHIEVED.png",
+      "name": {
+        "english": "RARE BIRDS",
+        "russian": "РЕДКИЕ ПТИЦЫ",
+        "schinese": "稀有之物"
+      },
+      "description": {
+        "english": "MEET ALL FOUR RARE HAZARDS",
+        "russian": "ВСТРЕТЬ ВСЕ ЧЕТЫРЕ РЕДКИЕ УГРОЗЫ",
+        "schinese": "遇见全部 4 种稀有危险物"
+      }
+    },
+    {
+      "apiName": "ACH_PAL",
+      "hidden": false,
+      "icon": "ACH_PAL_ACHIEVED.png",
+      "iconLocked": "ACH_PAL_UNACHIEVED.png",
+      "name": {
+        "english": "GOOD PUP",
+        "russian": "ХОРОШИЙ НОРНЫШ",
+        "schinese": "好崽崽"
+      },
+      "description": {
+        "english": "FEED A BURROWPUP THREE ORES",
+        "russian": "СКОРМИ НОРНЫШУ ТРИ РУДЫ",
+        "schinese": "给掘洞崽吃 3 块矿"
+      }
+    },
+    {
+      "apiName": "ACH_EVICTED",
+      "hidden": false,
+      "icon": "ACH_EVICTED_ACHIEVED.png",
+      "iconLocked": "ACH_EVICTED_UNACHIEVED.png",
+      "name": {
+        "english": "ECO-VANDAL",
+        "russian": "ЭКО-ВАНДАЛ",
+        "schinese": "生态破坏者"
+      },
+      "description": {
+        "english": "CATCH A PUFFLING IN A LOOP",
+        "russian": "ПОЙМАЙ ПУШИСТИКА ПЕТЛЕЙ",
+        "schinese": "用绳圈捉住一只噗噗球"
+      }
+    },
+    {
+      "apiName": "ACH_LORD_WYRM",
+      "hidden": true,
+      "icon": "ACH_LORD_WYRM_ACHIEVED.png",
+      "iconLocked": "ACH_LORD_WYRM_UNACHIEVED.png",
+      "name": {
+        "english": "WYRM, LOOPED",
+        "russian": "ЗМЕЙ В ПЕТЛЕ",
+        "schinese": "套住霜龙"
+      },
+      "description": {
+        "english": "BEAT THE FROST WYRM WITH A LOOP OF THE TETHER",
+        "russian": "ПОБЕДИ ИНЕЙНОГО ЗМЕЯ ПЕТЛЕЙ ТРОСА",
+        "schinese": "用绳圈击败霜龙"
+      }
+    },
+    {
+      "apiName": "ACH_LORD_BEHEMOTH",
+      "hidden": true,
+      "icon": "ACH_LORD_BEHEMOTH_ACHIEVED.png",
+      "iconLocked": "ACH_LORD_BEHEMOTH_UNACHIEVED.png",
+      "name": {
+        "english": "BEHEMOTH, RAMMED",
+        "russian": "ИСПОЛИН ПРОТАРАНЕН",
+        "schinese": "撞击巨兽"
+      },
+      "description": {
+        "english": "BEAT THE MAGMA BEHEMOTH BY RAMMING IT",
+        "russian": "ПОБЕДИ ИСПОЛИНА МАГМЫ ТАРАНОМ",
+        "schinese": "撞击并打败熔岩巨兽"
+      }
+    },
+    {
+      "apiName": "ACH_LORD_MOTHER",
+      "hidden": true,
+      "icon": "ACH_LORD_MOTHER_ACHIEVED.png",
+      "iconLocked": "ACH_LORD_MOTHER_UNACHIEVED.png",
+      "name": {
+        "english": "MOTHER, CUT",
+        "russian": "МАТКА ПОДРЕЗАНА",
+        "schinese": "割裂菌母"
+      },
+      "description": {
+        "english": "BEAT THE SPORE MOTHER BY CUTTING HER ANCHOR",
+        "russian": "ПОБЕДИ ГРИБНУЮ МАТКУ, СРЕЗАВ ЕЕ ЯКОРЬ",
+        "schinese": "切开它缠住的岩石，击败菌母"
+      }
+    },
+    {
+      "apiName": "ACH_LORD_KING",
+      "hidden": true,
+      "icon": "ACH_LORD_KING_ACHIEVED.png",
+      "iconLocked": "ACH_LORD_KING_UNACHIEVED.png",
+      "name": {
+        "english": "KING, HAULED",
+        "russian": "КОРОЛЬ ПОВЕРЖЕН",
+        "schinese": "拉下晶王"
+      },
+      "description": {
+        "english": "HAUL HIS SHARDS AND BEAT THE CRYSTAL KING",
+        "russian": "ПРИТЯНИ ЕГО ОСКОЛКИ И ПОБЕДИ КОРОЛЯ",
+        "schinese": "拉回碎片，击败晶王"
+      }
+    },
+    {
+      "apiName": "ACH_ALL_LORDS",
+      "hidden": true,
+      "icon": "ACH_ALL_LORDS_ACHIEVED.png",
+      "iconLocked": "ACH_ALL_LORDS_UNACHIEVED.png",
+      "name": {
+        "english": "THE DEEP IS STILL",
+        "russian": "ГЛУБИНА УТИХЛА",
+        "schinese": "深处已安静"
+      },
+      "description": {
+        "english": "BEAT ALL FOUR LORDS",
+        "russian": "ПОБЕДИ ВСЕХ ЧЕТЫРЕХ ВЛАДЫК",
+        "schinese": "击败全部 4 个霸主"
+      }
+    },
+    {
+      "apiName": "ACH_FIRST_UPGRADE",
+      "hidden": false,
+      "icon": "ACH_FIRST_UPGRADE_ACHIEVED.png",
+      "iconLocked": "ACH_FIRST_UPGRADE_UNACHIEVED.png",
+      "name": {
+        "english": "TOOLED UP",
+        "russian": "ВО ВСЕОРУЖИИ",
+        "schinese": "工具到手"
+      },
+      "description": {
+        "english": "BUY AN UPGRADE AT THE CORE",
+        "russian": "КУПИ УЛУЧШЕНИЕ У ЯДРА",
+        "schinese": "在核心买一次升级"
+      }
+    },
+    {
+      "apiName": "ACH_STARLINE",
+      "hidden": false,
+      "icon": "ACH_STARLINE_ACHIEVED.png",
+      "iconLocked": "ACH_STARLINE_UNACHIEVED.png",
+      "name": {
+        "english": "STARLINE",
+        "russian": "ЗВЕЗДНАЯ НИТЬ",
+        "schinese": "星线"
+      },
+      "description": {
+        "english": "BUY THE LAST REACH OF THE TETHER",
+        "russian": "КУПИ ПОСЛЕДНЮЮ ДАЛЬНОСТЬ ТРОСА",
+        "schinese": "买下系绳的最后一级"
+      }
+    },
+    {
+      "apiName": "ACH_LAB_36",
+      "hidden": false,
+      "icon": "ACH_LAB_36_ACHIEVED.png",
+      "iconLocked": "ACH_LAB_36_UNACHIEVED.png",
+      "name": {
+        "english": "FIELD NOTES",
+        "russian": "ПОЛЕВЫЕ ЗАМЕТКИ",
+        "schinese": "学者"
+      },
+      "description": {
+        "english": "ANALYSE 36 KINDS IN THE LAB",
+        "russian": "ИЗУЧИ 36 ВИДОВ В ЛАБОРАТОРИИ",
+        "schinese": "分析 36 种物质"
+      }
+    }
+  ]
+}

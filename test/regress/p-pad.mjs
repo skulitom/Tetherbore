@@ -154,7 +154,7 @@ tap(B);
 // 7. The menu: Start, its rows, the volumes, the languages, and a new world's two presses.
 tap(START); check(panel() === 'lab:menu', `Start opened ${panel()}`);
 frames(12);
-check(pad.list().length === 4, `the menu offers ${pad.list().length} rows`);
+check(pad.list().length === 5, `the menu offers ${pad.list().length} rows`);
 setMusicVolume(5);
 tap(DOWN); check(pad.focus === 1, `down went to row ${pad.focus}`);
 tap(LEFT); check(musicVolume() === 4, `left on MUSIC set ${musicVolume()}`);
@@ -164,7 +164,7 @@ tap(A); check(musicVolume() === 6, `A again on MUSIC left ${musicVolume()}`);
 tap(DOWN); check(pad.focus === 2, `down went to row ${pad.focus}`);
 tap(A); check(game.langOpen, 'A on LANGUAGE did not open the list');
 frames(2);
-check(pad.list().length === 4 + LANGS.length, `the open list offers ${pad.list().length} rows`);
+check(pad.list().length === 5 + LANGS.length, `the open list offers ${pad.list().length} rows`);
 check(pad.focus === 3 + LANGS.findIndex(l => l.id === lang), `the list opened at row ${pad.focus}`);
 tap(B); check(!game.langOpen && panel() === 'lab:menu', `B on the list left ${panel()}, list ${game.langOpen}`);
 check(pad.focus === 2, `the list shut with the focus on row ${pad.focus}`);

@@ -168,7 +168,8 @@ export class Pad {
     const rows = this.list();
     this.followLanguages(rows);
     if (this.hit(B)) {
-      if (game.langOpen) { game.langOpen = false; sfx.tap(); } else game.key('Escape', true);
+      // (B goes back a step at a time: the list of achievements is opened from the menu.)
+      if (game.langOpen) { game.langOpen = false; sfx.tap(); } else if (tab === 'ach') { game.labTab = 'menu'; sfx.tap(); } else game.key('Escape', true);
       return;
     }
     if (this.hit(LB) || this.hit(RB)) { game.key('Tab', true, false, this.hit(LB)); return; }
@@ -178,6 +179,10 @@ export class Pad {
     if (tab === 'lab') {
       if (this.hit(LT)) game.labKey('PageUp', false);
       if (this.hit(RT)) game.labKey('PageDown', false);
+    }
+    if (tab === 'ach') {
+      if (this.hit(LT)) game.key('PageUp', true);
+      if (this.hit(RT)) game.key('PageDown', true);
     }
     this.walk(dt, w, tab, rows);
   }
@@ -219,6 +224,7 @@ export class Pad {
   step(dir, repeat, tab, rows) {
     const { game } = this;
     if (tab === 'lab') { if (dir <= 2) game.labKey(dir === 1 ? 'ArrowUp' : 'ArrowDown', repeat); return; }
+    if (tab === 'ach') { if (dir <= 2) game.key(dir === 1 ? 'ArrowUp' : 'ArrowDown', true); return; }
     if (!rows.length) return;
     if (dir > 2) { rows[this.focus]?.nudge?.(dir === 3 ? -1 : 1); return; }
     const by = dir === 1 ? -1 : 1, n = rows.length;
@@ -260,7 +266,7 @@ export class Pad {
       ctx.fillRect(b.x - 1, b.y, 1, b.h); ctx.fillRect(b.x + b.w, b.y, 1, b.h);
       ctx.globalAlpha = 1;
     }
-    const says = tab === 'menu' ? (b?.nudge ? LEGENDS.volume : LEGENDS.menu) : LEGENDS[tab] ?? LEGENDS.stats;
+    const says = tab === 'menu' ? (b?.nudge ? LEGENDS.volume : LEGENDS.menu) : LEGENDS[tab === 'ach' ? 'lab' : tab] ?? LEGENDS.stats;
     ctx.globalAlpha = 0.9; ctx.fillStyle = '#07060b'; ctx.fillRect(0, game.H - 13, game.W, 13); ctx.globalAlpha = 1;
     this.legend(ctx, says, game.H - 12);
   }

@@ -1444,6 +1444,7 @@ export class Fauna {
         game.popup(Math.floor(x), Math.floor(y), `+${grit} GRIT`, '#ffe14a');
         this.spot(x * T, y * T, 26, SPORE_INK);
         voices.caught?.();
+        game.ach?.earn('ACH_EVICTED');
         return true;
       }
       // A foe looped at rest, with the trophy line: the line's value in specimens of its den's direction (`kinOf`),

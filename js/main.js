@@ -17,6 +17,7 @@ const query = new URLSearchParams(location.search);
 // (A game saved to go on with is laid from its own seed by restore: the game is made blank, with no world of its
 // own laid first to be thrown away, and nothing asks it anything before restore has begun it.)
 const game = new Game(canvas, document.getElementById('rope'), { blank: !query.has('shot') && hasSave() });
+if (query.has('shot')) game.ach.off = true;   // (a staged view earns nothing and keeps nothing)
 const shot = query.has('shot') ? (await import('./shot.js')).stage(game, query) : null;
 // (With no saved game to go on with, the game begun is a new one, and the saved ground is made its own.)
 if (!shot && !(await game.restore())) game.claim();

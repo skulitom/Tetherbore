@@ -19,6 +19,7 @@ import { TETHERS, BODY, BODY_A, HOT, HOT_A, RAM, PLATE, FLAME, FLAME_TIER, FITS,
 // that copies the methods from here before there are any: so nothing loads it but js/game.js.)
 import { HX, HY, BOOST, DEATH, BELL, VENT, WORM, STONE, GIANTS } from './game.js';
 import { KINDS } from './fauna.js';
+import { ACHIEVEMENTS } from './achievements.js';
 import { LAIR, EYE as FOE_EYE } from './bosses.js';
 
 export const T = 16;                            // pixels in a cell
@@ -105,7 +106,7 @@ const DRILL_H = 16, drillTop = H => Math.round((H - UI.BAR) / 2) - DRILL_H / 2;
 const VOLUME_BAR = 49;                          // the menu's bar of ten steps of loudness, in pixels
 // The menu's rows: 20 tall, UI.INSET apart (MENU_ROW from one to the next); the list of languages a LANG_ROW each, 2
 // apart, and all it adds to the menu, UI.INSET over and under it.
-const MENU_ROW = 20 + UI.INSET, LANG_ROW = 18, LANG_ROWS = 3 * LANG_ROW + 2;
+const ACHIEVEMENT_N = ACHIEVEMENTS.length, MENU_ROW = 20 + UI.INSET, LANG_ROW = 18, LANG_ROWS = 3 * LANG_ROW + 2;
 // The rare hazards STATS tells of once met: each its name there and what it does to the drill.
 const LAB_FADE = [1, 1, 0.6, 0.3];
 const RARE_LINES = [['bell', 'BELLS', 'KNOCK'], ['vent', 'JETS', 'KNOCK'], ['worm', 'WORMS', 'BITE'], ['lodestone', 'LODESTONES', 'KNOCK']];
@@ -1942,6 +1943,7 @@ export class Drawing {
     }
     // A thing of the lab's seen for the first time (js/game.js: `showEye`), out in the ground, and not over a wreck.
     if (this.eye && !this.eyeHeld && !this.shop && !this.lab && !this.atCore && this.drill.mode !== 'dead') this.drawEye();
+    this.ach.draw(this);
     // The map, in the top right corner.
     this.drawMap(MAP_X(W), MAP_Y);
     // The shop's button, over the bar, when the drill is home.
@@ -2335,7 +2337,7 @@ export class Drawing {
   // when its tab came back, with no finger near it.)
   panelTabs(px, py, pw) {
     this.headAt(px, py, pw);
-    for (const id of this.panelIds()) this.headTab(PANEL_NAMES[id], this.labTab === id, false, () => { this.labTab = id; this.labVel = 0; this.labAim = null; sfx.tap(); });
+    for (const id of this.panelIds()) this.headTab(PANEL_NAMES[id], (this.labTab === 'ach' ? 'menu' : this.labTab) === id, false, () => { this.labTab = id; this.labVel = 0; this.labAim = null; sfx.tap(); });
     this.headClose(() => { this.lab = false; sfx.tap(); });
   }
   // A panel's header, the shop's and the bar's panel's alike (UI.HEAD tall): its tabs from the content's column
@@ -2440,7 +2442,7 @@ export class Drawing {
   // the thumb does not cost a world). Its rows are the panel's boxes, as the shop's are, from the header's foot and
   // UI.INSET apart, their words in the panel's columns; the list of languages, open, UI.INSET under its row and over
   // the next, each of it a box set in by twice UI.INSET with its words UI.INSET in from it. (`menuRows`: how tall it is.)
-  menuRows() { return (this.desktop ? 5 : 3) * MENU_ROW + 20 + (this.langOpen ? LANG_ROWS : 0); }
+  menuRows() { return (this.desktop ? 6 : 4) * MENU_ROW + 20 + (this.langOpen ? LANG_ROWS : 0); }
   drawMenu(px, y0, pw) {
     const { ctx } = this, sure = this.confirmReset > 0, bx = px + UI.INSET, bw = pw - 2 * UI.INSET, left = px + 2 * UI.INSET, right = px + pw - 2 * UI.INSET;
     this.volumeRow('SOUND', soundVolume, setSoundVolume, 'sound', px, y0, pw);
@@ -2449,7 +2451,7 @@ export class Drawing {
     // that is not the one spoken now is the language: the game is saved and the page loaded again in it
     // (js/lang.js). (Each name is in its own tongue, which no table turns.)
     const speaks = LANGS.findIndex(l => l.id === lang), open = !!this.langOpen, below = open ? LANG_ROWS : 0;
-    const ly = y0 + 2 * MENU_ROW, ny = y0 + 3 * MENU_ROW + below;
+    const ly = y0 + 2 * MENU_ROW, ny = y0 + 3 * MENU_ROW + below, ay = ny + MENU_ROW;
     slice9(ctx, 'ui', open ? 'button-down' : 'button', bx, ly, bw, 20);
     text(ctx, 'LANGUAGE', left, ly + 6, '#ffffff');
     text(ctx, `${LANGS[speaks].name} ${open ? '^' : 'v'}`, right, ly + 6, '#8cf2c4', 1);
@@ -2461,6 +2463,11 @@ export class Drawing {
       if (on) text(ctx, '<', lx + lw - UI.INSET, y + 4, '#8cf2c4', 1);
       this.buttons.unshift({ x: lx, y, w: lw, h: LANG_ROW - 2, act: () => { this.langOpen = false; sfx.tap(); if (!on) { this.save(); chooseLang(l.id); } } });
     });
+    // (What has been earned: js/achievements.js draws the list, in this panel.)
+    slice9(ctx, 'ui', 'button', bx, ay, bw, 20);
+    text(ctx, 'ACHIEVEMENTS', left, ay + 6, '#ffffff');
+    text(ctx, `${this.ach.count}/${ACHIEVEMENT_N}`, right, ay + 6, '#ffe14a', 1);
+    this.buttons.unshift({ x: bx, y: ay, w: bw, h: 20, act: () => { this.labTab = 'ach'; sfx.tap(); } });
     slice9(ctx, 'ui', sure ? 'button-off' : 'button', bx, ny, bw, 20);
     text(ctx, sure ? (this.pad?.shown ? 'A AGAIN: NEW WORLD' : 'TAP AGAIN: NEW WORLD') : 'NEW WORLD', px + pw / 2, ny + 6, sure ? '#ff7a5a' : '#ffffff', 0.5);
     this.buttons.unshift({ x: bx, y: ny, w: bw, h: 20, act: () => {
@@ -2468,7 +2475,7 @@ export class Drawing {
     } });
     // On the desktop, two rows more: fullscreen or a window, and leaving (the shell saves the game before it goes).
     if (!this.desktop) return;
-    const fy = ny + MENU_ROW, qy = fy + MENU_ROW;
+    const fy = ay + MENU_ROW, qy = fy + MENU_ROW;
     slice9(ctx, 'ui', 'button', bx, fy, bw, 20);
     text(ctx, 'FULLSCREEN', left, fy + 6, '#ffffff');
     text(ctx, this.desktop.fullscreen ? 'ON' : 'OFF', right, fy + 6, '#8cf2c4', 1);
@@ -2580,6 +2587,7 @@ export class Drawing {
     this.chartRect = null;
     this.panelTabs(px, py, pw);
     if (this.labTab === 'stats') { this.drawStats(px, py + HEAD, pw); return; }
+    if (this.labTab === 'ach') { this.ach.drawList(this, px, py + HEAD, pw, ph - HEAD); return; }
     if (this.labTab === 'menu') { this.drawMenu(px, py + HEAD, pw); if (this.stalls.length) this.drawStalls(px, py + HEAD + this.menuRows() + 6, pw); return; }
     if (this.labTab === 'chart') {
       // The chart is dragged to look about it and pinched (or wheeled, or stepped by its two buttons) to look closer:

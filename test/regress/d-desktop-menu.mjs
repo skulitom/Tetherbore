@@ -25,7 +25,7 @@ const stubbed = await menu({ fullscreen: true, toggle() {}, quit() {} });
 if (stubbed.game.menuRows() <= rows) problems.push('the desktop build has no more rows of the menu than the web');
 
 let toggled = false, quit = false;
-for (let k = 0; k < 8 && !(toggled && quit); k++) {
+for (let k = 0; k < 10 && !(toggled && quit); k++) {
   let t = 0, q = 0;
   const { tap } = await menu({ fullscreen: true, toggle() { t++; }, quit() { q++; } });
   for (let n = 0; n < k; n++) tap(DOWN);
@@ -34,6 +34,22 @@ for (let k = 0; k < 8 && !(toggled && quit); k++) {
 }
 if (!toggled) problems.push('a controller did not reach FULLSCREEN');
 if (!quit) problems.push('a controller did not reach SAVE AND QUIT');
+
+// No two rows of the menu lie on one another, and the list of achievements is worked and left with the pad.
+{
+  const { game, tap } = await menu({ fullscreen: true, toggle() {}, quit() {} });
+  const frame = game.buttons.find(b => b.swallow), rows = game.buttons.slice(0, game.buttons.indexOf(frame)).filter(b => b.y > frame.y && b.w > 100 && b.w < game.W).sort((a, b) => a.y - b.y);
+  if (rows.length !== 7) problems.push(`the desktop menu has ${rows.length} rows, not 7`);
+  for (let n = 1; n < rows.length; n++) if (rows[n].y < rows[n - 1].y + rows[n - 1].h) problems.push(`two rows of the menu overlap at y ${rows[n].y}`);
+  for (let n = 0; n < 4; n++) tap(DOWN);
+  tap(A);
+  if (game.labTab !== 'ach') problems.push(`the fifth row opened ${game.labTab}, not the achievements`);
+  const was = game.ach.sel;
+  tap(DOWN);
+  if (game.ach.sel !== was + 1) problems.push('the pad did not walk the list of achievements');
+  tap(1);
+  if (!game.lab || game.labTab !== 'menu') problems.push(`B from the achievements left ${game.lab ? game.labTab : 'no panel'}, not the menu`);
+}
 
 if (problems.length) { console.error(problems.join('\n')); process.exit(1); }
 console.log('the desktop rows of the menu are there and a controller works them');

@@ -5,6 +5,7 @@
 //
 // TETHERBORE_STEAM_APP names the Steam app. Until the game has its own App ID it is Valve's test app, 480.
 const { app, BrowserWindow, Menu, ipcMain, protocol } = require('electron');
+const { attachSteam } = require('./steam.cjs');
 const { execFileSync } = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -124,6 +125,7 @@ app.whenReady().then(() => {
   protocol.handle('tetherbore', serve);
   Menu.setApplicationMenu(null);
   if (!NO_STEAM) startSteam();
+  attachSteam(ipcMain, () => steam, APP_ID);
   const saves = saveFile.open(path.join(app.getPath('userData'), 'saves'));
   const start = SPIKE ? { fullscreen: false } : prefs(), [width, height] = (option('--size') ?? '1280x720').split('x').map(Number);
   const window = new BrowserWindow({
