@@ -5,13 +5,15 @@
 // file through the desktop shell (`bridge`: desktop/saves.cjs reads and writes it). The file is what counts: at boot
 // it is laid back over what the browser's storage holds if it is of another world or further on, as it is when the
 // game was last played on another machine, or the browser's storage has been lost.
-const LATEST = 'tetherbore-save-v3-latest';
+import { SAVE_KEY, DB_NAME } from './edition.js';
+
+const LATEST = `${SAVE_KEY}-latest`;
 // (Every setting and save of the game's, but its own record of long frames, which belongs to this machine.)
 const carried = key => key.startsWith('tetherbore-') && key !== 'tetherbore-stalls';
 const read = text => { try { const d = JSON.parse(text); return d?.v === 3 ? d : null; } catch { return null; } };
 
 const database = () => new Promise((resolve, reject) => {
-  const open = indexedDB.open('tetherbore', 1);
+  const open = indexedDB.open(DB_NAME, 1);
   open.onupgradeneeded = () => open.result.createObjectStore('pieces');
   open.onsuccess = () => resolve(open.result);
   open.onerror = () => reject(open.error);

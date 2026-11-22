@@ -14,11 +14,11 @@ import { LAIR, BOSS } from './bosses.js';
 import { pickGoal, goalHome } from './goal.js';
 import { fits } from './lang.js';
 import { Achievements } from './achievements.js';
+import { SAVE_KEY, DB_NAME } from './edition.js';
 export { richness, haulBonus, overload, income, UPGRADES, LAB, labLevel, labNext, WORKS, MAPS, CORE } from './shop.js';
 
 export { T };
 export const HX = C + 0.5, HY = C + 0.5;        // the middle of the core, in cells
-const SAVE_KEY = 'tetherbore-save-v3';
 
 // What everything costs, the rows of the shop that are bought with it and what the lab can know are in js/shop.js;
 // the game imports them, and passes on the names that the tests and tools have always taken from here.
@@ -339,7 +339,7 @@ const latestRev = () => { try { return JSON.parse(localStorage.getItem(LATEST))?
 // then makes the game `blank` and lays no world of its own for restore to throw away (js/main.js).
 export const hasSave = () => [SAVE_KEY, LATEST].some(key => { try { return JSON.parse(localStorage.getItem(key))?.v === 3; } catch { return false; } });
 const store = () => opened ??= new Promise((resolve, reject) => {
-  const open = indexedDB.open('tetherbore', 1);
+  const open = indexedDB.open(DB_NAME, 1);
   open.onupgradeneeded = () => open.result.createObjectStore('pieces');
   open.onsuccess = () => { const db = open.result; db.onclose = () => { opened = null; }; db.onversionchange = () => { opened = null; db.close?.(); }; resolve(db); };
   open.onerror = () => { opened = null; reject(open.error); };

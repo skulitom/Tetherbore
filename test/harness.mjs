@@ -39,6 +39,7 @@ const atlas = await import(new URL('js/atlas.js', root));
 await atlas.loadAtlas('assets/');
 const { Game, UPGRADES, WORKS, MAPS, CORE, DEATH, SPEED, FLY, income, richness, haulBonus } = await import(new URL('js/game.js', root));
 const world = await import(new URL('js/world.js', root));
+const { DEMO } = await import(new URL('js/edition.js', root));
 
 export const { N, C, K, B, sight, cellsAlong, HOME_R } = world;
 export { Game, UPGRADES, WORKS, MAPS, CORE, DEATH, SPEED, FLY, income, richness, haulBonus, world };
@@ -64,6 +65,7 @@ export async function makeGame(seed = 7, levels = {}, { hull = false, fauna = fa
   if (!hull) { const hit = game.hit.bind(game); game.hit = time => { const landed = hit(time); game.dents = 0; return landed; }; }
   if (!fauna) game.fauna.off = true;
   if (!ach) game.ach.off = true;
+  if (DEMO) (await import(new URL('js/demo.js', root))).fit(game);   // (only in a tree built as the demo)
   return game;
 }
 

@@ -42,6 +42,7 @@ const LEGENDS = {
   lab: [['LT', 'RT', 'PAGE'], BACK, TABS],
   chart: [['LT', 'RT', 'ZOOM'], BACK, TABS],
   menu: [['A', 'SELECT'], BACK, TABS],
+  demo: [['A', 'SELECT'], BACK],
   volume: [['<', '>', 'LEVEL'], ['A', 'MUTE'], BACK, TABS],
   home: [['X', 'LAB'], ['Y', 'STATS'], ['START', 'MENU']],
   charted: [['X', 'LAB'], ['Y', 'MAP'], ['START', 'MENU']],

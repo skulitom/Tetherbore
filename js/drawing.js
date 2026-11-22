@@ -2573,6 +2573,7 @@ export class Drawing {
   // its window, the head of the part at the top held there until the next pushes it up; a bar at its edge says how
   // far down it is and marks the line chosen, and under it the lab says what it knows of the line chosen.
   drawLab() {
+    if (this.demo && this.labTab === 'demo') { this.demo.draw(); return; }   // (the demo's end: js/demo.js)
     const { ctx, W, H, S } = this, HEAD = UI.HEAD;
     ctx.globalAlpha = 0.6 * this.labRise; ctx.fillStyle = '#07060b'; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1;
     if (this.labTab === 'chart' && !this.charted) this.labTab = 'stats';
@@ -2793,7 +2794,8 @@ export class Drawing {
       r.y = py + UI.HEAD + n * rh; r.top = r.y + 2 + lead; r.vx = left; r.vy = r.y + ((rh - 16) >> 1); r.sx = nx + textWidth(u.name) + UI.GROUP; r.c = c;
       // (A thing fitted once has no levels to show: it is FITTED or it is not. Where the two values are too wide
       // for the line, a word they share is said once, and failing that the next is said alone: `fewer`.)
-      let steps = u.values.length === 2 ? (c ? '' : 'FITTED') : c ? `${u.show(u.values[l])}>${u.show(u.values[l + 1])}` : `${u.show(u.values[l])} MAX`;
+      const past = this.demo?.capped(u);   // (a level past the demo's limit: js/demo.js)
+      let steps = past ? 'FULL GAME' : u.values.length === 2 ? (c ? '' : 'FITTED') : c ? `${u.show(u.values[l])}>${u.show(u.values[l + 1])}` : `${u.show(u.values[l])} MAX`;
       if (r.sx + textWidth(steps) > edge) steps = c ? fewer(u.show(u.values[l]), u.show(u.values[l + 1]), edge - r.sx) : u.show(u.values[l]);
       r.steps = steps;
       // What must be found first, and no price shown until it has been.
@@ -2856,7 +2858,7 @@ export class Drawing {
         let where = short ? `${GEM_WHERE[c.gem]}, PAST ${GEM_PAST[c.gem]}` : what;
         if (short && GEM_SHORT[c.gem] && nx + textWidth(where) > edge) where = `${GEM_SHORT[c.gem]}, PAST ${GEM_PAST[c.gem]}`;
         if (!r.wide || tall) text(ctx, where, nx, r.wide ? mid(y) : says(y), short ? GEM_COLOR[c.gem] : spent ? '#8ce060' : '#c8c2d4');
-      } else text(ctx, u.what, nx, says(y), '#e8c070');
+      } else text(ctx, this.demo?.capped(u) ? 'MORE IN THE FULL GAME' : u.what, nx, says(y), '#e8c070');
       this.buttons.unshift({ x: px + UI.INSET, y, w: pw - 2 * UI.INSET, h: rh - 1, act: () => this.buy(u) });
     }
     // The moment of a purchase, over the rows (js/fit.js), on the row bought as it was just laid out.

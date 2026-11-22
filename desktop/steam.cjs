@@ -10,8 +10,11 @@ const CHANNELS = { sync: 'tetherbore:achievements-sync', unlock: 'tetherbore:ach
 const knownNames = () => new Set(JSON.parse(fs.readFileSync(path.join(__dirname, 'achievements.json'), 'utf8')).achievements.map(a => a.apiName));
 
 // `client()` gives the steamworks.js client, or null. Each call says what it did, for the tests and the console.
-function reporter(client, appId, known = knownNames()) {
+// (A demo reports nothing: Steam's demos do not earn the full game's achievements. What it earned is in its save, and
+// the full game tells Steam when it takes that save up.)
+function reporter(client, appId, known = knownNames(), { demo = false } = {}) {
   const set = ids => {
+    if (demo) return { set: [], skipped: 'demo' };
     const steam = client();
     if (!steam) return { set: [], skipped: 'no steam' };
     if (appId === TEST_APP) return { set: [], skipped: 'test app' };
@@ -26,9 +29,9 @@ function reporter(client, appId, known = knownNames()) {
   return { sync: ids => set(Array.isArray(ids) ? ids : []), unlock: id => set([id]) };
 }
 
-function attachSteam(ipcMain, client, appId) {
+function attachSteam(ipcMain, client, appId, { demo = false } = {}) {
   let report = null;
-  try { report = reporter(client, appId); } catch (error) { console.error('achievements list not read:', error.message); }
+  try { report = reporter(client, appId, knownNames(), { demo }); } catch (error) { console.error('achievements list not read:', error.message); }
   const hear = what => (event, arg) => {
     if (!report || !String(event.senderFrame?.url ?? '').startsWith(PAGE)) return { set: [], skipped: 'refused' };
     return report[what](arg);

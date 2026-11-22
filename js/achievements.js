@@ -16,6 +16,7 @@ import { draw, slice9, text, textWidth, wrap } from './atlas.js';
 import { rowOf, SEAMS } from './world.js';
 import { REACH } from './shop.js';
 import { sfx } from './audio.js';
+import { DEMO } from './edition.js';
 
 const lord = d => S => ((S.bosses ?? 0) >> (4 + d) & 1) === 1;
 const metDir = kin => S => { for (const key in S.met ?? {}) { const row = rowOf(+key); if (row && !row.pocket && row.kin === kin) return true; } return false; };
@@ -69,6 +70,8 @@ export const ACHIEVEMENTS = [
   { id: 'ACH_LAB_36', name: 'FIELD NOTES', says: 'ANALYSE 36 KINDS IN THE LAB', has: S => Object.values(S.lab ?? {}).filter(n => n > 0).length >= 36 },
 ];
 const BY_ID = new Map(ACHIEVEMENTS.map(a => [a.id, a]));
+// The demo's lord is not the full game's: beating it earns none of the lords' medals, which wait for the real fights.
+const NOT_IN_DEMO = DEMO ? new Set([...LORD_IDS, 'ACH_ALL_LORDS']) : null;
 // How often the state is looked at, in seconds of play (a haul, a purchase and a lord's fall are looked at as they
 // come), how long a word stays up, and the size of a row of the list and of the words under it.
 const EVERY = 1, TOAST = 4, ROW = 20, FOOT = 38, GOLD = '#ffe14a', DIM = '#c8c4d4', SECRET = 'A SECRET, UNTIL IT IS EARNED';
@@ -89,14 +92,16 @@ export class Achievements {
   // One earned: once, whatever asks twice. Kept at the end of this frame (`step`), told to the platform at once.
   earn(id) {
     const a = BY_ID.get(id);
-    if (this.off || !a || this.earned.has(id)) return false;
+    if (this.off || !a || this.earned.has(id) || NOT_IN_DEMO?.has(id)) return false;
     this.earned.add(id); this.dirty = true;
     this.queue.push({ head: 'ACHIEVEMENT', name: a.name });
     this.tell('unlock', id);
     return true;
   }
   // What the platform is told, where there is one. (It may be absent, and it may fail: neither is the game's concern.)
+  // (A demo tells Steam nothing: what it earns is kept in the save, and the full game tells it.)
   tell(what, arg) {
+    if (DEMO) return;
     try { globalThis.tetherboreDesktop?.achievements?.[what]?.(arg)?.catch?.(() => {}); } catch { /* the game goes on */ }
   }
   // A game loaded (`Game.restore`): what its save has earned joins what is held (a list this build does not know is
@@ -106,7 +111,7 @@ export class Achievements {
     this.synced = false;
     if (this.off) return;
     let credited = 0;
-    for (const a of ACHIEVEMENTS) if (a.has && !this.earned.has(a.id) && a.has(S, this.earned)) { this.earned.add(a.id); credited++; }
+    for (const a of ACHIEVEMENTS) if (a.has && !this.earned.has(a.id) && !NOT_IN_DEMO?.has(a.id) && a.has(S, this.earned)) { this.earned.add(a.id); credited++; }
     if (credited) this.queue.push({ head: 'ACHIEVEMENTS', name: `+${credited} FROM YOUR SAVE` });
   }
   // The state looked at: whatever it now proves is earned.

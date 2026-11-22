@@ -6,6 +6,8 @@ contextBridge.exposeInMainWorld('tetherboreDesktop', {
   saves: {
     read: () => ipcRenderer.invoke('saves:read'),
     write: data => ipcRenderer.invoke('saves:write', data),
+    readDemo: () => ipcRenderer.invoke('saves:read-demo'),
+    hasFull: () => ipcRenderer.invoke('saves:has-full'),
   },
   window: {
     isFullscreen: () => ipcRenderer.invoke('window:is-fullscreen'),
@@ -16,6 +18,7 @@ contextBridge.exposeInMainWorld('tetherboreDesktop', {
       try { await flush(); } finally { ipcRenderer.send('window:flushed'); }
     }),
   },
+  wishlist: () => ipcRenderer.invoke('tetherbore:wishlist'),
   achievements: {
     sync: ids => ipcRenderer.invoke('tetherbore:achievements-sync', ids),
     unlock: id => ipcRenderer.invoke('tetherbore:achievements-unlock', id),
