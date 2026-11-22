@@ -3,6 +3,7 @@ import { loadAtlas } from './atlas.js';
 import { Game, hasSave } from './game.js';
 import { setAside } from './audio.js';
 import { AHEAD_ROWS, AHEAD_UNDER } from './world.js';
+import { Pad } from './pad.js';
 
 const canvas = document.getElementById('game');
 await loadAtlas();
@@ -49,6 +50,9 @@ window.addEventListener('focus', quiet);
 quiet();
 window.addEventListener('pagehide', () => game.save());
 
+// A controller (js/pad.js), read once a frame before the step. It does nothing until one is connected, and a staged view has none.
+const pad = shot ? null : new Pad(game);
+
 let last = performance.now(), manual = !!shot;
 function frame(now) {
   // The next frame is asked for before this one is made, and whatever this one throws is caught and written down
@@ -60,6 +64,7 @@ function frame(now) {
   const gap = now - last, dt = Math.min(0.05, gap / 1000);
   last = now;
   try {
+    pad?.poll(dt);
     const t0 = performance.now();
     game.update(dt);
     const t1 = performance.now();

@@ -17,6 +17,7 @@ A one-thumb mining game for the phone browser. A core sits fixed at the centre o
 ## How it plays
 
 - **Press anywhere and drag** to fly; pushed into ground, the drill cuts. Arrow keys or WASD on a desktop.
+- **With a controller:** stick or d-pad to fly and to move through a panel, A to press (at the core, the shop), B back, X the lab, Y the map, LB and RB the tabs, LT and RT page the lab and zoom the map, Start the menu, View the panel.
 - **The tether is a lasso.** Cut a piece of ground free, take the tether round it, and it is reeled home and paid out at the core.
 - **Only hauls pay.** Drilling through ore crushes it. The bigger the piece and the further out, the more it is worth.
 - **Four directions, each with rules of its own:** ice in the north, lava in the south, spore-pod caves in the west, slate and charged crystals in the east, and seams, strains and crossed grounds between them.

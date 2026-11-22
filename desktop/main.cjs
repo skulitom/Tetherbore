@@ -37,7 +37,20 @@ function fileFor(url) {
   return SHIPPED.has(inside.split(path.sep)[0]) ? file : null;
 }
 
+// Chromium stops hearing controllers once every page listening for one has gone, even for a moment, as the game's
+// page does when it reloads for a language chosen from the menu: the pad was then dead until the app was started again
+// (seen on Electron 45 with an XInput pad, and not with a second page left listening). So a hidden page that does
+// nothing but listen stays open as long as the game's window does.
+const PAD_KEEPER = '<!doctype html><title>pads</title><script>addEventListener("gamepadconnected", () => {}); navigator.getGamepads();</script>';
+function keepPadsHeard(window) {
+  const keeper = new BrowserWindow({ show: false, webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, backgroundThrottling: false } });
+  keeper.loadURL('tetherbore://game/pad-keeper');
+  // (It is no window of the player's: with the game's window shut, the app quits.)
+  window.on('closed', () => { if (!keeper.isDestroyed()) keeper.destroy(); app.quit(); });
+}
+
 async function serve(request) {
+  if (new URL(request.url).pathname === '/pad-keeper') return new Response(PAD_KEEPER, { headers: { 'content-type': 'text/html' } });
   const file = fileFor(request.url);
   if (!file) return new Response('not found', { status: 404 });
   try {
@@ -104,6 +117,7 @@ app.whenReady().then(() => {
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   window.webContents.on('will-navigate', (event, url) => { if (!url.startsWith('tetherbore://game/')) event.preventDefault(); });
   window.loadURL('tetherbore://game/index.html');
+  if (!SPIKE) keepPadsHeard(window);
   if (SPIKE) window.webContents.once('did-finish-load', () => spike(window).catch(error => { console.error(error); app.exit(1); }));
 });
 app.on('window-all-closed', () => app.quit());

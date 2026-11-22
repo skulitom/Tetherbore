@@ -457,7 +457,8 @@ export class Game {
     this.world = new World();
     this.W = 180; this.H = 320;
     this.time = 0;
-    this.input = { id: null, ax: 0, ay: 0, px: 0, py: 0, vx: 0, vy: 0, m: 0, keys: new Set(), auto: null };
+    this.input = { id: null, ax: 0, ay: 0, px: 0, py: 0, vx: 0, vy: 0, m: 0, keys: new Set(), auto: null, pad: null };
+    this.pad = null;   // the controller, once one is connected (js/pad.js): it draws the focus and the prompts
     this.band = []; this.pieces = []; this.pieceOf = new CellBook(); this.preview = []; this.under = new Set();
     this.taken = []; this.walked = new Set(); this.boxes = new WeakMap(); this.cuts = 0; this.homeKey = '';
     this.swept = 0;                         // cells the tether's sweeps have looked at, for tests of how much work is done
@@ -862,6 +863,7 @@ export class Game {
       const far = Math.hypot(x, y);
       return far ? [x / far, y / far, 1] : [0, 0, 0];
     }
+    if (inp.pad) return inp.pad;
     return inp.id !== null && inp.m > 0 ? [inp.vx, inp.vy, inp.m] : [0, 0, 0];
   }
 
