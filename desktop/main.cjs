@@ -15,9 +15,10 @@ app.setName('Tetherbore');
 const SPIKE = process.argv.includes('--spike');
 // (TETHERBORE_DATA puts everything the game keeps in another folder, for tests. --no-steam leaves Steam alone.)
 if (process.env.TETHERBORE_DATA) app.setPath('userData', path.resolve(process.env.TETHERBORE_DATA));
-const NO_STEAM = process.argv.includes('--no-steam');
 const option = name => { const at = process.argv.indexOf(name); return at < 0 ? null : process.argv[at + 1]; };
-const APP_ID = Number(process.env.TETHERBORE_STEAM_APP) || 480;
+// The game's App ID (app-id.json). A build with none runs without Steam; from source it is Valve's test app.
+const APP_ID = Number(process.env.TETHERBORE_STEAM_APP) || require('./app-id.json').appId || (app.isPackaged ? null : 480);
+const NO_STEAM = process.argv.includes('--no-steam') || !APP_ID;
 const ROOT = app.isPackaged ? path.join(process.resourcesPath, 'game') : path.resolve(__dirname, '..');
 // What a browser loads (tools/build-dist.mjs, SHIPPED), and so all this origin will serve.
 const SHIPPED = new Set(['index.html', 'manifest.webmanifest', 'css', 'js', 'assets', 'media']);
@@ -26,6 +27,8 @@ const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/cs
 let steamworks = null, steam = null, steamError = null;
 if (!NO_STEAM) try {
   steamworks = require('steamworks.js');
+  // (A released build started from outside Steam is started again through it.)
+  if (app.isPackaged && !SPIKE && steamworks.restartAppIfNecessary(APP_ID)) app.exit(0);
   steamworks.electronEnableSteamOverlay();   // must be before the app is ready
 } catch (error) { steamError = String(error.message ?? error); }
 
