@@ -5,6 +5,10 @@ import { setAside } from './audio.js';
 import { AHEAD_ROWS, AHEAD_UNDER } from './world.js';
 
 const canvas = document.getElementById('game');
+// The desktop build (desktop/preload.cjs): the game on disk, if it is newer than what this browser's storage holds, is
+// laid over it before anything reads it, and the page begins again so that the language and the sound are its too.
+const desktop = window.tetherboreDesktop ?? null, disk = desktop ? await import('./disk.js') : null;
+if (disk && await disk.pull(desktop.saves)) { location.reload(); await new Promise(() => {}); }
 await loadAtlas();
 // `?shot` in the address stages a view of a far place for tools/shot.mjs to photograph, in place of the saved game,
 // which is then neither read nor written (js/shot.js, fetched only then). Without it none of this runs.
@@ -15,10 +19,16 @@ const game = new Game(canvas, document.getElementById('rope'), { blank: !query.h
 const shot = query.has('shot') ? (await import('./shot.js')).stage(game, query) : null;
 // (With no saved game to go on with, the game begun is a new one, and the saved ground is made its own.)
 if (!shot && !(await game.restore())) game.claim();
+if (desktop) {
+  game.desktop = { fullscreen: await desktop.window.isFullscreen(), toggle: desktop.window.toggleFullscreen, quit: desktop.window.quit };
+  desktop.window.onFullscreen(on => { game.desktop.fullscreen = on; });
+  const kept = disk.keep(game, desktop.saves);
+  desktop.window.onFlush(kept.flush);
+}
 
 function resize() {
   const w = window.innerWidth || 360, h = window.innerHeight || 640;
-  game.resize(w, h, Math.min(4, window.devicePixelRatio || 1));
+  game.resize(w, h, Math.min(4, window.devicePixelRatio || 1), !!desktop);
   // A staged view is drawn once and held still until it is stepped by hand.
   if (shot) { shot.fit(); game.render(); }
 }
@@ -61,7 +71,9 @@ function frame(now) {
   last = now;
   try {
     const t0 = performance.now();
-    game.update(dt);
+    // (On the desktop a window that has lost the focus holds still: nothing happens to a drill while its player is
+    // in another window.)
+    if (!desktop || document.hasFocus()) game.update(dt);
     const t1 = performance.now();
     game.render();
     const t2 = performance.now();

@@ -2438,7 +2438,7 @@ export class Drawing {
   // the thumb does not cost a world). Its rows are the panel's boxes, as the shop's are, from the header's foot and
   // UI.INSET apart, their words in the panel's columns; the list of languages, open, UI.INSET under its row and over
   // the next, each of it a box set in by twice UI.INSET with its words UI.INSET in from it. (`menuRows`: how tall it is.)
-  menuRows() { return 3 * MENU_ROW + 20 + (this.langOpen ? LANG_ROWS : 0); }
+  menuRows() { return (this.desktop ? 5 : 3) * MENU_ROW + 20 + (this.langOpen ? LANG_ROWS : 0); }
   drawMenu(px, y0, pw) {
     const { ctx } = this, sure = this.confirmReset > 0, bx = px + UI.INSET, bw = pw - 2 * UI.INSET, left = px + 2 * UI.INSET, right = px + pw - 2 * UI.INSET;
     this.volumeRow('SOUND', soundVolume, setSoundVolume, 'sound', px, y0, pw);
@@ -2464,6 +2464,16 @@ export class Drawing {
     this.buttons.unshift({ x: bx, y: ny, w: bw, h: 20, act: () => {
       if (this.confirmReset > 0) { this.confirmReset = 0; this.fresh((Math.random() * 1e9) | 0); this.save(); sfx.relic(); } else { this.confirmReset = 2.5; sfx.tap(); }
     } });
+    // On the desktop, two rows more: fullscreen or a window, and leaving (the shell saves the game before it goes).
+    if (!this.desktop) return;
+    const fy = ny + MENU_ROW, qy = fy + MENU_ROW;
+    slice9(ctx, 'ui', 'button', bx, fy, bw, 20);
+    text(ctx, 'FULLSCREEN', left, fy + 6, '#ffffff');
+    text(ctx, this.desktop.fullscreen ? 'ON' : 'OFF', right, fy + 6, '#8cf2c4', 1);
+    this.buttons.unshift({ x: bx, y: fy, w: bw, h: 20, act: () => { this.desktop.toggle(); sfx.tap(); } });
+    slice9(ctx, 'ui', 'button', bx, qy, bw, 20);
+    text(ctx, 'SAVE AND QUIT', px + pw / 2, qy + 6, '#ffffff', 0.5);
+    this.buttons.unshift({ x: bx, y: qy, w: bw, h: 20, act: () => { sfx.tap(); this.desktop.quit(); } });
   }
   // A row of the menu that sets how loud something is: its name, and a bar of ten steps at the row's right end, as
   // many lit as it is loud. A tap on the bar sets the step under it (just left of the first, nothing), and a tap on

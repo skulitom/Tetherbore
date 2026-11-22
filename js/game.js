@@ -739,8 +739,10 @@ export class Game {
   }
 
   // ------------------------------------------------------------ view
-  resize(cssW, cssH, dpr) {
-    const scale = Math.max(1, Math.round(Math.min(cssW, cssH * 0.62) * dpr / 190));
+  // (`wide`, the desktop build: pixels as large as show at least 640 x 360 of the game, at 2 at the least, so that a
+  // monitor shows more of the world and not larger pixels: 2 at 720p and on a Steam Deck, 3 at 1080p, 4 at 1440p.)
+  resize(cssW, cssH, dpr, wide = false) {
+    const scale = wide ? Math.max(2, Math.floor(Math.min(cssW / 640, cssH / 360) * dpr + 1e-6)) : Math.max(1, Math.round(Math.min(cssW, cssH * 0.62) * dpr / 190));
     this.W = Math.ceil(cssW * dpr / scale); this.H = Math.ceil(cssH * dpr / scale);
     this.canvas.width = this.W; this.canvas.height = this.H;
     this.ctx.imageSmoothingEnabled = false;
