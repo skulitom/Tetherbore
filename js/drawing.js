@@ -1953,7 +1953,7 @@ export class Drawing {
       const w = 84, x = Math.round(W / 2 - w / 2), up = afford && ((now / 300) | 0) % 2;
       slice9(ctx, 'ui', afford ? (up ? 'button-down' : 'button') : 'panel', x, by + 6, w, 24);
       text(ctx, 'UPGRADES', x + w / 2, by + 13, afford ? '#ffffff' : '#9a94a8', 0.5);
-      this.button(x - 4, by, w + 8, 36, () => { this.shop = true; sfx.tap(); });
+      this.buttons.push({ x: x - 4, y: by, w: w + 8, h: 36, act: () => { this.shop = true; sfx.tap(); }, pad: 'A', padX: 7, padY: 13 });
       // (The hand under the word, pointing up at it, its fingertip at the word's middle and never over it.)
       if (afford && S.stats.buys === 0) draw(ctx, 'ui', 'hand', x + w / 2 - 7, by + 22 + Math.round(Math.abs(Math.sin(now / 150)) * 3));
     }
@@ -1978,6 +1978,8 @@ export class Drawing {
     if (this.shop) this.drawShop();
     this.labRise = this.lab ? Math.min(1, this.labRise + 0.12) : 0;
     if (this.lab) this.drawLab();
+    // (The controller's focus and prompts, once one is in use: js/pad.js.)
+    this.pad?.draw(ctx);
   }
   // The map: everything within the tether's reach, the core in the middle. Ground that has been seen shows as
   // rock or open; the rest only as whose ground it is, so there is always somewhere to choose to go. Whose it is
@@ -1997,7 +1999,7 @@ export class Drawing {
       // With the chart bought, a tap on the map opens it.
       if (this.val('chart') && !this.lab && !this.shop) {
         ctx.fillStyle = '#ffe14a'; ctx.fillRect(x - 2, y - 2, size + 4, 1); ctx.fillRect(x - 2, y + size + 2, size + 4, 1);
-        this.button(x - 3, y - 3, MAP_FRAME, MAP_FRAME_H, () => this.openLab(true, 'chart'));
+        this.buttons.push({ x: x - 3, y: y - 3, w: MAP_FRAME, h: MAP_FRAME_H, act: () => this.openLab(true, 'chart'), pad: 'Y', padX: 1, padY: 1 });
       }
     }
     let map = M.mapCanvas;
@@ -2460,7 +2462,7 @@ export class Drawing {
       this.buttons.unshift({ x: lx, y, w: lw, h: LANG_ROW - 2, act: () => { this.langOpen = false; sfx.tap(); if (!on) { this.save(); chooseLang(l.id); } } });
     });
     slice9(ctx, 'ui', sure ? 'button-off' : 'button', bx, ny, bw, 20);
-    text(ctx, sure ? 'TAP AGAIN: NEW WORLD' : 'NEW WORLD', px + pw / 2, ny + 6, sure ? '#ff7a5a' : '#ffffff', 0.5);
+    text(ctx, sure ? (this.pad?.shown ? 'A AGAIN: NEW WORLD' : 'TAP AGAIN: NEW WORLD') : 'NEW WORLD', px + pw / 2, ny + 6, sure ? '#ff7a5a' : '#ffffff', 0.5);
     this.buttons.unshift({ x: bx, y: ny, w: bw, h: 20, act: () => {
       if (this.confirmReset > 0) { this.confirmReset = 0; this.fresh((Math.random() * 1e9) | 0); this.save(); sfx.relic(); } else { this.confirmReset = 2.5; sfx.tap(); }
     } });
@@ -2485,6 +2487,12 @@ export class Drawing {
     for (let n = 0; n < STEPS_OF_VOLUME; n++) { ctx.fillStyle = n < step ? '#8cf2c4' : '#3a3450'; ctx.fillRect(bx + n * 5, y + 7, 4, 6); }
     this.buttons.unshift({ x: px + UI.INSET, y, w: pw - 2 * UI.INSET, h: 20, act: x => {
       const step = get(), to = x === undefined || x < bx - 3 ? (step ? 0 : was[which] || STEPS_OF_VOLUME) : Math.max(0, Math.min(STEPS_OF_VOLUME, Math.ceil((x - bx + 1) / 5)));
+      if (step) was[which] = step;
+      set(to); sfx.tap();
+    }, nudge: by => {
+      // (A step up or down, from a controller's left and right: js/pad.js.)
+      const step = get(), to = Math.max(0, Math.min(STEPS_OF_VOLUME, step + by));
+      if (to === step) return;
       if (step) was[which] = step;
       set(to); sfx.tap();
     } });
@@ -2754,6 +2762,7 @@ export class Drawing {
     const tab = TABS.find(t => t.id === this.shopTab) ?? TABS[0], { px, py, pw, ph, rh } = this.shopGeom();
     slice9(ctx, 'ui', 'panel', px, py, pw, ph);
     this.button(px, py, pw, ph, () => {});
+    this.buttons.at(-1).swallow = true;
     // The tabs: the one that is open in yellow, and a dot on one that has something to buy.
     this.headAt(px, py, pw);
     for (const t of TABS) this.headTab(t.name, t === tab, t.rows.some(u => this.canBuy(u)), () => { this.shopTab = t.id; sfx.tap(); });

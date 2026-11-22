@@ -176,7 +176,7 @@ for (const [x, y, reach, what] of [[624, -632, 8, 'hoarstone'], [560, 584, 8, 'g
 // And the shop and STATS, and what is called out across the screen, in Russian and in Mandarin, which say most of
 // their lines in more or fewer pixels than English (h-shop-fit and h-call-clear, run with TETHERBORE_LANG:
 // js/lang.js). (The language test, l-lang, runs itself in each.)
-for (const id of ['ru', 'zh']) for (const name of ['h-shop-fit', 'h-call-clear']) tests.push({ name: `regress/${name}.mjs [${id}]`, run: [`regress/${name}.mjs`], env: { TETHERBORE_LANG: id } });
+for (const id of ['ru', 'zh']) for (const name of ['h-shop-fit', 'h-call-clear', 'p-pad']) tests.push({ name: `regress/${name}.mjs [${id}]`, run: [`regress/${name}.mjs`], env: { TETHERBORE_LANG: id } });
 
 const queue = tests.filter(test => test.name.includes(only)), began = Date.now();
 let failed = 0, done = 0;
