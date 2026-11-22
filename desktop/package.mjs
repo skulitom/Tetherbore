@@ -20,7 +20,7 @@ const work = mkdtempSync(path.join(os.tmpdir(), 'tetherbore-package-'));
 try {
   const site = path.join(work, 'game');
   run(process.execPath, ['tools/build-dist.mjs', site, '--esbuild', esbuild]);
-  const icon = path.join(work, 'icon.ico'), art = [path.join(repo, 'store', 'art', 'icon-256.png'), path.join(repo, 'media', 'icon-512.png')].find(existsSync);
+  const icon = path.join(work, 'icon.ico'), art = [path.join(repo, 'store', 'art', 'shortcut_icon.png'), path.join(repo, 'media', 'icon-512.png')].find(existsSync);
   run('ffmpeg', ['-v', 'error', '-y', '-i', art, '-vf', 'scale=256:256:flags=neighbor', icon]);
   const out = path.join(here, 'out');
   rmSync(out, { recursive: true, force: true });
